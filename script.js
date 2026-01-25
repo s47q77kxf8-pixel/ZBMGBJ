@@ -16,7 +16,7 @@ const defaultSettings = {
     artistInfo: {
         id: '',           // 美工ID
         contact: '',      // 联系方式
-        defaultDuration: 7                // 默认工期（天）
+        defaultDuration: 10               // 默认工期（天）
     },
     // 用途系数（存储格式：{value: 数值, name: 显示名称}）
     usageCoefficients: {
@@ -75,6 +75,9 @@ const defaultSettings = {
     }
 };
 
+// 默认制品分类（单一定义，避免多处硬编码）
+const DEFAULT_CATEGORIES = ['吧唧类', '纸片类', '亚克力类'];
+
 // 初始化应用
 function init() {
     // 加载本地存储的数据
@@ -124,38 +127,14 @@ function init() {
     });
 }
 
-// 兼容处理：将旧格式系数转换为新格式
+// 兼容处理：将旧格式系数转换为新格式（默认名称以 defaultSettings 为准，不在此处重复维护）
 function normalizeCoefficients(settings) {
     const coefficientTypes = ['usageCoefficients', 'urgentCoefficients', 'sameModelCoefficients', 'discountCoefficients', 'platformFees'];
-    const defaultNames = {
-        usageCoefficients: {
-            personal: '自用/无盈利/同人商用',
-            private: '不公开展示',
-            buyout: '买断（可要求不公开）',
-            enterprise: '企业/书店/出版社等'
-        },
-        urgentCoefficients: {
-            normal: '无（默认）',
-            oneWeek: '一周',
-            seventyTwoHours: '72H',
-            fortyEightHours: '48H',
-            twentyFourHours: '24H'
-        },
-        sameModelCoefficients: {
-            basic: '改字、色、柄图',
-            advanced: '改字、色、柄图、元素'
-        },
-        discountCoefficients: {
-            none: '无（默认）',
-            sample: '上次合作寄样'
-        },
-        platformFees: {
-            none: '无（默认）',
-            mihua: '米画师',
-            painter: '画加'
-        }
-    };
-    
+    function getDefaultName(type, key) {
+        const obj = defaultSettings[type];
+        return (obj && obj[key] && typeof obj[key] === 'object' && obj[key].name) ? obj[key].name : key;
+    }
+
     coefficientTypes.forEach(type => {
         if (settings[type]) {
             Object.keys(settings[type]).forEach(key => {
@@ -164,14 +143,14 @@ function normalizeCoefficients(settings) {
                 if (typeof item === 'number') {
                     settings[type][key] = {
                         value: item,
-                        name: defaultNames[type] && defaultNames[type][key] ? defaultNames[type][key] : key
+                        name: getDefaultName(type, key)
                     };
                 } else if (item && typeof item === 'object' && !item.value && !item.name) {
                     // 如果已经是对象但没有value和name字段，可能是其他格式，跳过
                 } else if (item && typeof item === 'object' && item.value !== undefined) {
                     // 新格式，确保有name字段
                     if (!item.name) {
-                        item.name = defaultNames[type] && defaultNames[type][key] ? defaultNames[type][key] : key;
+                        item.name = getDefaultName(type, key);
                     }
                 }
             });
@@ -351,31 +330,6 @@ function closeReceiptCustomizationPanel() {
 }
 
 // 加载小票自定义设置到表单
-function loadReceiptCustomizationToForm() {
-    const settings = defaultSettings.receiptCustomization;
-    
-    if (settings) {
-        // 设置文本字段
-        if (document.getElementById('receiptTitleText')) {
-            document.getElementById('receiptTitleText').value = settings.titleText || 'LIST';
-        }
-        if (document.getElementById('receiptFooterText1')) {
-            document.getElementById('receiptFooterText1').value = settings.footerText1 || '感谢惠顾！';
-        }
-        if (document.getElementById('receiptFooterText2')) {
-            document.getElementById('receiptFooterText2').value = settings.footerText2 || '此报价单有效期7天';
-        }
-        
-        // 设置图片预览
-        if (settings.headerImage && document.getElementById('headerImagePreview')) {
-            document.getElementById('headerImagePreview').innerHTML = `<img src="${settings.headerImage}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
-        }
-        if (settings.footerImage && document.getElementById('footerImagePreview')) {
-            document.getElementById('footerImagePreview').innerHTML = `<img src="${settings.footerImage}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
-        }
-    }
-}
-
 // 处理小票图片上传
 function handleReceiptImageUpload(field, file) {
     if (file && file.type && file.type.startsWith('image/')) {
@@ -476,29 +430,23 @@ function loadReceiptCustomizationToForm() {
     }
 }
 
-// 加载设置页面的内容
-function loadSettings() {
-    // 加载小票自定义设置
-    loadReceiptCustomizationToForm();
-}
-
 // 清除小票自定义设置
 function clearReceiptCustomization() {
     if (confirm('确定要清除所有小票自定义设置吗？此操作不可撤销。')) {
         // 重置小票自定义设置为默认值
         defaultSettings.receiptCustomization = {
-            headerImage: '',  // 头部图片
-            titleText: 'LIST',  // 标题文本
-            footerText1: '温馨提示',  // 尾部文本1
-            footerText2: '感谢惠顾',  // 尾部文本2
-            footerImage: '',  // 尾部图片
-            receiptInfo: {  // 小票信息行
-                orderNotification: '',  // 订单通知
-                showStartTime: true,  // 是否显示开始时间
-                showDeadline: true,  // 是否显示截稿时间
-                showDesigner: true,  // 是否显示设计师
-                showContactInfo: true,  // 是否显示联系方式
-                customText: ''  // 自定义文本
+            headerImage: null,
+            titleText: 'LIST',
+            footerText1: '温馨提示',
+            footerText2: '感谢惠顾',
+            footerImage: null,
+            receiptInfo: {
+                orderNotification: '',
+                showStartTime: true,
+                showDeadline: true,
+                showDesigner: true,
+                showContactInfo: true,
+                customText: ''
             },
         };
         
@@ -1023,6 +971,7 @@ function calculatePrice() {
             product: productSetting.name,
             category: productSetting.category || '其他', // 添加分类字段
             basePrice: basePrice,
+            baseConfigPrice: productSetting.priceType === 'config' && productSetting.baseConfig ? (productSetting.basePrice || 0) : undefined,
             quantity: product.quantity,
             sameModelCount: sameModelCount,
             sameModelUnitPrice: sameModelUnitPrice,
@@ -1309,10 +1258,11 @@ function generateQuote() {
         }
         currentCategory = item.category;
         
-        // 显示制品总览行
-        html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${item.product}</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+        // 显示制品总览行（单价列不展示具体金额，避免与下方明细的「单价×数量=小计」混淆；小计=下方明细合计）
+        html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${item.product}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
         
         let basePriceRowHtml = '';
+        const baseConfigVal = (item.baseConfigPrice != null ? item.baseConfigPrice : item.basePrice);
         // 根据价格类型显示不同的基础价信息
         if (item.productType === 'double') {
             // 单双面价类型，显示基础配置(单面)或基础配置(双面)
@@ -1322,8 +1272,8 @@ function generateQuote() {
                 basePriceRowHtml = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(双面)</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div></div>`;
             }
         } else if (item.productType === 'config' && item.baseConfig) {
-            // 基础+递增价类型，显示基础配置信息
-            basePriceRowHtml = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(${item.baseConfig})</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div></div>`;
+            // 基础+递增价类型：基础配置行仅显示基础价（不含附加），避免与「+1底座」等混淆
+            basePriceRowHtml = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(${item.baseConfig})</div><div class="receipt-col-1">¥${baseConfigVal.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${baseConfigVal.toFixed(2)}</div></div>`;
         } else if (item.productType === 'fixed') {
             // 固定价类型，不显示基础价
             basePriceRowHtml = '';
@@ -1346,8 +1296,9 @@ function generateQuote() {
         // 显示同模信息（如果有）
         if (item.sameModelCount > 0) {
             // 获取同模系数值
-            const sameModelValue = defaultSettings.sameModelCoefficients && defaultSettings.sameModelCoefficients.find ? defaultSettings.sameModelCoefficients.find(c => c.name === '改字、色、柄图') || defaultSettings.sameModelCoefficients[0] : { value: 0.5 };
-            const sameModelRate = sameModelValue ? sameModelValue.value : 0.5;
+            const _arr = Object.values(defaultSettings.sameModelCoefficients || {});
+            const _found = _arr.find(c => c && c.name === '改字、色、柄图');
+            const sameModelRate = getCoefficientValue(_found || _arr[0]) || 0.5;
             html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">同模制品(${sameModelRate}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
         }
         
@@ -1419,9 +1370,10 @@ function generateQuote() {
             
             // 显示同模信息（如果有）
             if (item.sameModelCount > 0) {
-                // 获取同模系数值
-                const sameModelValue = defaultSettings.sameModelCoefficients && defaultSettings.sameModelCoefficients.find ? defaultSettings.sameModelCoefficients.find(c => c.name === '改字、色、柄图') || defaultSettings.sameModelCoefficients[0] : { value: 0.5 };
-                const sameModelRate = sameModelValue ? sameModelValue.value : 0.5;
+                // 获取同模系数值（sameModelCoefficients 为对象，按 name 或首项取值）
+                const _arrG = Object.values(defaultSettings.sameModelCoefficients || {});
+                const _foundG = _arrG.find(c => c && c.name === '改字、色、柄图');
+                const sameModelRate = getCoefficientValue(_foundG || _arrG[0]) || 0.5;
                 html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">同模制品(${sameModelRate}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
             }
             
@@ -1459,35 +1411,31 @@ function generateQuote() {
     const down = quoteData.pricingDownProduct != null ? quoteData.pricingDownProduct : (quoteData.discount || 1);
     const addAmount = quoteData.totalProductsPrice * (up - 1);
     const discountAmount = Math.round(quoteData.totalProductsPrice * up * (down - 1));
+    const totalWithCoeff = quoteData.totalWithCoefficients != null ? quoteData.totalWithCoefficients : (quoteData.totalProductsPrice * up * down);
+    const totalBeforePlat = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (totalWithCoeff + (quoteData.totalOtherFees || 0));
+    const base = quoteData.totalProductsPrice;
     
-    html += `<div class="receipt-summary"><div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">¥${quoteData.totalProductsPrice.toFixed(2)}</div></div>`;
+    html += `<div class="receipt-summary"><div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">¥${base.toFixed(2)}</div></div>`;
     if (addAmount !== 0) {
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">加价系数(${up}x)</div><div class="receipt-summary-value">+¥${addAmount.toFixed(2)}</div></div>`;
+        const afterUp = base * up;
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">加价 ${up}×（¥${base.toFixed(0)}→¥${afterUp.toFixed(0)}）</div><div class="receipt-summary-value">+¥${addAmount.toFixed(2)}</div></div>`;
     }
     if (discountAmount !== 0) {
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">折扣系数(${down}x)</div><div class="receipt-summary-value">${discountAmount >= 0 ? '+' : ''}¥${discountAmount.toFixed(2)}</div></div>`;
+        const afterDown = totalWithCoeff;
+        const beforeDown = base * up;
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">折扣 ${down}×（¥${beforeDown.toFixed(0)}→¥${afterDown.toFixed(0)}）</div><div class="receipt-summary-value">¥${discountAmount.toFixed(2)}</div></div>`;
     }
-            
-            // 显示其他费用
-            if (quoteData.totalOtherFees > 0 && quoteData.otherFees && quoteData.otherFees.length > 0) {
-                // 显示所有其他费用项
-                quoteData.otherFees.forEach(fee => {
-                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label">${fee.name}</div><div class="receipt-summary-value">¥${fee.amount.toFixed(2)}</div></div>`;
-                });
-                
-                // 显示其他费用总计
-                html += `<div class="receipt-summary-row" style="font-weight: bold; border-top: 1px dotted #ccc; padding-top: 0.3rem;"><div class="receipt-summary-label">其他费用</div><div class="receipt-summary-value">¥${quoteData.totalOtherFees.toFixed(2)}</div></div>`;
-            }
-            
-            // 条件显示平台手续费
-            if (quoteData.platformFeeAmount > 0) {
-                // 使用保存的平台费系数值
-                const platformFeeRate = quoteData.platformFee || 0;
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费(${platformFeeRate}%)</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
-            }
-            
-            // 添加最终总价
-            html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${quoteData.finalTotal.toFixed(2)}</div></div>`;
+    if (quoteData.totalOtherFees > 0 && quoteData.otherFees && quoteData.otherFees.length > 0) {
+        quoteData.otherFees.forEach(fee => {
+            html += `<div class="receipt-summary-row"><div class="receipt-summary-label">${fee.name}</div><div class="receipt-summary-value">¥${fee.amount.toFixed(2)}</div></div>`;
+        });
+        html += `<div class="receipt-summary-row" style="font-weight: bold; border-top: 1px dotted #ccc; padding-top: 0.3rem;"><div class="receipt-summary-label">其他费用合计</div><div class="receipt-summary-value">¥${quoteData.totalOtherFees.toFixed(2)}</div></div>`;
+    }
+    if (quoteData.platformFeeAmount > 0) {
+        const platformFeeRate = quoteData.platformFee || 0;
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%×¥${totalBeforePlat.toFixed(0)}</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
+    }
+    html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${quoteData.finalTotal.toFixed(2)}</div></div>`;
             
             // 添加底部内容
             html += `<div class="receipt-footer">`;
@@ -2070,57 +2018,11 @@ function renderDynamicOtherFees() {
 
 
 
-// 加载设置
+// 加载设置（基础信息 + 其他费用；系数由 renderCoefficientSettings 从 defaultSettings 渲染，无需在此回填）
 function loadSettings() {
-    // 基础详细信息
     document.getElementById('artistId').value = defaultSettings.artistInfo.id;
     document.getElementById('artistContact').value = defaultSettings.artistInfo.contact;
     document.getElementById('defaultDuration').value = defaultSettings.artistInfo.defaultDuration;
-    
-    // 用途系数
-    const personalInput = document.querySelector('[onchange*="updateUsageCoefficient(\'personal\'"]');
-    if (personalInput) personalInput.value = getCoefficientValue(defaultSettings.usageCoefficients.personal);
-    const privateInput = document.querySelector('[onchange*="updateUsageCoefficient(\'private\'"]');
-    if (privateInput) privateInput.value = getCoefficientValue(defaultSettings.usageCoefficients.private);
-    const buyoutInput = document.querySelector('[onchange*="updateUsageCoefficient(\'buyout\'"]');
-    if (buyoutInput) buyoutInput.value = getCoefficientValue(defaultSettings.usageCoefficients.buyout);
-    const enterpriseInput = document.querySelector('[onchange*="updateUsageCoefficient(\'enterprise\'"]');
-    if (enterpriseInput) enterpriseInput.value = getCoefficientValue(defaultSettings.usageCoefficients.enterprise);
-    
-    // 加急系数
-    const normalInput = document.querySelector('[onchange*="updateUrgentCoefficient(\'normal\'"]');
-    if (normalInput) normalInput.value = getCoefficientValue(defaultSettings.urgentCoefficients.normal);
-    const oneWeekInput = document.querySelector('[onchange*="updateUrgentCoefficient(\'oneWeek\'"]');
-    if (oneWeekInput) oneWeekInput.value = getCoefficientValue(defaultSettings.urgentCoefficients.oneWeek);
-    const seventyTwoHoursInput = document.querySelector('[onchange*="updateUrgentCoefficient(\'seventyTwoHours\'"]');
-    if (seventyTwoHoursInput) seventyTwoHoursInput.value = getCoefficientValue(defaultSettings.urgentCoefficients.seventyTwoHours);
-    const fortyEightHoursInput = document.querySelector('[onchange*="updateUrgentCoefficient(\'fortyEightHours\'"]');
-    if (fortyEightHoursInput) fortyEightHoursInput.value = getCoefficientValue(defaultSettings.urgentCoefficients.fortyEightHours);
-    const twentyFourHoursInput = document.querySelector('[onchange*="updateUrgentCoefficient(\'twentyFourHours\'"]');
-    if (twentyFourHoursInput) twentyFourHoursInput.value = getCoefficientValue(defaultSettings.urgentCoefficients.twentyFourHours);
-    
-    // 同模系数
-    const basicInput = document.querySelector('[onchange*="updateSameModelCoefficient(\'basic\'"]');
-    if (basicInput) basicInput.value = getCoefficientValue(defaultSettings.sameModelCoefficients.basic);
-    const advancedInput = document.querySelector('[onchange*="updateSameModelCoefficient(\'advanced\'"]');
-    if (advancedInput) advancedInput.value = getCoefficientValue(defaultSettings.sameModelCoefficients.advanced);
-    
-    // 折扣系数
-    const noneDiscountInput = document.querySelector('[onchange*="updateDiscountCoefficient(\'none\'"]');
-    if (noneDiscountInput) noneDiscountInput.value = getCoefficientValue(defaultSettings.discountCoefficients.none);
-    const sampleInput = document.querySelector('[onchange*="updateDiscountCoefficient(\'sample\'"]');
-    if (sampleInput) sampleInput.value = getCoefficientValue(defaultSettings.discountCoefficients.sample);
-    
-    // 平台手续费
-    const nonePlatformInput = document.querySelector('[onchange*="updatePlatformFee(\'none\'"]');
-    if (nonePlatformInput) nonePlatformInput.value = getCoefficientValue(defaultSettings.platformFees.none);
-    const mihuaInput = document.querySelector('[onchange*="updatePlatformFee(\'mihua\'"]');
-    if (mihuaInput) mihuaInput.value = getCoefficientValue(defaultSettings.platformFees.mihua);
-    const painterInput = document.querySelector('[onchange*="updatePlatformFee(\'painter\'"]');
-    if (painterInput) painterInput.value = getCoefficientValue(defaultSettings.platformFees.painter);
-
-    
-    // 渲染其他费用列表
     renderOtherFees();
 }
 
@@ -2240,8 +2142,7 @@ function generateCategoryOptions() {
     });
     
     // 添加默认分类
-    const defaultCategories = ['吧唧类', '纸片类', '亚克力类'];
-    defaultCategories.forEach(category => {
+    DEFAULT_CATEGORIES.forEach(category => {
         categories.add(category);
     });
     
@@ -2289,7 +2190,7 @@ function showPriceSettings(priceType) {
 // 保存新制品
 function saveNewProduct() {
     // 获取表单数据
-    const category = document.getElementById('newProductCategory').value.trim() || '吧唧类';
+    const category = document.getElementById('newProductCategory').value.trim() || DEFAULT_CATEGORIES[0];
     const name = document.getElementById('newProductName').value.trim();
     const priceType = document.getElementById('newProductPriceType').value;
     
@@ -2360,7 +2261,7 @@ function renderProductSettings() {
     
     // 将制品按类别分组
     productSettings.forEach(setting => {
-        const category = setting.category || '吧唧类'; // 默认分类
+        const category = setting.category || DEFAULT_CATEGORIES[0];
         if (!categories[category]) {
             categories[category] = [];
         }
@@ -2368,8 +2269,7 @@ function renderProductSettings() {
     });
     
     // 将默认分类添加到categories对象中（如果它们不存在）
-    const defaultCategories = ['吧唧类', '纸片类', '亚克力类'];
-    defaultCategories.forEach(category => {
+    DEFAULT_CATEGORIES.forEach(category => {
         if (!categories[category]) {
             categories[category] = [];
         }
@@ -2377,7 +2277,7 @@ function renderProductSettings() {
     
     // 确保默认分类排在前面
     const sortedCategories = {};
-    defaultCategories.forEach(category => {
+    DEFAULT_CATEGORIES.forEach(category => {
         if (categories[category]) {
             sortedCategories[category] = categories[category];
             delete categories[category];
@@ -3450,7 +3350,7 @@ function exportToExcel() {
     // 准备数据
     const data = productSettings.map(setting => {
         const row = {
-            '分类': setting.category || '吧唧类',
+            '分类': setting.category || DEFAULT_CATEGORIES[0],
             '制品名称': setting.name || '',
             '计价方式': setting.priceType === 'fixed' ? '固定价' : 
                        setting.priceType === 'double' ? '单双面价' : 
@@ -3496,6 +3396,157 @@ function exportToExcel() {
     // 导出文件
     XLSX.writeFile(workbook, `制品设置_${new Date().getTime()}.xlsx`);
     alert('导出成功！');
+}
+
+// 导出系数设置为 Excel（表头：大类, 小类, 名称, 系数值；大类=加价类|折扣类|其他类）
+function exportCoefficientsToExcel() {
+    const rows = [];
+    function add(daLei, xiaoLei, name, val) {
+        rows.push({ '大类': daLei, '小类': xiaoLei, '名称': name, '系数值': val });
+    }
+    ['usageCoefficients', 'urgentCoefficients'].forEach(function (k) {
+        const labels = { usageCoefficients: '用途系数', urgentCoefficients: '加急系数' };
+        const obj = defaultSettings[k];
+        if (obj && typeof obj === 'object') {
+            Object.entries(obj).forEach(function (kv) {
+                const v = getCoefficientValue(kv[1]);
+                const nm = (kv[1] && kv[1].name) ? kv[1].name : kv[0];
+                add('加价类', labels[k], nm, v);
+            });
+        }
+    });
+    (defaultSettings.extraPricingUp || []).forEach(function (e) {
+        const xiaoLei = e.name || '未命名';
+        Object.entries(e.options || {}).forEach(function (kv) {
+            const v = getCoefficientValue(kv[1]);
+            const nm = (kv[1] && kv[1].name) ? kv[1].name : kv[0];
+            add('加价类', xiaoLei, nm, v);
+        });
+    });
+    ['discountCoefficients'].forEach(function (k) {
+        const obj = defaultSettings[k];
+        if (obj && typeof obj === 'object') {
+            Object.entries(obj).forEach(function (kv) {
+                const v = getCoefficientValue(kv[1]);
+                const nm = (kv[1] && kv[1].name) ? kv[1].name : kv[0];
+                add('折扣类', '折扣系数', nm, v);
+            });
+        }
+    });
+    (defaultSettings.extraPricingDown || []).forEach(function (e) {
+        const xiaoLei = e.name || '未命名';
+        Object.entries(e.options || {}).forEach(function (kv) {
+            const v = getCoefficientValue(kv[1]);
+            const nm = (kv[1] && kv[1].name) ? kv[1].name : kv[0];
+            add('折扣类', xiaoLei, nm, v);
+        });
+    });
+    ['sameModelCoefficients', 'platformFees'].forEach(function (k) {
+        const labels = { sameModelCoefficients: '同模系数', platformFees: '平台手续费' };
+        const obj = defaultSettings[k];
+        if (obj && typeof obj === 'object') {
+            Object.entries(obj).forEach(function (kv) {
+                const v = getCoefficientValue(kv[1]);
+                const nm = (kv[1] && kv[1].name) ? kv[1].name : kv[0];
+                add('其他类', labels[k], nm, v);
+            });
+        }
+    });
+    if (rows.length === 0) {
+        alert('没有系数数据可导出！');
+        return;
+    }
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '系数设置');
+    XLSX.writeFile(workbook, '系数设置_' + new Date().getTime() + '.xlsx');
+    alert('系数设置导出成功！');
+}
+
+// 从 Excel 导入系数设置（表头：大类, 小类, 名称, 系数值）
+// 规则：大类、小类、名称三者相同则覆盖该条系数值；不相同则不覆盖。同模系数、平台手续费不清空。
+function importCoefficientsFromExcel(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    event.target.value = '';
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet);
+            if (!rows.length) {
+                alert('Excel 文件为空或格式不正确！');
+                return;
+            }
+            function findKeyByName(obj, name) {
+                if (!obj || typeof obj !== 'object') return null;
+                for (const [k, v] of Object.entries(obj)) {
+                    const n = (v && v.name) ? v.name : k;
+                    if (String(n).trim() === String(name).trim()) return k;
+                }
+                return null;
+            }
+            let updated = 0;
+            rows.forEach(function (row) {
+                const daLei = (row['大类'] || '').toString().trim();
+                const xiaoLei = (row['小类'] != null ? row['小类'] : '').toString().trim();
+                const name = (row['名称'] != null ? row['名称'] : '').toString().trim();
+                const val = parseFloat(row['系数值']);
+                if (isNaN(val)) return;
+                const nm = name || xiaoLei;
+                if (!nm) return;
+                let key = null;
+                let target = null;
+                if (daLei === '加价类') {
+                    if (xiaoLei === '用途系数') {
+                        target = defaultSettings.usageCoefficients;
+                        key = target ? findKeyByName(target, nm) : null;
+                    } else if (xiaoLei === '加急系数') {
+                        target = defaultSettings.urgentCoefficients;
+                        key = target ? findKeyByName(target, nm) : null;
+                    } else {
+                        const mod = (defaultSettings.extraPricingUp || []).find(function (m) { return (m.name || '').trim() === (xiaoLei || '').trim(); });
+                        if (mod && mod.options) {
+                            key = findKeyByName(mod.options, nm);
+                            if (key !== null) target = mod.options;
+                        }
+                    }
+                } else if (daLei === '折扣类') {
+                    if (xiaoLei === '折扣系数') {
+                        target = defaultSettings.discountCoefficients;
+                        key = target ? findKeyByName(target, nm) : null;
+                    } else {
+                        const mod = (defaultSettings.extraPricingDown || []).find(function (m) { return (m.name || '').trim() === (xiaoLei || '').trim(); });
+                        if (mod && mod.options) {
+                            key = findKeyByName(mod.options, nm);
+                            if (key !== null) target = mod.options;
+                        }
+                    }
+                } else if (daLei === '其他类') {
+                    if (xiaoLei === '同模系数') {
+                        target = defaultSettings.sameModelCoefficients;
+                        key = target ? findKeyByName(target, nm) : null;
+                    } else if (xiaoLei === '平台手续费') {
+                        target = defaultSettings.platformFees;
+                        key = target ? findKeyByName(target, nm) : null;
+                    }
+                }
+                if (target && key != null) {
+                    target[key].value = val;
+                    updated++;
+                }
+            });
+            saveData();
+            renderCoefficientSettings();
+            alert('系数设置导入完成！共更新 ' + updated + ' 条匹配项，未匹配的不覆盖。');
+        } catch (err) {
+            console.error('导入系数设置失败:', err);
+            alert('导入失败，请使用本系统导出的系数设置 Excel 格式。\n表头：大类、小类、名称、系数值\n大类可选：加价类、折扣类、其他类');
+        }
+    };
+    reader.readAsArrayBuffer(file);
 }
 
 // 页面加载完成后初始化

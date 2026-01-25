@@ -66,22 +66,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="usage">用途</label>
-                            <select id="usage">
-                                <option value="personal">自用/无盈利/同人商用*1（默认）</option>
-                                <option value="private">不公开展示*1.5</option>
-                                <option value="buyout">买断（可要求不公开）*2</option>
-                                <option value="enterprise">企业/书店/出版社等*3</option>
-                            </select>
+                            <select id="usage"><option value="">--</option></select>
                         </div>
                         <div class="form-group">
                             <label for="urgent">加急</label>
-                            <select id="urgent">
-                                <option value="normal">无（默认）</option>
-                                <option value="oneWeek">一周*1.5</option>
-                                <option value="seventyTwoHours">72H*2</option>
-                                <option value="fortyEightHours">48H*2.5</option>
-                                <option value="twentyFourHours">24H*3</option>
-                            </select>
+                            <select id="urgent"><option value="">--</option></select>
                         </div>
                     </div>
                     <div id="extraPricingUpSelectsRow" class="form-row d-none">
@@ -90,17 +79,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="sameModel">同模系数</label>
-                            <select id="sameModel">
-                                <option value="basic">改字、色、柄图*0.5</option>
-                                <option value="advanced">改字、色、柄图、元素*0.8</option>
-                            </select>
+                            <select id="sameModel"><option value="">--</option></select>
                         </div>
                         <div class="form-group">
                             <label for="discount">折扣系数</label>
-                            <select id="discount">
-                                <option value="none">无*1（默认）</option>
-                                <option value="sample">上次合作寄样*0.9</option>
-                            </select>
+                            <select id="discount"><option value="">--</option></select>
                         </div>
                     </div>
                     <div id="extraPricingDownSelectsRow" class="form-row d-none">
@@ -109,11 +92,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="platform">平台手续费</label>
-                            <select id="platform">
-                                <option value="none">无（默认）</option>
-                                <option value="mihua">米画师*5%</option>
-                                <option value="painter">画加*5%</option>
-                            </select>
+                            <select id="platform"><option value="">--</option></select>
                         </div>
                         <div class="form-group flex-col gap-2 flex-1">
                             <label for="otherFeesList">其他费用</label>
@@ -400,9 +379,14 @@
                 </div>
 
                 <div class="section">
-                    <div class="d-flex justify-between items-center mb-4">
+                    <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
                         <h2>系数设置</h2>
-                        <button class="btn add-product-setting btn-compact" onclick="openAddCoefficientModal()">添加系数</button>
+                        <div class="d-flex items-center gap-2">
+                            <button class="btn add-product-setting btn-compact" onclick="openAddCoefficientModal()">添加系数</button>
+                            <button class="btn secondary btn-compact" onclick="document.getElementById('coefficientExcelImportInput').click()">Excel导入</button>
+                            <button class="btn secondary btn-compact" onclick="exportCoefficientsToExcel()">Excel导出</button>
+                            <input type="file" id="coefficientExcelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importCoefficientsFromExcel(event)">
+                        </div>
                     </div>
 
                     <!-- 加价类：用途系数、加急系数，可添加其他 -->
