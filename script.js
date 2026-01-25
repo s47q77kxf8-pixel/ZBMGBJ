@@ -1779,23 +1779,66 @@ async function saveQuoteAsImage() {
         return;
     }
     
+    // 截图前固定宽度，避免手机端窄屏导致排版错乱
+    const oldWidth = receipt.style.width;
+    const oldMinWidth = receipt.style.minWidth;
+    receipt.style.width = '400px';
+    receipt.style.minWidth = '400px';
+    
     try {
-        // 使用html2canvas生成图片
         const canvas = await html2canvas(receipt, {
-            scale: 2, // 提高分辨率
+            scale: 2,
             useCORS: true,
             logging: false
         });
         
-        // 转换为图片并下载
-        const link = document.createElement('a');
-        link.download = `报价单_${quoteData.clientId}_${new Date().getTime()}.png`;
-        link.href = canvas.toDataURL();
-        link.click();
+        const filename = `报价单_${quoteData.clientId}_${Date.now()}.png`;
+        const isMobile = window.innerWidth <= 768 || ('ontouchstart' in window);
+        
+        if (isMobile) {
+            // 手机端：优先用分享（可选存相册），否则弹窗长按保存
+            canvas.toBlob(function (blob) {
+                const file = new File([blob], filename, { type: 'image/png' });
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    navigator.share({ files: [file], title: '报价单' }).catch(function () {
+                        showSaveImageModal(canvas, filename);
+                    });
+                } else {
+                    showSaveImageModal(canvas, filename);
+                }
+            }, 'image/png');
+        } else {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
     } catch (error) {
         console.error('保存图片失败:', error);
         alert('保存图片失败，请重试！');
+    } finally {
+        receipt.style.width = oldWidth;
+        receipt.style.minWidth = oldMinWidth;
     }
+}
+
+// 手机端：弹窗展示图片，支持长按保存到相册、或下载
+function showSaveImageModal(canvas, filename) {
+    var dataUrl = canvas.toDataURL('image/png');
+    var safeName = (filename || '').replace(/"/g, '&quot;');
+    var overlay = document.createElement('div');
+    overlay.className = 'save-image-modal-overlay';
+    overlay.innerHTML = 
+        '<div class="save-image-modal" onclick="event.stopPropagation()">' +
+        '<img src="' + dataUrl + '" alt="报价单" />' +
+        '<p class="save-image-hint">长按图片可保存到相册</p>' +
+        '<div class="save-image-actions">' +
+        '<a href="' + dataUrl + '" download="' + safeName + '">下载</a>' +
+        '<button type="button">关闭</button>' +
+        '</div></div>';
+    overlay.onclick = function () { overlay.remove(); };
+    overlay.querySelector('button').onclick = function () { overlay.remove(); };
+    document.body.appendChild(overlay);
 }
 
 // 保存到历史记录

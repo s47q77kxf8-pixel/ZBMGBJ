@@ -115,6 +115,12 @@ body {
     border: 1px solid var(--border-color);
 }
 
+/* 报价内容容器：允许横向滚动，确保小票在手机上也能完整显示 */
+#quoteContent {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
+}
+
 .section h2 {
     font-size: 1.25rem;
     font-weight: 700;
@@ -481,6 +487,8 @@ input:focus, select:focus {
 
 /* Receipt Styles */
 .receipt {
+    width: 400px;
+    min-width: 400px;
     max-width: 400px;
     margin: 0 auto;
     font-family: 'Courier New', 'SimSun', 'Songti SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace;
@@ -710,4 +718,59 @@ input:focus, select:focus {
     font-size: 9px;
     color: #333;
     margin: 0.1rem 0;
+}
+
+/* 保存图片弹窗（手机端：长按存相册 / 下载） */
+.save-image-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.save-image-modal {
+    background: #fff;
+    border-radius: 8px;
+    padding: 1rem;
+    max-width: 100%;
+    max-height: 90vh;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+.save-image-modal img {
+    max-width: 100%;
+    max-height: 70vh;
+    display: block;
+}
+.save-image-hint {
+    margin: 0;
+    font-size: 14px;
+    color: #333;
+}
+.save-image-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+.save-image-actions a,
+.save-image-actions button {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+}
+.save-image-actions a {
+    background: var(--primary-color);
+    color: #fff;
+    text-decoration: none;
+}
+.save-image-actions button {
+    background: #e2e8f0;
+    color: #333;
 }
