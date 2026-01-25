@@ -2091,8 +2091,8 @@ function addOtherFee() {
         return;
     }
     
-    // 生成唯一key
-    const key = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    // 使用唯一 key，避免中文名生成相同 key（如 抠图费、修图费 都变成 ___）导致覆盖
+    const key = 'fee_' + Date.now();
     
     // 添加到其他费用中
     defaultSettings.otherFees[key] = {

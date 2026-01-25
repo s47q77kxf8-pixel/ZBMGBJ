@@ -1,0 +1,47 @@
+# 临时文件
+*.tmp
+*.temp
+*.log
+
+# 编辑器生成的文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 备份文件
+*.bak
+*.backup
+backup_*/
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# 构建输出
+build/
+dist/
+
+# 依赖文件夹
+node_modules/
+venv/
+
+# IDE本地历史
+.history/
+
+# 本仓库仅需部署 index.html / style.css / script.js / README.md，以下保留本地
+部署到GitHub.md
+需求.txt
+小票制品展示规范.md
+小票边框线说明.md
+.cursor/
+.trae/
+MGbaojia.zip
+git-backup.bat
+git-backup.ps1
