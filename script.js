@@ -491,6 +491,14 @@ function showPage(pageId) {
         loadHistory();
     }
     
+    // 切换到报价页时，调整小票缩放（手机端）
+    if (pageId === 'quote') {
+        // 延迟一下，确保 DOM 已更新
+        setTimeout(function() {
+            adjustReceiptScale();
+        }, 100);
+    }
+    
     // 如果是设置页，加载设置
     if (pageId === 'settings') {
         loadSettings();
@@ -1764,7 +1772,39 @@ function generateQuote() {
             html += `</div>`;
     
     container.innerHTML = html;
+    
+    // 手机上自动缩放小票以适应屏幕宽度（保持 400px 内部排版不变）
+    adjustReceiptScale();
 }
+
+// 手机上自动缩放小票以适应屏幕宽度（保持 400px 内部排版不变）
+function adjustReceiptScale() {
+    const receipt = document.querySelector('.receipt');
+    if (!receipt) return;
+    
+    // 只在手机端（屏幕宽度 <= 768px）进行缩放
+    if (window.innerWidth <= 768) {
+        // 计算缩放比例：屏幕宽度 - 左右边距（约 3rem = 48px）后，除以 400px
+        const screenWidth = window.innerWidth;
+        const padding = 48; // 左右各 1.5rem，共约 48px
+        const availableWidth = screenWidth - padding;
+        const scale = Math.min(availableWidth / 400, 1); // 不超过 1（不放大）
+        
+        receipt.style.transform = 'scale(' + scale + ')';
+        receipt.style.transformOrigin = 'top center';
+    } else {
+        // 桌面端：移除缩放
+        receipt.style.transform = '';
+        receipt.style.transformOrigin = '';
+    }
+}
+
+// 窗口大小改变时重新调整缩放
+window.addEventListener('resize', function() {
+    if (document.querySelector('.receipt')) {
+        adjustReceiptScale();
+    }
+});
 
 // 保存报价为图片
 async function saveQuoteAsImage() {

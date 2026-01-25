@@ -115,10 +115,13 @@ body {
     border: 1px solid var(--border-color);
 }
 
-/* 报价内容容器：允许横向滚动，确保小票在手机上也能完整显示 */
+/* 报价内容容器：在手机上自动缩放小票以适应屏幕 */
 #quoteContent {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 0;
+    overflow: visible;
 }
 
 .section h2 {
@@ -356,6 +359,12 @@ input:focus, select:focus {
     .form-row {
         flex-direction: column;
         gap: 0.5rem;
+    }
+    
+    /* 手机上自动缩放小票以适应屏幕宽度，保持排版不变 */
+    .receipt {
+        transform-origin: top center;
+        /* 缩放比例由 JavaScript 动态计算设置 */
     }
 }
 
