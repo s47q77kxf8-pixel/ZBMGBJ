@@ -53,6 +53,10 @@ const defaultSettings = {
     otherFees: {
         // 其他费用类别，可动态添加
     },
+    // 可扩展的加价类系数（用途、加急为内置；此处为后期添加的，如 VIP系数）
+    extraPricingUp: [],
+    // 可扩展的折扣类系数（折扣为内置；此处为后期添加的）
+    extraPricingDown: [],
     // 小票自定义设置
     receiptCustomization: {
         headerImage: null,  // 头部图片的base64数据
@@ -216,6 +220,8 @@ function loadData() {
                 // 其他情况直接赋值
                 defaultSettings[key] = loadedSettings[key];
             });
+            if (!Array.isArray(defaultSettings.extraPricingUp)) defaultSettings.extraPricingUp = [];
+            if (!Array.isArray(defaultSettings.extraPricingDown)) defaultSettings.extraPricingDown = [];
         }
         
         if (savedProductSettings) {
@@ -544,8 +550,11 @@ function showPage(pageId) {
         renderProcessSettings();
         renderCoefficientSettings();
     }
-    
-
+    // 切换到计算页时刷新所有系数选择器
+    if (pageId === 'calculator') {
+        updateCalculatorBuiltinSelects();
+        updateCalculatorCoefficientSelects();
+    }
 }
 
 // 添加制品项
@@ -875,6 +884,23 @@ function calculatePrice() {
     const sameModelCoefficient = getCoefficientValue(defaultSettings.sameModelCoefficients[sameModelType]) || 0.5;
     const discount = getCoefficientValue(defaultSettings.discountCoefficients[discountType]) || 1;
     const platformFee = getCoefficientValue(defaultSettings.platformFees[platformType]) || 0;
+    // 扩展加价类、折扣类的选中值
+    let extraUpProduct = 1;
+    (defaultSettings.extraPricingUp || []).forEach(e => {
+        const sel = document.getElementById('extraUp_' + e.id);
+        if (sel && sel.value && e.options && e.options[sel.value] != null) {
+            extraUpProduct *= getCoefficientValue(e.options[sel.value]) || 1;
+        }
+    });
+    let extraDownProduct = 1;
+    (defaultSettings.extraPricingDown || []).forEach(e => {
+        const sel = document.getElementById('extraDown_' + e.id);
+        if (sel && sel.value && e.options && e.options[sel.value] != null) {
+            extraDownProduct *= getCoefficientValue(e.options[sel.value]) || 1;
+        }
+    });
+    const pricingUpProduct = usage * urgent * extraUpProduct;
+    const pricingDownProduct = discount * extraDownProduct;
     
     // 计算每个制品的价格
     const productPrices = [];
@@ -1138,11 +1164,9 @@ function calculatePrice() {
         totalGiftsOriginalPrice += giftOriginalPrice;
     }
     
-    // 计算总价 - 按照指定逻辑：(制品总价) * 用途系数 * 加急系数 * 折扣 + 其他费用 + 平台手续费
-    // 1. 先计算所有制品的总价
+    // 计算总价：总价 = (制品1+…+制品N) * 加价类1*…*加价类n * 折扣类1*…*折扣类n + 其他费用合计 + 平台手续费
     const productsTotal = totalProductsPrice;
-    // 2. 乘以用途系数、加急系数和折扣
-    const totalWithCoefficients = productsTotal * usage * urgent * discount;
+    const totalWithCoefficients = productsTotal * pricingUpProduct * pricingDownProduct;
     // 3. 加上其他费用
     const totalBeforePlatformFee = totalWithCoefficients + totalOtherFees;
     // 4. 计算平台手续费，四舍五入到元
@@ -1157,12 +1181,14 @@ function calculatePrice() {
     quoteData = {
         clientId: clientId,
         contact: `${contactType}: ${contact}`,
-        startTime: startTimeValue, // 开始时间
+        startTime: startTimeValue,
         deadline: deadline,
         usage: usage,
         urgent: urgent,
         sameModelCoefficient: sameModelCoefficient,
         discount: discount,
+        pricingUpProduct: pricingUpProduct,
+        pricingDownProduct: pricingDownProduct,
         otherFees: dynamicOtherFees,
         totalOtherFees: totalOtherFees,
         platformFee: platformFee,
@@ -1428,29 +1454,19 @@ function generateQuote() {
         });
     }
     
-    // 计算系数金额
-    const usageAmount = quoteData.totalProductsPrice * quoteData.usage - quoteData.totalProductsPrice;
-    const urgentAmount = quoteData.totalProductsPrice * quoteData.usage * quoteData.urgent - quoteData.totalProductsPrice * quoteData.usage;
-    // 四舍五入到元
-    const discountAmount = Math.round(quoteData.totalProductsPrice * quoteData.usage * quoteData.urgent * quoteData.discount - quoteData.totalProductsPrice * quoteData.usage * quoteData.urgent);
+    // 加价、折扣金额（总价 = 制品和*加价乘积*折扣乘积+其他+平台）
+    const up = quoteData.pricingUpProduct != null ? quoteData.pricingUpProduct : (quoteData.usage * quoteData.urgent || 1);
+    const down = quoteData.pricingDownProduct != null ? quoteData.pricingDownProduct : (quoteData.discount || 1);
+    const addAmount = quoteData.totalProductsPrice * (up - 1);
+    const discountAmount = Math.round(quoteData.totalProductsPrice * up * (down - 1));
     
-    // 添加汇总信息
     html += `<div class="receipt-summary"><div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">¥${quoteData.totalProductsPrice.toFixed(2)}</div></div>`;
-            
-            // 条件显示用途系数
-            if (usageAmount !== 0) {
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label">用途系数(${quoteData.usage}x)</div><div class="receipt-summary-value">+¥${usageAmount.toFixed(2)}</div></div>`;
-            }
-            
-            // 条件显示加急系数
-            if (urgentAmount !== 0) {
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label">加急费(${quoteData.urgent}x)</div><div class="receipt-summary-value">+¥${urgentAmount.toFixed(2)}</div></div>`;
-            }
-            
-            // 条件显示折扣系数
-            if (discountAmount !== 0) {
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label">折扣(${quoteData.discount}x)</div><div class="receipt-summary-value">${discountAmount >= 0 ? '+' : ''}¥${discountAmount.toFixed(2)}</div></div>`;
-            }
+    if (addAmount !== 0) {
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">加价系数(${up}x)</div><div class="receipt-summary-value">+¥${addAmount.toFixed(2)}</div></div>`;
+    }
+    if (discountAmount !== 0) {
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">折扣系数(${down}x)</div><div class="receipt-summary-value">${discountAmount >= 0 ? '+' : ''}¥${discountAmount.toFixed(2)}</div></div>`;
+    }
             
             // 显示其他费用
             if (quoteData.totalOtherFees > 0 && quoteData.otherFees && quoteData.otherFees.length > 0) {
@@ -2508,14 +2524,56 @@ function toggleCategory(category) {
     }
 }
 
-// 打开添加系数弹窗
+// 打开添加系数弹窗（仅支持加价类、折扣类）
 function openAddCoefficientModal() {
-    // 清空表单
-    document.getElementById('coefficientName').value = '';
-    document.getElementById('coefficientValue').value = '';
-    
-    // 显示弹窗
+    document.getElementById('coefficientCategory').value = 'pricingUp';
+    updateCoefficientSubType();
+    const container = document.getElementById('coefficientItemsContainer');
+    if (container) {
+        container.innerHTML = '';
+        addCoefficientItem();
+    }
     document.getElementById('addCoefficientModal').classList.remove('d-none');
+}
+
+// 添加一条系数值项（名称 | 系数值 | 删除，默认 无（默认）、1）
+function addCoefficientItem() {
+    const container = document.getElementById('coefficientItemsContainer');
+    if (!container) return;
+    const div = document.createElement('div');
+    div.className = 'coefficient-item-row d-flex gap-2 mb-2 items-center';
+    div.innerHTML = '<input type="text" placeholder="名称" class="flex-1" value="无（默认）"><input type="number" placeholder="系数值" class="w-80" value="1" min="0" step="0.1"><button type="button" class="btn danger xs" onclick="removeCoefficientItem(this)">删除</button>';
+    container.appendChild(div);
+}
+
+// 删除一条系数值项
+function removeCoefficientItem(btn) {
+    const row = btn && btn.closest ? btn.closest('.coefficient-item-row') : (btn && btn.parentElement);
+    if (row && row.parentElement) row.parentElement.removeChild(row);
+}
+
+// 系数大类切换时（可清空系数小类等）
+function updateCoefficientSubType() {
+    const catEl = document.getElementById('coefficientCategory');
+    const listEl = document.getElementById('coefficientTypeSuggestions');
+    const inputEl = document.getElementById('coefficientType');
+    const hintEl = document.getElementById('coefficientTypeHint');
+    if (!catEl || !listEl || !inputEl) return;
+    const cat = catEl.value;
+    inputEl.value = '';
+    if (cat === 'pricingUp') {
+        listEl.innerHTML = '<option value="用途系数"><option value="加急系数">';
+        inputEl.placeholder = '例如：用途系数、加急系数';
+        if (hintEl) hintEl.textContent = '加价类系数名称，可参考上述或输入新名称';
+    } else if (cat === 'pricingDown') {
+        listEl.innerHTML = '<option value="折扣系数">';
+        inputEl.placeholder = '例如：折扣系数';
+        if (hintEl) hintEl.textContent = '折扣类系数名称，可参考上述或输入新名称';
+    } else {
+        listEl.innerHTML = '';
+        inputEl.placeholder = '';
+        if (hintEl) hintEl.textContent = '根据上方选择的大类输入系数名称';
+    }
 }
 
 // 关闭添加系数弹窗
@@ -2529,63 +2587,298 @@ function updateCoefficientForm() {
     // 如果未来需要根据系数类型显示不同的表单字段，可以在这里实现
 }
 
-// 保存新系数
+// 保存新系数：并入原有用途/加急/折扣，或新建加价/折扣模块
 function saveNewCoefficient() {
-    // 获取表单数据
-    const coefficientType = document.getElementById('coefficientType').value;
-    const name = document.getElementById('coefficientName').value.trim();
-    const value = parseFloat(document.getElementById('coefficientValue').value) || 1;
-    
-    // 验证必填项
-    if (!name) {
-        alert('请输入名称！');
+    const category = document.getElementById('coefficientCategory').value;
+    const typeName = (document.getElementById('coefficientType').value || '').trim();
+    if (!typeName) {
+        alert('请输入系数名称！');
         return;
     }
-    
-    // 生成标识：将名称转换为小写，移除特殊字符，用下划线分隔
-    const key = name.toLowerCase().replace(/[\s/\-]/g, '_').replace(/[^a-z0-9_]/g, '');
-    
-    // 根据系数类型保存到不同的设置对象中（保存为对象，包含value和name）
-    switch(coefficientType) {
-        case 'usage':
-            defaultSettings.usageCoefficients[key] = { value: value, name: name };
-            break;
-        case 'urgent':
-            defaultSettings.urgentCoefficients[key] = { value: value, name: name };
-            break;
-        case 'sameModel':
-            defaultSettings.sameModelCoefficients[key] = { value: value, name: name };
-            break;
-        case 'discount':
-            defaultSettings.discountCoefficients[key] = { value: value, name: name };
-            break;
-        case 'platform':
-            defaultSettings.platformFees[key] = { value: value, name: name };
-            break;
+    if (category !== 'pricingUp' && category !== 'pricingDown') return;
+    const container = document.getElementById('coefficientItemsContainer');
+    const rows = container ? container.querySelectorAll('.coefficient-item-row') : [];
+    const items = [];
+    for (const row of rows) {
+        const inputs = row.querySelectorAll('input');
+        const nameInput = inputs[0], valueInput = inputs[1];
+        const nm = (nameInput && nameInput.value || '').trim();
+        const val = parseFloat(valueInput && valueInput.value) || 1;
+        if (nm) items.push({ name: nm, value: val });
     }
-    
-    // 重新渲染系数设置
-    renderCoefficientSettings();
-    
-    // 关闭弹窗
-    closeAddCoefficientModal();
-    
-    // 提示成功
-    alert('系数已添加！');
+    if (items.length === 0) {
+        alert('请至少添加一条有效的系数值项（名称必填）。');
+        return;
+    }
+    const existingMap = {
+        '用途系数': { target: 'usage', key: 'usageCoefficients' },
+        '加急系数': { target: 'urgent', key: 'urgentCoefficients' },
+        '折扣系数': { target: 'discount', key: 'discountCoefficients' }
+    };
+    const existing = existingMap[typeName];
+    // 根据类别决定排序方式：加价类升序，折扣类降序
+    if (category === 'pricingUp' || (existing && existing.target !== 'discount')) {
+        items.sort((a, b) => (a.value - b.value)); // 升序
+    } else {
+        items.sort((a, b) => (b.value - a.value)); // 降序
+    }
+    try {
+        if (existing) {
+            const obj = defaultSettings[existing.key];
+            if (!obj) {
+                alert('系数配置不存在，无法添加！');
+                closeAddCoefficientModal();
+                return;
+            }
+            items.forEach((it, i) => {
+                const key = 'opt_' + Date.now() + '_' + i;
+                obj[key] = { value: it.value, name: it.name };
+            });
+        } else {
+            const options = {};
+            items.forEach((it, i) => { options['opt_' + i] = { value: it.value, name: it.name }; });
+            const item = { id: Date.now(), name: typeName, options };
+            if (category === 'pricingUp') {
+                if (!Array.isArray(defaultSettings.extraPricingUp)) defaultSettings.extraPricingUp = [];
+                defaultSettings.extraPricingUp.push(item);
+            } else {
+                if (!Array.isArray(defaultSettings.extraPricingDown)) defaultSettings.extraPricingDown = [];
+                defaultSettings.extraPricingDown.push(item);
+            }
+        }
+        // 先保存数据，确保数据已持久化
+        saveData();
+        // 然后更新UI，即使UI更新失败也不影响数据保存
+        try {
+            renderCoefficientSettings();
+        } catch (uiError) {
+            console.error('更新UI时出错（数据已保存）：', uiError);
+            // UI更新失败不影响关闭弹窗
+        }
+        // 无论UI更新是否成功，都关闭弹窗
+        closeAddCoefficientModal();
+    } catch (error) {
+        console.error('保存系数时出错：', error);
+        alert('保存失败：' + error.message);
+        closeAddCoefficientModal();
+    }
 }
 
 // 渲染系数设置
 function renderCoefficientSettings() {
-    // 渲染用途系数
     renderUsageCoefficients();
-    // 渲染加急系数
     renderUrgentCoefficients();
-    // 渲染同模系数
     renderSameModelCoefficients();
-    // 渲染折扣系数
     renderDiscountCoefficients();
-    // 渲染平台手续费
     renderPlatformFees();
+    renderExtraPricingUp();
+    renderExtraPricingDown();
+    updateCalculatorBuiltinSelects();
+    updateCalculatorCoefficientSelects();
+}
+
+// 渲染扩展加价类系数（设置页）
+function renderExtraPricingUp() {
+    const container = document.getElementById('extraPricingUpContainer');
+    if (!container) return;
+    const list = defaultSettings.extraPricingUp || [];
+    let html = '';
+    for (const e of list) {
+        html += '<div class="category-container"><div class="category-header" onclick="toggleCategory(\'extraUp-' + e.id + '\')"><span class="category-title">' + (e.name || '未命名') + '</span><div style="display: flex; align-items: center; gap: 0.5rem;"><button type="button" class="btn danger xs" onclick="event.stopPropagation();deleteExtraCoefficient(' + e.id + ',\'up\')">删除系数</button><div class="category-toggle">▼</div></div></div>';
+        html += '<div class="category-content d-none" id="extraUp-' + e.id + '-content"><div class="coefficient-settings">';
+        // 按系数值升序排序后渲染
+        const sortedEntries = Object.entries(e.options || {}).sort((a, b) => {
+            const va = getCoefficientValue(a[1]);
+            const vb = getCoefficientValue(b[1]);
+            return va - vb;
+        });
+        for (const [k, o] of sortedEntries) {
+            const v = getCoefficientValue(o);
+            const nm = (o && o.name) || k;
+            const escapedName = nm.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
+            const escapedKey = k.replace(/'/g, "\\'");
+            html += '<div class="mb-2 d-flex items-center gap-2"><input type="text" value="' + escapedName + '" class="flex-1" onchange="updateExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\',\'name\',this.value)" placeholder="名称"><input type="number" value="' + v + '" min="0" step="0.1" class="w-80" onchange="updateExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\',\'value\',this.value)"><button class="btn danger xs" onclick="deleteExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button></div>';
+        }
+        html += '</div></div></div>';
+    }
+    container.innerHTML = html;
+}
+
+// 渲染扩展折扣类系数（设置页）
+function renderExtraPricingDown() {
+    const container = document.getElementById('extraPricingDownContainer');
+    if (!container) return;
+    const list = defaultSettings.extraPricingDown || [];
+    let html = '';
+    for (const e of list) {
+        html += '<div class="category-container"><div class="category-header" onclick="toggleCategory(\'extraDown-' + e.id + '\')"><span class="category-title">' + (e.name || '未命名') + '</span><div style="display: flex; align-items: center; gap: 0.5rem;"><button type="button" class="btn danger xs" onclick="event.stopPropagation();deleteExtraCoefficient(' + e.id + ',\'down\')">删除系数</button><div class="category-toggle">▼</div></div></div>';
+        html += '<div class="category-content d-none" id="extraDown-' + e.id + '-content"><div class="coefficient-settings">';
+        // 按系数值降序排序后渲染（折扣类降序）
+        const sortedEntries = Object.entries(e.options || {}).sort((a, b) => {
+            const va = getCoefficientValue(a[1]);
+            const vb = getCoefficientValue(b[1]);
+            return vb - va;
+        });
+        for (const [k, o] of sortedEntries) {
+            const v = getCoefficientValue(o);
+            const nm = (o && o.name) || k;
+            const escapedName = nm.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
+            const escapedKey = k.replace(/'/g, "\\'");
+            html += '<div class="mb-2 d-flex items-center gap-2"><input type="text" value="' + escapedName + '" class="flex-1" onchange="updateExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\',\'name\',this.value)" placeholder="名称"><input type="number" value="' + v + '" min="0" step="0.1" class="w-80" onchange="updateExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\',\'value\',this.value)"><button class="btn danger xs" onclick="deleteExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button></div>';
+        }
+        html += '</div></div></div>';
+    }
+    container.innerHTML = html;
+}
+
+// 更新扩展加价/折扣的某一选项的 value 或 name
+function updateExtraPricingOption(id, upDown, optKey, field, value) {
+    const list = upDown === 'up' ? defaultSettings.extraPricingUp : defaultSettings.extraPricingDown;
+    const e = list && list.find(x => x.id === id);
+    if (e && e.options && e.options[optKey]) {
+        if (field === 'value') {
+            e.options[optKey].value = parseFloat(value) || 0;
+        } else if (field === 'name') {
+            e.options[optKey].name = (value || '').trim();
+        }
+        saveData();
+    }
+}
+
+// 删除扩展加价/折扣的某一选项
+function deleteExtraPricingOption(id, upDown, optKey) {
+    const list = upDown === 'up' ? defaultSettings.extraPricingUp : defaultSettings.extraPricingDown;
+    const e = list && list.find(x => x.id === id);
+    if (!e || !e.options) return;
+    
+    const optionKeys = Object.keys(e.options);
+    if (optionKeys.length <= 1) {
+        alert('至少保留一项系数值！');
+        return;
+    }
+    
+    if (!confirm('确定要删除这个系数值吗？')) {
+        return;
+    }
+    
+    delete e.options[optKey];
+    saveData();
+    renderCoefficientSettings();
+    updateCalculatorCoefficientSelects();
+}
+
+// 删除扩展加价/折扣系数
+function deleteExtraCoefficient(id, upDown) {
+    if (!confirm('确定要删除该系数吗？')) return;
+    const list = upDown === 'up' ? defaultSettings.extraPricingUp : defaultSettings.extraPricingDown;
+    if (list) {
+        const i = list.findIndex(x => x.id === id);
+        if (i >= 0) { list.splice(i, 1); saveData(); }
+    }
+    renderCoefficientSettings();
+    updateCalculatorCoefficientSelects();
+}
+
+// 更新计算页中“其他加价类”“其他折扣类”选择器
+function updateCalculatorBuiltinSelects() {
+    try {
+        const pairs = [
+            { id: 'usage', key: 'usageCoefficients', asc: true },
+            { id: 'urgent', key: 'urgentCoefficients', asc: true },
+            { id: 'sameModel', key: 'sameModelCoefficients', asc: true },
+            { id: 'discount', key: 'discountCoefficients', asc: false },
+            { id: 'platform', key: 'platformFees', asc: true }
+        ];
+        pairs.forEach(function (p) {
+            try {
+                const el = document.getElementById(p.id);
+                if (!el) return; // 元素不存在时跳过（可能不在计算页）
+                const obj = defaultSettings[p.key];
+                if (!obj || typeof obj !== 'object') return;
+                const entries = Object.entries(obj);
+                if (entries.length === 0) return;
+                const sorted = entries.sort(function (a, b) {
+                    try {
+                        const va = getCoefficientValue(a[1]);
+                        const vb = getCoefficientValue(b[1]);
+                        return p.asc ? va - vb : vb - va;
+                    } catch (e) {
+                        return 0; // 排序出错时保持原顺序
+                    }
+                });
+                const prev = el.value;
+                let html = '';
+                const keys = [];
+                sorted.forEach(function (kv) {
+                    try {
+                        const k = kv[0];
+                        const o = kv[1];
+                        const v = getCoefficientValue(o);
+                        const nm = (o && o.name) ? o.name : k;
+                        keys.push(k);
+                        const escapedName = (nm || k).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                        if (p.key === 'platformFees' && v !== 0) {
+                            html += '<option value="' + k + '">' + escapedName + '*' + v + '%</option>';
+                        } else {
+                            html += '<option value="' + k + '">' + escapedName + '*' + (v || 1) + '</option>';
+                        }
+                    } catch (e) {
+                        console.warn('生成选项时出错：', e);
+                    }
+                });
+                if (html) {
+                    el.innerHTML = html;
+                    if (keys.indexOf(prev) >= 0) el.value = prev;
+                    else if (keys.length) el.value = keys[0];
+                }
+            } catch (e) {
+                console.warn('更新 ' + p.id + ' 选择器时出错：', e);
+            }
+        });
+    } catch (e) {
+        console.error('updateCalculatorBuiltinSelects 出错：', e);
+    }
+}
+
+// 更新计算页中"其他加价类""其他折扣类"选择器
+function updateCalculatorCoefficientSelects() {
+    const upRow = document.getElementById('extraPricingUpSelectsRow');
+    const downRow = document.getElementById('extraPricingDownSelectsRow');
+    const upList = defaultSettings.extraPricingUp || [];
+    const downList = defaultSettings.extraPricingDown || [];
+    if (upRow) {
+        if (upList.length === 0) {
+            upRow.classList.add('d-none');
+            upRow.innerHTML = '';
+        } else {
+            upRow.classList.remove('d-none');
+            let h = '';
+            upList.forEach(e => {
+                const keys = Object.keys(e.options || {});
+                const first = keys[0];
+                h += '<div class="form-group"><label>' + (e.name || '') + '</label><select id="extraUp_' + e.id + '">';
+                keys.forEach(k => { const o = e.options[k]; h += '<option value="' + k + '">' + ((o&&o.name)||k) + '*' + (getCoefficientValue(o)||1) + '</option>'; });
+                h += '</select></div>';
+            });
+            upRow.innerHTML = h;
+        }
+    }
+    if (downRow) {
+        if (downList.length === 0) {
+            downRow.classList.add('d-none');
+            downRow.innerHTML = '';
+        } else {
+            downRow.classList.remove('d-none');
+            let h = '';
+            downList.forEach(e => {
+                const keys = Object.keys(e.options || {});
+                h += '<div class="form-group"><label>' + (e.name || '') + '</label><select id="extraDown_' + e.id + '">';
+                keys.forEach(k => { const o = e.options[k]; h += '<option value="' + k + '">' + ((o&&o.name)||k) + '*' + (getCoefficientValue(o)||1) + '</option>'; });
+                h += '</select></div>';
+            });
+            downRow.innerHTML = h;
+        }
+    }
 }
 
 // 删除系数
@@ -2593,6 +2886,21 @@ function deleteCoefficient(type, key) {
     // 确认删除
     if (!confirm('确定要删除这个系数吗？')) {
         return;
+    }
+    
+    // 对于同模系数和平台手续费，至少保留一项
+    if (type === 'sameModel') {
+        const keys = Object.keys(defaultSettings.sameModelCoefficients);
+        if (keys.length <= 1) {
+            alert('至少保留一项同模系数！');
+            return;
+        }
+    } else if (type === 'platform') {
+        const keys = Object.keys(defaultSettings.platformFees);
+        if (keys.length <= 1) {
+            alert('至少保留一项平台手续费！');
+            return;
+        }
     }
     
     // 根据系数类型删除
@@ -2617,8 +2925,29 @@ function deleteCoefficient(type, key) {
     // 重新渲染系数设置
     renderCoefficientSettings();
     
+    // 更新计算页选择器
+    updateCalculatorBuiltinSelects();
+    
     // 保存设置
     saveData();
+}
+
+// 添加同模系数选项
+function addSameModelOption() {
+    const key = 'opt_' + Date.now();
+    defaultSettings.sameModelCoefficients[key] = { value: 0.5, name: '新选项' };
+    saveData();
+    renderCoefficientSettings();
+    updateCalculatorBuiltinSelects();
+}
+
+// 添加平台手续费选项
+function addPlatformFeeOption() {
+    const key = 'opt_' + Date.now();
+    defaultSettings.platformFees[key] = { value: 0, name: '新选项' };
+    saveData();
+    renderCoefficientSettings();
+    updateCalculatorBuiltinSelects();
 }
 
 // 渲染用途系数
@@ -2627,15 +2956,23 @@ function renderUsageCoefficients() {
     if (!container) return;
     
     let html = '';
-    for (const [key, item] of Object.entries(defaultSettings.usageCoefficients)) {
+    // 按系数值升序排序后渲染
+    const sortedEntries = Object.entries(defaultSettings.usageCoefficients).sort((a, b) => {
+        const va = getCoefficientValue(a[1]);
+        const vb = getCoefficientValue(b[1]);
+        return va - vb;
+    });
+    for (const [key, item] of sortedEntries) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
+        const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         
         html += `
-            <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                <input type="number" value="${value}" min="0" step="0.1" style="width: 80px;" 
+            <div class="mb-2 d-flex items-center gap-2">
+                <input type="text" value="${escapedName}" class="flex-1" 
+                       onchange="updateUsageCoefficientName('${key}', this.value)" placeholder="名称">
+                <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateUsageCoefficient('${key}', this.value)">
-                <span style="flex: 1;">${displayName}</span>
                 <button class="btn danger small" onclick="deleteCoefficient('usage', '${key}')" 
                         style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button>
             </div>
@@ -2651,15 +2988,23 @@ function renderUrgentCoefficients() {
     if (!container) return;
     
     let html = '';
-    for (const [key, item] of Object.entries(defaultSettings.urgentCoefficients)) {
+    // 按系数值升序排序后渲染
+    const sortedEntries = Object.entries(defaultSettings.urgentCoefficients).sort((a, b) => {
+        const va = getCoefficientValue(a[1]);
+        const vb = getCoefficientValue(b[1]);
+        return va - vb;
+    });
+    for (const [key, item] of sortedEntries) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
+        const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         
         html += `
-            <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                <input type="number" value="${value}" min="0" step="0.1" style="width: 80px;" 
+            <div class="mb-2 d-flex items-center gap-2">
+                <input type="text" value="${escapedName}" class="flex-1" 
+                       onchange="updateUrgentCoefficientName('${key}', this.value)" placeholder="名称">
+                <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateUrgentCoefficient('${key}', this.value)">
-                <span style="flex: 1;">${displayName}</span>
                 <button class="btn danger small" onclick="deleteCoefficient('urgent', '${key}')" 
                         style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button>
             </div>
@@ -2678,18 +3023,20 @@ function renderSameModelCoefficients() {
     for (const [key, item] of Object.entries(defaultSettings.sameModelCoefficients)) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
+        const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         
         html += `
-            <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                <input type="number" value="${value}" min="0" step="0.1" style="width: 80px;" 
+            <div class="mb-2 d-flex items-center gap-2">
+                <input type="text" value="${escapedName}" class="flex-1" 
+                       onchange="updateSameModelCoefficientName('${key}', this.value)" placeholder="名称">
+                <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateSameModelCoefficient('${key}', this.value)">
-                <span style="flex: 1;">${displayName}</span>
                 <button class="btn danger small" onclick="deleteCoefficient('sameModel', '${key}')" 
                         style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button>
             </div>
         `;
     }
-        
+    html += '<button type="button" class="btn secondary mt-2" onclick="addSameModelOption()">+ 添加系数值</button>';
     container.innerHTML = html;
 }
 
@@ -2699,15 +3046,23 @@ function renderDiscountCoefficients() {
     if (!container) return;
     
     let html = '';
-    for (const [key, item] of Object.entries(defaultSettings.discountCoefficients)) {
+    // 按系数值降序排序后渲染（折扣类降序）
+    const sortedEntries = Object.entries(defaultSettings.discountCoefficients).sort((a, b) => {
+        const va = getCoefficientValue(a[1]);
+        const vb = getCoefficientValue(b[1]);
+        return vb - va;
+    });
+    for (const [key, item] of sortedEntries) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
+        const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         
         html += `
-            <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                <input type="number" value="${value}" min="0" step="0.1" style="width: 80px;" 
+            <div class="mb-2 d-flex items-center gap-2">
+                <input type="text" value="${escapedName}" class="flex-1" 
+                       onchange="updateDiscountCoefficientName('${key}', this.value)" placeholder="名称">
+                <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateDiscountCoefficient('${key}', this.value)">
-                <span style="flex: 1;">${displayName}</span>
                 <button class="btn danger small" onclick="deleteCoefficient('discount', '${key}')" 
                         style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button>
             </div>
@@ -2726,18 +3081,20 @@ function renderPlatformFees() {
     for (const [key, item] of Object.entries(defaultSettings.platformFees)) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
+        const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         
         html += `
-            <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                <input type="number" value="${value}" min="0" step="0.1" style="width: 80px;" 
+            <div class="mb-2 d-flex items-center gap-2">
+                <input type="text" value="${escapedName}" class="flex-1" 
+                       onchange="updatePlatformFeeName('${key}', this.value)" placeholder="名称">
+                <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updatePlatformFee('${key}', this.value)">
-                <span style="flex: 1;">${displayName}</span>
                 <button class="btn danger small" onclick="deleteCoefficient('platform', '${key}')" 
                         style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button>
             </div>
         `;
     }
-        
+    html += '<button type="button" class="btn secondary mt-2" onclick="addPlatformFeeOption()">+ 添加系数值</button>';
     container.innerHTML = html;
 }
 

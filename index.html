@@ -84,6 +84,9 @@
                             </select>
                         </div>
                     </div>
+                    <div id="extraPricingUpSelectsRow" class="form-row d-none">
+                        <!-- 动态添加的其他加价类选择器 -->
+                    </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="sameModel">同模系数</label>
@@ -99,6 +102,9 @@
                                 <option value="sample">上次合作寄样*0.9</option>
                             </select>
                         </div>
+                    </div>
+                    <div id="extraPricingDownSelectsRow" class="form-row d-none">
+                        <!-- 动态添加的其他折扣类选择器 -->
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -294,9 +300,9 @@
                     <div class="d-flex justify-between items-center mb-4">
                         <h2>制品设置</h2>
                         <div class="d-flex gap-2">
-                            <button class="btn add-product-setting" onclick="openAddProductModal()">+ 制品设置</button>
-                            <button class="btn secondary" onclick="document.getElementById('excelImportInput').click()">Excel导入</button>
-                            <button class="btn secondary" onclick="exportToExcel()">Excel导出</button>
+                            <button class="btn add-product-setting btn-compact" onclick="openAddProductModal()">添加制品设置</button>
+                            <button class="btn secondary btn-compact" onclick="document.getElementById('excelImportInput').click()">Excel导入</button>
+                            <button class="btn secondary btn-compact" onclick="exportToExcel()">Excel导出</button>
                             <input type="file" id="excelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importFromExcel(event)">
                         </div>
                     </div>
@@ -396,9 +402,11 @@
                 <div class="section">
                     <div class="d-flex justify-between items-center mb-4">
                         <h2>系数设置</h2>
-                        <button class="btn add-product-setting" onclick="openAddCoefficientModal()">+ 系数设置</button>
+                        <button class="btn add-product-setting btn-compact" onclick="openAddCoefficientModal()">添加系数</button>
                     </div>
 
+                    <!-- 加价类：用途系数、加急系数，可添加其他 -->
+                    <h3 class="coefficient-class-title">加价类</h3>
                     <!-- 用途系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('usageCoefficient')">
@@ -502,39 +510,10 @@
                             </div>
                         </div>
                     </div>
+                    <div id="extraPricingUpContainer"></div>
                     
-                    <!-- 同模系数 -->
-                    <div class="category-container">
-                        <div class="category-header" onclick="toggleCategory('sameModelCoefficient')">
-                            <div class="category-title">同模系数</div>
-                            <div class="category-toggle">▼</div>
-                        </div>
-                        <div class="category-content d-none" id="sameModelCoefficient-content">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <div class="coefficient-settings">
-                                        <div class="mb-2">
-                                            <label class="d-flex items-center gap-2">
-                                                <input type="number" value="0.5" min="0" step="0.1" class="w-80" 
-                                                       onchange="updateSameModelCoefficient('basic', this.value)">
-                                                <input type="text" value="改字、色、柄图" class="flex-1" 
-                                                       onchange="updateSameModelCoefficientName('basic', this.value)">
-                                            </label>
-                                        </div>
-                                        <div class="mb-2">
-                                            <label class="d-flex items-center gap-2">
-                                                <input type="number" value="0.8" min="0" step="0.1" class="w-80" 
-                                                       onchange="updateSameModelCoefficient('advanced', this.value)">
-                                                <input type="text" value="改字、色、柄图、元素" class="flex-1" 
-                                                       onchange="updateSameModelCoefficientName('advanced', this.value)">
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
+                    <!-- 折扣类：折扣系数，可添加其他 -->
+                    <h3 class="coefficient-class-title">折扣类</h3>
                     <!-- 折扣系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('discountCoefficient')">
@@ -559,6 +538,41 @@
                                                        onchange="updateDiscountCoefficient('sample', this.value)">
                                                 <input type="text" value="上次合作寄样" class="flex-1" 
                                                        onchange="updateDiscountCoefficientName('sample', this.value)">
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="extraPricingDownContainer"></div>
+                    
+                    <!-- 其他类：同模系数、平台手续费、其他费用 -->
+                    <h3 class="coefficient-class-title">其他类</h3>
+                    <!-- 同模系数 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('sameModelCoefficient')">
+                            <div class="category-title">同模系数</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="sameModelCoefficient-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="coefficient-settings">
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="0.5" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateSameModelCoefficient('basic', this.value)">
+                                                <input type="text" value="改字、色、柄图" class="flex-1" 
+                                                       onchange="updateSameModelCoefficientName('basic', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="0.8" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateSameModelCoefficient('advanced', this.value)">
+                                                <input type="text" value="改字、色、柄图、元素" class="flex-1" 
+                                                       onchange="updateSameModelCoefficientName('advanced', this.value)">
                                             </label>
                                         </div>
                                     </div>
@@ -641,7 +655,7 @@
                         <div class="category-header" onclick="toggleCategory('process')">
                             <div class="category-title">工艺设置</div>
                             <div class="category-actions">
-                                <button class="btn add-process-setting" onclick="openAddProcessModal()">+ 工艺设置</button>
+                                <button class="btn add-process-setting btn-compact" onclick="openAddProcessModal()">添加工艺设置</button>
                                 <div class="category-toggle">▼</div>
                             </div>
                         </div>
@@ -666,23 +680,18 @@
                                     <label for="coefficientCategory">系数大类</label>
                                     <select id="coefficientCategory" onchange="updateCoefficientSubType()">
                                         <option value="pricingUp">加价类</option>
-                                        <option value="pricingDown">减价类</option>
-                                        <option value="pricingOther">其他类</option>
+                                        <option value="pricingDown">折扣类</option>
                                     </select>
                                 </div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="coefficientType">系数小类</label>
-                                    <input type="text" id="coefficientType" list="coefficientTypeSuggestions" placeholder="例如：用途系数、加急系数">
+                                    <input type="text" id="coefficientType" list="coefficientTypeSuggestions" placeholder="">
                                     <datalist id="coefficientTypeSuggestions">
-                                        <option value="用途系数">
-                                        <option value="加急系数">
-                                        <option value="折扣系数">
-                                        <option value="同模系数">
-                                        <option value="平台手续费">
+                                        <!-- 选项由 updateCoefficientSubType 根据系数大类动态填充 -->
                                     </datalist>
-                                    <small>可直接输入新系数小类</small>
+                                    <small id="coefficientTypeHint">根据上方选择的大类输入系数名称</small>
                                 </div>
                             </div>
                             <div class="form-row">
