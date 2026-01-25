@@ -925,10 +925,11 @@ input:focus, select:focus {
     box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
 }
 
-.floating-calculate-btn svg {
-    width: 24px;
-    height: 24px;
-    stroke: currentColor;
+.floating-calculate-btn {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    line-height: 1;
 }
 
 /* 手机端优化 */
@@ -939,11 +940,7 @@ input:focus, select:focus {
         bottom: 5.5rem;
         right: 1rem;
         box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
-    }
-    
-    .floating-calculate-btn svg {
-        width: 28px;
-        height: 28px;
+        font-size: 16px;
     }
 }
 
