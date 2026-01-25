@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>专属报价计算器</title>
+    <title>周边美工报价计算器</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -300,12 +300,7 @@
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label>分类</label>
-                                        <div style="position: relative;">
-                                            <input type="text" id="newProductCategory" list="categorySuggestions" placeholder="选择或输入分类名称">
-                                            <datalist id="categorySuggestions">
-                                                <!-- 分类建议将通过JavaScript动态添加 -->
-                                            </datalist>
-                                        </div>
+                                        <div id="newProductCategorySelect"></div>
                                     </div>
                                     <div class="form-group">
                                         <label>制品名称</label>
@@ -670,11 +665,8 @@
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label for="coefficientType">系数小类</label>
-                                    <input type="text" id="coefficientType" list="coefficientTypeSuggestions" placeholder="">
-                                    <datalist id="coefficientTypeSuggestions">
-                                        <!-- 选项由 updateCoefficientSubType 根据系数大类动态填充 -->
-                                    </datalist>
+                                    <label>系数小类</label>
+                                    <div id="coefficientTypeSelect"></div>
                                     <small id="coefficientTypeHint">根据上方选择的大类输入系数名称</small>
                                 </div>
                             </div>

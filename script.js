@@ -2748,12 +2748,6 @@ function openAddProductModal() {
 
 // 生成分类建议选项
 function generateCategoryOptions() {
-    const datalist = document.getElementById('categorySuggestions');
-    const input = document.getElementById('newProductCategory');
-    
-    // 清空现有选项
-    datalist.innerHTML = '';
-    
     // 获取所有唯一分类
     const categories = new Set();
     productSettings.forEach(setting => {
@@ -2765,19 +2759,19 @@ function generateCategoryOptions() {
         categories.add(category);
     });
     
-    // 添加分类建议选项
-    Array.from(categories).sort().forEach(category => {
-        const option = document.createElement('option');
-        option.value = category;
-        option.textContent = category;
-        datalist.appendChild(option);
-    });
+    // 创建选项数组
+    const categoryOptions = Array.from(categories).sort();
     
-    // 移除可能存在的自定义分类输入框
-    const customInput = document.getElementById('customCategoryInput');
-    if (customInput) {
-        customInput.remove();
-    }
+    // 初始化自定义搜索下拉组件
+    createSearchableSelect(
+        'newProductCategorySelect',
+        categoryOptions,
+        '选择或输入分类名称',
+        function(value, label) {
+            // 分类选择回调（可选）
+        },
+        ''
+    );
 }
 
 // 关闭添制品弹窗
@@ -2809,7 +2803,7 @@ function showPriceSettings(priceType) {
 // 保存新制品
 function saveNewProduct() {
     // 获取表单数据
-    const category = document.getElementById('newProductCategory').value.trim() || DEFAULT_CATEGORIES[0];
+    const category = (getSearchableSelectValue('newProductCategorySelect') || '').trim() || DEFAULT_CATEGORIES[0];
     const name = document.getElementById('newProductName').value.trim();
     const priceType = document.getElementById('newProductPriceType').value;
     
@@ -3074,25 +3068,36 @@ function removeCoefficientItem(btn) {
 // 系数大类切换时（可清空系数小类等）
 function updateCoefficientSubType() {
     const catEl = document.getElementById('coefficientCategory');
-    const listEl = document.getElementById('coefficientTypeSuggestions');
-    const inputEl = document.getElementById('coefficientType');
     const hintEl = document.getElementById('coefficientTypeHint');
-    if (!catEl || !listEl || !inputEl) return;
+    if (!catEl) return;
     const cat = catEl.value;
-    inputEl.value = '';
+    
+    let options = [];
+    let placeholder = '';
+    let hint = '根据上方选择的大类输入系数名称';
+    
     if (cat === 'pricingUp') {
-        listEl.innerHTML = '<option value="用途系数"><option value="加急系数">';
-        inputEl.placeholder = '例如：用途系数、加急系数';
-        if (hintEl) hintEl.textContent = '加价类系数名称，可参考上述或输入新名称';
+        options = ['用途系数', '加急系数'];
+        placeholder = '例如：用途系数、加急系数';
+        hint = '加价类系数名称，可参考上述或输入新名称';
     } else if (cat === 'pricingDown') {
-        listEl.innerHTML = '<option value="折扣系数">';
-        inputEl.placeholder = '例如：折扣系数';
-        if (hintEl) hintEl.textContent = '折扣类系数名称，可参考上述或输入新名称';
-    } else {
-        listEl.innerHTML = '';
-        inputEl.placeholder = '';
-        if (hintEl) hintEl.textContent = '根据上方选择的大类输入系数名称';
+        options = ['折扣系数'];
+        placeholder = '例如：折扣系数';
+        hint = '折扣类系数名称，可参考上述或输入新名称';
     }
+    
+    if (hintEl) hintEl.textContent = hint;
+    
+    // 初始化自定义搜索下拉组件
+    createSearchableSelect(
+        'coefficientTypeSelect',
+        options,
+        placeholder || '请输入系数名称',
+        function(value, label) {
+            // 系数名称选择回调（可选）
+        },
+        ''
+    );
 }
 
 // 关闭添加系数弹窗
@@ -3109,7 +3114,7 @@ function updateCoefficientForm() {
 // 保存新系数：并入原有用途/加急/折扣，或新建加价/折扣模块
 function saveNewCoefficient() {
     const category = document.getElementById('coefficientCategory').value;
-    const typeName = (document.getElementById('coefficientType').value || '').trim();
+    const typeName = (getSearchableSelectValue('coefficientTypeSelect') || '').trim();
     if (!typeName) {
         alert('请输入系数名称！');
         return;
