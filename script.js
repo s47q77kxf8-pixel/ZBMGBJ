@@ -2051,17 +2051,27 @@ async function saveQuoteAsImage() {
         return;
     }
     
-    // 截图前固定宽度，避免手机端窄屏导致排版错乱
+    // 截图前固定宽度和移除缩放，确保保存原始400px尺寸的高清图片
     const oldWidth = receipt.style.width;
     const oldMinWidth = receipt.style.minWidth;
+    const oldTransform = receipt.style.transform;
+    const oldTransformOrigin = receipt.style.transformOrigin;
+    
     receipt.style.width = '400px';
     receipt.style.minWidth = '400px';
+    receipt.style.transform = ''; // 移除缩放，确保是原始400px大小
+    receipt.style.transformOrigin = '';
+    
+    // 等待一下，确保样式生效
+    await new Promise(resolve => setTimeout(resolve, 100));
     
     try {
         const canvas = await html2canvas(receipt, {
-            scale: 2,
+            scale: 3, // 提高分辨率：3倍缩放，400px -> 1200px，更清晰
             useCORS: true,
-            logging: false
+            logging: false,
+            width: 400, // 明确指定宽度
+            height: receipt.scrollHeight // 使用实际高度
         });
         
         const filename = `报价单_${quoteData.clientId}_${Date.now()}.png`;
@@ -2097,8 +2107,15 @@ async function saveQuoteAsImage() {
         console.error('保存图片失败:', error);
         alert('保存图片失败，请重试！');
     } finally {
+        // 恢复原始样式
         receipt.style.width = oldWidth;
         receipt.style.minWidth = oldMinWidth;
+        receipt.style.transform = oldTransform;
+        receipt.style.transformOrigin = oldTransformOrigin;
+        // 如果是手机端，重新应用缩放
+        if (window.innerWidth <= 768) {
+            adjustReceiptScale();
+        }
     }
 }
 
