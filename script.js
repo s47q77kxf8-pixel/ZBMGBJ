@@ -244,7 +244,7 @@ function addDefaultProductSettings() {
             { id: 11, name: '明信片', category: '纸片类', priceType: 'double', priceSingle: 80, priceDouble: 120 },
             { id: 12, name: '票根', category: '纸片类', priceType: 'double', priceSingle: 80, priceDouble: 120 },
             { id: 13, name: '纸夹相卡', category: '纸片类', priceType: 'double', priceSingle: 80, priceDouble: 120 },
-            { id: 14, name: '立牌', category: '亚克力类', priceType: 'config', basePrice: 110, baseConfig: '1插+1底座', additionalConfigs: [
+            { id: 14, name: '立牌', category: '亚克力类', priceType: 'config', basePrice: 110, baseConfig: '立牌+底座', additionalConfigs: [
                 { name: '底座', price: 20, unit: '个' },
                 { name: '插件', price: 40, unit: '个' }
             ]},
@@ -1258,74 +1258,117 @@ function generateQuote() {
         }
         currentCategory = item.category;
         
-        // 显示制品总览行（单价列不展示具体金额，避免与下方明细的「单价×数量=小计」混淆；小计=下方明细合计）
-        html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${item.product}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+        // 判断是否满足乘法（无同模、无工艺、无配件时，fixed/double可合并；config永远不合并）
+        const hasSameModel = item.sameModelCount > 0;
+        const hasProcess = item.processDetails && item.processDetails.length > 0;
+        const hasAdditionalConfig = item.productType === 'config' && item.additionalConfigDetails && item.additionalConfigDetails.length > 0;
+        const canMerge = !hasSameModel && !hasProcess && item.productType !== 'config' && (item.productType === 'fixed' || (item.productType === 'double' && !hasAdditionalConfig));
         
-        let basePriceRowHtml = '';
-        const baseConfigVal = (item.baseConfigPrice != null ? item.baseConfigPrice : item.basePrice);
-        // 根据价格类型显示不同的基础价信息
+        // 获取同模系数值（用于显示）
+        const _arr = Object.values(defaultSettings.sameModelCoefficients || {});
+        const _found = _arr.find(c => c && c.name === '改字、色、柄图');
+        const sameModelRate = getCoefficientValue(_found || _arr[0]) || 0.5;
+        
+        // 计算全价制品单价和数量
+        const fullPriceUnitPrice = item.basePrice; // 全价制品单价（基础价，config时已包含配件）
+        const fullPriceQuantity = hasSameModel ? 1 : item.quantity; // 全价制品数量
+        
+        // config的成品单价（basePrice已包含配件）
+        const finishedProductUnitPrice = item.basePrice;
+        
+        // 处理制品名（double需要加单/双面）
+        let productName = item.product;
         if (item.productType === 'double') {
-            // 单双面价类型，显示基础配置(单面)或基础配置(双面)
             if (item.sides === 'single') {
-                basePriceRowHtml = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(单面)</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div></div>`;
+                productName = `${item.product}(单面)`;
             } else if (item.sides === 'double') {
-                basePriceRowHtml = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(双面)</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div></div>`;
-            }
-        } else if (item.productType === 'config' && item.baseConfig) {
-            // 基础+递增价类型：基础配置行仅显示基础价（不含附加），避免与「+1底座」等混淆
-            basePriceRowHtml = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(${item.baseConfig})</div><div class="receipt-col-1">¥${baseConfigVal.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${baseConfigVal.toFixed(2)}</div></div>`;
-        } else if (item.productType === 'fixed') {
-            // 固定价类型，不显示基础价
-            basePriceRowHtml = '';
-        }
-        html += basePriceRowHtml;
-        
-        // 显示递增价信息（如果是基础+递增价类型）
-        if (item.productType === 'config' && item.baseConfig) {
-            // 显示递增价信息（新格式：多配置）
-            if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
-                item.additionalConfigDetails.forEach(config => {
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• +${config.count}${config.unit} ${config.name}</div><div class="receipt-col-1">¥${config.price.toFixed(2)}</div><div class="receipt-col-1">${config.count}</div><div class="receipt-col-1">¥${config.total.toFixed(2)}</div></div>`;
-                });
-            } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0) {
-                // 兼容旧格式：单配置
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• +${item.totalAdditionalCount}${item.additionalUnit} ${item.additionalName || '附加项'}</div><div class="receipt-col-1">¥${item.additionalPrice.toFixed(2)}</div><div class="receipt-col-1">${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${(item.totalAdditionalCount * item.additionalPrice).toFixed(2)}</div></div>`;
+                productName = `${item.product}(双面)`;
             }
         }
         
-        // 显示同模信息（如果有）
-        if (item.sameModelCount > 0) {
-            // 获取同模系数值
-            const _arr = Object.values(defaultSettings.sameModelCoefficients || {});
-            const _found = _arr.find(c => c && c.name === '改字、色、柄图');
-            const sameModelRate = getCoefficientValue(_found || _arr[0]) || 0.5;
-            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">同模制品(${sameModelRate}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
-        }
-        
-        // 显示工艺信息（如果有）
-        if (item.processDetails && item.processDetails.length > 0) {
-            // 按单价分组工艺
-            const processGroups = {};
+        // 总览行
+        if (canMerge) {
+            // fixed/double 无同模无工艺：合并到总览行
+            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${fullPriceUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+        } else {
+            // 需要拆明细
+            if (item.productType === 'config') {
+                // config：总览行显示成品单价（规范要求）
+                html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${finishedProductUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+            } else {
+                // fixed/double：总览行单价留空
+                html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+            }
             
-            // 将工艺按单价分组
-            item.processDetails.forEach(process => {
-                const unitPrice = process.unitPrice.toFixed(2);
-                if (!processGroups[unitPrice]) {
-                    processGroups[unitPrice] = [];
+            // 明细：全价制品行
+            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 全价制品</div><div class="receipt-col-1">¥${fullPriceUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">¥${(fullPriceUnitPrice * fullPriceQuantity).toFixed(2)}</div></div>`;
+            
+            // config：树形明细（仅单价，不显示数量和小计）
+            if (item.productType === 'config' && item.baseConfig) {
+                // 基础配置价格（不含配件）
+                let baseConfigVal = item.baseConfigPrice;
+                if (baseConfigVal == null) {
+                    // 兼容旧数据：从 basePrice 减去配件总额
+                    let additionalTotal = 0;
+                    if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
+                        additionalTotal = item.additionalConfigDetails.reduce((sum, c) => sum + (c.total || 0), 0);
+                    } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
+                        additionalTotal = item.totalAdditionalCount * item.additionalPrice;
+                    }
+                    baseConfigVal = item.basePrice - additionalTotal;
                 }
-                processGroups[unitPrice].push(process);
-            });
-            
-            // 显示每个价格组的工艺
-            for (const [unitPrice, processes] of Object.entries(processGroups)) {
-                // 获取该组所有工艺的名称，用顿号分隔
-                const processNames = processes.map(p => p.name).join('、');
-                // 计算该组的总数量和总费用
-                const totalQuantity = processes.reduce((sum, p) => sum + p.quantity, 0);
-                const totalFee = processes.reduce((sum, p) => sum + p.fee, 0);
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">¥${baseConfigVal.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                 
-                // 显示该组工艺信息
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">工艺(${processNames})</div><div class="receipt-col-1">¥${parseFloat(unitPrice).toFixed(2)}</div><div class="receipt-col-1">${totalQuantity}</div><div class="receipt-col-1">¥${totalFee.toFixed(2)}</div></div>`;
+                // 配件明细（仅单价）
+                if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
+                    item.additionalConfigDetails.forEach(config => {
+                        // 每件该配件合计价
+                        const perPiecePrice = config.price * config.count;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${config.name}*${config.count}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    });
+                } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
+                    // 兼容旧格式
+                    const perPiecePrice = item.additionalPrice * item.totalAdditionalCount;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}*${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                }
+            }
+            
+            // 同模制品行
+            if (hasSameModel) {
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 同模制品(${sameModelRate}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
+            }
+            
+            // 工艺行（按每层单价分组，同单价的工艺合并为一行）
+            if (hasProcess) {
+                // 先显示"工艺"标题行
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 工艺</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                
+                // 按每层单价分组（不是按工艺单价分组）
+                const processGroupsByLayerPrice = {};
+                item.processDetails.forEach(process => {
+                    // 每层单价 = 工艺单价 / 层数（process.unitPrice 已经是 每层价格×层数）
+                    const pricePerLayer = process.unitPrice / process.layers;
+                    const key = pricePerLayer.toFixed(4);
+                    if (!processGroupsByLayerPrice[key]) {
+                        processGroupsByLayerPrice[key] = [];
+                    }
+                    processGroupsByLayerPrice[key].push(process);
+                });
+                
+                // 显示每个每层单价组的工艺（树形结构）
+                for (const [layerPriceKey, processes] of Object.entries(processGroupsByLayerPrice)) {
+                    const pricePerLayer = parseFloat(layerPriceKey);
+                    // 累计层数
+                    const totalLayers = processes.reduce((sum, p) => sum + p.layers, 0);
+                    // 计费数量 = 总层数 × 件数
+                    const chargeQuantity = totalLayers * item.quantity;
+                    // 总费用
+                    const totalFee = processes.reduce((sum, p) => sum + p.fee, 0);
+                    // 工艺名称（格式：工艺名×层数、工艺名×层数）
+                    const processNamesWithLayers = processes.map(p => `${p.name}×${p.layers}`).join('、');
+                    
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${processNamesWithLayers}</div><div class="receipt-col-1">¥${pricePerLayer.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantity}</div><div class="receipt-col-1">¥${totalFee.toFixed(2)}</div></div>`;
+                }
             }
         }
     });
@@ -1346,61 +1389,109 @@ function generateQuote() {
             }
             giftCurrentCategory = item.category;
             
-            // 显示赠品总览行
-            const productTotal = item.productTotal || (item.basePrice * item.quantity);
-            html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${item.product}</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span style="color: green; font-weight: bold; font-size: 1.1em;">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotal.toFixed(2)}</span></div></div>`;
+            // 判断是否满足乘法（赠品规则与制品相同）
+            const hasSameModelGift = item.sameModelCount > 0;
+            const hasProcessGift = item.processDetails && item.processDetails.length > 0;
+            const hasAdditionalConfigGift = item.productType === 'config' && item.additionalConfigDetails && item.additionalConfigDetails.length > 0;
+            const canMergeGift = !hasSameModelGift && !hasProcessGift && item.productType !== 'config' && (item.productType === 'fixed' || (item.productType === 'double' && !hasAdditionalConfigGift));
             
-            let basePriceRowHtmlGift = '';
-            // 根据价格类型显示不同的基础价信息
+            // 获取同模系数值
+            const _arrG = Object.values(defaultSettings.sameModelCoefficients || {});
+            const _foundG = _arrG.find(c => c && c.name === '改字、色、柄图');
+            const sameModelRateGift = getCoefficientValue(_foundG || _arrG[0]) || 0.5;
+            
+            // 计算全价制品单价和数量
+            const fullPriceUnitPriceGift = item.basePrice;
+            const fullPriceQuantityGift = hasSameModelGift ? 1 : item.quantity;
+            
+            // 处理赠品名（double需要加单/双面）
+            let giftProductName = item.product;
             if (item.productType === 'double') {
-                // 单双面价类型，显示基础配置(单面)或基础配置(双面)
                 if (item.sides === 'single') {
-                    basePriceRowHtmlGift = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(单面)</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div></div>`;
+                    giftProductName = `${item.product}(单面)`;
                 } else if (item.sides === 'double') {
-                    basePriceRowHtmlGift = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(双面)</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div></div>`;
+                    giftProductName = `${item.product}(双面)`;
                 }
-            } else if (item.productType === 'config' && item.baseConfig) {
-                // 基础+递增价类型，显示基础配置信息
-                basePriceRowHtmlGift = `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 基础配置(${item.baseConfig})</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">1</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div></div>`;
-            } else if (item.productType === 'fixed') {
-                // 固定价类型，不显示基础价
-                basePriceRowHtmlGift = '';
-            }
-            html += basePriceRowHtmlGift;
-            
-            // 显示同模信息（如果有）
-            if (item.sameModelCount > 0) {
-                // 获取同模系数值（sameModelCoefficients 为对象，按 name 或首项取值）
-                const _arrG = Object.values(defaultSettings.sameModelCoefficients || {});
-                const _foundG = _arrG.find(c => c && c.name === '改字、色、柄图');
-                const sameModelRate = getCoefficientValue(_foundG || _arrG[0]) || 0.5;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">同模制品(${sameModelRate}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
             }
             
-            // 显示工艺信息（如果有）
-            if (item.processDetails && item.processDetails.length > 0) {
-                // 按单价分组工艺
-                const processGroups = {};
+            const productTotalGift = item.productTotal || (item.basePrice * item.quantity);
+            
+            // 总览行（赠品特殊：显示¥0.00 + 划线原价）
+            if (canMergeGift) {
+                // fixed/double 无同模无工艺：合并到总览行
+                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">¥${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span style="color: green; font-weight: bold; font-size: 1.1em;">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+            } else {
+                // 需要拆明细
+                if (item.productType === 'config') {
+                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span style="color: green; font-weight: bold; font-size: 1.1em;">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+                } else {
+                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span style="color: green; font-weight: bold; font-size: 1.1em;">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+                }
                 
-                // 将工艺按单价分组
-                item.processDetails.forEach(process => {
-                    const unitPrice = process.unitPrice.toFixed(2);
-                    if (!processGroups[unitPrice]) {
-                        processGroups[unitPrice] = [];
+                // 明细：全价制品行（赠品价格不划线，但小计为0）
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 全价制品</div><div class="receipt-col-1">¥${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1" style="color: green; font-weight: bold;">¥0.00</div></div>`;
+                
+                // config：树形明细（仅单价，不显示数量和小计）
+                if (item.productType === 'config' && item.baseConfig) {
+                    let baseConfigValGift = item.baseConfigPrice;
+                    if (baseConfigValGift == null) {
+                        let additionalTotalGift = 0;
+                        if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
+                            additionalTotalGift = item.additionalConfigDetails.reduce((sum, c) => sum + (c.total || 0), 0);
+                        } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
+                            additionalTotalGift = item.totalAdditionalCount * item.additionalPrice;
+                        }
+                        baseConfigValGift = item.basePrice - additionalTotalGift;
                     }
-                    processGroups[unitPrice].push(process);
-                });
-                
-                // 显示每个价格组的工艺
-                for (const [unitPrice, processes] of Object.entries(processGroups)) {
-                    // 获取该组所有工艺的名称，用顿号分隔
-                    const processNames = processes.map(p => p.name).join('、');
-                    // 计算该组的总数量和总费用
-                    const totalQuantity = processes.reduce((sum, p) => sum + p.quantity, 0);
-                    const totalFee = processes.reduce((sum, p) => sum + p.fee, 0);
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">¥${baseConfigValGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     
-                    // 显示该组工艺信息
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">工艺(${processNames})</div><div class="receipt-col-1">¥${parseFloat(unitPrice).toFixed(2)}</div><div class="receipt-col-1">${totalQuantity}</div><div class="receipt-col-1">¥${totalFee.toFixed(2)}</div></div>`;
+                    // 配件明细（仅单价）
+                    if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
+                        item.additionalConfigDetails.forEach(config => {
+                            const perPiecePriceGift = config.price * config.count;
+                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${config.name}*${config.count}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                        });
+                    } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
+                        const perPiecePriceGift = item.additionalPrice * item.totalAdditionalCount;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}*${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    }
+                }
+                
+                // 同模制品行（赠品价格不划线，但小计为0）
+                if (hasSameModelGift) {
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 同模制品(${sameModelRateGift}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1" style="color: green; font-weight: bold;">¥0.00</div></div>`;
+                }
+                
+                // 工艺行（按每层单价分组，同单价的工艺合并为一行）
+                if (hasProcessGift) {
+                    // 先显示"工艺"标题行
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 工艺</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    
+                    // 按每层单价分组（不是按工艺单价分组）
+                    const processGroupsByLayerPriceGift = {};
+                    item.processDetails.forEach(process => {
+                        const pricePerLayerGift = process.unitPrice / process.layers;
+                        const key = pricePerLayerGift.toFixed(4);
+                        if (!processGroupsByLayerPriceGift[key]) {
+                            processGroupsByLayerPriceGift[key] = [];
+                        }
+                        processGroupsByLayerPriceGift[key].push(process);
+                    });
+                    
+                    // 显示每个每层单价组的工艺（树形结构）
+                    for (const [layerPriceKey, processes] of Object.entries(processGroupsByLayerPriceGift)) {
+                        const pricePerLayerGift = parseFloat(layerPriceKey);
+                        // 累计层数
+                        const totalLayersGift = processes.reduce((sum, p) => sum + p.layers, 0);
+                        // 计费数量 = 总层数 × 件数
+                        const chargeQuantityGift = totalLayersGift * item.quantity;
+                        // 总费用（赠品显示为0）
+                        const totalFeeGift = 0;
+                        // 工艺名称（格式：工艺名×层数、工艺名×层数）
+                        const processNamesWithLayersGift = processes.map(p => `${p.name}×${p.layers}`).join('、');
+                        
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${processNamesWithLayersGift}</div><div class="receipt-col-1">¥${pricePerLayerGift.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantityGift}</div><div class="receipt-col-1" style="color: green; font-weight: bold;">¥0.00</div></div>`;
+                    }
                 }
             }
         });
