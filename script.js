@@ -1836,22 +1836,30 @@ async function saveQuoteAsImage() {
         const isMobile = window.innerWidth <= 768 || ('ontouchstart' in window);
         
         if (isMobile) {
-            // 手机端：优先用分享（可选存相册），否则弹窗长按保存
-            canvas.toBlob(function (blob) {
+            // 手机端：直接触发系统分享，用户在分享界面选"保存图片"即可
+            canvas.toBlob(async function (blob) {
                 const file = new File([blob], filename, { type: 'image/png' });
+                
+                // 检查是否支持分享文件
                 if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                    navigator.share({ files: [file], title: '报价单' }).catch(function () {
-                        showSaveImageModal(canvas, filename);
-                    });
+                    try {
+                        await navigator.share({ files: [file], title: '报价单' });
+                        // 分享成功（用户选择了保存或发送）
+                    } catch (err) {
+                        // 用户取消分享，不做任何提示
+                        if (err.name !== 'AbortError') {
+                            // 其他错误，尝试直接下载
+                            triggerDownload(canvas.toDataURL('image/png'), filename);
+                        }
+                    }
                 } else {
-                    showSaveImageModal(canvas, filename);
+                    // 不支持分享，直接下载（图片会存到"下载"文件夹）
+                    triggerDownload(canvas.toDataURL('image/png'), filename);
                 }
             }, 'image/png');
         } else {
-            const link = document.createElement('a');
-            link.download = filename;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
+            // 桌面端：直接下载
+            triggerDownload(canvas.toDataURL('image/png'), filename);
         }
     } catch (error) {
         console.error('保存图片失败:', error);
@@ -1862,23 +1870,12 @@ async function saveQuoteAsImage() {
     }
 }
 
-// 手机端：弹窗展示图片，支持长按保存到相册、或下载
-function showSaveImageModal(canvas, filename) {
-    var dataUrl = canvas.toDataURL('image/png');
-    var safeName = (filename || '').replace(/"/g, '&quot;');
-    var overlay = document.createElement('div');
-    overlay.className = 'save-image-modal-overlay';
-    overlay.innerHTML = 
-        '<div class="save-image-modal" onclick="event.stopPropagation()">' +
-        '<img src="' + dataUrl + '" alt="报价单" />' +
-        '<p class="save-image-hint">长按图片可保存到相册</p>' +
-        '<div class="save-image-actions">' +
-        '<a href="' + dataUrl + '" download="' + safeName + '">下载</a>' +
-        '<button type="button">关闭</button>' +
-        '</div></div>';
-    overlay.onclick = function () { overlay.remove(); };
-    overlay.querySelector('button').onclick = function () { overlay.remove(); };
-    document.body.appendChild(overlay);
+// 触发下载
+function triggerDownload(dataUrl, filename) {
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataUrl;
+    link.click();
 }
 
 // 保存到历史记录
