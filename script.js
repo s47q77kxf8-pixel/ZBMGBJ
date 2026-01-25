@@ -365,8 +365,11 @@ function init() {
             const floatingBtn = document.querySelector('.floating-calculate-btn');
             if (floatingBtn) {
                 const calculatorPage = document.getElementById('calculator');
-                if (calculatorPage && calculatorPage.classList.contains('active')) {
+                const isCalculatorActive = calculatorPage && calculatorPage.classList.contains('active');
+                if (isCalculatorActive) {
                     floatingBtn.style.display = 'flex';
+                    floatingBtn.style.visibility = 'visible';
+                    floatingBtn.style.opacity = '1';
                 } else {
                     floatingBtn.style.display = 'none';
                 }
@@ -376,8 +379,10 @@ function init() {
         // 立即执行一次
         updateFloatingButton();
         
-        // 延迟执行一次，确保DOM完全加载
+        // 延迟执行多次，确保DOM完全加载
         setTimeout(updateFloatingButton, 100);
+        setTimeout(updateFloatingButton, 300);
+        setTimeout(updateFloatingButton, 500);
     });
 }
 
@@ -771,6 +776,8 @@ function showPage(pageId) {
     if (floatingBtn) {
         if (pageId === 'calculator') {
             floatingBtn.style.display = 'flex';
+            floatingBtn.style.visibility = 'visible';
+            floatingBtn.style.opacity = '1';
         } else {
             floatingBtn.style.display = 'none';
         }

@@ -907,7 +907,7 @@ input:focus, select:focus {
     justify-content: center;
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
     cursor: pointer;
-    z-index: 999;
+    z-index: 10000; /* 提高z-index，确保在所有元素之上 */
     transition: all 0.3s ease;
     border: none;
     user-select: none;
@@ -937,10 +937,11 @@ input:focus, select:focus {
     .floating-calculate-btn {
         width: 64px;
         height: 64px;
-        bottom: 5.5rem;
+        bottom: 6rem; /* 提高位置，确保在底部导航栏上方（导航栏约80px高） */
         right: 1rem;
         box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
         font-size: 16px;
+        z-index: 10000; /* 确保在手机端也在最上层 */
     }
 }
 
