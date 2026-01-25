@@ -783,3 +783,111 @@ input:focus, select:focus {
     background: #e2e8f0;
     color: #333;
 }
+
+/* 自定义搜索下拉组件 */
+.searchable-select {
+    position: relative;
+    width: 100%;
+}
+
+.searchable-select-input {
+    width: 100%;
+    padding: 0.75rem 2.5rem 0.75rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    background: var(--card-bg);
+    cursor: pointer;
+    text-overflow: ellipsis;
+}
+
+.searchable-select-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.searchable-select-clear {
+    position: absolute;
+    right: 2rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.25rem;
+    height: 1.25rem;
+    border: none;
+    background: #94a3b8;
+    color: white;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.searchable-select-clear:hover {
+    background: #64748b;
+}
+
+.searchable-select.has-value .searchable-select-clear {
+    display: flex;
+}
+
+.searchable-select-arrow {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--text-light);
+    font-size: 0.6rem;
+}
+
+.searchable-select-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+    margin-top: 4px;
+}
+
+.searchable-select.open .searchable-select-dropdown {
+    display: block;
+}
+
+.searchable-select-option {
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.searchable-select-option:last-child {
+    border-bottom: none;
+}
+
+.searchable-select-option:hover,
+.searchable-select-option.highlighted {
+    background: var(--primary-light);
+}
+
+.searchable-select-option.selected {
+    background: var(--primary-color);
+    color: white;
+}
+
+.searchable-select-empty {
+    padding: 0.75rem;
+    text-align: center;
+    color: var(--text-light);
+    font-size: 0.85rem;
+}

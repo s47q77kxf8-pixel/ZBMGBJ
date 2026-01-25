@@ -8,6 +8,241 @@ let history = [];
 let productIdCounter = 0;
 let giftIdCounter = 0;
 
+// ========== 自定义搜索下拉组件 ==========
+/**
+ * 创建可搜索下拉组件
+ * @param {string} inputId - 原input的id
+ * @param {Array} options - 选项数组 [{value, label}] 或 字符串数组
+ * @param {string} placeholder - 占位文字
+ * @param {Function} onChange - 选择后的回调函数(value, label)
+ * @param {string} initialValue - 初始值
+ */
+function createSearchableSelect(inputId, options, placeholder, onChange, initialValue) {
+    const container = document.getElementById(inputId);
+    if (!container) return null;
+    
+    // 规范化选项格式
+    const normalizedOptions = options.map(opt => {
+        if (typeof opt === 'string') {
+            return { value: opt, label: opt };
+        }
+        return { value: opt.value || opt.label, label: opt.label || opt.value };
+    });
+    
+    // 查找初始选项
+    let selectedOption = null;
+    if (initialValue) {
+        selectedOption = normalizedOptions.find(opt => opt.value === initialValue || opt.label === initialValue);
+    }
+    
+    // 创建组件 HTML
+    container.innerHTML = `
+        <div class="searchable-select${selectedOption ? ' has-value' : ''}" data-input-id="${inputId}">
+            <input type="text" class="searchable-select-input" 
+                   placeholder="${placeholder || '请选择或输入'}"
+                   value="${selectedOption ? selectedOption.label : ''}"
+                   autocomplete="off">
+            <button type="button" class="searchable-select-clear" title="清空">×</button>
+            <span class="searchable-select-arrow">▼</span>
+            <div class="searchable-select-dropdown"></div>
+        </div>
+    `;
+    
+    const wrapper = container.querySelector('.searchable-select');
+    const input = wrapper.querySelector('.searchable-select-input');
+    const clearBtn = wrapper.querySelector('.searchable-select-clear');
+    const dropdown = wrapper.querySelector('.searchable-select-dropdown');
+    
+    // 存储数据
+    wrapper._options = normalizedOptions;
+    wrapper._selectedValue = selectedOption ? selectedOption.value : '';
+    wrapper._onChange = onChange;
+    
+    // 渲染选项列表
+    function renderOptions(filter = '') {
+        const filterLower = filter.toLowerCase();
+        const filtered = normalizedOptions.filter(opt => 
+            opt.label.toLowerCase().includes(filterLower)
+        );
+        
+        if (filtered.length === 0) {
+            dropdown.innerHTML = '<div class="searchable-select-empty">无匹配选项</div>';
+        } else {
+            dropdown.innerHTML = filtered.map(opt => `
+                <div class="searchable-select-option${wrapper._selectedValue === opt.value ? ' selected' : ''}" 
+                     data-value="${opt.value}">
+                    ${opt.label}
+                </div>
+            `).join('');
+        }
+    }
+    
+    // 打开下拉
+    function openDropdown() {
+        wrapper.classList.add('open');
+        renderOptions(input.value);
+    }
+    
+    // 关闭下拉
+    function closeDropdown() {
+        wrapper.classList.remove('open');
+    }
+    
+    // 选择选项
+    function selectOption(value, label) {
+        wrapper._selectedValue = value;
+        input.value = label;
+        wrapper.classList.add('has-value');
+        closeDropdown();
+        if (wrapper._onChange) {
+            wrapper._onChange(value, label);
+        }
+    }
+    
+    // 事件：点击输入框
+    input.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (wrapper.classList.contains('open')) {
+            closeDropdown();
+        } else {
+            openDropdown();
+            // 如果有值，选中全部文字便于重新输入
+            this.select();
+        }
+    });
+    
+    // 事件：输入搜索
+    input.addEventListener('input', function() {
+        openDropdown();
+        renderOptions(this.value);
+        // 清空选中状态
+        wrapper._selectedValue = '';
+        wrapper.classList.remove('has-value');
+    });
+    
+    // 事件：键盘导航
+    input.addEventListener('keydown', function(e) {
+        const options = dropdown.querySelectorAll('.searchable-select-option');
+        const highlighted = dropdown.querySelector('.searchable-select-option.highlighted');
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (!wrapper.classList.contains('open')) {
+                openDropdown();
+            } else if (options.length > 0) {
+                const next = highlighted ? highlighted.nextElementSibling : options[0];
+                if (next && next.classList.contains('searchable-select-option')) {
+                    if (highlighted) highlighted.classList.remove('highlighted');
+                    next.classList.add('highlighted');
+                    next.scrollIntoView({ block: 'nearest' });
+                }
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (options.length > 0 && highlighted) {
+                const prev = highlighted.previousElementSibling;
+                if (prev && prev.classList.contains('searchable-select-option')) {
+                    highlighted.classList.remove('highlighted');
+                    prev.classList.add('highlighted');
+                    prev.scrollIntoView({ block: 'nearest' });
+                }
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (highlighted) {
+                selectOption(highlighted.dataset.value, highlighted.textContent.trim());
+            } else if (options.length === 1) {
+                // 只有一个选项时直接选中
+                selectOption(options[0].dataset.value, options[0].textContent.trim());
+            }
+        } else if (e.key === 'Escape') {
+            closeDropdown();
+        }
+    });
+    
+    // 事件：失去焦点时，如果没选中有效值则恢复或清空
+    input.addEventListener('blur', function() {
+        setTimeout(() => {
+            if (!wrapper._selectedValue && this.value) {
+                // 尝试匹配输入值
+                const match = normalizedOptions.find(opt => 
+                    opt.label.toLowerCase() === this.value.toLowerCase()
+                );
+                if (match) {
+                    selectOption(match.value, match.label);
+                } else {
+                    // 允许自定义输入
+                    wrapper._selectedValue = this.value;
+                    wrapper.classList.add('has-value');
+                    if (wrapper._onChange) {
+                        wrapper._onChange(this.value, this.value);
+                    }
+                }
+            }
+            closeDropdown();
+        }, 150);
+    });
+    
+    // 事件：点击选项
+    dropdown.addEventListener('click', function(e) {
+        const option = e.target.closest('.searchable-select-option');
+        if (option) {
+            selectOption(option.dataset.value, option.textContent.trim());
+        }
+    });
+    
+    // 事件：清空按钮
+    clearBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        input.value = '';
+        wrapper._selectedValue = '';
+        wrapper.classList.remove('has-value');
+        input.focus();
+        openDropdown();
+        renderOptions('');
+        if (wrapper._onChange) {
+            wrapper._onChange('', '');
+        }
+    });
+    
+    // 点击外部关闭
+    document.addEventListener('click', function(e) {
+        if (!wrapper.contains(e.target)) {
+            closeDropdown();
+        }
+    });
+    
+    return {
+        getValue: () => wrapper._selectedValue,
+        setValue: (value) => {
+            const opt = normalizedOptions.find(o => o.value === value || o.label === value);
+            if (opt) {
+                selectOption(opt.value, opt.label);
+            } else {
+                input.value = value;
+                wrapper._selectedValue = value;
+                wrapper.classList.toggle('has-value', !!value);
+            }
+        },
+        updateOptions: (newOptions) => {
+            wrapper._options = newOptions.map(opt => {
+                if (typeof opt === 'string') return { value: opt, label: opt };
+                return { value: opt.value || opt.label, label: opt.label || opt.value };
+            });
+            renderOptions(input.value);
+        }
+    };
+}
+
+// 获取搜索下拉组件的值
+function getSearchableSelectValue(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return '';
+    const wrapper = container.querySelector('.searchable-select');
+    return wrapper ? wrapper._selectedValue : '';
+}
+// ========== 搜索下拉组件结束 ==========
+
 
 
 // 默认设置
@@ -538,12 +773,6 @@ function renderGift(gift) {
     giftElement.className = 'product-item';
     giftElement.dataset.id = gift.id;
     
-    // 生成制品类型选项和datalist
-    let productTypeOptions = '';
-    productSettings.forEach(setting => {
-        productTypeOptions += `<option value="${setting.name}" data-id="${setting.id}">${setting.name}</option>`;
-    });
-    
     // 查找当前选中的制品类型名称
     let selectedProductName = '';
     if (gift.type) {
@@ -560,14 +789,8 @@ function renderGift(gift) {
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label for="giftType-${gift.id}">制品类型</label>
-                <div style="position: relative;">
-                    <input type="text" id="giftType-${gift.id}" list="giftTypeSuggestions-${gift.id}" value="${selectedProductName}" placeholder="输入制品类型名称" 
-                           onchange="updateGiftType(${gift.id}, this.value); updateGiftForm(${gift.id})">
-                    <datalist id="giftTypeSuggestions-${gift.id}">
-                        ${productTypeOptions}
-                    </datalist>
-                </div>
+                <label>制品类型</label>
+                <div id="giftTypeSelect-${gift.id}"></div>
             </div>
             <div class="form-group">
                 <label for="giftQuantity-${gift.id}">数量</label>
@@ -593,6 +816,22 @@ function renderGift(gift) {
     `;
     
     container.appendChild(giftElement);
+    
+    // 初始化制品类型搜索下拉组件
+    const giftTypeOptions = productSettings.map(setting => ({
+        value: setting.id.toString(),
+        label: setting.name
+    }));
+    createSearchableSelect(
+        `giftTypeSelect-${gift.id}`,
+        giftTypeOptions,
+        '选择或搜索制品类型',
+        function(value, label) {
+            updateGiftType(gift.id, label);
+            updateGiftForm(gift.id);
+        },
+        gift.type
+    );
     
     // 更新赠品表单选项
     updateGiftForm(gift.id);
@@ -625,21 +864,6 @@ function renderProduct(product) {
     productElement.className = 'product-item';
     productElement.dataset.id = product.id;
     
-    // 生成制品类型选项和datalist
-    let productTypeOptions = '';
-    productSettings.forEach(setting => {
-        productTypeOptions += `<option value="${setting.name}" data-id="${setting.id}">${setting.name}</option>`;
-    });
-    
-    // 查找当前选中的制品类型名称
-    let selectedProductName = '';
-    if (product.type) {
-        const selectedSetting = productSettings.find(setting => setting.id.toString() === product.type);
-        if (selectedSetting) {
-            selectedProductName = selectedSetting.name;
-        }
-    }
-    
     productElement.innerHTML = `
         <div class="product-item-header">
             <div class="product-item-title">制品 ${product.id}</div>
@@ -647,14 +871,8 @@ function renderProduct(product) {
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label for="productType-${product.id}">制品类型</label>
-                <div style="position: relative;">
-                    <input type="text" id="productType-${product.id}" list="productTypeSuggestions-${product.id}" value="${selectedProductName}" placeholder="输入制品类型名称" 
-                           onchange="updateProductType(${product.id}, this.value); updateProductForm(${product.id})">
-                    <datalist id="productTypeSuggestions-${product.id}">
-                        ${productTypeOptions}
-                    </datalist>
-                </div>
+                <label>制品类型</label>
+                <div id="productTypeSelect-${product.id}"></div>
             </div>
             <div class="form-group">
                 <label for="productQuantity-${product.id}">制品数</label>
@@ -680,6 +898,22 @@ function renderProduct(product) {
     `;
     
     container.appendChild(productElement);
+    
+    // 初始化制品类型搜索下拉组件
+    const productTypeOptions = productSettings.map(setting => ({
+        value: setting.id.toString(),
+        label: setting.name
+    }));
+    createSearchableSelect(
+        `productTypeSelect-${product.id}`,
+        productTypeOptions,
+        '选择或搜索制品类型',
+        function(value, label) {
+            updateProductType(product.id, label);
+            updateProductForm(product.id);
+        },
+        product.type
+    );
     
     // 更新产品表单选项
     updateProductForm(product.id);
