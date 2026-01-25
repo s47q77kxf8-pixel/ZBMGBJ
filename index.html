@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专属报价计算器</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 导航栏 (响应式：移动端在下，桌面端在上) -->
+        <nav class="navbar">
+            <div class="nav-buttons">
+                <button class="nav-btn active" onclick="showPage('calculator')">
+                    计算页
+                </button>
+                <button class="nav-btn" onclick="showPage('quote')">
+                    报价页
+                </button>
+                
+                <button class="nav-btn" onclick="showPage('settings')">
+                    设置页
+                </button>
+            </div>
+        </nav>
+
+        <!-- 主要内容区域 -->
+        <main class="main-content">
+            <!-- 计算页 -->
+            <div id="calculator" class="page active">
+                <div class="section">
+                    <h2>单主信息</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="clientId">单主ID</label>
+                            <input type="text" id="clientId" placeholder="请输入单主ID">
+                        </div>
+                        <div class="form-group">
+                            <label for="contact">联系方式</label>
+                            <select id="contactType">
+                                <option value="QQ">QQ</option>
+                                <option value="VX">微信</option>
+                                <option value="MHS">米画师</option>
+                                <option value="RED">小红书</option>
+                                <option value="OTHER">其他</option>
+                            </select>
+                            <input type="text" id="contact" placeholder="请输入联系方式">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startTime">开始时间</label>
+                            <input type="date" id="startTime" onchange="calculateDeadline()">
+                        </div>
+                        <div class="form-group">
+                            <label for="deadline">截稿时间</label>
+                            <input type="date" id="deadline">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>设置选项</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="usage">用途</label>
+                            <select id="usage">
+                                <option value="personal">自用/无盈利/同人商用*1（默认）</option>
+                                <option value="private">不公开展示*1.5</option>
+                                <option value="buyout">买断（可要求不公开）*2</option>
+                                <option value="enterprise">企业/书店/出版社等*3</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="urgent">加急</label>
+                            <select id="urgent">
+                                <option value="normal">无（默认）</option>
+                                <option value="oneWeek">一周*1.5</option>
+                                <option value="seventyTwoHours">72H*2</option>
+                                <option value="fortyEightHours">48H*2.5</option>
+                                <option value="twentyFourHours">24H*3</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="sameModel">同模系数</label>
+                            <select id="sameModel">
+                                <option value="basic">改字、色、柄图*0.5</option>
+                                <option value="advanced">改字、色、柄图、元素*0.8</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="discount">折扣系数</label>
+                            <select id="discount">
+                                <option value="none">无*1（默认）</option>
+                                <option value="sample">上次合作寄样*0.9</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="platform">平台手续费</label>
+                            <select id="platform">
+                                <option value="none">无（默认）</option>
+                                <option value="mihua">米画师*5%</option>
+                                <option value="painter">画加*5%</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-col gap-2 flex-1">
+                            <label for="otherFeesList">其他费用</label>
+                            <div class="d-flex gap-2">
+                                <select id="otherFeeType" onchange="updateOtherFeeAmount()" class="flex-1">
+                                    <option value="custom">自定义</option>
+                                    <!-- 其他费用类别将通过JavaScript动态添加 -->
+                                </select>
+                                <input type="text" id="customOtherFeeName" placeholder="费用名称" class="w-120">
+                                <input type="number" id="otherFeeAmount" placeholder="请输入费用金额" min="0" step="1" class="w-120">
+                            </div>
+                            <div id="dynamicOtherFees" class="mt-2 flex-col gap-2">
+                                <!-- 动态添加的其他费用将显示在这里 -->
+                            </div>
+                            <button class="btn small self-start" onclick="addDynamicOtherFee()">+ 其他费用</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>制品信息</h2>
+                    <div id="productsContainer">
+                        <!-- 制品信息将通过JavaScript动态添加 -->
+                    </div>
+                    <button class="btn add-product" onclick="addProduct()">+ 制品</button>
+                </div>
+                
+                <div class="section">
+                    <h2>赠品信息</h2>
+                    <div id="giftsContainer">
+                        <!-- 赠品信息将通过JavaScript动态添加 -->
+                    </div>
+                    <button class="btn add-product" onclick="addGift()">+ 赠品</button>
+                </div>
+                
+                <!-- 计算报价按钮 -->
+                <div class="calculate-section">
+                    <button class="btn calculate-btn" onclick="calculatePrice()">计算报价</button>
+                </div>
+            </div>
+
+            <!-- 报价页 -->
+            <div id="quote" class="page">
+                <div class="section">
+                    <div class="quote-header d-flex justify-between items-center mb-4">
+                        <h2>小票</h2>
+                        <div class="quote-actions">
+                            <button class="btn" onclick="toggleReceiptCustomizationPanel()">小票设置</button>
+                            <button class="btn" onclick="saveQuoteAsImage()">保存图片</button>
+                            <button class="btn" onclick="saveToHistory()">保存历史</button>
+                        </div>
+                    </div>
+                    <div id="quoteContent" class="quote-content">
+                        <!-- 报价内容将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+                
+                <!-- 小票设置面板 -->
+                <div id="receiptCustomizationPanel" class="section d-none">
+                    <h2>小票设置</h2>
+                    
+                    <!-- 小票头部设置 -->
+                    <div class="section">
+                        <h3>小票头部</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="receiptHeaderImage">小票头部图片</label>
+                                <input type="file" id="receiptHeaderImage" accept="image/*" onchange="handleReceiptImageUpload('headerImage', this.files[0])" title="推荐尺寸: 宽度不超过300px" style="display: none;">
+                                <button type="button" class="upload-btn" onclick="document.getElementById('receiptHeaderImage').click()">上传图片</button>
+                                <small class="text-gray">推荐尺寸: 宽度不超过300px，高度自适应</small>
+                                <div id="headerImagePreview" class="image-preview"></div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="receiptTitleText">小票标题</label>
+                                <input type="text" id="receiptTitleText" placeholder="例如：LIST 或 个人作品报价单" onchange="updateReceiptCustomization('titleText', this.value)">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="receiptOrderNotification">订单通知</label>
+                                <input type="text" id="receiptOrderNotification" placeholder="例如：XXX（未单主ID），你有一份订单请查收~" onchange="updateReceiptInfo('orderNotification', this.value)">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <div class="checkbox-row">
+                                    <div class="checkbox-item">
+                                        <input type="checkbox" id="showStartTime" onchange="updateReceiptInfo('showStartTime', this.checked)" checked>
+                                        <span>显示开始时间</span>
+                                    </div>
+                                    <div class="checkbox-item">
+                                        <input type="checkbox" id="showDeadline" onchange="updateReceiptInfo('showDeadline', this.checked)" checked>
+                                        <span>显示截稿时间</span>
+                                    </div>
+                                    <div class="checkbox-item">
+                                        <input type="checkbox" id="showDesigner" onchange="updateReceiptInfo('showDesigner', this.checked)" checked>
+                                        <span>显示设计师</span>
+                                    </div>
+                                    <div class="checkbox-item">
+                                        <input type="checkbox" id="showContactInfo" onchange="updateReceiptInfo('showContactInfo', this.checked)" checked>
+                                        <span>显示联系方式</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="receiptCustomText">自定义文本</label>
+                                <input type="text" id="receiptCustomText" placeholder="输入自定义文本" onchange="updateReceiptInfo('customText', this.value)">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 小票尾部设置 -->
+                    <div class="section">
+                        <h3>小票尾部</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="receiptFooterText1">小票尾部文本1</label>
+                                <input type="text" id="receiptFooterText1" placeholder="例如：感谢惠顾！" onchange="updateReceiptCustomization('footerText1', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="receiptFooterText2">小票尾部文本2</label>
+                                <input type="text" id="receiptFooterText2" placeholder="例如：此报价单有效期7天" onchange="updateReceiptCustomization('footerText2', this.value)">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="receiptFooterImage">小票尾部图片</label>
+                                <input type="file" id="receiptFooterImage" accept="image/*" onchange="handleReceiptImageUpload('footerImage', this.files[0])" title="推荐尺寸: 宽度不超过200px" style="display: none;">
+                                <button type="button" class="upload-btn" onclick="document.getElementById('receiptFooterImage').click()">上传图片</button>
+                                <small class="text-gray">推荐尺寸: 宽度不超过200px，高度自适应</small>
+                                <div id="footerImagePreview" class="image-preview"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <button class="btn" onclick="clearReceiptCustomization()">清除设置</button>
+                        <button class="btn" onclick="closeReceiptCustomizationPanel()">保存设置</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>历史记录</h2>
+                    <div class="form-row">
+                        <div class="form-group w-full">
+                            <div class="d-flex gap-2">
+                                <input type="text" id="historySearchInput" placeholder="输入关键词搜索历史记录..." class="flex-1" oninput="searchHistory()">
+                                <button class="btn" onclick="clearHistorySearch()">清空</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="historyContainer" class="history-container">
+                        <!-- 历史记录将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设置页 -->
+            <div id="settings" class="page">
+                <!-- 美工信息 -->
+                <div class="section">
+                    <h2>美工信息</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="artistId">美工ID</label>
+                            <input type="text" id="artistId" placeholder="请输入美工ID" onchange="updateArtistInfo('id', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label for="artistContact">联系方式</label>
+                            <input type="text" id="artistContact" placeholder="请输入联系方式" onchange="updateArtistInfo('contact', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label for="defaultDuration">默认工期（天）</label>
+                            <input type="number" id="defaultDuration" placeholder="请输入默认工期" min="0" step="1" onchange="updateArtistInfo('defaultDuration', this.value)">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="d-flex justify-between items-center mb-4">
+                        <h2>制品设置</h2>
+                        <div class="d-flex gap-2">
+                            <button class="btn add-product-setting" onclick="openAddProductModal()">+ 制品设置</button>
+                            <button class="btn secondary" onclick="document.getElementById('excelImportInput').click()">Excel导入</button>
+                            <button class="btn secondary" onclick="exportToExcel()">Excel导出</button>
+                            <input type="file" id="excelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importFromExcel(event)">
+                        </div>
+                    </div>
+                    <div id="productSettingsContainer">
+                    <!-- 制品设置将通过JavaScript动态添加 -->
+                    </div>
+                
+                    <!-- 添加制品弹窗 -->
+                    <div id="addProductModal" class="modal d-none">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3>添加制品设置</h3>
+                                <span class="close" onclick="closeAddProductModal()">&times;</span>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>分类</label>
+                                        <div style="position: relative;">
+                                            <input type="text" id="newProductCategory" list="categorySuggestions" placeholder="选择或输入分类名称">
+                                            <datalist id="categorySuggestions">
+                                                <!-- 分类建议将通过JavaScript动态添加 -->
+                                            </datalist>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>制品名称</label>
+                                        <input type="text" id="newProductName" placeholder="请输入制品名称">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>计价方式</label>
+                                        <select id="newProductPriceType">
+                                            <option value="fixed">固定价</option>
+                                            <option value="double">单双面价</option>
+                                            <option value="config">基础+递增价</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- 固定价设置 -->
+                                <div id="fixedPriceSettings" class="price-settings">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>固定价格</label>
+                                            <input type="number" id="newProductPrice" placeholder="请输入固定价格" min="0" step="1">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 单双面价设置 -->
+                                <div id="doublePriceSettings" class="price-settings d-none">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>单面价格</label>
+                                            <input type="number" id="newProductPriceSingle" placeholder="请输入单面价格" min="0" step="1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>双面价格</label>
+                                            <input type="number" id="newProductPriceDouble" placeholder="请输入双面价格" min="0" step="1">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 基础+递增价设置 -->
+                                <div id="configPriceSettings" class="price-settings d-none">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>基础配置</label>
+                                            <input type="text" id="newProductBaseConfig" placeholder="例如：1插+1底座">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>基础价</label>
+                                            <input type="number" id="newProductBasePrice" placeholder="请输入基础价" min="0" step="1">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group flex-1">
+                                            <label>递增配置项</label>
+                                            <div id="additionalConfigsContainer"></div>
+                                            <button type="button" class="btn secondary mt-2" onclick="addAdditionalConfig()">+ 配置项</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn" onclick="saveNewProduct()">保存</button>
+                                <button class="btn secondary" onclick="closeAddProductModal()">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="d-flex justify-between items-center mb-4">
+                        <h2>系数设置</h2>
+                        <button class="btn add-product-setting" onclick="openAddCoefficientModal()">+ 系数设置</button>
+                    </div>
+
+                    <!-- 用途系数 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('usageCoefficient')">
+                            <div class="category-title">用途系数</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="usageCoefficient-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="coefficient-settings" id="usageCoefficientSettings">
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="1" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUsageCoefficient('personal', this.value)">
+                                                <input type="text" value="自用/无盈利/同人商用" class="flex-1" 
+                                                       onchange="updateUsageCoefficientName('personal', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="1.5" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUsageCoefficient('private', this.value)">
+                                                <input type="text" value="不公开展示" class="flex-1" 
+                                                       onchange="updateUsageCoefficientName('private', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="2" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUsageCoefficient('buyout', this.value)">
+                                                <input type="text" value="买断（可要求不公开）" class="flex-1" 
+                                                       onchange="updateUsageCoefficientName('buyout', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="3" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUsageCoefficient('enterprise', this.value)">
+                                                <input type="text" value="企业/书店/出版社等" class="flex-1" 
+                                                       onchange="updateUsageCoefficientName('enterprise', this.value)">
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 加急系数 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('urgentCoefficient')">
+                            <div class="category-title">加急系数</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="urgentCoefficient-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="coefficient-settings">
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="1" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUrgentCoefficient('normal', this.value)">
+                                                <input type="text" value="无（默认）" class="flex-1" 
+                                                       onchange="updateUrgentCoefficientName('normal', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="1.5" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUrgentCoefficient('oneWeek', this.value)">
+                                                <input type="text" value="一周" class="flex-1" 
+                                                       onchange="updateUrgentCoefficientName('oneWeek', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="2" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUrgentCoefficient('seventyTwoHours', this.value)">
+                                                <input type="text" value="72H" class="flex-1" 
+                                                       onchange="updateUrgentCoefficientName('seventyTwoHours', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="2.5" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUrgentCoefficient('fortyEightHours', this.value)">
+                                                <input type="text" value="48H" class="flex-1" 
+                                                       onchange="updateUrgentCoefficientName('fortyEightHours', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="3" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateUrgentCoefficient('twentyFourHours', this.value)">
+                                                <input type="text" value="24H" class="flex-1" 
+                                                       onchange="updateUrgentCoefficientName('twentyFourHours', this.value)">
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 同模系数 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('sameModelCoefficient')">
+                            <div class="category-title">同模系数</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="sameModelCoefficient-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="coefficient-settings">
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="0.5" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateSameModelCoefficient('basic', this.value)">
+                                                <input type="text" value="改字、色、柄图" class="flex-1" 
+                                                       onchange="updateSameModelCoefficientName('basic', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="0.8" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateSameModelCoefficient('advanced', this.value)">
+                                                <input type="text" value="改字、色、柄图、元素" class="flex-1" 
+                                                       onchange="updateSameModelCoefficientName('advanced', this.value)">
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 折扣系数 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('discountCoefficient')">
+                            <div class="category-title">折扣系数</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="discountCoefficient-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="coefficient-settings">
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="1" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateDiscountCoefficient('none', this.value)">
+                                                <input type="text" value="无（默认）" class="flex-1" 
+                                                       onchange="updateDiscountCoefficientName('none', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="0.9" min="0" step="0.1" class="w-80" 
+                                                       onchange="updateDiscountCoefficient('sample', this.value)">
+                                                <input type="text" value="上次合作寄样" class="flex-1" 
+                                                       onchange="updateDiscountCoefficientName('sample', this.value)">
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 平台手续费 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('platformFee')">
+                            <div class="category-title">平台手续费</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="platformFee-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="coefficient-settings">
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="0" min="0" step="0.1" class="w-80" 
+                                                       onchange="updatePlatformFee('none', this.value)">
+                                                <input type="text" value="无（默认）" class="flex-1" 
+                                                       onchange="updatePlatformFeeName('none', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="5" min="0" step="0.1" class="w-80" 
+                                                       onchange="updatePlatformFee('mihua', this.value)">
+                                                <input type="text" value="米画师" class="flex-1" 
+                                                       onchange="updatePlatformFeeName('mihua', this.value)">
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="d-flex items-center gap-2">
+                                                <input type="number" value="5" min="0" step="0.1" class="w-80" 
+                                                       onchange="updatePlatformFee('painter', this.value)">
+                                                <input type="text" value="画加" class="flex-1" 
+                                                       onchange="updatePlatformFeeName('painter', this.value)">
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 其他费用 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('otherFees')">
+                            <div class="category-title">其他费用</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="otherFees-content">
+                            
+                            <!-- 其他费用类别 -->
+                            <div class="form-row mt-4">
+                                <div class="form-group flex-1">
+                                    <label>其他费用类别</label>
+                                    <div class="d-flex gap-2 mt-2">
+                                        <input type="text" id="newOtherFeeName" placeholder="费用名称" class="flex-1">
+                                        <input type="number" id="newOtherFeeAmount" placeholder="金额" min="0" step="1" class="w-120">
+                                        <button class="btn" onclick="addOtherFee()">添加</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 其他费用列表 -->
+                            <div id="otherFeesList" class="other-fees-list mt-4 ml-4">
+                                <!-- 其他费用列表将通过JavaScript动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 工艺设置 -->
+                <div class="section">
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('process')">
+                            <div class="category-title">工艺设置</div>
+                            <div class="category-actions">
+                                <button class="btn add-process-setting" onclick="openAddProcessModal()">+ 工艺设置</button>
+                                <div class="category-toggle">▼</div>
+                            </div>
+                        </div>
+                        <div class="category-content d-none" id="process-content">
+                            <div id="processSettingsContainer">
+                                <!-- 工艺设置将通过JavaScript动态添加 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 添加系数弹窗 -->
+                <div id="addCoefficientModal" class="modal d-none">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>添加系数</h3>
+                            <span class="close" onclick="closeAddCoefficientModal()">&times;</span>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="coefficientCategory">系数大类</label>
+                                    <select id="coefficientCategory" onchange="updateCoefficientSubType()">
+                                        <option value="pricingUp">加价类</option>
+                                        <option value="pricingDown">减价类</option>
+                                        <option value="pricingOther">其他类</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="coefficientType">系数小类</label>
+                                    <input type="text" id="coefficientType" list="coefficientTypeSuggestions" placeholder="例如：用途系数、加急系数">
+                                    <datalist id="coefficientTypeSuggestions">
+                                        <option value="用途系数">
+                                        <option value="加急系数">
+                                        <option value="折扣系数">
+                                        <option value="同模系数">
+                                        <option value="平台手续费">
+                                    </datalist>
+                                    <small>可直接输入新系数小类</small>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>系数值项</label>
+                                    <div id="coefficientItemsContainer" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                        <!-- 系数值项将通过JavaScript动态添加 -->
+                                    </div>
+                                    <button type="button" class="btn secondary mt-2" onclick="addCoefficientItem()">+ 系数值</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn" onclick="saveNewCoefficient()">保存</button>
+                            <button class="btn secondary" onclick="closeAddCoefficientModal()">取消</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 添加工艺设置弹窗 -->
+                <div id="addProcessModal" class="modal d-none">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>添加工艺设置</h3>
+                            <span class="close" onclick="closeAddProcessModal()">&times;</span>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="newProcessName">工艺名称</label>
+                                    <input type="text" id="newProcessName" placeholder="请输入工艺名称">
+                                </div>
+                                <div class="form-group">
+                                    <label for="newProcessPrice">价格（每层）</label>
+                                    <input type="number" id="newProcessPrice" value="10" min="0" step="1">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn" onclick="saveNewProcess()">保存</button>
+                            <button class="btn secondary" onclick="closeAddProcessModal()">取消</button>
+                        </div>
+                    </div>
+                </div>
+                
+                
+                
+                <div class="d-flex gap-2">
+                    <button class="btn save-settings" onclick="saveSettings()">保存设置</button>
+                    <button class="btn secondary" onclick="resetToDefaultSettings()">恢复默认设置</button>
+                </div>
+            </div>
+            
+
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
