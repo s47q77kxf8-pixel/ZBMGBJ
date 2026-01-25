@@ -902,7 +902,7 @@ input:focus, select:focus {
     border-radius: 50%;
     background: var(--primary-color);
     color: white;
-    display: none; /* 默认隐藏，由JavaScript控制显示 */
+    display: flex; /* 默认显示，JavaScript会在非计算页时隐藏 */
     align-items: center;
     justify-content: center;
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);

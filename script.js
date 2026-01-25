@@ -361,15 +361,23 @@ function init() {
         }
         
         // 初始化悬浮计算按钮的显示状态
-        const floatingBtn = document.querySelector('.floating-calculate-btn');
-        if (floatingBtn) {
-            const calculatorPage = document.getElementById('calculator');
-            if (calculatorPage && calculatorPage.classList.contains('active')) {
-                floatingBtn.style.display = 'flex';
-            } else {
-                floatingBtn.style.display = 'none';
+        function updateFloatingButton() {
+            const floatingBtn = document.querySelector('.floating-calculate-btn');
+            if (floatingBtn) {
+                const calculatorPage = document.getElementById('calculator');
+                if (calculatorPage && calculatorPage.classList.contains('active')) {
+                    floatingBtn.style.display = 'flex';
+                } else {
+                    floatingBtn.style.display = 'none';
+                }
             }
         }
+        
+        // 立即执行一次
+        updateFloatingButton();
+        
+        // 延迟执行一次，确保DOM完全加载
+        setTimeout(updateFloatingButton, 100);
     });
 }
 
