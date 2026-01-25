@@ -1968,10 +1968,8 @@ function generateQuote() {
     }
     
     // 总金额（显示在平台费之前，折扣后金额+其他费用）
-    // 只有在有折扣、其他费用或两者都有时才显示总金额行
-    if (down !== 1 || quoteData.totalOtherFees > 0) {
-        html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">总金额</div><div class="receipt-summary-value">¥${totalBeforePlat.toFixed(2)}</div></div>`;
-    }
+    // 总金额应该总是显示，无论是否有折扣或其他费用
+    html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">总金额</div><div class="receipt-summary-value">¥${totalBeforePlat.toFixed(2)}</div></div>`;
     
     // 平台费
     if (quoteData.platformFeeAmount > 0) {
