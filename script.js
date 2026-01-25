@@ -27,11 +27,11 @@ const defaultSettings = {
     },
     // 加急系数
     urgentCoefficients: {
-        normal: { value: 1, name: '无（默认）' },
-        oneWeek: { value: 1.5, name: '一周' },
-        seventyTwoHours: { value: 2, name: '72H' },
-        fortyEightHours: { value: 2.5, name: '48H' },
-        twentyFourHours: { value: 3, name: '24H' }
+        normal: { value: 1, name: '无' },
+        oneWeek: { value: 1.5, name: '一周加急' },
+        seventyTwoHours: { value: 2, name: '72H加急' },
+        fortyEightHours: { value: 2.5, name: '48H加急' },
+        twentyFourHours: { value: 3, name: '24H加急' }
     },
     // 同模系数
     sameModelCoefficients: {
@@ -40,12 +40,12 @@ const defaultSettings = {
     },
     // 折扣系数
     discountCoefficients: {
-        none: { value: 1, name: '无（默认）' },
+        none: { value: 1, name: '无' },
         sample: { value: 0.9, name: '上次合作寄样' }
     },
     // 平台手续费
     platformFees: {
-        none: { value: 0, name: '无（默认）' },
+        none: { value: 0, name: '无' },
         mihua: { value: 5, name: '米画师' },
         painter: { value: 5, name: '画加' }
     },
@@ -834,17 +834,35 @@ function calculatePrice() {
     const platformFee = getCoefficientValue(defaultSettings.platformFees[platformType]) || 0;
     // 扩展加价类、折扣类的选中值
     let extraUpProduct = 1;
+    const extraUpSelections = [];
     (defaultSettings.extraPricingUp || []).forEach(e => {
         const sel = document.getElementById('extraUp_' + e.id);
         if (sel && sel.value && e.options && e.options[sel.value] != null) {
-            extraUpProduct *= getCoefficientValue(e.options[sel.value]) || 1;
+            const option = e.options[sel.value];
+            const value = getCoefficientValue(option) || 1;
+            extraUpProduct *= value;
+            extraUpSelections.push({
+                id: e.id,
+                selectedKey: sel.value,
+                optionName: (option && option.name) ? option.name : sel.value,
+                value: value
+            });
         }
     });
     let extraDownProduct = 1;
+    const extraDownSelections = [];
     (defaultSettings.extraPricingDown || []).forEach(e => {
         const sel = document.getElementById('extraDown_' + e.id);
         if (sel && sel.value && e.options && e.options[sel.value] != null) {
-            extraDownProduct *= getCoefficientValue(e.options[sel.value]) || 1;
+            const option = e.options[sel.value];
+            const value = getCoefficientValue(option) || 1;
+            extraDownProduct *= value;
+            extraDownSelections.push({
+                id: e.id,
+                selectedKey: sel.value,
+                optionName: (option && option.name) ? option.name : sel.value,
+                value: value
+            });
         }
     });
     const pricingUpProduct = usage * urgent * extraUpProduct;
@@ -1136,6 +1154,11 @@ function calculatePrice() {
         urgent: urgent,
         sameModelCoefficient: sameModelCoefficient,
         discount: discount,
+        usageType: usageType,
+        urgentType: urgentType,
+        discountType: discountType,
+        extraUpSelections: extraUpSelections,
+        extraDownSelections: extraDownSelections,
         pricingUpProduct: pricingUpProduct,
         pricingDownProduct: pricingDownProduct,
         otherFees: dynamicOtherFees,
@@ -1250,14 +1273,7 @@ function generateQuote() {
     `;
     
     // 按大类分组显示制品
-    let currentCategory = '';
     quoteData.productPrices.forEach((item) => {
-        // 如果大类改变，添加空行
-        if (currentCategory && item.category !== currentCategory) {
-            html += `<div class="receipt-divider"></div>`;
-        }
-        currentCategory = item.category;
-        
         // 判断是否满足乘法（无同模、无工艺、无配件时，fixed/double可合并；config永远不合并）
         const hasSameModel = item.sameModelCount > 0;
         const hasProcess = item.processDetails && item.processDetails.length > 0;
@@ -1293,15 +1309,19 @@ function generateQuote() {
         } else {
             // 需要拆明细
             if (item.productType === 'config') {
-                // config：总览行显示成品单价（规范要求）
-                html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${finishedProductUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                // config：无同模无工艺时显示成品单价，有同模或工艺时显示"—"（规范要求）
+                if (!hasSameModel && !hasProcess) {
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${finishedProductUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                } else {
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                }
             } else {
                 // fixed/double：总览行单价留空
                 html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
             }
             
             // 明细：全价制品行
-            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 全价制品</div><div class="receipt-col-1">¥${fullPriceUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">¥${(fullPriceUnitPrice * fullPriceQuantity).toFixed(2)}</div></div>`;
+            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${fullPriceUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">¥${(fullPriceUnitPrice * fullPriceQuantity).toFixed(2)}</div></div>`;
             
             // config：树形明细（仅单价，不显示数量和小计）
             if (item.productType === 'config' && item.baseConfig) {
@@ -1317,31 +1337,31 @@ function generateQuote() {
                     }
                     baseConfigVal = item.basePrice - additionalTotal;
                 }
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">¥${baseConfigVal.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">¥${baseConfigVal.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                 
                 // 配件明细（仅单价）
                 if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
                     item.additionalConfigDetails.forEach(config => {
                         // 每件该配件合计价
                         const perPiecePrice = config.price * config.count;
-                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${config.name}*${config.count}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${config.name}×${config.count}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     });
                 } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
                     // 兼容旧格式
                     const perPiecePrice = item.additionalPrice * item.totalAdditionalCount;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}*${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}×${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                 }
             }
             
             // 同模制品行
             if (hasSameModel) {
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 同模制品(${sameModelRate}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelRate}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
             }
             
             // 工艺行（按每层单价分组，同单价的工艺合并为一行）
             if (hasProcess) {
                 // 先显示"工艺"标题行
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 工艺</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 工艺</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                 
                 // 按每层单价分组（不是按工艺单价分组）
                 const processGroupsByLayerPrice = {};
@@ -1355,19 +1375,24 @@ function generateQuote() {
                     processGroupsByLayerPrice[key].push(process);
                 });
                 
-                // 显示每个每层单价组的工艺（树形结构）
+                // 显示每个每层单价组的工艺（每行最多显示2个）
                 for (const [layerPriceKey, processes] of Object.entries(processGroupsByLayerPrice)) {
                     const pricePerLayer = parseFloat(layerPriceKey);
-                    // 累计层数
-                    const totalLayers = processes.reduce((sum, p) => sum + p.layers, 0);
-                    // 计费数量 = 总层数 × 件数
-                    const chargeQuantity = totalLayers * item.quantity;
-                    // 总费用
-                    const totalFee = processes.reduce((sum, p) => sum + p.fee, 0);
-                    // 工艺名称（格式：工艺名×层数、工艺名×层数）
-                    const processNamesWithLayers = processes.map(p => `${p.name}×${p.layers}`).join('、');
                     
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${processNamesWithLayers}</div><div class="receipt-col-1">¥${pricePerLayer.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantity}</div><div class="receipt-col-1">¥${totalFee.toFixed(2)}</div></div>`;
+                    // 将工艺分组，每行最多2个
+                    for (let i = 0; i < processes.length; i += 2) {
+                        const processesInRow = processes.slice(i, i + 2);
+                        // 累计层数（仅当前行的工艺）
+                        const totalLayers = processesInRow.reduce((sum, p) => sum + p.layers, 0);
+                        // 计费数量 = 总层数 × 件数
+                        const chargeQuantity = totalLayers * item.quantity;
+                        // 总费用（仅当前行的工艺）
+                        const totalFee = processesInRow.reduce((sum, p) => sum + p.fee, 0);
+                        // 工艺名称（格式：工艺名×层数、工艺名×层数，最多2个）
+                        const processNamesWithLayers = processesInRow.map(p => `${p.name}×${p.layers}`).join('、');
+                        
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">${processNamesWithLayers}</div><div class="receipt-col-1">¥${pricePerLayer.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantity}</div><div class="receipt-col-1">¥${totalFee.toFixed(2)}</div></div>`;
+                    }
                 }
             }
         }
@@ -1378,7 +1403,7 @@ function generateQuote() {
     
     // 显示赠品信息（如果有）
     if (quoteData.giftPrices && quoteData.giftPrices.length > 0) {
-        html += `<div class="receipt-divider"></div><h3 class="receipt-text-sm" style="font-weight: bold; margin: 0.5rem 0;text-align:center;">赠品信息</h3>`;
+        html += `<div class="receipt-divider receipt-divider-full"></div><h3 class="receipt-text-sm" style="font-weight: bold; margin: 0.5rem 0;text-align:center;">赠品信息</h3>`;
         
         // 按大类分组显示赠品
         let giftCurrentCategory = '';
@@ -1428,8 +1453,8 @@ function generateQuote() {
                     html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span style="color: green; font-weight: bold; font-size: 1.1em;">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
                 }
                 
-                // 明细：全价制品行（赠品价格不划线，但小计为0）
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 全价制品</div><div class="receipt-col-1">¥${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1" style="color: green; font-weight: bold;">¥0.00</div></div>`;
+                // 明细：全价制品行（赠品显示原价）
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1">¥${(fullPriceUnitPriceGift * fullPriceQuantityGift).toFixed(2)}</div></div>`;
                 
                 // config：树形明细（仅单价，不显示数量和小计）
                 if (item.productType === 'config' && item.baseConfig) {
@@ -1443,29 +1468,29 @@ function generateQuote() {
                         }
                         baseConfigValGift = item.basePrice - additionalTotalGift;
                     }
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">¥${baseConfigValGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">¥${baseConfigValGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     
                     // 配件明细（仅单价）
                     if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
                         item.additionalConfigDetails.forEach(config => {
                             const perPiecePriceGift = config.price * config.count;
-                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${config.name}*${config.count}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${config.name}×${config.count}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                         });
                     } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
                         const perPiecePriceGift = item.additionalPrice * item.totalAdditionalCount;
-                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}*${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}×${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     }
                 }
                 
-                // 同模制品行（赠品价格不划线，但小计为0）
+                // 同模制品行（赠品显示原价）
                 if (hasSameModelGift) {
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 同模制品(${sameModelRateGift}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1" style="color: green; font-weight: bold;">¥0.00</div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelRateGift}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
                 }
                 
                 // 工艺行（按每层单价分组，同单价的工艺合并为一行）
                 if (hasProcessGift) {
                     // 先显示"工艺"标题行
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">• 工艺</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 工艺</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     
                     // 按每层单价分组（不是按工艺单价分组）
                     const processGroupsByLayerPriceGift = {};
@@ -1478,19 +1503,24 @@ function generateQuote() {
                         processGroupsByLayerPriceGift[key].push(process);
                     });
                     
-                    // 显示每个每层单价组的工艺（树形结构）
+                    // 显示每个每层单价组的工艺（每行最多显示2个，显示原价）
                     for (const [layerPriceKey, processes] of Object.entries(processGroupsByLayerPriceGift)) {
                         const pricePerLayerGift = parseFloat(layerPriceKey);
-                        // 累计层数
-                        const totalLayersGift = processes.reduce((sum, p) => sum + p.layers, 0);
-                        // 计费数量 = 总层数 × 件数
-                        const chargeQuantityGift = totalLayersGift * item.quantity;
-                        // 总费用（赠品显示为0）
-                        const totalFeeGift = 0;
-                        // 工艺名称（格式：工艺名×层数、工艺名×层数）
-                        const processNamesWithLayersGift = processes.map(p => `${p.name}×${p.layers}`).join('、');
                         
-                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-sub-row-indent"></div><div class="receipt-col-2">└ ${processNamesWithLayersGift}</div><div class="receipt-col-1">¥${pricePerLayerGift.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantityGift}</div><div class="receipt-col-1" style="color: green; font-weight: bold;">¥0.00</div></div>`;
+                        // 将工艺分组，每行最多2个
+                        for (let i = 0; i < processes.length; i += 2) {
+                            const processesInRow = processes.slice(i, i + 2);
+                            // 累计层数（仅当前行的工艺）
+                            const totalLayersGift = processesInRow.reduce((sum, p) => sum + p.layers, 0);
+                            // 计费数量 = 总层数 × 件数
+                            const chargeQuantityGift = totalLayersGift * item.quantity;
+                            // 总费用（赠品显示原价）
+                            const totalFeeGift = processesInRow.reduce((sum, p) => sum + p.fee, 0);
+                            // 工艺名称（格式：工艺名×层数、工艺名×层数，最多2个）
+                            const processNamesWithLayersGift = processesInRow.map(p => `${p.name}×${p.layers}`).join('、');
+                            
+                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">${processNamesWithLayersGift}</div><div class="receipt-col-1">¥${pricePerLayerGift.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantityGift}</div><div class="receipt-col-1">¥${totalFeeGift.toFixed(2)}</div></div>`;
+                        }
                     }
                 }
             }
@@ -1507,26 +1537,210 @@ function generateQuote() {
     const base = quoteData.totalProductsPrice;
     
     html += `<div class="receipt-summary"><div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">¥${base.toFixed(2)}</div></div>`;
-    if (addAmount !== 0) {
-        const afterUp = base * up;
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">加价 ${up}×（¥${base.toFixed(0)}→¥${afterUp.toFixed(0)}）</div><div class="receipt-summary-value">+¥${addAmount.toFixed(2)}</div></div>`;
-    }
-    if (discountAmount !== 0) {
-        const afterDown = totalWithCoeff;
-        const beforeDown = base * up;
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">折扣 ${down}×（¥${beforeDown.toFixed(0)}→¥${afterDown.toFixed(0)}）</div><div class="receipt-summary-value">¥${discountAmount.toFixed(2)}</div></div>`;
-    }
-    if (quoteData.totalOtherFees > 0 && quoteData.otherFees && quoteData.otherFees.length > 0) {
-        quoteData.otherFees.forEach(fee => {
-            html += `<div class="receipt-summary-row"><div class="receipt-summary-label">${fee.name}</div><div class="receipt-summary-value">¥${fee.amount.toFixed(2)}</div></div>`;
+    
+    // 区块1：加价类系数
+    if (addAmount !== 0 && up !== 1) {
+        html += `<div class="receipt-summary-section">`;
+        // 合计行
+        const upDisplay = parseFloat(up.toFixed(4)).toString();
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">加价合计：${upDisplay}×</div><div class="receipt-summary-value">¥${(base * up).toFixed(2)}</div></div>`;
+        // 详细系数
+        const upCoefficients = [];
+        // 用途系数
+        let usageValue = quoteData.usage || 1;
+        let usageName = '用途系数';
+        if (quoteData.usageType && defaultSettings.usageCoefficients[quoteData.usageType]) {
+            const usageOption = defaultSettings.usageCoefficients[quoteData.usageType];
+            usageValue = getCoefficientValue(usageOption);
+            usageName = (usageOption && usageOption.name) ? usageOption.name : '用途系数';
+        } else if (quoteData.usage !== undefined && quoteData.usage !== 1) {
+            // 向后兼容：从usage值查找匹配的系数选项
+            usageValue = quoteData.usage;
+            for (const [key, option] of Object.entries(defaultSettings.usageCoefficients)) {
+                if (Math.abs(getCoefficientValue(option) - quoteData.usage) < 0.001) {
+                    usageName = (option && option.name) ? option.name : '用途系数';
+                    break;
+                }
+            }
+        }
+        if (usageValue !== 1) {
+            upCoefficients.push({
+                name: usageName,
+                value: usageValue
+            });
+        }
+        // 加急系数
+        let urgentValue = quoteData.urgent || 1;
+        let urgentName = '加急系数';
+        if (quoteData.urgentType && defaultSettings.urgentCoefficients[quoteData.urgentType]) {
+            const urgentOption = defaultSettings.urgentCoefficients[quoteData.urgentType];
+            urgentValue = getCoefficientValue(urgentOption);
+            urgentName = (urgentOption && urgentOption.name) ? urgentOption.name : '加急系数';
+        } else if (quoteData.urgent !== undefined && quoteData.urgent !== 1) {
+            // 向后兼容：从urgent值查找匹配的系数选项
+            urgentValue = quoteData.urgent;
+            for (const [key, option] of Object.entries(defaultSettings.urgentCoefficients)) {
+                if (Math.abs(getCoefficientValue(option) - quoteData.urgent) < 0.001) {
+                    urgentName = (option && option.name) ? option.name : '加急系数';
+                    break;
+                }
+            }
+        }
+        if (urgentValue !== 1) {
+            upCoefficients.push({
+                name: urgentName,
+                value: urgentValue
+            });
+        }
+        // 扩展加价类系数
+        if (quoteData.extraUpSelections && quoteData.extraUpSelections.length > 0) {
+            quoteData.extraUpSelections.forEach(sel => {
+                if (sel.value !== 1) {
+                    upCoefficients.push({
+                        name: sel.optionName || '扩展加价系数',
+                        value: sel.value
+                    });
+                }
+            });
+        }
+        // 向后兼容：如果没有保存扩展系数信息，但up不等于usage*urgent，说明有扩展系数
+        if (upCoefficients.length === 0 && up !== 1) {
+            const calculatedUp = (quoteData.usage || 1) * (quoteData.urgent || 1);
+            if (Math.abs(up - calculatedUp) > 0.001) {
+                // 有扩展系数但未保存详细信息，显示总系数
+                const extraValue = up / calculatedUp;
+                if (Math.abs(extraValue - 1) > 0.001) {
+                    upCoefficients.push({
+                        name: '扩展加价系数',
+                        value: extraValue
+                    });
+                }
+            } else if (Math.abs(calculatedUp - 1) > 0.001) {
+                // 如果calculatedUp !== 1，说明usage或urgent不是1，但它们没有被添加到upCoefficients
+                // 这可能是因为找不到匹配的选项，直接使用值显示
+                if (quoteData.usage !== undefined && quoteData.usage !== 1) {
+                    upCoefficients.push({
+                        name: '用途系数',
+                        value: quoteData.usage
+                    });
+                }
+                if (quoteData.urgent !== undefined && quoteData.urgent !== 1) {
+                    upCoefficients.push({
+                        name: '加急系数',
+                        value: quoteData.urgent
+                    });
+                }
+            }
+        }
+        // 显示系数明细
+        upCoefficients.forEach(coeff => {
+            const coeffDisplay = parseFloat(coeff.value.toFixed(4)).toString();
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value"></div></div>`;
         });
-        html += `<div class="receipt-summary-row" style="font-weight: bold; border-top: 1px dotted #ccc; padding-top: 0.3rem;"><div class="receipt-summary-label">其他费用合计</div><div class="receipt-summary-value">¥${quoteData.totalOtherFees.toFixed(2)}</div></div>`;
+        html += `</div>`;
     }
+    
+    // 区块2：折扣类系数
+    if (discountAmount !== 0 && down !== 1) {
+        html += `<div class="receipt-summary-section">`;
+        // 合计行
+        const downDisplay = parseFloat(down.toFixed(4)).toString();
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">折扣合计：${downDisplay}×</div><div class="receipt-summary-value">-¥${Math.abs(discountAmount).toFixed(2)}</div></div>`;
+        // 详细系数
+        const downCoefficients = [];
+        // 折扣系数
+        let discountValue = quoteData.discount || 1;
+        let discountName = '折扣系数';
+        if (quoteData.discountType && defaultSettings.discountCoefficients[quoteData.discountType]) {
+            const discountOption = defaultSettings.discountCoefficients[quoteData.discountType];
+            discountValue = getCoefficientValue(discountOption);
+            discountName = (discountOption && discountOption.name) ? discountOption.name : '折扣系数';
+        } else if (quoteData.discount !== undefined && quoteData.discount !== 1) {
+            // 向后兼容：从discount值查找匹配的系数选项
+            discountValue = quoteData.discount;
+            for (const [key, option] of Object.entries(defaultSettings.discountCoefficients)) {
+                if (Math.abs(getCoefficientValue(option) - quoteData.discount) < 0.001) {
+                    discountName = (option && option.name) ? option.name : '折扣系数';
+                    break;
+                }
+            }
+        }
+        if (discountValue !== 1) {
+            downCoefficients.push({
+                name: discountName,
+                value: discountValue
+            });
+        }
+        // 扩展折扣类系数
+        if (quoteData.extraDownSelections && quoteData.extraDownSelections.length > 0) {
+            quoteData.extraDownSelections.forEach(sel => {
+                if (sel.value !== 1) {
+                    downCoefficients.push({
+                        name: sel.optionName || '扩展折扣系数',
+                        value: sel.value
+                    });
+                }
+            });
+        }
+        // 向后兼容：如果没有保存扩展系数信息，但down不等于discount，说明有扩展系数
+        if (downCoefficients.length === 0 && down !== 1) {
+            const calculatedDown = quoteData.discount || 1;
+            if (Math.abs(down - calculatedDown) > 0.001) {
+                // 有扩展系数但未保存详细信息，显示总系数
+                const extraValue = down / calculatedDown;
+                if (Math.abs(extraValue - 1) > 0.001) {
+                    downCoefficients.push({
+                        name: '扩展折扣系数',
+                        value: extraValue
+                    });
+                }
+            } else if (Math.abs(calculatedDown - 1) > 0.001) {
+                // 如果calculatedDown !== 1，说明discount不是1，但它没有被添加到downCoefficients
+                // 这可能是因为找不到匹配的选项，直接使用值显示
+                if (quoteData.discount !== undefined && quoteData.discount !== 1) {
+                    downCoefficients.push({
+                        name: '折扣系数',
+                        value: quoteData.discount
+                    });
+                }
+            }
+        }
+        // 显示系数明细
+        downCoefficients.forEach(coeff => {
+            const coeffDisplay = parseFloat(coeff.value.toFixed(4)).toString();
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value"></div></div>`;
+        });
+        html += `</div>`;
+    }
+    
+    // 区块3：其他费用
+    if (quoteData.totalOtherFees > 0 && quoteData.otherFees && quoteData.otherFees.length > 0) {
+        html += `<div class="receipt-summary-section">`;
+        // 合计行
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">其他费用合计</div><div class="receipt-summary-value">¥${quoteData.totalOtherFees.toFixed(2)}</div></div>`;
+        // 详细费用
+        quoteData.otherFees.forEach(fee => {
+            html += `<div class="receipt-summary-fee-detail receipt-summary-row"><div class="receipt-summary-label">${fee.name}</div><div class="receipt-summary-value">¥${fee.amount.toFixed(2)}</div></div>`;
+        });
+        html += `</div>`;
+    }
+    
+    // 总金额（显示在平台费之前，折扣后金额+其他费用）
+    // 只有在有折扣、其他费用或两者都有时才显示总金额行
+    if (down !== 1 || quoteData.totalOtherFees > 0) {
+        html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">总金额</div><div class="receipt-summary-value">¥${totalBeforePlat.toFixed(2)}</div></div>`;
+    }
+    
+    // 平台费
     if (quoteData.platformFeeAmount > 0) {
         const platformFeeRate = quoteData.platformFee || 0;
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%×¥${totalBeforePlat.toFixed(0)}</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
     }
-    html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${quoteData.finalTotal.toFixed(2)}</div></div>`;
+    
+    // 实付金额（只有在有平台费时才显示）
+    if (quoteData.platformFeeAmount > 0) {
+        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${quoteData.finalTotal.toFixed(2)}</div></div>`;
+    }
             
             // 添加底部内容
             html += `<div class="receipt-footer">`;
@@ -2527,13 +2741,13 @@ function openAddCoefficientModal() {
     document.getElementById('addCoefficientModal').classList.remove('d-none');
 }
 
-// 添加一条系数值项（名称 | 系数值 | 删除，默认 无（默认）、1）
+// 添加一条系数值项（名称 | 系数值 | 删除，默认 无、1）
 function addCoefficientItem() {
     const container = document.getElementById('coefficientItemsContainer');
     if (!container) return;
     const div = document.createElement('div');
     div.className = 'coefficient-item-row d-flex gap-2 mb-2 items-center';
-    div.innerHTML = '<input type="text" placeholder="名称" class="flex-1" value="无（默认）"><input type="number" placeholder="系数值" class="w-80" value="1" min="0" step="0.1"><button type="button" class="btn danger xs" onclick="removeCoefficientItem(this)">删除</button>';
+    div.innerHTML = '<input type="text" placeholder="名称" class="flex-1" value="无"><input type="number" placeholder="系数值" class="w-80" value="1" min="0" step="0.1"><button type="button" class="btn danger xs" onclick="removeCoefficientItem(this)">删除</button>';
     container.appendChild(div);
 }
 
@@ -2808,8 +3022,12 @@ function updateCalculatorBuiltinSelects() {
                         const nm = (o && o.name) ? o.name : k;
                         keys.push(k);
                         const escapedName = (nm || k).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                        if (p.key === 'platformFees' && v !== 0) {
-                            html += '<option value="' + k + '">' + escapedName + '*' + v + '%</option>';
+                        if (p.key === 'platformFees') {
+                            if (v === 0) {
+                                html += '<option value="' + k + '">' + escapedName + '*0</option>';
+                            } else {
+                                html += '<option value="' + k + '">' + escapedName + '*' + v + '%</option>';
+                            }
                         } else {
                             html += '<option value="' + k + '">' + escapedName + '*' + (v || 1) + '</option>';
                         }
@@ -3069,7 +3287,13 @@ function renderPlatformFees() {
     if (!container) return;
     
     let html = '';
-    for (const [key, item] of Object.entries(defaultSettings.platformFees)) {
+    // 按系数值升序排序后渲染（与计算页保持一致）
+    const sortedEntries = Object.entries(defaultSettings.platformFees).sort((a, b) => {
+        const va = getCoefficientValue(a[1]);
+        const vb = getCoefficientValue(b[1]);
+        return va - vb;
+    });
+    for (const [key, item] of sortedEntries) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
         const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');

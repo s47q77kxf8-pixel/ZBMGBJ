@@ -488,7 +488,7 @@ input:focus, select:focus {
     padding: 2.5rem;
     border: none;
     border-radius: 0px;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.3;
     box-shadow: none;
     position: relative;
@@ -509,7 +509,7 @@ input:focus, select:focus {
 .receipt-info {
     margin: 0.5rem 0;
     padding-bottom: 0.5rem;
-    border-bottom: 1px dotted #ccc;
+    border-bottom: 1px solid #333;
     text-align: left;
 }
 .receipt-text-sm {
@@ -550,7 +550,7 @@ input:focus, select:focus {
 .receipt-row {
     display: flex;
     margin: 0.2rem 0;
-    font-size: 11px;
+    font-size: 12px;
     font-family: inherit;
 }
 .receipt-header {
@@ -560,6 +560,7 @@ input:focus, select:focus {
     margin-bottom: 0.3rem;
     text-align: center;
     display: flex;
+    font-size: 13px;
 }
 .receipt-col-2 {
     flex: 2;
@@ -571,7 +572,7 @@ input:focus, select:focus {
     flex: 1;
     text-align: right !important;
     min-width: 60px;
-    font-family: inherit;
+    font-family: 'Courier New', monospace;
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -583,6 +584,11 @@ input:focus, select:focus {
     margin: 0.1rem 0;
     font-family: inherit;
     align-items: flex-start;
+}
+.receipt-bullet {
+    font-size: 9px;
+    display: inline-block;
+    margin-right: 0.2rem;
 }
 
 /* 确保子行的单价列和数量列与主行对齐 */
@@ -596,18 +602,31 @@ input:focus, select:focus {
 }
 
 .receipt-sub-row-indent {
-    width: 0.8rem;
+    width: 1.2rem;
     flex-shrink: 0;
     display: block;
     order: -1; /* 将缩进元素移到最前面 */
+}
+/* 与「• 工艺」的「工」字左对齐 */
+.receipt-sub-row-indent-align-craft {
+    width: 1.8rem;
+    flex-shrink: 0;
+    display: block;
+    order: -1;
 }
 .receipt-sub-row div:first-child {
     font-size: 10px;
     margin-right: 0.1rem;
 }
 .receipt-divider {
-    height: 1px;
-    background: #ccc;
+    border: none;
+    border-top: 1px dotted #e5e5e5;
+    max-width: 50%;
+    margin: 0.25rem auto;
+}
+.receipt-divider-full {
+    max-width: none;
+    border-top-color: #ccc;
     margin: 0.4rem 0;
 }
 .receipt-summary {
@@ -618,8 +637,8 @@ input:focus, select:focus {
 .receipt-summary-row {
     display: flex;
     justify-content: space-between;
-    margin: 0.2rem 0;
-    font-size: 11px;
+    margin: 0.1rem 0;
+    font-size: 12px;
 }
 .receipt-summary-label {
     flex: 1;
@@ -644,6 +663,28 @@ input:focus, select:focus {
     font-size: 14px;
     color: #333;
     font-family: inherit;
+}
+.receipt-summary-section {
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+}
+.receipt-summary-section-total {
+    font-weight: bold;
+    font-size: 12px;
+    margin: 0.1rem 0;
+    padding-bottom: 0.15rem;
+}
+.receipt-summary-coefficient-detail {
+    padding-left: 1.6rem;
+    font-size: 11px;
+    margin: 0.06rem 0;
+    color: #666;
+}
+.receipt-summary-fee-detail {
+    padding-left: 1.6rem;
+    font-size: 11px;
+    margin: 0.06rem 0;
+    color: #666;
 }
 .receipt-footer {
     margin-top: 0.8rem;
