@@ -891,3 +891,63 @@ input:focus, select:focus {
     color: var(--text-light);
     font-size: 0.85rem;
 }
+
+/* 计算报价悬浮球按钮 */
+.floating-calculate-btn {
+    position: fixed;
+    bottom: 5rem;
+    right: 1.5rem;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    color: white;
+    display: none; /* 默认隐藏，由JavaScript控制显示 */
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    cursor: pointer;
+    z-index: 999;
+    transition: all 0.3s ease;
+    border: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.floating-calculate-btn:hover {
+    background: var(--primary-hover);
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
+    transform: scale(1.1);
+}
+
+.floating-calculate-btn:active {
+    transform: scale(0.95);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+}
+
+.floating-calculate-btn svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
+}
+
+/* 手机端优化 */
+@media (max-width: 768px) {
+    .floating-calculate-btn {
+        width: 64px;
+        height: 64px;
+        bottom: 5.5rem;
+        right: 1rem;
+        box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
+    }
+    
+    .floating-calculate-btn svg {
+        width: 28px;
+        height: 28px;
+    }
+}
+
+/* 隐藏原来的计算按钮区域 */
+.calculate-section {
+    display: none;
+}

@@ -359,6 +359,17 @@ function init() {
             otherFeeTypeSelect.value = 'custom';
             updateOtherFeeAmount();
         }
+        
+        // 初始化悬浮计算按钮的显示状态
+        const floatingBtn = document.querySelector('.floating-calculate-btn');
+        if (floatingBtn) {
+            const calculatorPage = document.getElementById('calculator');
+            if (calculatorPage && calculatorPage.classList.contains('active')) {
+                floatingBtn.style.display = 'flex';
+            } else {
+                floatingBtn.style.display = 'none';
+            }
+        }
     });
 }
 
@@ -745,6 +756,16 @@ function showPage(pageId) {
     if (pageId === 'calculator') {
         updateCalculatorBuiltinSelects();
         updateCalculatorCoefficientSelects();
+    }
+    
+    // 控制悬浮计算按钮的显示/隐藏
+    const floatingBtn = document.querySelector('.floating-calculate-btn');
+    if (floatingBtn) {
+        if (pageId === 'calculator') {
+            floatingBtn.style.display = 'flex';
+        } else {
+            floatingBtn.style.display = 'none';
+        }
     }
 }
 
