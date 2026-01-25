@@ -532,7 +532,7 @@ input:focus, select:focus {
 .receipt-text-sm {
     margin: 0.2rem 0;
     font-size: 11px;
-    color: #666;
+    color: #333;
     text-align: left;
 }
 
@@ -596,7 +596,7 @@ input:focus, select:focus {
 }
 .receipt-sub-row {
     display: flex;
-    color: #666;
+    color: #333;
     font-size: 11px;
     margin: 0.1rem 0;
     font-family: inherit;
@@ -695,13 +695,13 @@ input:focus, select:focus {
     padding-left: 1.6rem;
     font-size: 11px;
     margin: 0.06rem 0;
-    color: #666;
+    color: #333;
 }
 .receipt-summary-fee-detail {
     padding-left: 1.6rem;
     font-size: 11px;
     margin: 0.06rem 0;
-    color: #666;
+    color: #333;
 }
 .receipt-footer {
     margin-top: 0.8rem;
