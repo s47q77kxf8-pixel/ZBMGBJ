@@ -502,7 +502,7 @@
                     </div>
 
                     <!-- 加价类：用途系数、加急系数，可添加其他 -->
-                    <h3 class="coefficient-class-title">加价类</h3>
+                    <h3 class="coefficient-class-title">加价类<span class="calculation-hint">所有系数相乘</span></h3>
                     <!-- 用途系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('usageCoefficient')">
@@ -710,6 +710,27 @@
                                                 <input type="text" value="画加" class="flex-1" 
                                                        onchange="updatePlatformFeeName('painter', this.value)">
                                             </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 背景费设置 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('backgroundFee')">
+                            <div class="category-title">背景费</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="backgroundFee-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="coefficient-settings">
+                                        <div class="mb-2 d-flex items-center gap-2">
+                                            <input type="text" value="背景费" class="flex-1" readonly>
+                                            <input type="number" id="backgroundFeeInput" value="10" min="0" step="1" class="w-80" 
+                                                   onchange="updateBackgroundFee(this.value)">
                                         </div>
                                     </div>
                                 </div>

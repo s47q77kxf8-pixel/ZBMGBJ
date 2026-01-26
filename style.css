@@ -1445,6 +1445,15 @@ input:checked + .toggle-slider:before {
     to { transform: translateX(0); }
 }
 
+/* 计算提醒样式 */
+.calculation-hint {
+    font-size: 11px;
+    color: #64748b;
+    margin-left: 0.5rem;
+    opacity: 0.8;
+    vertical-align: middle;
+}
+
 /* 历史记录项选中状态 */
 .history-item {
     position: relative;

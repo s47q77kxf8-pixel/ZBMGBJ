@@ -300,6 +300,8 @@ const defaultSettings = {
             }
         }
     ],
+    // 背景费设置
+    backgroundFee: 10,
     // 可扩展的折扣类系数（折扣为内置；此处为后期添加的）
     extraPricingDown: [],
     // 小票自定义设置
@@ -368,6 +370,12 @@ function init() {
         if (otherFeeTypeSelect) {
             otherFeeTypeSelect.value = 'custom';
             updateOtherFeeAmount();
+        }
+        
+        // 初始化背景费输入框
+        const backgroundFeeInput = document.getElementById('backgroundFeeInput');
+        if (backgroundFeeInput) {
+            backgroundFeeInput.value = defaultSettings.backgroundFee || 10;
         }
         
         // 初始化悬浮计算按钮的显示状态
@@ -838,6 +846,7 @@ function addProduct() {
         sides: 'single',
         quantity: 1,
         sameModel: true, // 默认同模为是
+        hasBackground: false,
         processes: {}
     };
     
@@ -964,6 +973,13 @@ function renderProduct(product) {
                 <select id="productSameModel-${product.id}" onchange="updateProduct(${product.id}, 'sameModel', this.value === 'true')">
                     <option value="false" ${product.sameModel ? '' : 'selected'}>否</option>
                     <option value="true" ${product.sameModel ? 'selected' : ''}>是</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="productHasBackground-${product.id}">是否需要背景</label>
+                <select id="productHasBackground-${product.id}" onchange="updateProduct(${product.id}, 'hasBackground', this.value === 'true')">
+                    <option value="false" ${product.hasBackground ? '' : 'selected'}>否</option>
+                    <option value="true" ${product.hasBackground ? 'selected' : ''}>是</option>
                 </select>
             </div>
         </div>
@@ -1281,6 +1297,17 @@ function calculatePrice() {
         const sameModelUnitPrice = basePrice * sameModelCoefficient;
         const sameModelTotal = sameModelCount * sameModelUnitPrice;
         
+        // 计算背景费
+        let backgroundFee = 0;
+        if (product.hasBackground) {
+            const backgroundFeePerProduct = defaultSettings.backgroundFee || 0;
+            // 主制品全额背景费，同模制品应用同模系数
+            const mainBackgroundFee = backgroundFeePerProduct;
+            const sameModelBackgroundUnitPrice = backgroundFeePerProduct * sameModelCoefficient;
+            const sameModelBackgroundTotal = sameModelCount * sameModelBackgroundUnitPrice;
+            backgroundFee = mainBackgroundFee + sameModelBackgroundTotal;
+        }
+        
         // 计算工艺费用
         let totalProcessFee = 0;
         let processDetails = [];
@@ -1312,7 +1339,7 @@ function calculatePrice() {
         
         // 计算制品总价
         const baseProductTotal = basePrice + sameModelTotal;
-        const productTotal = baseProductTotal + totalProcessFee;
+        const productTotal = baseProductTotal + totalProcessFee + backgroundFee;
         
         // 保存制品价格信息
         const productPriceInfo = {
@@ -2861,6 +2888,7 @@ function editHistoryItem(id) {
                     sides: productPrice.sides || 'single',
                     quantity: productPrice.quantity || 1,
                     sameModel: productPrice.sameModelCount > 0,
+                    hasBackground: false,
                     processes: {}
                 };
                 
@@ -3098,6 +3126,7 @@ function loadSelectedTemplate() {
                 sides: productData.sides || 'single',
                 quantity: productData.quantity || 1,
                 sameModel: productData.sameModel !== undefined ? productData.sameModel : true,
+                hasBackground: productData.hasBackground !== undefined ? productData.hasBackground : false,
                 processes: productData.processes || {}
             };
             products.push(product);
@@ -3642,9 +3671,10 @@ function updatePlatformFeeName(type, name) {
     }
 }
 
-
-
-
+// 更新背景费
+function updateBackgroundFee(value) {
+    defaultSettings.backgroundFee = parseFloat(value) || 0;
+}
 
 // 添加其他费用
 function addOtherFee() {
