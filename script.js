@@ -893,6 +893,13 @@ function renderGift(gift) {
                     <option value="true" ${gift.sameModel ? 'selected' : ''}>是</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label for="giftHasBackground-${gift.id}">是否需要背景</label>
+                <select id="giftHasBackground-${gift.id}" onchange="updateGift(${gift.id}, 'hasBackground', this.value === 'true')">
+                    <option value="false" ${gift.hasBackground ? '' : 'selected'}>否</option>
+                    <option value="true" ${gift.hasBackground ? 'selected' : ''}>是</option>
+                </select>
+            </div>
         </div>
         <div id="giftFormOptions-${gift.id}"></div>
         <div class="form-row">
@@ -938,6 +945,7 @@ function addGift() {
         sides: 'single',
         quantity: 1,
         sameModel: true, // 默认同模为是
+        hasBackground: false, // 默认不需要背景
         processes: {}
     };
     
@@ -1459,9 +1467,20 @@ function calculatePrice() {
             });
         }
         
+        // 计算背景费
+        let backgroundFee = 0;
+        if (gift.hasBackground) {
+            const backgroundFeePerProduct = defaultSettings.backgroundFee || 0;
+            // 主制品全额背景费，同模制品应用同模系数
+            const mainBackgroundFee = backgroundFeePerProduct;
+            const sameModelBackgroundUnitPrice = backgroundFeePerProduct * sameModelCoefficient;
+            const sameModelBackgroundTotal = sameModelCount * sameModelBackgroundUnitPrice;
+            backgroundFee = mainBackgroundFee + sameModelBackgroundTotal;
+        }
+        
         // 计算赠品原价
         const baseGiftTotal = basePrice + sameModelTotal;
-        const giftOriginalPrice = baseGiftTotal + totalProcessFee;
+        const giftOriginalPrice = baseGiftTotal + totalProcessFee + backgroundFee;
         
         // 保存赠品价格信息
         const giftPriceInfo = {
@@ -2931,6 +2950,7 @@ function editHistoryItem(id) {
                     sides: giftPrice.sides || 'single',
                     quantity: giftPrice.quantity || 1,
                     sameModel: giftPrice.sameModelCount > 0,
+                    hasBackground: false, // 默认不需要背景
                     processes: {}
                 };
                 
@@ -5659,7 +5679,7 @@ function updateProcessOptions(productId, isGift = false) {
     
     if (!item) return;
     
-    let html = '<div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 1rem;">';
+    let html = '<div style="margin-top: 0.5rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem;">';
     
     // 生成工艺选项，每个工艺可以选择并设置层数
     processSettings.forEach(setting => {
@@ -5667,19 +5687,19 @@ function updateProcessOptions(productId, isGift = false) {
         const layers = item.processes && item.processes[setting.id] ? item.processes[setting.id].layers : 1;
         
         html += `
-            <div style="display: flex; align-items: center; gap: 0.5rem; min-width: 150px;">
-                <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.9rem;">
+            <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem;">
+                <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
                     <input type="checkbox" id="${isGift ? 'gift' : 'product'}Process-${productId}-${setting.id}" ${isChecked} 
                            onchange="toggleProcess(${productId}, ${setting.id}, this.checked, ${isGift})" 
-                           style="cursor: pointer; width: 16px; height: 16px;">
+                           style="cursor: pointer; width: 14px; height: 14px;">
                     <span>${setting.name}</span>
                 </label>
                 <div id="${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${setting.id}" 
-                     style="display: ${isChecked ? 'flex' : 'none'}; align-items: center; gap: 0.25rem;">
+                     style="display: ${isChecked ? 'flex' : 'none'}; align-items: center; gap: 0.25rem; margin-left: 1rem;">
                     <input type="number" id="processLayers-${productId}-${setting.id}" value="${layers}" min="1" step="1" 
                            onchange="updateProcessLayers(${productId}, ${setting.id}, parseInt(this.value), ${isGift})" 
-                           style="width: 50px; padding: 0.15rem 0.25rem; font-size: 0.8rem; border: 1px solid #e0e0e0; border-radius: 4px;">
-                    <span style="font-size: 0.8rem; color: #666;">层</span>
+                           style="width: 40px; padding: 0.15rem; font-size: 0.75rem; border: 1px solid #e0e0e0; border-radius: 3px;">
+                    <span style="font-size: 0.75rem; color: #666;">层</span>
                 </div>
             </div>
         `;
