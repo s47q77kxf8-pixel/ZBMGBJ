@@ -781,6 +781,54 @@ input:checked + .toggle-slider:before {
     }
 }
 
+/* 修复制品设置中基础+递增价的递增配置项在移动端的布局问题 */
+@media (max-width: 768px) {
+    /* 保持水平布局，但调整各元素宽度 */
+    .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+        padding: 0.5rem;
+    }
+    
+    /* 配置名称输入框占主要宽度 */
+    .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input[placeholder="配置名称"] {
+        flex: 2 !important;
+        width: auto !important;
+        min-width: 0;
+        padding: 0.4rem !important;
+        font-size: 0.85rem !important;
+    }
+    
+    /* 价格和单位输入框宽度适中 */
+    .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input[placeholder="价格"] {
+        flex: 1 !important;
+        width: auto !important;
+        min-width: 0;
+        padding: 0.4rem !important;
+        font-size: 0.85rem !important;
+    }
+    
+    .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input[placeholder="单位"] {
+        flex: 0.8 !important;
+        width: auto !important;
+        min-width: 0;
+        padding: 0.4rem !important;
+        font-size: 0.85rem !important;
+    }
+    
+    /* 调整删除按钮大小 */
+    .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded .btn.danger.small {
+        flex: 0 !important;
+        width: auto !important;
+        min-width: 0;
+        padding: 0.4rem 0.6rem !important;
+        font-size: 0.75rem !important;
+        white-space: nowrap;
+    }
+}
+
 .calendar-day {
     min-height: 80px;
     border: 1px solid var(--border-color);
