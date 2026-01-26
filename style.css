@@ -466,7 +466,7 @@ input:focus, select:focus {
     margin-bottom: 0.5rem;
     border: 1px solid #e2e8f0; /* Fallback or var(--border-color) if defined */
     border-radius: 4px;
-    overflow: hidden;
+    overflow: visible;
     background-color: #fff;
 }
 
