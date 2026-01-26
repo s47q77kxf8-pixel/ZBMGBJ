@@ -4114,14 +4114,24 @@ function renderProductSettings() {
     const container = document.getElementById('productSettingsContainer');
     
     // 保存当前展开的分类状态
-    expandedCategories.clear(); // 清空之前的状态
-    const categoryContainers = document.querySelectorAll('.category-container');
-    categoryContainers.forEach(categoryContainer => {
+    const currentlyExpanded = new Set();
+    const existingCategoryContainers = document.querySelectorAll('.category-container');
+    existingCategoryContainers.forEach(categoryContainer => {
         const content = categoryContainer.querySelector('.category-content');
-        if (content && !content.classList.contains('d-none')) {
-            const category = categoryContainer.querySelector('.category-title').textContent;
-            expandedCategories.add(category);
+        const toggle = categoryContainer.querySelector('.category-toggle');
+        if (content && !content.classList.contains('d-none') && toggle && toggle.textContent === '▲') {
+            // 获取类别名称，直接从标题文本获取，这在当前结构下是可靠的
+            const categoryTitle = categoryContainer.querySelector('.category-title');
+            if (categoryTitle) {
+                currentlyExpanded.add(categoryTitle.textContent);
+            }
         }
+    });
+    
+    // 更新全局expandedCategories状态
+    expandedCategories.clear();
+    currentlyExpanded.forEach(category => {
+        expandedCategories.add(category);
     });
     
     // 按类别分组
@@ -4167,14 +4177,19 @@ function renderProductSettings() {
         const categorySettings = sortedCategories[category];
         if (categorySettings.length === 0) return;
         
+        // 检查当前分类是否应该展开
+        const isExpanded = currentlyExpanded.has(category);
+        const toggleText = isExpanded ? '▲' : '▼';
+        const contentClass = isExpanded ? '' : 'd-none';
+        
         html += `
             <div class="category-container">
                 <div class="category-header" onclick="toggleCategory('${category}')">
                     <div class="category-title">${category}</div>
                     <div class="category-count">(${categorySettings.length}个)</div>
-                    <div class="category-toggle">▼</div>
+                    <div class="category-toggle">${toggleText}</div>
                 </div>
-                <div class="category-content d-none" id="${category}-content">
+                <div class="category-content ${contentClass}" id="${category}-content">
         `;
         
         // 渲染该类别的所有制品设置
