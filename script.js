@@ -4501,7 +4501,9 @@ function renderExtraPricingUp() {
     const list = defaultSettings.extraPricingUp || [];
     let html = '';
     for (const e of list) {
-        html += '<div class="category-container"><div class="category-header" onclick="toggleCategory(\'extraUp-' + e.id + '\')"><span class="category-title">' + (e.name || '未命名') + '</span><div style="display: flex; align-items: center; gap: 0.5rem;"><button type="button" class="btn danger xs" onclick="event.stopPropagation();deleteExtraCoefficient(' + e.id + ',\'up\')">删除系数</button><div class="category-toggle">▼</div></div></div>';
+        // 只对非默认系数（ID不是1）显示删除按钮
+        const deleteBtnHtml = e.id !== 1 ? `<button type="button" class="btn danger xs" onclick="event.stopPropagation();deleteExtraCoefficient(${e.id},'up')">删除系数</button>` : '';
+        html += `<div class="category-container"><div class="category-header" onclick="toggleCategory('extraUp-${e.id}')"><span class="category-title">${e.name || '未命名'}</span><div style="display: flex; align-items: center; gap: 0.5rem;">${deleteBtnHtml}<div class="category-toggle">▼</div></div></div>`;
         html += '<div class="category-content d-none" id="extraUp-' + e.id + '-content"><div class="coefficient-settings">';
         // 按系数值升序排序后渲染
         const sortedEntries = Object.entries(e.options || {}).sort((a, b) => {
