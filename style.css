@@ -293,6 +293,59 @@ input:focus, select:focus {
     font-size: 0.9rem;
 }
 
+/* 工艺设置紧凑型布局 */
+.process-item-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.process-item-group {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.process-item-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-light);
+    margin-bottom: 0;
+}
+
+.process-item-input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    background-color: #fff;
+}
+
+.process-item-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.process-item-price {
+    max-width: 120px;
+}
+
+.process-item-delete {
+    flex-shrink: 0;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    align-self: flex-end;
+    margin-bottom: 0;
+}
+
 /* 弹窗样式 */
 .modal {
     position: fixed;
@@ -361,6 +414,119 @@ input:focus, select:focus {
     .form-row {
         flex-direction: column;
         gap: 0.5rem;
+    }
+    
+    /* 计算页单主信息在移动端保持一行两个内容 */
+    #calculator .section:first-of-type .form-row {
+        flex-direction: row !important;
+        gap: 0.5rem !important;
+        flex-wrap: wrap;
+    }
+    
+    #calculator .section:first-of-type .form-row .form-group {
+        flex: 1 1 calc(50% - 0.25rem) !important;
+        min-width: 0;
+    }
+    
+    /* 加价类：用途、加急、其他加价类 - 移动端一行显示两个 */
+    #calculator #pricingUpRow,
+    #calculator #extraPricingUpSelectsRow {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+    }
+    
+    #calculator #pricingUpRow .form-group,
+    #calculator #extraPricingUpSelectsRow .form-group {
+        flex: 1 1 calc(50% - 0.25rem) !important;
+        min-width: 0;
+    }
+    
+    /* 折扣类：折扣系数、其他折扣类 - 移动端一行显示两个 */
+    #calculator #pricingDownRow,
+    #calculator #extraPricingDownSelectsRow {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+    }
+    
+    #calculator #pricingDownRow .form-group,
+    #calculator #extraPricingDownSelectsRow .form-group {
+        flex: 1 1 calc(50% - 0.25rem) !important;
+        min-width: 0;
+    }
+    
+    /* 联系方式选择框和输入框在同一行 - 手机端优化 */
+    #calculator .form-group label[for="contact"] {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: 0.8rem;
+    }
+    
+    /* 联系方式输入框包装器 - 使用flex布局确保在同一行 */
+    #calculator .contact-input-wrapper {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+    }
+    
+    /* 选择框占据20%宽度 - 覆盖全局width: 100% */
+    #calculator #contactType {
+        width: 20% !important;
+        min-width: 60px !important;
+        max-width: 100px !important;
+        flex: 0 0 20% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* 输入框占据剩余空间（约80%） - 覆盖全局width: 100% */
+    #calculator #contact {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        width: auto !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* 同模、平台费 - 移动端一行显示两个（它们已经在同一个form-row中） */
+    #calculator .section:nth-of-type(2) .form-row:has(#sameModel) {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+    }
+    
+    #calculator .section:nth-of-type(2) .form-row:has(#sameModel) .form-group {
+        flex: 1 1 calc(50% - 0.25rem) !important;
+        min-width: 0;
+    }
+    
+    /* 备用方案：如果浏览器不支持:has()，直接选择包含同模和平台费的form-row */
+    @supports not selector(:has(*)) {
+        #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) {
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            gap: 0.5rem !important;
+        }
+        
+        #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) .form-group {
+            flex: 1 1 calc(50% - 0.25rem) !important;
+            min-width: 0;
+        }
+    }
+    
+    /* 其他费用部分在移动端保持垂直布局（因为内容较多） */
+    #calculator .section:nth-of-type(2) .form-row:last-of-type {
+        flex-direction: column !important;
+    }
+    
+    #calculator .section:nth-of-type(2) .form-row:last-of-type .form-group {
+        flex: 1 1 100% !important;
+    }
+    
+    /* 确保其他费用输入框在移动端正常显示 */
+    #calculator .other-fee-container {
+        flex-wrap: nowrap !important;
     }
     
     /* 手机上自动缩放小票以适应屏幕宽度，保持排版不变 */
@@ -1702,6 +1868,58 @@ input:checked + .toggle-slider:before {
     }
 }
 
+/* 自定义其他费用单行布局样式 */
+.other-fee-item-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    margin-left: 0 !important; /* 移除左边距，让内容靠左 */
+}
+
+.other-fee-name-input {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding: 0.5rem !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    font-size: 0.9rem !important;
+    background-color: #fff !important;
+}
+
+.other-fee-name-input:focus {
+    outline: none !important;
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 3px var(--primary-light) !important;
+}
+
+.other-fee-amount-input {
+    flex: 0 0 100px !important;
+    width: 100px !important;
+    min-width: 100px !important;
+    max-width: 100px !important;
+    padding: 0.5rem !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    font-size: 0.9rem !important;
+    background-color: #fff !important;
+}
+
+.other-fee-amount-input:focus {
+    outline: none !important;
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 3px var(--primary-light) !important;
+}
+
+.other-fee-delete-btn {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.75rem !important;
+    min-width: 50px !important;
+}
+
 /* 优化其他费用在手机上的排版 */
 @media (max-width: 768px) {
     /* 费用名称输入框占主要宽度 */
@@ -1730,6 +1948,40 @@ input:checked + .toggle-slider:before {
         padding: 0.5rem !important;
     }
     
+    /* 自定义其他费用移动端优化 */
+    .other-fee-item-row {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.4rem !important;
+        margin-bottom: 0.5rem !important;
+        margin-left: 0 !important; /* 移除左边距，让内容靠左 */
+        flex-wrap: nowrap !important;
+        width: 100% !important;
+    }
+    
+    .other-fee-name-input {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        font-size: 0.85rem !important;
+        padding: 0.4rem !important;
+    }
+    
+    .other-fee-amount-input {
+        flex: 0 0 80px !important;
+        width: 80px !important;
+        min-width: 80px !important;
+        max-width: 80px !important;
+        font-size: 0.85rem !important;
+        padding: 0.4rem !important;
+    }
+    
+    .other-fee-delete-btn {
+        padding: 0.3rem 0.5rem !important;
+        font-size: 0.7rem !important;
+        min-width: 45px !important;
+    }
+    
     /* 添加按钮变小 */
     #newOtherFeeAmount + .btn {
         padding: 0.35rem 0.6rem !important;
@@ -1752,7 +2004,7 @@ input:checked + .toggle-slider:before {
     }
     
     /* 调整设置页的其他费用容器换行 */
-    .category-content .d-flex.gap-2 {
+    .category-content .d-flex.gap-2:not(.other-fee-item-row) {
         flex-wrap: wrap !important;
     }
     
@@ -1789,6 +2041,44 @@ input:checked + .toggle-slider:before {
     /* 移动端搜索框区域，确保按钮不被压缩 */
     #historySearchInput {
         min-width: 0; /* 允许flex压缩 */
+    }
+    
+    /* 工艺设置移动端优化 */
+    .process-item {
+        padding: 0.5rem;
+        margin-bottom: 0.4rem;
+    }
+    
+    .process-item-row {
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+    }
+    
+    .process-item-group {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .process-item-label {
+        font-size: 0.75rem;
+        margin-bottom: 0.15rem;
+    }
+    
+    .process-item-input {
+        padding: 0.4rem;
+        font-size: 0.85rem;
+    }
+    
+    .process-item-price {
+        max-width: 80px;
+        flex: 0 0 80px;
+    }
+    
+    .process-item-delete {
+        padding: 0.3rem 0.5rem;
+        font-size: 0.7rem;
+        flex: 0 0 auto;
+        min-width: 50px;
     }
 }
 

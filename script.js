@@ -3752,10 +3752,10 @@ function renderOtherFees() {
     } else {
         for (const [key, fee] of Object.entries(defaultSettings.otherFees)) {
             html += `
-                <div class="other-fee-item d-flex items-center gap-2 mb-2 ml-4" style="flex-wrap: nowrap;">
-                    <input type="text" value="${fee.name}" onchange="updateOtherFee('${key}', 'name', this.value)" class="flex-2" style="min-width: 0;">
-                    <input type="number" value="${fee.amount}" onchange="updateOtherFee('${key}', 'amount', this.value)" min="0" step="1" class="w-80" style="min-width: 0; flex-shrink: 0;">
-                    <button class="btn danger xs" onclick="deleteOtherFee('${key}')" style="flex-shrink: 0;">删除</button>
+                <div class="other-fee-item-row d-flex items-center gap-2 mb-2 ml-4">
+                    <input type="text" value="${fee.name}" onchange="updateOtherFee('${key}', 'name', this.value)" class="other-fee-name-input" placeholder="费用名称">
+                    <input type="number" value="${fee.amount}" onchange="updateOtherFee('${key}', 'amount', this.value)" min="0" step="1" class="other-fee-amount-input" placeholder="金额">
+                    <button class="btn danger xs other-fee-delete-btn" onclick="deleteOtherFee('${key}')">删除</button>
                 </div>
             `;
         }
@@ -4291,7 +4291,7 @@ function renderProductSettings() {
                         <div class="form-row">
                             <div class="form-group">
                                 <label>基础配置</label>
-                                <input type="text" value="${setting.baseConfig || ''}" onchange="updateProductSetting(${setting.id}, 'baseConfig', this.value)" placeholder="例如：1插+1底座">
+                                <input type="text" value="${setting.baseConfig || ''}" onchange="updateProductSetting(${setting.id}, 'baseConfig', this.value)" placeholder="例如：立牌+底座">
                             </div>
                             <div class="form-group">
                                 <label>基础价</label>
@@ -4407,11 +4407,11 @@ function updateCoefficientSubType() {
     
     if (cat === 'pricingUp') {
         options = ['用途系数', '加急系数'];
-        placeholder = '例如：用途系数、加急系数';
+        placeholder = '直接输入文字填加小类';
         hint = '加价类系数名称，可参考上述或输入新名称';
     } else if (cat === 'pricingDown') {
         options = ['折扣系数'];
-        placeholder = '例如：折扣系数';
+        placeholder = '直接输入文字填加小类';
         hint = '折扣类系数名称，可参考上述或输入新名称';
     }
     
@@ -5125,20 +5125,16 @@ function renderProcessSettings() {
         
         html += `
             <div class="process-item" data-id="${setting.id}">
-                <div class="process-item-header">
-                    <div class="process-item-title">${setting.name}</div>
-                    <button class="btn danger small" onclick="deleteProcessSetting(${setting.id})" 
-                            style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>工艺名称</label>
-                        <input type="text" value="${setting.name}" onchange="updateProcessSetting(${setting.id}, 'name', this.value)" placeholder="请输入工艺名称">
+                <div class="process-item-row">
+                    <div class="process-item-group">
+                        <label class="process-item-label">工艺名称</label>
+                        <input type="text" class="process-item-input" value="${setting.name}" onchange="updateProcessSetting(${setting.id}, 'name', this.value)" placeholder="请输入工艺名称">
                     </div>
-                    <div class="form-group">
-                        <label>价格（每层）</label>
-                        <input type="number" value="${price}" onchange="updateProcessSetting(${setting.id}, 'price', parseFloat(this.value))" placeholder="请输入价格" min="0" step="1">
+                    <div class="process-item-group">
+                        <label class="process-item-label">价格（每层）</label>
+                        <input type="number" class="process-item-input process-item-price" value="${price}" onchange="updateProcessSetting(${setting.id}, 'price', parseFloat(this.value))" placeholder="价格" min="0" step="1">
                     </div>
+                    <button class="btn danger small process-item-delete" onclick="deleteProcessSetting(${setting.id})">删除</button>
                 </div>
             </div>
         `;
