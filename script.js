@@ -9,6 +9,7 @@ let productIdCounter = 0;
 let giftIdCounter = 0;
 let selectedHistoryIds = new Set(); // 存储选中的历史记录ID
 let templates = []; // 存储模板列表
+let expandedCategories = new Set(); // 存储展开的分类状态
 
 // ========== 自定义搜索下拉组件 ==========
 /**
@@ -4113,7 +4114,7 @@ function renderProductSettings() {
     const container = document.getElementById('productSettingsContainer');
     
     // 保存当前展开的分类状态
-    const expandedCategories = new Set();
+    expandedCategories.clear(); // 清空之前的状态
     const categoryContainers = document.querySelectorAll('.category-container');
     categoryContainers.forEach(categoryContainer => {
         const content = categoryContainer.querySelector('.category-content');
@@ -4206,7 +4207,7 @@ function renderProductSettings() {
                         <div class="form-row">
                             <div class="form-group">
                                 <label>固定价格</label>
-                                <input type="number" value="${setting.price}" onchange="updateProductSetting(${setting.id}, 'price', parseFloat(this.value))" placeholder="请输入固定价格" min="0" step="1">
+                                <input type="number" value="${setting.price || 0}" onchange="updateProductSetting(${setting.id}, 'price', parseFloat(this.value))" placeholder="请输入固定价格" min="0" step="1">
                             </div>
                         </div>
                     ` : ''}
@@ -4216,11 +4217,11 @@ function renderProductSettings() {
                         <div class="form-row">
                             <div class="form-group">
                                 <label>单面价格</label>
-                                <input type="number" value="${setting.priceSingle}" onchange="updateProductSetting(${setting.id}, 'priceSingle', parseFloat(this.value))" placeholder="请输入单面价格" min="0" step="1">
+                                <input type="number" value="${setting.priceSingle || 0}" onchange="updateProductSetting(${setting.id}, 'priceSingle', parseFloat(this.value))" placeholder="请输入单面价格" min="0" step="1">
                             </div>
                             <div class="form-group">
                                 <label>双面价格</label>
-                                <input type="number" value="${setting.priceDouble}" onchange="updateProductSetting(${setting.id}, 'priceDouble', parseFloat(this.value))" placeholder="请输入双面价格" min="0" step="1">
+                                <input type="number" value="${setting.priceDouble || 0}" onchange="updateProductSetting(${setting.id}, 'priceDouble', parseFloat(this.value))" placeholder="请输入双面价格" min="0" step="1">
                             </div>
                         </div>
                     ` : ''}
@@ -4230,13 +4231,13 @@ function renderProductSettings() {
                         <div class="form-row">
                             <div class="form-group">
                                 <label>基础配置</label>
-                                <input type="text" value="${setting.baseConfig}" onchange="updateProductSetting(${setting.id}, 'baseConfig', this.value)" placeholder="例如：1插+1底座">
+                                <input type="text" value="${setting.baseConfig || ''}" onchange="updateProductSetting(${setting.id}, 'baseConfig', this.value)" placeholder="例如：1插+1底座">
                             </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>基础价</label>
-                                <input type="number" value="${setting.basePrice}" onchange="updateProductSetting(${setting.id}, 'basePrice', parseFloat(this.value))" placeholder="请输入基础价" min="0" step="1">
+                                <input type="number" value="${setting.basePrice || 0}" onchange="updateProductSetting(${setting.id}, 'basePrice', parseFloat(this.value))" placeholder="请输入基础价" min="0" step="1">
                             </div>
                         </div>
                         <div class="form-row">
@@ -4245,13 +4246,13 @@ function renderProductSettings() {
                                 <div id="additionalConfigsContainer-${setting.id}">
                                     ${(setting.additionalConfigs || []).map((config, index) => `
                                         <div class="d-flex gap-2 mb-2 items-center p-2 bg-light rounded">
-                                            <input type="text" placeholder="配置名称" value="${config.name}" 
+                                            <input type="text" placeholder="配置名称" value="${config.name || ''}" 
                                                    onchange="updateProductAdditionalConfigSetting(${setting.id}, ${index}, 'name', this.value)" 
                                                    class="flex-1 p-2">
-                                            <input type="number" placeholder="价格" value="${config.price}" min="0" step="1"
+                                            <input type="number" placeholder="价格" value="${config.price || 0}" min="0" step="1"
                                                    onchange="updateProductAdditionalConfigSetting(${setting.id}, ${index}, 'price', this.value)" 
                                                    class="w-100 p-2">
-                                            <input type="text" placeholder="单位" value="${config.unit}" 
+                                            <input type="text" placeholder="单位" value="${config.unit || ''}" 
                                                    onchange="updateProductAdditionalConfigSetting(${setting.id}, ${index}, 'unit', this.value)" 
                                                    class="w-80 p-2">
                                             <button type="button" class="btn danger small" onclick="removeProductAdditionalConfigSetting(${setting.id}, ${index})">删除</button>
