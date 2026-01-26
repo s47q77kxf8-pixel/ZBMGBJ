@@ -110,13 +110,13 @@
                         </div>
                         <div class="form-group flex-col gap-2 flex-1">
                             <label for="otherFeesList">其他费用</label>
-                            <div class="d-flex gap-2">
-                                <select id="otherFeeType" onchange="updateOtherFeeAmount()" class="flex-1">
+                            <div class="d-flex gap-2 flex-wrap">
+                                <select id="otherFeeType" onchange="updateOtherFeeAmount()" class="flex-1 min-w-0">
                                     <option value="custom">自定义</option>
                                     <!-- 其他费用类别将通过JavaScript动态添加 -->
                                 </select>
-                                <input type="text" id="customOtherFeeName" placeholder="费用名称" class="w-120">
-                                <input type="number" id="otherFeeAmount" placeholder="请输入费用金额" min="0" step="1" class="w-120">
+                                <input type="text" id="customOtherFeeName" placeholder="费用名称" class="flex-1 min-w-0">
+                                <input type="number" id="otherFeeAmount" placeholder="金额" min="0" step="1" class="w-80">
                             </div>
                             <div id="dynamicOtherFees" class="mt-2 flex-col gap-2">
                                 <!-- 动态添加的其他费用将显示在这里 -->
@@ -427,11 +427,12 @@
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label>计价方式</label>
-                                        <select id="newProductPriceType">
+                                        <select id="newProductPriceType" onchange="updatePriceTypeHint(this.value)">
                                             <option value="fixed">固定价</option>
                                             <option value="double">单双面价</option>
                                             <option value="config">基础+递增价</option>
                                         </select>
+                                        <span class="setting-hint" id="priceTypeHint">固定金额</span>
                                     </div>
                                 </div>
                                 
@@ -501,12 +502,14 @@
                         </div>
                     </div>
 
+                    <!-- 总计算逻辑 -->
+                    <div class="calculation-hint-total">最终价 = (制品总价+工艺费)×系数+平台费+其他费用</div>
                     <!-- 加价类：用途系数、加急系数，可添加其他 -->
-                    <h3 class="coefficient-class-title">加价类<span class="calculation-hint">所有系数相乘</span></h3>
+                    <h3 class="coefficient-class-title">加价类<span class="calculation-hint">× 用途/加急 → 加价</span></h3>
                     <!-- 用途系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('usageCoefficient')">
-                            <div class="category-title">用途系数</div>
+                            <div class="category-title">用途系数<span class="calculation-hint">× 用途 → 加价</span></div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="usageCoefficient-content">
@@ -554,7 +557,7 @@
                     <!-- 加急系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('urgentCoefficient')">
-                            <div class="category-title">加急系数</div>
+                            <div class="category-title">加急系数<span class="calculation-hint">× 加急 → 加价</span></div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="urgentCoefficient-content">
@@ -613,7 +616,7 @@
                     <!-- 折扣系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('discountCoefficient')">
-                            <div class="category-title">折扣系数</div>
+                            <div class="category-title">折扣系数<span class="calculation-hint">× 折扣 → 降价</span></div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="discountCoefficient-content">
@@ -648,7 +651,7 @@
                     <!-- 同模系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('sameModelCoefficient')">
-                            <div class="category-title">同模系数</div>
+                            <div class="category-title">同模系数<span class="calculation-hint">× 同模 → 同模降价</span></div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="sameModelCoefficient-content">
@@ -680,7 +683,7 @@
                     <!-- 平台手续费 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('platformFee')">
-                            <div class="category-title">平台手续费</div>
+                            <div class="category-title">平台手续费<span class="calculation-hint">× 平台费率 → 额外</span></div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="platformFee-content">
@@ -720,7 +723,7 @@
                     <!-- 背景费设置 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('backgroundFee')">
-                            <div class="category-title">背景费</div>
+                            <div class="category-title">背景费<span class="calculation-hint">主全额，同模×系数</span></div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="backgroundFee-content">
@@ -741,7 +744,7 @@
                     <!-- 其他费用 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('otherFees')">
-                            <div class="category-title">其他费用</div>
+                            <div class="category-title">其他费用<span class="calculation-hint">固定金额 → 额外</span></div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="otherFees-content">
@@ -750,10 +753,10 @@
                             <div class="form-row mt-4">
                                 <div class="form-group flex-1">
                                     <label>其他费用类别</label>
-                                    <div class="d-flex gap-2 mt-2">
-                                        <input type="text" id="newOtherFeeName" placeholder="费用名称" class="flex-1">
-                                        <input type="number" id="newOtherFeeAmount" placeholder="金额" min="0" step="1" class="w-120">
-                                        <button class="btn" onclick="addOtherFee()">添加</button>
+                                    <div class="d-flex gap-2 mt-2 flex-wrap">
+                                        <input type="text" id="newOtherFeeName" placeholder="费用名称" class="flex-1 min-w-0">
+                                        <input type="number" id="newOtherFeeAmount" placeholder="金额" min="0" step="1" class="w-80">
+                                        <button class="btn btn-compact" onclick="addOtherFee()">添加</button>
                                     </div>
                                 </div>
                             </div>
@@ -770,7 +773,7 @@
                 <div class="section">
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('process')">
-                            <div class="category-title">工艺设置</div>
+                            <div class="category-title">工艺设置<span class="calculation-hint">工艺价×层数×数量</span></div>
                             <div class="category-actions">
                                 <button class="btn add-process-setting btn-compact" onclick="openAddProcessModal()">添加</button>
                                 <div class="category-toggle">▼</div>

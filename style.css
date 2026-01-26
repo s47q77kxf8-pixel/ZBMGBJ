@@ -1494,11 +1494,78 @@ input:checked + .toggle-slider:before {
     gap: 0.5rem;
 }
 
+/* 计算提醒样式 */
+.calculation-hint-total {
+    font-size: 10px;
+    color: #64748b;
+    text-align: center;
+    margin: 0.5rem 0;
+    opacity: 0.8;
+    padding: 0.25rem;
+    background-color: #f8fafc;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+}
+
+.calculation-hint {
+    font-size: 11px;
+    color: #64748b;
+    margin-left: 0.5rem;
+    opacity: 0.8;
+    vertical-align: middle;
+    font-weight: normal;
+}
+
+.setting-hint {
+    font-size: 10px;
+    color: #64748b;
+    margin-top: 0.2rem;
+    display: block;
+    opacity: 0.9;
+}
+
 /* 响应式：移动端使用抽屉，桌面端也显示筛选按钮但抽屉样式不同 */
 @media (min-width: 769px) {
     /* 桌面端抽屉可以更宽一些 */
     .filter-drawer-content {
         max-width: 500px;
+    }
+}
+
+/* 优化其他费用在手机上的排版 */
+@media (max-width: 768px) {
+    /* 费用名称输入框占主要宽度 */
+    #newOtherFeeName,
+    #customOtherFeeName,
+    #otherFeeType {
+        flex: 2 !important;
+        min-width: 0 !important;
+    }
+    
+    /* 金额输入框宽度适中 */
+    #newOtherFeeAmount,
+    #otherFeeAmount {
+        flex: 1 !important;
+        max-width: 100px !important;
+    }
+    
+    /* 添加按钮变小 */
+    #newOtherFeeAmount + .btn {
+        padding: 0.35rem 0.6rem !important;
+        font-size: 0.8rem !important;
+        min-height: auto !important;
+    }
+    
+    /* 确保flex容器能正确换行 */
+    .d-flex.gap-2 {
+        flex-wrap: wrap !important;
+    }
+    
+    /* 确保输入框不会溢出容器 */
+    .d-flex.gap-2 input,
+    .d-flex.gap-2 select {
+        min-width: 0 !important;
+        width: auto !important;
     }
 }
 

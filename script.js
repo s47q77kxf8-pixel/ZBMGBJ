@@ -3808,6 +3808,26 @@ function initOtherFeeTypeOptions() {
     }
 }
 
+// 更新计价方式提示
+function updatePriceTypeHint(priceType) {
+    const hint = document.getElementById('priceTypeHint');
+    if (!hint) return;
+    
+    switch(priceType) {
+        case 'fixed':
+            hint.textContent = '固定金额';
+            break;
+        case 'double':
+            hint.textContent = '单双面不同价';
+            break;
+        case 'config':
+            hint.textContent = '基础+递增×数量';
+            break;
+        default:
+            hint.textContent = '';
+    }
+}
+
 // 根据费用类型更新金额
 function updateOtherFeeAmount() {
     const feeType = document.getElementById('otherFeeType').value;
