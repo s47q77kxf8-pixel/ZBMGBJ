@@ -1068,15 +1068,13 @@ function updateProductForm(productId) {
     
     container.innerHTML = html;
     
-    // 恢复展开的分类状态
+    // 恢复之前展开的分类状态
     expandedCategories.forEach(category => {
         const content = document.getElementById(`${category}-content`);
         const toggle = content.parentElement.querySelector('.category-toggle');
-        if (content && content.classList.contains('d-none')) {
+        if (content && toggle) {
             content.classList.remove('d-none');
-            if (toggle) {
-                toggle.textContent = '▲';
-            }
+            toggle.textContent = '▲';
         }
     });
 }

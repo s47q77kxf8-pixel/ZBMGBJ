@@ -14,6 +14,7 @@
     --spacing-sm: 0.5rem;
     --spacing-md: 1rem;
     --spacing-lg: 1.5rem;
+    --toggle-off-bg: #94a3b8;
 }
 
 * {
@@ -593,7 +594,7 @@ input:focus, select:focus {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: var(--background-secondary);
+    background-color: var(--toggle-off-bg);
     transition: .4s;
     border-radius: 24px;
 }
@@ -639,12 +640,12 @@ input:checked + .toggle-slider:before {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background-color: var(--background-secondary);
+        background-color: #f8fafc;
     }
     
     /* 添加背景色反馈 */
     .checkbox-item:hover {
-        background-color: var(--background-tertiary);
+        background-color: #f1f5f9;
     }
     
     /* 隐藏默认勾选框，使用自定义开关 */
