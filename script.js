@@ -4992,6 +4992,11 @@ function updateProductAdditionalConfigSetting(productId, index, field, value) {
 
 // 删除递增配置项
 function removeProductAdditionalConfigSetting(productId, index) {
+    // 二次确认
+    if (!confirm('确定要删除这个递增配置项吗？')) {
+        return;
+    }
+    
     const setting = productSettings.find(p => p.id === productId);
     if (setting && setting.additionalConfigs && setting.additionalConfigs[index]) {
         setting.additionalConfigs.splice(index, 1);
@@ -5003,6 +5008,11 @@ function removeProductAdditionalConfigSetting(productId, index) {
 
 // 删除制品设置
 function deleteProductSetting(id) {
+    // 二次确认
+    if (!confirm('确定要删除这个制品设置吗？')) {
+        return;
+    }
+    
     productSettings = productSettings.filter(p => p.id !== id);
     renderProductSettings();
 }
