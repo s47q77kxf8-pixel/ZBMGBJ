@@ -143,9 +143,10 @@
                 </div>
                 
                 <div class="save-template-row d-flex gap-2 items-center">
-                    <span class="text-gray">保存为模板：</span>
+                    <!-- 保存按钮放在左侧 -->
+                    <button class="btn" onclick="saveTemplate()">保存为模板</button>
+                    <!-- 输入框放在右侧 -->
                     <input type="text" id="templateName" placeholder="模板名称">
-                    <button class="btn" onclick="saveTemplate()">保存模板</button>
                 </div>
                 
                 <!-- 计算报价按钮（悬浮球） -->
@@ -202,20 +203,32 @@
                             <div class="form-group">
                                 <div class="checkbox-row">
                                     <div class="checkbox-item">
-                                        <input type="checkbox" id="showStartTime" onchange="updateReceiptInfo('showStartTime', this.checked)" checked>
-                                        <span>显示开始时间</span>
+                                        <span>开始时间</span>
+                                        <label class="custom-toggle">
+                                            <input type="checkbox" id="showStartTime" onchange="updateReceiptInfo('showStartTime', this.checked)" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
                                     </div>
                                     <div class="checkbox-item">
-                                        <input type="checkbox" id="showDeadline" onchange="updateReceiptInfo('showDeadline', this.checked)" checked>
-                                        <span>显示截稿时间</span>
+                                        <span>截稿时间</span>
+                                        <label class="custom-toggle">
+                                            <input type="checkbox" id="showDeadline" onchange="updateReceiptInfo('showDeadline', this.checked)" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
                                     </div>
                                     <div class="checkbox-item">
-                                        <input type="checkbox" id="showDesigner" onchange="updateReceiptInfo('showDesigner', this.checked)" checked>
-                                        <span>显示设计师</span>
+                                        <span>设计师</span>
+                                        <label class="custom-toggle">
+                                            <input type="checkbox" id="showDesigner" onchange="updateReceiptInfo('showDesigner', this.checked)" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
                                     </div>
                                     <div class="checkbox-item">
-                                        <input type="checkbox" id="showContactInfo" onchange="updateReceiptInfo('showContactInfo', this.checked)" checked>
-                                        <span>显示联系方式</span>
+                                        <span>联系方式</span>
+                                        <label class="custom-toggle">
+                                            <input type="checkbox" id="showContactInfo" onchange="updateReceiptInfo('showContactInfo', this.checked)" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
                                     </div>
                                 </div>
                             </div>
@@ -380,12 +393,12 @@
                 </div>
 
                 <div class="section">
-                    <div class="d-flex justify-between items-center mb-4">
+                    <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
                         <h2>制品设置</h2>
-                        <div class="d-flex gap-2">
-                            <button class="btn add-product-setting btn-compact" onclick="openAddProductModal()">添加制品设置</button>
-                            <button class="btn secondary btn-compact" onclick="document.getElementById('excelImportInput').click()">Excel导入</button>
-                            <button class="btn secondary btn-compact" onclick="exportToExcel()">Excel导出</button>
+                        <div class="d-flex items-center gap-2">
+                            <button class="btn add-product-setting btn-compact" onclick="openAddProductModal()">添加</button>
+                            <button class="btn secondary btn-compact" onclick="document.getElementById('excelImportInput').click()">导入</button>
+                            <button class="btn secondary btn-compact" onclick="exportToExcel()">导出</button>
                             <input type="file" id="excelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importFromExcel(event)">
                         </div>
                     </div>
@@ -481,9 +494,9 @@
                     <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
                         <h2>系数设置</h2>
                         <div class="d-flex items-center gap-2">
-                            <button class="btn add-product-setting btn-compact" onclick="openAddCoefficientModal()">添加系数</button>
-                            <button class="btn secondary btn-compact" onclick="document.getElementById('coefficientExcelImportInput').click()">Excel导入</button>
-                            <button class="btn secondary btn-compact" onclick="exportCoefficientsToExcel()">Excel导出</button>
+                            <button class="btn add-product-setting btn-compact" onclick="openAddCoefficientModal()">添加</button>
+                            <button class="btn secondary btn-compact" onclick="document.getElementById('coefficientExcelImportInput').click()">导入</button>
+                            <button class="btn secondary btn-compact" onclick="exportCoefficientsToExcel()">导出</button>
                             <input type="file" id="coefficientExcelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importCoefficientsFromExcel(event)">
                         </div>
                     </div>
@@ -738,7 +751,7 @@
                         <div class="category-header" onclick="toggleCategory('process')">
                             <div class="category-title">工艺设置</div>
                             <div class="category-actions">
-                                <button class="btn add-process-setting btn-compact" onclick="openAddProcessModal()">添加工艺设置</button>
+                                <button class="btn add-process-setting btn-compact" onclick="openAddProcessModal()">添加</button>
                                 <div class="category-toggle">▼</div>
                             </div>
                         </div>

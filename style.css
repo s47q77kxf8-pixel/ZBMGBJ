@@ -572,6 +572,214 @@ input:focus, select:focus {
 
 
 
+/* 自定义开关样式 */
+.custom-toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.custom-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--background-secondary);
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--primary-color);
+}
+
+input:focus + .toggle-slider {
+    box-shadow: 0 0 1px var(--primary-color);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+/* 移动端优化 - 小票设置勾选框 */
+@media (max-width: 768px) {
+    /* 调整勾选框行布局为单列 */
+    .checkbox-row {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    /* 允许文本换行，增加触摸区域 */
+    .checkbox-item {
+        white-space: normal;
+        padding: 0.5rem;
+        border-radius: var(--radius-sm);
+        transition: all 0.2s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: var(--background-secondary);
+    }
+    
+    /* 添加背景色反馈 */
+    .checkbox-item:hover {
+        background-color: var(--background-tertiary);
+    }
+    
+    /* 隐藏默认勾选框，使用自定义开关 */
+    .checkbox-item input[type="checkbox"] {
+        display: none;
+    }
+    
+    /* 调整表单间距 */
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    /* 优化小票设置面板的整体布局 */
+    #receiptCustomizationPanel {
+        padding: 1rem 0.5rem;
+    }
+    
+    #receiptCustomizationPanel .form-row {
+        flex-direction: column;
+    }
+    
+    #receiptCustomizationPanel .form-group {
+        margin-right: 0;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* 优化小票设置面板的标题 */
+    #receiptCustomizationPanel h2 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    #receiptCustomizationPanel h3 {
+        font-size: 1.2rem;
+        margin: 1.5rem 0 1rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    /* 优化图片上传区域 */
+    #receiptCustomizationPanel .upload-btn {
+        width: 100%;
+        padding: 0.5rem;
+        font-size: 1rem;
+    }
+    
+    /* 优化图片预览区域 */
+    .image-preview {
+        margin-top: 0.5rem;
+        width: 100%;
+        max-width: 100%;
+    }
+    
+    .image-preview img {
+        max-width: 100%;
+        height: auto;
+    }
+    
+    /* 优化输入框和按钮 */
+    #receiptCustomizationPanel input[type="text"],
+    #receiptCustomizationPanel input[type="number"] {
+        width: 100%;
+        max-width: 100%;
+        padding: 0.5rem;
+        font-size: 1rem;
+    }
+    
+    #receiptCustomizationPanel .btn {
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* 优化表单标签 */
+    #receiptCustomizationPanel .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        font-size: 0.95rem;
+    }
+    
+    /* 优化小字体提示 */
+    .text-gray {
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        display: block;
+    }
+    
+    /* 优化section间距 */
+    #receiptCustomizationPanel .section {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    #receiptCustomizationPanel .section:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+}
+
+/* 增强移动端表单布局 */
+@media (max-width: 576px) {
+    /* 调整小票设置面板的内边距 */
+    #receiptCustomizationPanel {
+        padding: 0.5rem;
+    }
+    
+    /* 调整表单标签和输入框的间距 */
+    .form-group label {
+        margin-bottom: 0.25rem;
+        font-size: 0.9rem;
+    }
+    
+    /* 调整输入框尺寸 */
+    .form-group input[type="text"],
+    .form-group input[type="number"] {
+        width: 100%;
+        max-width: 100%;
+    }
+    
+    /* 优化按钮布局 */
+    #receiptCustomizationPanel .modal-footer {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    #receiptCustomizationPanel .modal-footer .btn {
+        width: 100%;
+        margin-bottom: 0;
+    }
+}
+
 .calendar-day {
     min-height: 80px;
     border: 1px solid var(--border-color);

@@ -1067,6 +1067,18 @@ function updateProductForm(productId) {
     }
     
     container.innerHTML = html;
+    
+    // 恢复展开的分类状态
+    expandedCategories.forEach(category => {
+        const content = document.getElementById(`${category}-content`);
+        const toggle = content.parentElement.querySelector('.category-toggle');
+        if (content && content.classList.contains('d-none')) {
+            content.classList.remove('d-none');
+            if (toggle) {
+                toggle.textContent = '▲';
+            }
+        }
+    });
 }
 
 // 更新工艺选项
@@ -4102,6 +4114,17 @@ function saveNewProduct() {
 function renderProductSettings() {
     const container = document.getElementById('productSettingsContainer');
     
+    // 保存当前展开的分类状态
+    const expandedCategories = new Set();
+    const categoryContainers = document.querySelectorAll('.category-container');
+    categoryContainers.forEach(categoryContainer => {
+        const content = categoryContainer.querySelector('.category-content');
+        if (content && !content.classList.contains('d-none')) {
+            const category = categoryContainer.querySelector('.category-title').textContent;
+            expandedCategories.add(category);
+        }
+    });
+    
     // 按类别分组
     const categories = {};
     
@@ -4797,7 +4820,7 @@ function renderSameModelCoefficients() {
             </div>
         `;
     }
-    html += '<button type="button" class="btn secondary mt-2" onclick="addSameModelOption()">+ 添加系数值</button>';
+    html += '<button type="button" class="btn secondary mt-2" onclick="addSameModelOption()">+ 添加</button>';
     container.innerHTML = html;
 }
 
@@ -4861,7 +4884,7 @@ function renderPlatformFees() {
             </div>
         `;
     }
-    html += '<button type="button" class="btn secondary mt-2" onclick="addPlatformFeeOption()">+ 添加系数值</button>';
+    html += '<button type="button" class="btn secondary mt-2" onclick="addPlatformFeeOption()">+ 添加</button>';
     container.innerHTML = html;
 }
 
@@ -5056,6 +5079,17 @@ function updateDisplay() {
 function importFromExcel(event) {
     const file = event.target.files[0];
     if (!file) {
+        return;
+    }
+    
+    // 验证文件格式
+    const allowedExtensions = ['.xlsx', '.xls'];
+    const fileName = file.name;
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+    
+    if (!allowedExtensions.includes(fileExtension)) {
+        alert('请上传.xlsx或.xls格式的Excel文件！');
+        event.target.value = ''; // 清空文件输入
         return;
     }
     
@@ -5335,6 +5369,18 @@ function exportCoefficientsToExcel() {
 function importCoefficientsFromExcel(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
+    
+    // 验证文件格式
+    const allowedExtensions = ['.xlsx', '.xls'];
+    const fileName = file.name;
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+    
+    if (!allowedExtensions.includes(fileExtension)) {
+        alert('请上传.xlsx或.xls格式的Excel文件！');
+        event.target.value = ''; // 清空文件输入
+        return;
+    }
+    
     event.target.value = '';
     const reader = new FileReader();
     reader.onload = function (e) {
