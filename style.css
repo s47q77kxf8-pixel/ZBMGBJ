@@ -825,10 +825,15 @@ input:checked + .toggle-slider:before {
 .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded .btn.danger.small {
     flex: 0 !important;
     width: auto !important;
-    min-width: 0 !important;
+    min-width: 40px !important;
     padding: 0.4rem 0.6rem !important;
     font-size: 0.75rem !important;
     white-space: nowrap !important;
+    word-break: break-all !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
 }
 
 /* 针对移动端的额外调整 */
@@ -851,8 +856,10 @@ input:checked + .toggle-slider:before {
     }
     
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded .btn.danger.small {
-        font-size: 0.7rem !important;
-        padding: 0.3rem 0.5rem !important;
+        font-size: 0.65rem !important;
+        padding: 0.3rem 0.4rem !important;
+        min-width: 35px !important;
+        height: 24px !important;
     }
 }
 
