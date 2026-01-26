@@ -970,48 +970,164 @@ input:focus, select:focus {
     display: none;
 }
 
-/* 历史记录工具栏 */
-.history-toolbar {
+/* 历史记录筛选按钮和徽章 */
+#historyFilterBtn {
+    position: relative;
+    min-width: 60px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+}
+
+.filter-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 10px;
+    min-width: 18px;
+    text-align: center;
+    line-height: 1.2;
+}
+
+/* 历史记录筛选抽屉（移动端风格） */
+.history-filter-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    display: none;
+}
+
+.history-filter-drawer.active {
+    display: block;
+}
+
+.filter-drawer-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.2s;
+}
+
+.filter-drawer-content {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 85%;
+    max-width: 400px;
+    background: var(--card-bg);
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    animation: slideInRight 0.3s;
+    overflow-y: auto;
+}
+
+.filter-drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
     background: var(--card-bg);
-    border-radius: var(--radius-md);
-    margin-bottom: 1rem;
+    z-index: 1;
 }
 
-.history-filters, .history-actions {
+.filter-drawer-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
     display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
     align-items: center;
+    justify-content: center;
+    border-radius: 4px;
 }
 
-.filter-group, .action-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+.btn-icon:hover {
+    background: var(--bg-color);
 }
 
-.filter-group label, .action-group label {
+.filter-drawer-body {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+}
+
+.filter-section {
+    margin-bottom: 1.5rem;
+}
+
+.filter-label {
+    display: block;
     font-size: 0.875rem;
-    color: var(--text-light);
-    white-space: nowrap;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 0.5rem;
 }
 
-.filter-group input[type="number"],
-.filter-group input[type="date"],
-.filter-group select,
-.action-group select {
-    padding: 0.5rem;
+.filter-select,
+.filter-input {
+    width: 100%;
+    padding: 0.6rem;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    font-size: 0.875rem;
+    font-size: 0.9rem;
+    background: var(--card-bg);
 }
 
-.filter-group input[type="number"] {
-    width: 100px;
+.filter-select:focus,
+.filter-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.filter-drawer-footer {
+    padding: 1rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 0.75rem;
+    position: sticky;
+    bottom: 0;
+    background: var(--card-bg);
+}
+
+.mx-2 {
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
 }
 
 /* 历史记录项选中状态 */
@@ -1054,23 +1170,28 @@ input:focus, select:focus {
     gap: 0.5rem;
 }
 
-/* 响应式 */
+/* 响应式：移动端使用抽屉，桌面端也显示筛选按钮但抽屉样式不同 */
+@media (min-width: 769px) {
+    /* 桌面端抽屉可以更宽一些 */
+    .filter-drawer-content {
+        max-width: 500px;
+    }
+}
+
 @media (max-width: 768px) {
-    .history-toolbar {
-        padding: 0.75rem;
+    .filter-drawer-content {
+        width: 90%;
     }
     
-    .history-filters, .history-actions {
-        flex-direction: column;
-        align-items: stretch;
+    /* 确保筛选按钮在移动端可见 */
+    #historyFilterBtn {
+        min-width: 50px;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
     }
     
-    .filter-group, .action-group {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .filter-group input[type="number"] {
-        width: 100%;
+    /* 移动端搜索框区域，确保按钮不被压缩 */
+    #historySearchInput {
+        min-width: 0; /* 允许flex压缩 */
     }
 }

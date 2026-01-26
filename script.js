@@ -385,17 +385,6 @@ function init() {
         setTimeout(updateFloatingButton, 100);
         setTimeout(updateFloatingButton, 300);
         setTimeout(updateFloatingButton, 500);
-        
-        // 初始化模板列表
-        renderTemplateList();
-        
-        // 监听模板选择变化
-        const templateSelect = document.getElementById('templateSelect');
-        if (templateSelect) {
-            templateSelect.addEventListener('change', function() {
-                updateDeleteTemplateButton();
-            });
-        }
     });
 }
 
@@ -789,6 +778,13 @@ function showPage(pageId) {
         }
     }
     
+    // 切换到报价页时，初始化筛选徽章
+    if (pageId === 'quote') {
+        setTimeout(function() {
+            updateHistoryFilterBadge();
+        }, 100);
+    }
+    
     // 切换到报价页时，调整小票缩放（手机端）
     if (pageId === 'quote') {
         // 延迟一下，确保 DOM 已更新
@@ -808,7 +804,6 @@ function showPage(pageId) {
     if (pageId === 'calculator') {
         updateCalculatorBuiltinSelects();
         updateCalculatorCoefficientSelects();
-        renderTemplateList(); // 刷新模板列表
     }
     
     // 控制悬浮计算按钮的显示/隐藏
@@ -2439,6 +2434,97 @@ function generateHistoryItemHTML(item) {
     `;
 }
 
+// ========== 历史记录筛选抽屉控制 ==========
+
+// 切换筛选抽屉显示
+function toggleHistoryFilterDrawer() {
+    const drawer = document.getElementById('historyFilterDrawer');
+    if (drawer) {
+        drawer.classList.toggle('active');
+        if (drawer.classList.contains('active')) {
+            document.body.style.overflow = 'hidden'; // 防止背景滚动
+            updateHistoryFilterBadge(); // 打开时更新徽章
+        } else {
+            document.body.style.overflow = '';
+        }
+    }
+}
+
+// 关闭筛选抽屉
+function closeHistoryFilterDrawer() {
+    const drawer = document.getElementById('historyFilterDrawer');
+    if (drawer) {
+        drawer.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+// 筛选条件改变时更新徽章
+function onHistoryFilterChange() {
+    const timeFilter = document.getElementById('historyTimeFilter');
+    const customDateRange = document.getElementById('historyCustomDateRange');
+    
+    // 显示/隐藏自定义日期范围
+    if (timeFilter && timeFilter.value === 'custom') {
+        if (customDateRange) customDateRange.classList.remove('d-none');
+    } else {
+        if (customDateRange) customDateRange.classList.add('d-none');
+    }
+    
+    updateHistoryFilterBadge();
+}
+
+// 更新筛选按钮徽章（显示激活的筛选条件数量）
+function updateHistoryFilterBadge() {
+    const badge = document.getElementById('historyFilterBadge');
+    if (!badge) return;
+    
+    let count = 0;
+    const timeFilter = document.getElementById('historyTimeFilter');
+    const minPrice = document.getElementById('historyMinPrice');
+    const maxPrice = document.getElementById('historyMaxPrice');
+    const sortBy = document.getElementById('historySortBy');
+    const groupBy = document.getElementById('historyGroupBy');
+    
+    if (timeFilter && timeFilter.value && timeFilter.value !== 'all') count++;
+    if (minPrice && minPrice.value) count++;
+    if (maxPrice && maxPrice.value) count++;
+    if (sortBy && sortBy.value && sortBy.value !== 'time-desc') count++;
+    if (groupBy && groupBy.value && groupBy.value !== 'none') count++;
+    
+    if (count > 0) {
+        badge.textContent = count;
+        badge.classList.remove('d-none');
+    } else {
+        badge.classList.add('d-none');
+    }
+}
+
+// 重置所有筛选条件
+function resetHistoryFilters() {
+    const timeFilter = document.getElementById('historyTimeFilter');
+    const startDate = document.getElementById('historyStartDate');
+    const endDate = document.getElementById('historyEndDate');
+    const minPrice = document.getElementById('historyMinPrice');
+    const maxPrice = document.getElementById('historyMaxPrice');
+    const sortBy = document.getElementById('historySortBy');
+    const groupBy = document.getElementById('historyGroupBy');
+    const customDateRange = document.getElementById('historyCustomDateRange');
+    
+    if (timeFilter) timeFilter.value = 'all';
+    if (startDate) startDate.value = '';
+    if (endDate) endDate.value = '';
+    if (minPrice) minPrice.value = '';
+    if (maxPrice) maxPrice.value = '';
+    if (sortBy) sortBy.value = 'time-desc';
+    if (groupBy) groupBy.value = 'none';
+    if (customDateRange) customDateRange.classList.add('d-none');
+    
+    selectedHistoryIds.clear();
+    updateHistoryFilterBadge();
+    applyHistoryFilters();
+}
+
 // 应用筛选条件
 function applyHistoryFilters() {
     const timeFilterEl = document.getElementById('historyTimeFilter');
@@ -2451,7 +2537,6 @@ function applyHistoryFilters() {
     const searchInput = document.getElementById('historySearchInput');
     
     if (!timeFilterEl || !sortByEl || !groupByEl) {
-        // 如果元素不存在，使用旧的loadHistory方式（向后兼容）
         const keyword = searchInput ? searchInput.value.trim() : '';
         loadHistory(keyword);
         return;
@@ -2466,39 +2551,12 @@ function applyHistoryFilters() {
     const groupBy = groupByEl.value;
     const searchKeyword = searchInput ? searchInput.value.trim() : '';
     
-    // 显示/隐藏自定义时间选择器
+    // 显示/隐藏自定义时间选择器（在抽屉中）
+    const customDateRange = document.getElementById('historyCustomDateRange');
     if (timeFilter === 'custom') {
-        if (startDateEl) {
-            startDateEl.classList.remove('d-none');
-            startDateEl.style.display = '';
-        }
-        if (endDateEl) {
-            endDateEl.classList.remove('d-none');
-            endDateEl.style.display = '';
-        }
-        const spanEls = document.querySelectorAll('.history-filters .filter-group span');
-        spanEls.forEach(span => {
-            if (span.textContent === '至') {
-                span.classList.remove('d-none');
-                span.style.display = '';
-            }
-        });
+        if (customDateRange) customDateRange.classList.remove('d-none');
     } else {
-        if (startDateEl) {
-            startDateEl.classList.add('d-none');
-            startDateEl.style.display = 'none';
-        }
-        if (endDateEl) {
-            endDateEl.classList.add('d-none');
-            endDateEl.style.display = 'none';
-        }
-        const spanEls = document.querySelectorAll('.history-filters .filter-group span');
-        spanEls.forEach(span => {
-            if (span.textContent === '至') {
-                span.classList.add('d-none');
-                span.style.display = 'none';
-            }
-        });
+        if (customDateRange) customDateRange.classList.add('d-none');
     }
     
     const filters = {
@@ -2512,6 +2570,7 @@ function applyHistoryFilters() {
     };
     
     loadHistory(searchKeyword, filters);
+    updateHistoryFilterBadge(); // 应用筛选后更新徽章
 }
 
 // 搜索历史记录
@@ -2548,6 +2607,7 @@ function clearHistorySearch() {
     if (groupByEl) groupByEl.value = 'none';
     
     selectedHistoryIds.clear();
+    updateHistoryFilterBadge();
     applyHistoryFilters();
 }
 
@@ -2944,6 +3004,32 @@ function saveTemplate() {
     if (tn) tn.value = '';
 }
 
+// 模版填表：切换下拉显示；打开时刷新列表并支持点击外部关闭
+function toggleTemplateFillDropdown() {
+    const d = document.getElementById('templateFillDropdown');
+    if (!d) return;
+    if (d.classList.contains('d-none')) {
+        d.classList.remove('d-none');
+        renderTemplateList();
+        updateDeleteTemplateButton();
+        setTimeout(function() { document.addEventListener('click', closeTemplateFillDropdownOnClick); }, 0);
+    } else {
+        d.classList.add('d-none');
+        document.removeEventListener('click', closeTemplateFillDropdownOnClick);
+    }
+}
+
+function closeTemplateFillDropdown() {
+    const d = document.getElementById('templateFillDropdown');
+    if (d) d.classList.add('d-none');
+    document.removeEventListener('click', closeTemplateFillDropdownOnClick);
+}
+
+function closeTemplateFillDropdownOnClick(e) {
+    if (e.target.closest('.template-fill-wrap')) return;
+    closeTemplateFillDropdown();
+}
+
 // 模板选择变化时的处理
 function onTemplateSelectChange() {
     updateDeleteTemplateButton();
@@ -3036,7 +3122,7 @@ function loadSelectedTemplate() {
             if (el) { el.value = sel.selectedKey; if (el.onchange) el.onchange(); }
         });
         if (Array.isArray(s.otherFees)) {
-            if (typeof dynamicOtherFees !== 'undefined') { dynamicOtherFees.length = 0; } else { window.dynamicOtherFees = []; }
+            dynamicOtherFees.length = 0;
             renderDynamicOtherFees();
             s.otherFees.forEach(f => addDynamicOtherFeeFromData(f.name, f.amount));
         }
@@ -3073,34 +3159,25 @@ function deleteTemplate() {
     alert('模板已删除！');
 }
 
-// 渲染模板列表
+// 渲染模板列表（在模版填表下拉内；打开下拉时调用，打开即能看到旧模板）
 function renderTemplateList() {
     const templateSelect = document.getElementById('templateSelect');
     if (!templateSelect) return;
     
-    // 保存当前选中的值
     const currentValue = templateSelect.value;
-    
-    // 清空选项
     templateSelect.innerHTML = '<option value="">-- 选择模板 --</option>';
     
-    // 按时间倒序排列
-    const sortedTemplates = [...templates].sort((a, b) => b.timestamp - a.timestamp);
-    
-    // 添加模板选项
-    sortedTemplates.forEach(template => {
-        const option = document.createElement('option');
-        option.value = template.id;
-        option.textContent = `${template.name} (${template.products.length}个制品, ${template.gifts.length}个赠品)`;
-        templateSelect.appendChild(option);
+    const sortedTemplates = [...templates].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    sortedTemplates.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        const prods = t.products || [];
+        const gs = t.gifts || [];
+        opt.textContent = t.name + ' (' + prods.length + '个制品, ' + gs.length + '个赠品)';
+        templateSelect.appendChild(opt);
     });
     
-    // 恢复选中的值
-    if (currentValue) {
-        templateSelect.value = currentValue;
-    }
-    
-    // 更新删除按钮状态
+    if (currentValue) templateSelect.value = currentValue;
     updateDeleteTemplateButton();
 }
 
