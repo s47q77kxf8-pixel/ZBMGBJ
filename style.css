@@ -479,10 +479,34 @@ input:focus, select:focus {
     cursor: pointer;
     user-select: none;
     transition: background-color 0.2s;
+    position: relative;
 }
 
 .category-header:hover {
     background-color: #f1f5f9;
+}
+
+/* 粘性标题栏样式 */
+.category-header.sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background-color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid #e2e8f0;
+    animation: stickySlideIn 0.3s ease-out;
+}
+
+/* 粘性标题栏动画 */
+@keyframes stickySlideIn {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 .category-title {

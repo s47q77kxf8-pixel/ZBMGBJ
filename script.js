@@ -4296,14 +4296,30 @@ function renderProductSettings() {
 function toggleCategory(category) {
     const content = document.getElementById(`${category}-content`);
     const toggle = content.parentElement.querySelector('.category-toggle');
+    const header = content.parentElement.querySelector('.category-header');
     
     // 使用 d-none 类控制显示/隐藏，而不是内联样式
     if (content.classList.contains('d-none')) {
+        // 展开分类
         content.classList.remove('d-none');
         toggle.textContent = '▲';
+        
+        // 为当前展开的标题添加粘性定位
+        header.classList.add('sticky-header');
+        
+        // 移除其他所有分类的粘性定位
+        document.querySelectorAll('.category-header').forEach(h => {
+            if (h !== header) {
+                h.classList.remove('sticky-header');
+            }
+        });
     } else {
+        // 折叠分类
         content.classList.add('d-none');
         toggle.textContent = '▼';
+        
+        // 移除粘性定位
+        header.classList.remove('sticky-header');
     }
 }
 
