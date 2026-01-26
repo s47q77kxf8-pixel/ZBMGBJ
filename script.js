@@ -3744,10 +3744,10 @@ function renderOtherFees() {
     } else {
         for (const [key, fee] of Object.entries(defaultSettings.otherFees)) {
             html += `
-                <div class="other-fee-item d-flex items-center gap-2 mb-2 ml-4">
-                    <input type="text" value="${fee.name}" onchange="updateOtherFee('${key}', 'name', this.value)" class="flex-1">
-                    <input type="number" value="${fee.amount}" onchange="updateOtherFee('${key}', 'amount', this.value)" min="0" step="1" class="w-120">
-                    <button class="btn danger xs" onclick="deleteOtherFee('${key}')">删除</button>
+                <div class="other-fee-item d-flex items-center gap-2 mb-2 ml-4" style="flex-wrap: nowrap;">
+                    <input type="text" value="${fee.name}" onchange="updateOtherFee('${key}', 'name', this.value)" class="flex-2" style="min-width: 0;">
+                    <input type="number" value="${fee.amount}" onchange="updateOtherFee('${key}', 'amount', this.value)" min="0" step="1" class="w-80" style="min-width: 0; flex-shrink: 0;">
+                    <button class="btn danger xs" onclick="deleteOtherFee('${key}')" style="flex-shrink: 0;">删除</button>
                 </div>
             `;
         }
@@ -3805,26 +3805,6 @@ function initOtherFeeTypeOptions() {
         option.value = `other_${key}`;
         option.textContent = fee.name;
         select.appendChild(option);
-    }
-}
-
-// 更新计价方式提示
-function updatePriceTypeHint(priceType) {
-    const hint = document.getElementById('priceTypeHint');
-    if (!hint) return;
-    
-    switch(priceType) {
-        case 'fixed':
-            hint.textContent = '固定金额';
-            break;
-        case 'double':
-            hint.textContent = '单双面不同价';
-            break;
-        case 'config':
-            hint.textContent = '基础+递增×数量';
-            break;
-        default:
-            hint.textContent = '';
     }
 }
 
@@ -3925,10 +3905,10 @@ function renderDynamicOtherFees() {
     
     dynamicOtherFees.forEach(fee => {
         html += `
-            <div class="dynamic-fee-item d-flex items-center gap-2 p-2 bg-light rounded">
-                <span class="flex-1">${fee.name}</span>
-                <span class="w-80 text-right">¥${fee.amount}</span>
-                <button class="btn danger xs" onclick="removeDynamicOtherFee(${fee.id})">删除</button>
+            <div style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important; flex-wrap: nowrap !important; padding: 8px !important; background-color: #f8fafc !important; border-radius: 4px !important; margin-bottom: 8px !important;">
+                <span style="flex: 2 !important; text-align: left !important; min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;">${fee.name}</span>
+                <span style="width: 80px !important; text-align: right !important; flex-shrink: 0 !important;">¥${fee.amount}</span>
+                <button style="padding: 4px 8px !important; font-size: 12px !important; background-color: #fee2e2 !important; color: #ef4444 !important; border: none !important; border-radius: 4px !important; cursor: pointer !important; flex-shrink: 0 !important;" onclick="removeDynamicOtherFee(${fee.id})">删除</button>
             </div>
         `;
     });
