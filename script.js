@@ -259,7 +259,6 @@ const defaultSettings = {
     // 用途系数（存储格式：{value: 数值, name: 显示名称}）
     usageCoefficients: {
         personal: { value: 1, name: '自用/无盈利/同人商用' },
-        private: { value: 1.5, name: '不公开展示' },
         buyout: { value: 2, name: '买断（可要求不公开）' },
         enterprise: { value: 3, name: '企业/书店/出版社等' }
     },
@@ -292,7 +291,15 @@ const defaultSettings = {
         // 其他费用类别，可动态添加
     },
     // 可扩展的加价类系数（用途、加急为内置；此处为后期添加的，如 VIP系数）
-    extraPricingUp: [],
+    extraPricingUp: [
+        {
+            id: 1,
+            name: "不公开展示系数",
+            options: {
+                private: { value: 1.5, name: '不公开展示' }
+            }
+        }
+    ],
     // 可扩展的折扣类系数（折扣为内置；此处为后期添加的）
     extraPricingDown: [],
     // 小票自定义设置
@@ -4579,6 +4586,12 @@ function deleteExtraPricingOption(id, upDown, optKey) {
 
 // 删除扩展加价/折扣系数
 function deleteExtraCoefficient(id, upDown) {
+    // 禁止删除ID为1的"不公开展示系数"
+    if (id === 1) {
+        alert('该系数不可删除！');
+        return;
+    }
+    
     if (!confirm('确定要删除该系数吗？')) return;
     const list = upDown === 'up' ? defaultSettings.extraPricingUp : defaultSettings.extraPricingDown;
     if (list) {
