@@ -62,7 +62,21 @@
                 </div>
 
                 <div class="section">
-                    <h2>设置选项</h2>
+                    <div class="section-title-row d-flex justify-between items-center">
+                        <h2>设置选项</h2>
+                        <div class="template-fill-wrap">
+                            <button type="button" class="btn" id="templateFillBtn" onclick="toggleTemplateFillDropdown()">模版填表</button>
+                            <div id="templateFillDropdown" class="template-fill-dropdown d-none">
+                                <select id="templateSelect" onchange="onTemplateSelectChange()">
+                                    <option value="">-- 选择模板 --</option>
+                                </select>
+                                <div class="d-flex gap-2 mt-2">
+                                    <button type="button" class="btn small" onclick="loadSelectedTemplate(); closeTemplateFillDropdown();">加载</button>
+                                    <button type="button" class="btn danger small" id="deleteTemplateBtn" onclick="deleteTemplate();">删除</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="usage">用途</label>
@@ -126,6 +140,12 @@
                         <!-- 赠品信息将通过JavaScript动态添加 -->
                     </div>
                     <button class="btn add-product" onclick="addGift()">+ 赠品</button>
+                </div>
+                
+                <div class="save-template-row d-flex gap-2 items-center">
+                    <span class="text-gray">保存为模板：</span>
+                    <input type="text" id="templateName" placeholder="模板名称">
+                    <button class="btn" onclick="saveTemplate()">保存模板</button>
                 </div>
                 
                 <!-- 计算报价按钮（悬浮球） -->
@@ -248,6 +268,60 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- 筛选和操作工具栏 -->
+                    <div class="history-toolbar">
+                        <!-- 筛选区域 -->
+                        <div class="history-filters">
+                            <div class="filter-group">
+                                <label>时间范围：</label>
+                                <select id="historyTimeFilter" onchange="applyHistoryFilters()">
+                                    <option value="all">全部</option>
+                                    <option value="today">今天</option>
+                                    <option value="week">最近一周</option>
+                                    <option value="month">最近一月</option>
+                                    <option value="custom">自定义</option>
+                                </select>
+                                <input type="date" id="historyStartDate" class="d-none" onchange="applyHistoryFilters()">
+                                <span class="d-none">至</span>
+                                <input type="date" id="historyEndDate" class="d-none" onchange="applyHistoryFilters()">
+                            </div>
+                            <div class="filter-group">
+                                <label>价格范围：</label>
+                                <input type="number" id="historyMinPrice" placeholder="最低价" min="0" step="0.01" onchange="applyHistoryFilters()">
+                                <span>至</span>
+                                <input type="number" id="historyMaxPrice" placeholder="最高价" min="0" step="0.01" onchange="applyHistoryFilters()">
+                            </div>
+                        </div>
+                        
+                        <!-- 排序和操作区域 -->
+                        <div class="history-actions">
+                            <div class="action-group">
+                                <label>排序：</label>
+                                <select id="historySortBy" onchange="applyHistoryFilters()">
+                                    <option value="time-desc">时间（最新）</option>
+                                    <option value="time-asc">时间（最早）</option>
+                                    <option value="price-desc">价格（高到低）</option>
+                                    <option value="price-asc">价格（低到高）</option>
+                                    <option value="client-asc">单主ID（A-Z）</option>
+                                    <option value="client-desc">单主ID（Z-A）</option>
+                                </select>
+                            </div>
+                            <div class="action-group">
+                                <label>显示方式：</label>
+                                <select id="historyGroupBy" onchange="applyHistoryFilters()">
+                                    <option value="none">列表</option>
+                                    <option value="month">按月分组</option>
+                                </select>
+                            </div>
+                            <div class="action-group">
+                                <button class="btn secondary" onclick="selectAllHistory()">全选</button>
+                                <button class="btn danger" id="batchDeleteBtn" onclick="batchDeleteHistory()" disabled>批量删除</button>
+                                <button class="btn" onclick="exportHistoryToExcel()">导出Excel</button>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div id="historyContainer" class="history-container">
                         <!-- 历史记录将通过JavaScript动态生成 -->
                     </div>

@@ -7,6 +7,8 @@ let quoteData = null;
 let history = [];
 let productIdCounter = 0;
 let giftIdCounter = 0;
+let selectedHistoryIds = new Set(); // 存储选中的历史记录ID
+let templates = []; // 存储模板列表
 
 // ========== 自定义搜索下拉组件 ==========
 /**
@@ -383,6 +385,17 @@ function init() {
         setTimeout(updateFloatingButton, 100);
         setTimeout(updateFloatingButton, 300);
         setTimeout(updateFloatingButton, 500);
+        
+        // 初始化模板列表
+        renderTemplateList();
+        
+        // 监听模板选择变化
+        const templateSelect = document.getElementById('templateSelect');
+        if (templateSelect) {
+            templateSelect.addEventListener('change', function() {
+                updateDeleteTemplateButton();
+            });
+        }
     });
 }
 
@@ -430,6 +443,19 @@ function getCoefficientValue(coefficientObj) {
 
 // 加载本地存储的数据
 function loadData() {
+    // 先单独加载 templates，避免受其他键 parse 失败影响，确保刷新后模板不丢失
+    try {
+        const savedTemplates = localStorage.getItem('templates');
+        if (savedTemplates) {
+            const parsed = JSON.parse(savedTemplates);
+            templates = Array.isArray(parsed) ? parsed : [];
+        } else {
+            templates = [];
+        }
+    } catch (e) {
+        templates = [];
+    }
+
     try {
         const savedHistory = localStorage.getItem('quoteHistory');
         const savedSettings = localStorage.getItem('calculatorSettings');
@@ -483,6 +509,13 @@ function saveData() {
         localStorage.setItem('processSettings', JSON.stringify(processSettings));
     } catch (error) {
         console.error('保存数据失败:', error);
+    }
+    // 单独保存 templates，避免因其他键失败或 templates 序列化问题导致模板丢失
+    try {
+        const data = Array.isArray(templates) ? templates : [];
+        localStorage.setItem('templates', JSON.stringify(data));
+    } catch (e) {
+        console.error('保存模板失败:', e);
     }
 }
 
@@ -747,7 +780,13 @@ function showPage(pageId) {
     
     // 如果是报价页，只在quoteData为空时加载历史记录
     if (pageId === 'quote' && !quoteData) {
-        loadHistory();
+        // 使用applyHistoryFilters确保筛选功能正常工作
+        const searchInput = document.getElementById('historySearchInput');
+        if (searchInput) {
+            applyHistoryFilters();
+        } else {
+            loadHistory();
+        }
     }
     
     // 切换到报价页时，调整小票缩放（手机端）
@@ -769,6 +808,7 @@ function showPage(pageId) {
     if (pageId === 'calculator') {
         updateCalculatorBuiltinSelects();
         updateCalculatorCoefficientSelects();
+        renderTemplateList(); // 刷新模板列表
     }
     
     // 控制悬浮计算按钮的显示/隐藏
@@ -2170,40 +2210,66 @@ function saveToHistory() {
         return;
     }
     
-    // 添加到历史记录
-    history.unshift({
-        id: Date.now(),
-        ...quoteData
-    });
-    
-    // 限制历史记录数量
-    if (history.length > 20) {
-        history = history.slice(0, 20);
+    // 检查是否在编辑模式下
+    if (window.editingHistoryId) {
+        // 更新现有历史记录
+        const index = history.findIndex(item => item.id === window.editingHistoryId);
+        if (index !== -1) {
+            // 保留原始时间戳，更新其他数据
+            history[index] = {
+                ...quoteData,
+                id: window.editingHistoryId,
+                timestamp: history[index].timestamp // 保留原始时间
+            };
+            alert('历史记录已更新！');
+        } else {
+            alert('未找到要更新的历史记录！');
+            window.editingHistoryId = null;
+            return;
+        }
+        // 清除编辑标记
+        window.editingHistoryId = null;
+    } else {
+        // 添加新历史记录
+        history.unshift({
+            id: Date.now(),
+            ...quoteData
+        });
+        
+        // 限制历史记录数量
+        if (history.length > 20) {
+            history = history.slice(0, 20);
+        }
+        
+        alert('报价单已保存到历史记录！');
     }
     
     // 保存到本地存储
     saveData();
     
     // 刷新历史记录显示
-    loadHistory();
-    
-    alert('报价单已保存到历史记录！');
+    const searchInput = document.getElementById('historySearchInput');
+    if (searchInput) {
+        applyHistoryFilters();
+    } else {
+        loadHistory();
+    }
 }
 
-// 加载历史记录
-function loadHistory(searchKeyword = '') {
+// 加载历史记录（增强版：支持筛选、排序、分组）
+function loadHistory(searchKeyword = '', filters = {}) {
     const container = document.getElementById('historyContainer');
     
     if (history.length === 0) {
         container.innerHTML = '<p>暂无历史记录</p>';
+        updateBatchDeleteButton();
         return;
     }
     
-    // 过滤历史记录
+    // 1. 关键词搜索过滤
     let filteredHistory = history;
     if (searchKeyword) {
         filteredHistory = history.filter(item => {
-            // 检查关键词是否在客户端ID、联系方式、截稿日或总价中
             const keywordLower = searchKeyword.toLowerCase();
             return (
                 (item.clientId && item.clientId.toLowerCase().includes(keywordLower)) ||
@@ -2215,45 +2281,839 @@ function loadHistory(searchKeyword = '') {
         });
     }
     
+    // 2. 时间范围筛选
+    if (filters.timeRange && filters.timeRange !== 'all') {
+        const now = new Date();
+        filteredHistory = filteredHistory.filter(item => {
+            const itemDate = new Date(item.timestamp);
+            switch (filters.timeRange) {
+                case 'today':
+                    return itemDate.toDateString() === now.toDateString();
+                case 'week':
+                    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    return itemDate >= weekAgo;
+                case 'month':
+                    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    return itemDate >= monthAgo;
+                case 'custom':
+                    const startDate = filters.startDate ? new Date(filters.startDate) : null;
+                    const endDate = filters.endDate ? new Date(filters.endDate) : null;
+                    if (startDate) startDate.setHours(0, 0, 0, 0);
+                    if (endDate) endDate.setHours(23, 59, 59, 999);
+                    if (startDate && itemDate < startDate) return false;
+                    if (endDate && itemDate > endDate) return false;
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+    
+    // 3. 价格范围筛选
+    if (filters.minPrice !== undefined && filters.minPrice !== '') {
+        filteredHistory = filteredHistory.filter(item => 
+            item.finalTotal >= parseFloat(filters.minPrice)
+        );
+    }
+    if (filters.maxPrice !== undefined && filters.maxPrice !== '') {
+        filteredHistory = filteredHistory.filter(item => 
+            item.finalTotal <= parseFloat(filters.maxPrice)
+        );
+    }
+    
+    // 4. 排序
+    if (filters.sortBy) {
+        filteredHistory.sort((a, b) => {
+            switch (filters.sortBy) {
+                case 'time-desc':
+                    return new Date(b.timestamp) - new Date(a.timestamp);
+                case 'time-asc':
+                    return new Date(a.timestamp) - new Date(b.timestamp);
+                case 'price-desc':
+                    return (b.finalTotal || 0) - (a.finalTotal || 0);
+                case 'price-asc':
+                    return (a.finalTotal || 0) - (b.finalTotal || 0);
+                case 'client-asc':
+                    return (a.clientId || '').localeCompare(b.clientId || '');
+                case 'client-desc':
+                    return (b.clientId || '').localeCompare(a.clientId || '');
+                default:
+                    return 0;
+            }
+        });
+    } else {
+        // 默认按时间倒序
+        filteredHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }
+    
+    // 5. 分组显示
+    if (filters.groupBy === 'month') {
+        renderGroupedHistory(filteredHistory);
+    } else {
+        renderListHistory(filteredHistory);
+    }
+}
+
+// 渲染列表形式的历史记录
+function renderListHistory(filteredHistory) {
+    const container = document.getElementById('historyContainer');
     let html = '';
+    
     if (filteredHistory.length === 0) {
         html = '<p>未找到匹配的历史记录</p>';
     } else {
         filteredHistory.forEach(item => {
-            html += `
-                <div class="history-item">
-                    <div class="history-item-header">
-                        <div class="history-item-title">报价单 - ${item.clientId}</div>
-                        <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
-                    </div>
-                    <div class="history-item-content">
-                        联系方式: ${item.contact}\n
-                        截稿日: ${item.deadline}\n
-                        最终总价: ¥${item.finalTotal.toFixed(2)}
-                    </div>
-                    <button class="btn secondary" onclick="loadQuoteFromHistory(${item.id})">查看详情</button>
-                    <button class="btn danger" onclick="deleteHistoryItem(${item.id})">删除</button>
-                </div>
-            `;
+            html += generateHistoryItemHTML(item);
         });
     }
     
     container.innerHTML = html;
+    updateBatchDeleteButton();
+    restoreCheckboxStates();
+}
+
+// 渲染分组形式的历史记录
+function renderGroupedHistory(filteredHistory) {
+    const container = document.getElementById('historyContainer');
+    
+    if (filteredHistory.length === 0) {
+        container.innerHTML = '<p>未找到匹配的历史记录</p>';
+        updateBatchDeleteButton();
+        return;
+    }
+    
+    // 按月份分组
+    const grouped = {};
+    filteredHistory.forEach(item => {
+        const date = new Date(item.timestamp);
+        const monthKey = `${date.getFullYear()}年${date.getMonth() + 1}月`;
+        if (!grouped[monthKey]) {
+            grouped[monthKey] = [];
+        }
+        grouped[monthKey].push(item);
+    });
+    
+    // 生成HTML
+    let html = '';
+    const sortedMonths = Object.keys(grouped).sort((a, b) => {
+        // 按时间倒序排列
+        return b.localeCompare(a);
+    });
+    
+    sortedMonths.forEach(month => {
+        html += `<div class="history-group">`;
+        html += `<div class="history-group-header">${month} (${grouped[month].length}条)</div>`;
+        html += `<div class="history-group-items">`;
+        grouped[month].forEach(item => {
+            html += generateHistoryItemHTML(item);
+        });
+        html += `</div></div>`;
+    });
+    
+    container.innerHTML = html;
+    updateBatchDeleteButton();
+    restoreCheckboxStates();
+}
+
+// 生成历史记录项HTML
+function generateHistoryItemHTML(item) {
+    const isSelected = selectedHistoryIds.has(item.id);
+    return `
+        <div class="history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
+            <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
+            <div class="history-item-header">
+                <div class="history-item-title">报价单 - ${item.clientId}</div>
+                <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
+            </div>
+            <div class="history-item-content">
+                联系方式: ${item.contact}\n
+                截稿日: ${item.deadline}\n
+                最终总价: ¥${item.finalTotal.toFixed(2)}
+            </div>
+            <div class="history-item-actions">
+                <button class="btn secondary" onclick="loadQuoteFromHistory(${item.id})">查看详情</button>
+                <button class="btn" onclick="editHistoryItem(${item.id})">编辑</button>
+                <button class="btn danger" onclick="deleteHistoryItem(${item.id})">删除</button>
+            </div>
+        </div>
+    `;
+}
+
+// 应用筛选条件
+function applyHistoryFilters() {
+    const timeFilterEl = document.getElementById('historyTimeFilter');
+    const startDateEl = document.getElementById('historyStartDate');
+    const endDateEl = document.getElementById('historyEndDate');
+    const minPriceEl = document.getElementById('historyMinPrice');
+    const maxPriceEl = document.getElementById('historyMaxPrice');
+    const sortByEl = document.getElementById('historySortBy');
+    const groupByEl = document.getElementById('historyGroupBy');
+    const searchInput = document.getElementById('historySearchInput');
+    
+    if (!timeFilterEl || !sortByEl || !groupByEl) {
+        // 如果元素不存在，使用旧的loadHistory方式（向后兼容）
+        const keyword = searchInput ? searchInput.value.trim() : '';
+        loadHistory(keyword);
+        return;
+    }
+    
+    const timeFilter = timeFilterEl.value;
+    const startDate = startDateEl ? startDateEl.value : '';
+    const endDate = endDateEl ? endDateEl.value : '';
+    const minPrice = minPriceEl ? minPriceEl.value : '';
+    const maxPrice = maxPriceEl ? maxPriceEl.value : '';
+    const sortBy = sortByEl.value;
+    const groupBy = groupByEl.value;
+    const searchKeyword = searchInput ? searchInput.value.trim() : '';
+    
+    // 显示/隐藏自定义时间选择器
+    if (timeFilter === 'custom') {
+        if (startDateEl) {
+            startDateEl.classList.remove('d-none');
+            startDateEl.style.display = '';
+        }
+        if (endDateEl) {
+            endDateEl.classList.remove('d-none');
+            endDateEl.style.display = '';
+        }
+        const spanEls = document.querySelectorAll('.history-filters .filter-group span');
+        spanEls.forEach(span => {
+            if (span.textContent === '至') {
+                span.classList.remove('d-none');
+                span.style.display = '';
+            }
+        });
+    } else {
+        if (startDateEl) {
+            startDateEl.classList.add('d-none');
+            startDateEl.style.display = 'none';
+        }
+        if (endDateEl) {
+            endDateEl.classList.add('d-none');
+            endDateEl.style.display = 'none';
+        }
+        const spanEls = document.querySelectorAll('.history-filters .filter-group span');
+        spanEls.forEach(span => {
+            if (span.textContent === '至') {
+                span.classList.add('d-none');
+                span.style.display = 'none';
+            }
+        });
+    }
+    
+    const filters = {
+        timeRange: timeFilter,
+        startDate: startDate,
+        endDate: endDate,
+        minPrice: minPrice,
+        maxPrice: maxPrice,
+        sortBy: sortBy,
+        groupBy: groupBy
+    };
+    
+    loadHistory(searchKeyword, filters);
 }
 
 // 搜索历史记录
 function searchHistory() {
-    const searchInput = document.getElementById('historySearchInput');
-    const keyword = searchInput.value.trim();
-    loadHistory(keyword);
+    applyHistoryFilters();
 }
 
 // 清空搜索
 function clearHistorySearch() {
     const searchInput = document.getElementById('historySearchInput');
-    searchInput.value = '';
-    loadHistory();
+    if (searchInput) searchInput.value = '';
+    
+    // 重置所有筛选条件
+    const timeFilterEl = document.getElementById('historyTimeFilter');
+    const startDateEl = document.getElementById('historyStartDate');
+    const endDateEl = document.getElementById('historyEndDate');
+    const minPriceEl = document.getElementById('historyMinPrice');
+    const maxPriceEl = document.getElementById('historyMaxPrice');
+    const sortByEl = document.getElementById('historySortBy');
+    const groupByEl = document.getElementById('historyGroupBy');
+    
+    if (timeFilterEl) timeFilterEl.value = 'all';
+    if (startDateEl) {
+        startDateEl.value = '';
+        startDateEl.classList.add('d-none');
+    }
+    if (endDateEl) {
+        endDateEl.value = '';
+        endDateEl.classList.add('d-none');
+    }
+    if (minPriceEl) minPriceEl.value = '';
+    if (maxPriceEl) maxPriceEl.value = '';
+    if (sortByEl) sortByEl.value = 'time-desc';
+    if (groupByEl) groupByEl.value = 'none';
+    
+    selectedHistoryIds.clear();
+    applyHistoryFilters();
 }
+
+// 切换历史记录选中状态
+function toggleHistorySelection(id) {
+    const checkbox = document.querySelector(`.history-item-checkbox[data-id="${id}"]`);
+    if (checkbox && checkbox.checked) {
+        selectedHistoryIds.add(id);
+    } else {
+        selectedHistoryIds.delete(id);
+    }
+    
+    // 更新选中样式
+    const item = document.querySelector(`.history-item[data-id="${id}"]`);
+    if (item) {
+        if (selectedHistoryIds.has(id)) {
+            item.classList.add('selected');
+        } else {
+            item.classList.remove('selected');
+        }
+    }
+    
+    updateBatchDeleteButton();
+}
+
+// 全选/取消全选
+function selectAllHistory() {
+    const checkboxes = document.querySelectorAll('.history-item-checkbox');
+    if (checkboxes.length === 0) return;
+    
+    const allSelected = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(cb => {
+        cb.checked = !allSelected;
+        const id = parseInt(cb.dataset.id);
+        if (!allSelected) {
+            selectedHistoryIds.add(id);
+        } else {
+            selectedHistoryIds.delete(id);
+        }
+    });
+    
+    // 更新选中样式
+    document.querySelectorAll('.history-item').forEach(item => {
+        const id = parseInt(item.dataset.id);
+        if (selectedHistoryIds.has(id)) {
+            item.classList.add('selected');
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+    
+    updateBatchDeleteButton();
+}
+
+// 更新批量删除按钮状态
+function updateBatchDeleteButton() {
+    const btn = document.getElementById('batchDeleteBtn');
+    if (btn) {
+        btn.disabled = selectedHistoryIds.size === 0;
+        btn.textContent = selectedHistoryIds.size > 0 ? `批量删除(${selectedHistoryIds.size})` : '批量删除';
+    }
+}
+
+// 恢复复选框状态（在重新渲染后）
+function restoreCheckboxStates() {
+    selectedHistoryIds.forEach(id => {
+        const checkbox = document.querySelector(`.history-item-checkbox[data-id="${id}"]`);
+        if (checkbox) {
+            checkbox.checked = true;
+        }
+        const item = document.querySelector(`.history-item[data-id="${id}"]`);
+        if (item) {
+            item.classList.add('selected');
+        }
+    });
+}
+
+// 批量删除历史记录
+function batchDeleteHistory() {
+    if (selectedHistoryIds.size === 0) {
+        alert('请先选择要删除的历史记录！');
+        return;
+    }
+    
+    if (!confirm(`确定要删除选中的 ${selectedHistoryIds.size} 条历史记录吗？`)) {
+        return;
+    }
+    
+    history = history.filter(item => !selectedHistoryIds.has(item.id));
+    selectedHistoryIds.clear();
+    saveData();
+    
+    // 重新应用当前筛选条件
+    applyHistoryFilters();
+    
+    alert('已删除选中的历史记录！');
+}
+
+// 编辑历史记录（加载到计算页）
+function editHistoryItem(id) {
+    const quote = history.find(item => item.id === id);
+    if (!quote) {
+        alert('未找到该历史记录！');
+        return;
+    }
+    
+    // 切换到计算页
+    showPage('calculator');
+    
+    // 清空当前制品和赠品
+    products = [];
+    gifts = [];
+    productIdCounter = 0;
+    giftIdCounter = 0;
+    
+    // 清空容器
+    const productsContainer = document.getElementById('productsContainer');
+    const giftsContainer = document.getElementById('giftsContainer');
+    if (productsContainer) productsContainer.innerHTML = '';
+    if (giftsContainer) giftsContainer.innerHTML = '';
+    
+    // 恢复单主信息
+    if (quote.clientId) {
+        document.getElementById('clientId').value = quote.clientId;
+    }
+    if (quote.contact) {
+        const contactParts = quote.contact.split(':');
+        if (contactParts.length >= 2) {
+            const contactType = contactParts[0].trim();
+            const contactValue = contactParts.slice(1).join(':').trim();
+            document.getElementById('contactType').value = contactType;
+            document.getElementById('contact').value = contactValue;
+        } else {
+            document.getElementById('contact').value = quote.contact;
+        }
+    }
+    if (quote.startTime) {
+        document.getElementById('startTime').value = quote.startTime;
+    }
+    if (quote.deadline) {
+        document.getElementById('deadline').value = quote.deadline;
+    }
+    
+    // 恢复系数选择（需要等待选择器初始化）
+    setTimeout(() => {
+        // 恢复用途系数
+        if (quote.usageType) {
+            const usageSelect = document.getElementById('usage');
+            if (usageSelect) {
+                usageSelect.value = quote.usageType;
+                if (usageSelect.onchange) usageSelect.onchange();
+            }
+        }
+        
+        // 恢复加急系数
+        if (quote.urgentType) {
+            const urgentSelect = document.getElementById('urgent');
+            if (urgentSelect) {
+                urgentSelect.value = quote.urgentType;
+                if (urgentSelect.onchange) urgentSelect.onchange();
+            }
+        }
+        
+        // 恢复同模系数
+        if (quote.sameModelType) {
+            const sameModelSelect = document.getElementById('sameModel');
+            if (sameModelSelect) {
+                sameModelSelect.value = quote.sameModelType;
+                if (sameModelSelect.onchange) sameModelSelect.onchange();
+            }
+        }
+        
+        // 恢复折扣系数
+        if (quote.discountType) {
+            const discountSelect = document.getElementById('discount');
+            if (discountSelect) {
+                discountSelect.value = quote.discountType;
+                if (discountSelect.onchange) discountSelect.onchange();
+            }
+        }
+        
+        // 恢复平台费
+        if (quote.platformType) {
+            const platformSelect = document.getElementById('platform');
+            if (platformSelect) {
+                platformSelect.value = quote.platformType;
+                if (platformSelect.onchange) platformSelect.onchange();
+            }
+        }
+        
+        // 恢复其他加价类
+        if (quote.extraUpSelections && Array.isArray(quote.extraUpSelections)) {
+            quote.extraUpSelections.forEach(sel => {
+                const selEl = document.getElementById('extraUp_' + sel.id);
+                if (selEl) {
+                    selEl.value = sel.selectedKey;
+                    if (selEl.onchange) selEl.onchange();
+                }
+            });
+        }
+        
+        // 恢复其他折扣类
+        if (quote.extraDownSelections && Array.isArray(quote.extraDownSelections)) {
+            quote.extraDownSelections.forEach(sel => {
+                const selEl = document.getElementById('extraDown_' + sel.id);
+                if (selEl) {
+                    selEl.value = sel.selectedKey;
+                    if (selEl.onchange) selEl.onchange();
+                }
+            });
+        }
+        
+        // 恢复其他费用
+        if (quote.otherFees && Array.isArray(quote.otherFees)) {
+            dynamicOtherFees = [];
+            quote.otherFees.forEach(fee => {
+                addDynamicOtherFeeFromData(fee.name, fee.amount);
+            });
+        }
+    }, 100);
+    
+    // 恢复制品
+    if (quote.productPrices && Array.isArray(quote.productPrices)) {
+        quote.productPrices.forEach(productPrice => {
+            // 根据制品名称查找制品设置ID
+            const productSetting = productSettings.find(setting => setting.name === productPrice.product);
+            if (productSetting) {
+                productIdCounter++;
+                const product = {
+                    id: productIdCounter,
+                    type: productSetting.id.toString(),
+                    sides: productPrice.sides || 'single',
+                    quantity: productPrice.quantity || 1,
+                    sameModel: productPrice.sameModelCount > 0,
+                    processes: {}
+                };
+                
+                // 恢复工艺信息
+                if (productPrice.processDetails && Array.isArray(productPrice.processDetails)) {
+                    productPrice.processDetails.forEach(process => {
+                        if (process.name && process.layers) {
+                            product.processes[process.name] = process.layers;
+                        }
+                    });
+                }
+                
+                // 恢复基础+递增价的配置
+                if (productPrice.productType === 'config' && productPrice.additionalConfigDetails) {
+                    // 对于基础+递增价，需要根据配置恢复sides值
+                    // 这里简化处理，如果有additionalConfigDetails，使用配置数量+1作为sides
+                    const totalConfig = productPrice.additionalConfigDetails.reduce((sum, c) => sum + (c.count || 0), 0);
+                    if (totalConfig > 0) {
+                        product.sides = (totalConfig + 1).toString();
+                    }
+                } else if (productPrice.productType === 'config' && productPrice.totalAdditionalCount !== undefined) {
+                    product.sides = (productPrice.totalAdditionalCount + 1).toString();
+                }
+                
+                products.push(product);
+                renderProduct(product);
+            }
+        });
+    }
+    
+    // 恢复赠品
+    if (quote.giftPrices && Array.isArray(quote.giftPrices)) {
+        quote.giftPrices.forEach(giftPrice => {
+            const giftSetting = productSettings.find(setting => setting.name === giftPrice.product);
+            if (giftSetting) {
+                giftIdCounter++;
+                const gift = {
+                    id: giftIdCounter,
+                    type: giftSetting.id.toString(),
+                    sides: giftPrice.sides || 'single',
+                    quantity: giftPrice.quantity || 1,
+                    sameModel: giftPrice.sameModelCount > 0,
+                    processes: {}
+                };
+                
+                // 恢复工艺信息
+                if (giftPrice.processDetails && Array.isArray(giftPrice.processDetails)) {
+                    giftPrice.processDetails.forEach(process => {
+                        if (process.name && process.layers) {
+                            gift.processes[process.name] = process.layers;
+                        }
+                    });
+                }
+                
+                // 恢复基础+递增价的配置
+                if (giftPrice.productType === 'config' && giftPrice.additionalConfigDetails) {
+                    const totalConfig = giftPrice.additionalConfigDetails.reduce((sum, c) => sum + (c.count || 0), 0);
+                    if (totalConfig > 0) {
+                        gift.sides = (totalConfig + 1).toString();
+                    }
+                } else if (giftPrice.productType === 'config' && giftPrice.totalAdditionalCount !== undefined) {
+                    gift.sides = (giftPrice.totalAdditionalCount + 1).toString();
+                }
+                
+                gifts.push(gift);
+                renderGift(gift);
+            }
+        });
+    }
+    
+    // 保存当前编辑的历史记录ID，用于更新
+    window.editingHistoryId = id;
+    
+    alert('历史记录已加载到计算页，可以修改后重新计算！');
+}
+
+// 从数据添加其他费用（用于编辑历史记录）
+function addDynamicOtherFeeFromData(name, amount) {
+    if (!dynamicOtherFees) {
+        dynamicOtherFees = [];
+    }
+    
+    const fee = {
+        id: Date.now(),
+        name: name,
+        amount: parseFloat(amount) || 0
+    };
+    
+    dynamicOtherFees.push(fee);
+    renderDynamicOtherFees();
+}
+
+// ========== 模板管理功能 ==========
+
+// 保存模板（含设置选项：用途、加急、同模、折扣、平台、其他加价/折扣类、其他费用）
+function saveTemplate() {
+    const templateName = document.getElementById('templateName').value.trim();
+    if (!templateName) {
+        alert('请输入模板名称！');
+        return;
+    }
+    
+    if (products.length === 0 && gifts.length === 0) {
+        alert('请至少添加一个制品或赠品！');
+        return;
+    }
+    
+    // 收集设置选项
+    const usageType = (document.getElementById('usage') && document.getElementById('usage').value) || '';
+    const urgentType = (document.getElementById('urgent') && document.getElementById('urgent').value) || '';
+    const sameModelType = (document.getElementById('sameModel') && document.getElementById('sameModel').value) || '';
+    const discountType = (document.getElementById('discount') && document.getElementById('discount').value) || '';
+    const platformType = (document.getElementById('platform') && document.getElementById('platform').value) || '';
+    const extraUpSelections = [];
+    (defaultSettings.extraPricingUp || []).forEach(e => {
+        const el = document.getElementById('extraUp_' + e.id);
+        if (el && el.value) extraUpSelections.push({ id: e.id, selectedKey: el.value });
+    });
+    const extraDownSelections = [];
+    (defaultSettings.extraPricingDown || []).forEach(e => {
+        const el = document.getElementById('extraDown_' + e.id);
+        if (el && el.value) extraDownSelections.push({ id: e.id, selectedKey: el.value });
+    });
+    const otherFees = (typeof dynamicOtherFees !== 'undefined' && Array.isArray(dynamicOtherFees))
+        ? dynamicOtherFees.map(f => ({ name: f.name, amount: f.amount }))
+        : [];
+    
+    const existingIndex = templates.findIndex(t => t.name === templateName);
+    
+    const template = {
+        id: existingIndex !== -1 ? templates[existingIndex].id : Date.now(),
+        name: templateName,
+        products: JSON.parse(JSON.stringify(products)),
+        gifts: JSON.parse(JSON.stringify(gifts)),
+        settings: {
+            usageType: usageType,
+            urgentType: urgentType,
+            sameModelType: sameModelType,
+            discountType: discountType,
+            platformType: platformType,
+            extraUpSelections: extraUpSelections,
+            extraDownSelections: extraDownSelections,
+            otherFees: otherFees
+        },
+        timestamp: Date.now()
+    };
+    
+    if (existingIndex !== -1) {
+        templates[existingIndex] = template;
+        alert('模板已更新！');
+    } else {
+        templates.push(template);
+        alert('模板已保存！');
+    }
+    
+    saveData();
+    renderTemplateList();
+    const tn = document.getElementById('templateName');
+    if (tn) tn.value = '';
+}
+
+// 模板选择变化时的处理
+function onTemplateSelectChange() {
+    updateDeleteTemplateButton();
+}
+
+// 加载选中的模板
+function loadSelectedTemplate() {
+    const templateSelect = document.getElementById('templateSelect');
+    const templateId = parseInt(templateSelect.value);
+    
+    if (!templateId) {
+        alert('请先选择一个模板！');
+        return;
+    }
+    
+    const template = templates.find(t => t.id === templateId);
+    if (!template) {
+        alert('未找到该模板！');
+        return;
+    }
+    
+    // 确认是否清空当前制品和赠品
+    if (products.length > 0 || gifts.length > 0) {
+        if (!confirm('加载模板将替换当前的制品和赠品，是否继续？')) {
+            return;
+        }
+    }
+    
+    // 清空当前制品和赠品
+    products = [];
+    gifts = [];
+    productIdCounter = 0;
+    giftIdCounter = 0;
+    
+    // 清空容器
+    const productsContainer = document.getElementById('productsContainer');
+    const giftsContainer = document.getElementById('giftsContainer');
+    if (productsContainer) productsContainer.innerHTML = '';
+    if (giftsContainer) giftsContainer.innerHTML = '';
+    
+    // 加载模板中的制品
+    if (template.products && Array.isArray(template.products)) {
+        template.products.forEach(productData => {
+            productIdCounter++;
+            const product = {
+                id: productIdCounter,
+                type: productData.type || '',
+                sides: productData.sides || 'single',
+                quantity: productData.quantity || 1,
+                sameModel: productData.sameModel !== undefined ? productData.sameModel : true,
+                processes: productData.processes || {}
+            };
+            products.push(product);
+            renderProduct(product);
+        });
+    }
+    
+    // 加载模板中的赠品
+    if (template.gifts && Array.isArray(template.gifts)) {
+        template.gifts.forEach(giftData => {
+            giftIdCounter++;
+            const gift = {
+                id: giftIdCounter,
+                type: giftData.type || '',
+                sides: giftData.sides || 'single',
+                quantity: giftData.quantity || 1,
+                sameModel: giftData.sameModel !== undefined ? giftData.sameModel : true,
+                processes: giftData.processes || {}
+            };
+            gifts.push(gift);
+            renderGift(gift);
+        });
+    }
+    
+    // 恢复设置选项（用途、加急、同模、折扣、平台、其他加价/折扣类、其他费用）
+    if (template.settings) {
+        const s = template.settings;
+        const setSel = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; if (el.onchange) el.onchange(); } };
+        setSel('usage', s.usageType || '');
+        setSel('urgent', s.urgentType || '');
+        setSel('sameModel', s.sameModelType || '');
+        setSel('discount', s.discountType || '');
+        setSel('platform', s.platformType || '');
+        (s.extraUpSelections || []).forEach(sel => {
+            const el = document.getElementById('extraUp_' + sel.id);
+            if (el) { el.value = sel.selectedKey; if (el.onchange) el.onchange(); }
+        });
+        (s.extraDownSelections || []).forEach(sel => {
+            const el = document.getElementById('extraDown_' + sel.id);
+            if (el) { el.value = sel.selectedKey; if (el.onchange) el.onchange(); }
+        });
+        if (Array.isArray(s.otherFees)) {
+            if (typeof dynamicOtherFees !== 'undefined') { dynamicOtherFees.length = 0; } else { window.dynamicOtherFees = []; }
+            renderDynamicOtherFees();
+            s.otherFees.forEach(f => addDynamicOtherFeeFromData(f.name, f.amount));
+        }
+    }
+    
+    templateSelect.value = '';
+    updateDeleteTemplateButton();
+    alert('模板已加载！');
+}
+
+// 删除模板
+function deleteTemplate() {
+    const templateSelect = document.getElementById('templateSelect');
+    const templateId = parseInt(templateSelect.value);
+    
+    if (!templateId) {
+        return;
+    }
+    
+    const template = templates.find(t => t.id === templateId);
+    if (!template) {
+        alert('未找到该模板！');
+        return;
+    }
+    
+    if (!confirm(`确定要删除模板"${template.name}"吗？`)) {
+        return;
+    }
+    
+    templates = templates.filter(t => t.id !== templateId);
+    saveData();
+    renderTemplateList();
+    
+    alert('模板已删除！');
+}
+
+// 渲染模板列表
+function renderTemplateList() {
+    const templateSelect = document.getElementById('templateSelect');
+    if (!templateSelect) return;
+    
+    // 保存当前选中的值
+    const currentValue = templateSelect.value;
+    
+    // 清空选项
+    templateSelect.innerHTML = '<option value="">-- 选择模板 --</option>';
+    
+    // 按时间倒序排列
+    const sortedTemplates = [...templates].sort((a, b) => b.timestamp - a.timestamp);
+    
+    // 添加模板选项
+    sortedTemplates.forEach(template => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = `${template.name} (${template.products.length}个制品, ${template.gifts.length}个赠品)`;
+        templateSelect.appendChild(option);
+    });
+    
+    // 恢复选中的值
+    if (currentValue) {
+        templateSelect.value = currentValue;
+    }
+    
+    // 更新删除按钮状态
+    updateDeleteTemplateButton();
+}
+
+// 更新删除模板按钮状态
+function updateDeleteTemplateButton() {
+    const templateSelect = document.getElementById('templateSelect');
+    const deleteBtn = document.getElementById('deleteTemplateBtn');
+    
+    if (deleteBtn && templateSelect) {
+        deleteBtn.disabled = !templateSelect.value;
+    }
+}
+
 
 // 从历史记录加载报价
 function loadQuoteFromHistory(id) {
@@ -2343,8 +3203,253 @@ function loadQuoteFromHistory(id) {
 // 删除历史记录项
 function deleteHistoryItem(id) {
     history = history.filter(item => item.id !== id);
+    selectedHistoryIds.delete(id);
     saveData();
-    loadHistory();
+    applyHistoryFilters();
+}
+
+// 导出历史记录为Excel
+function exportHistoryToExcel() {
+    if (history.length === 0) {
+        alert('暂无历史记录可导出！');
+        return;
+    }
+    
+    // 获取当前筛选后的历史记录
+    const searchInput = document.getElementById('historySearchInput');
+    const timeFilterEl = document.getElementById('historyTimeFilter');
+    const startDateEl = document.getElementById('historyStartDate');
+    const endDateEl = document.getElementById('historyEndDate');
+    const minPriceEl = document.getElementById('historyMinPrice');
+    const maxPriceEl = document.getElementById('historyMaxPrice');
+    
+    const searchKeyword = searchInput ? searchInput.value.trim() : '';
+    const timeFilter = timeFilterEl ? timeFilterEl.value : 'all';
+    const startDate = startDateEl ? startDateEl.value : '';
+    const endDate = endDateEl ? endDateEl.value : '';
+    const minPrice = minPriceEl ? minPriceEl.value : '';
+    const maxPrice = maxPriceEl ? maxPriceEl.value : '';
+    
+    // 应用筛选获取要导出的数据
+    let exportData = history;
+    
+    // 应用搜索关键词
+    if (searchKeyword) {
+        const keywordLower = searchKeyword.toLowerCase();
+        exportData = exportData.filter(item => {
+            return (
+                (item.clientId && item.clientId.toLowerCase().includes(keywordLower)) ||
+                (item.contact && item.contact.toLowerCase().includes(keywordLower)) ||
+                (item.deadline && item.deadline.toLowerCase().includes(keywordLower)) ||
+                (item.finalTotal && item.finalTotal.toString().includes(keywordLower))
+            );
+        });
+    }
+    
+    // 应用时间筛选
+    if (timeFilter && timeFilter !== 'all') {
+        const now = new Date();
+        exportData = exportData.filter(item => {
+            const itemDate = new Date(item.timestamp);
+            switch (timeFilter) {
+                case 'today':
+                    return itemDate.toDateString() === now.toDateString();
+                case 'week':
+                    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    return itemDate >= weekAgo;
+                case 'month':
+                    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    return itemDate >= monthAgo;
+                case 'custom':
+                    const start = startDate ? new Date(startDate) : null;
+                    const end = endDate ? new Date(endDate) : null;
+                    if (start) start.setHours(0, 0, 0, 0);
+                    if (end) end.setHours(23, 59, 59, 999);
+                    if (start && itemDate < start) return false;
+                    if (end && itemDate > end) return false;
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+    
+    // 应用价格筛选
+    if (minPrice) {
+        exportData = exportData.filter(item => item.finalTotal >= parseFloat(minPrice));
+    }
+    if (maxPrice) {
+        exportData = exportData.filter(item => item.finalTotal <= parseFloat(maxPrice));
+    }
+    
+    if (exportData.length === 0) {
+        alert('当前筛选条件下没有可导出的历史记录！');
+        return;
+    }
+    
+    // 准备汇总表数据
+    const summaryData = exportData.map(item => ({
+        '时间': new Date(item.timestamp).toLocaleString('zh-CN'),
+        '单主ID': item.clientId || '',
+        '联系方式': item.contact || '',
+        '开始时间': item.startTime || '',
+        '截稿时间': item.deadline || '',
+        '制品总价': item.totalProductsPrice || 0,
+        '其他费用': item.totalOtherFees || 0,
+        '平台费': item.platformFeeAmount || 0,
+        '最终总价': item.finalTotal || 0,
+        '用途系数': item.usage || 1,
+        '加急系数': item.urgent || 1,
+        '折扣系数': item.discount || 1,
+        '制品数量': item.productPrices ? item.productPrices.length : 0,
+        '赠品数量': item.giftPrices ? item.giftPrices.length : 0
+    }));
+    
+    // 准备制品明细数据
+    const productDetailData = [];
+    exportData.forEach(item => {
+        const timestamp = new Date(item.timestamp).toLocaleString('zh-CN');
+        const clientId = item.clientId || '';
+        
+        if (item.productPrices && item.productPrices.length > 0) {
+            item.productPrices.forEach((product, index) => {
+                // 格式化工艺信息
+                let processInfo = '';
+                if (product.processDetails && product.processDetails.length > 0) {
+                    processInfo = product.processDetails.map(p => {
+                        if (p.name && p.layers && p.unitPrice) {
+                            return `${p.name}×${p.layers}层(¥${p.unitPrice.toFixed(2)}/层)`;
+                        }
+                        return '';
+                    }).filter(p => p).join('; ');
+                }
+                
+                // 格式化额外配置信息
+                let additionalConfigInfo = '';
+                if (product.additionalConfigDetails && product.additionalConfigDetails.length > 0) {
+                    additionalConfigInfo = product.additionalConfigDetails.map(c => {
+                        if (c.name && c.count && c.unitPrice) {
+                            return `${c.name}×${c.count}${c.unit || ''}(¥${c.unitPrice.toFixed(2)}/${c.unit || '单位'})`;
+                        }
+                        return '';
+                    }).filter(c => c).join('; ');
+                } else if (product.totalAdditionalCount !== undefined && product.additionalUnit && product.additionalPrice) {
+                    additionalConfigInfo = `额外${product.totalAdditionalCount}${product.additionalUnit}(¥${product.additionalPrice.toFixed(2)}/${product.additionalUnit})`;
+                }
+                
+                // 格式化价格类型
+                let priceTypeText = '';
+                switch(product.productType) {
+                    case 'fixed':
+                        priceTypeText = '固定价';
+                        break;
+                    case 'double':
+                        priceTypeText = '单双面价';
+                        break;
+                    case 'config':
+                        priceTypeText = '基础+递增价';
+                        break;
+                    default:
+                        priceTypeText = product.productType || '';
+                }
+                
+                // 格式化单双面
+                let sidesText = '';
+                if (product.sides === 'single') {
+                    sidesText = '单面';
+                } else if (product.sides === 'double') {
+                    sidesText = '双面';
+                } else if (product.sides && product.sides !== 'single' && product.sides !== 'double') {
+                    sidesText = `${product.sides}面`;
+                }
+                
+                const detailRow = {
+                    '报价时间': timestamp,
+                    '单主ID': clientId,
+                    '序号': product.productIndex || (index + 1),
+                    '制品名称': product.product || '',
+                    '分类': product.category || '其他',
+                    '价格类型': priceTypeText,
+                    '单双面': sidesText,
+                    '基础价格': product.basePrice || 0,
+                    '基础配置': product.baseConfig || '',
+                    '基础配置价': product.baseConfigPrice || '',
+                    '数量': product.quantity || 0,
+                    '同模数量': product.sameModelCount || 0,
+                    '同模单价': product.sameModelUnitPrice || 0,
+                    '同模总计': product.sameModelTotal || 0,
+                    '工艺信息': processInfo,
+                    '工艺费用': product.totalProcessFee || 0,
+                    '额外配置': additionalConfigInfo,
+                    '制品小计': product.productTotal || 0
+                };
+                
+                productDetailData.push(detailRow);
+            });
+        }
+    });
+    
+    // 创建工作簿
+    const workbook = XLSX.utils.book_new();
+    
+    // 创建汇总表
+    const summaryWorksheet = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(workbook, summaryWorksheet, '历史记录汇总');
+    
+    // 设置汇总表列宽
+    const summaryColWidths = [
+        { wch: 20 }, // 时间
+        { wch: 15 }, // 单主ID
+        { wch: 20 }, // 联系方式
+        { wch: 12 }, // 开始时间
+        { wch: 12 }, // 截稿时间
+        { wch: 12 }, // 制品总价
+        { wch: 12 }, // 其他费用
+        { wch: 12 }, // 平台费
+        { wch: 12 }, // 最终总价
+        { wch: 10 }, // 用途系数
+        { wch: 10 }, // 加急系数
+        { wch: 10 }, // 折扣系数
+        { wch: 10 }, // 制品数量
+        { wch: 10 }  // 赠品数量
+    ];
+    summaryWorksheet['!cols'] = summaryColWidths;
+    
+    // 创建制品明细表
+    if (productDetailData.length > 0) {
+        const detailWorksheet = XLSX.utils.json_to_sheet(productDetailData);
+        XLSX.utils.book_append_sheet(workbook, detailWorksheet, '制品明细');
+        
+        // 设置制品明细表列宽
+        const detailColWidths = [
+            { wch: 20 }, // 报价时间
+            { wch: 15 }, // 单主ID
+            { wch: 8 },  // 序号
+            { wch: 20 }, // 制品名称
+            { wch: 12 }, // 分类
+            { wch: 12 }, // 价格类型
+            { wch: 10 }, // 单双面
+            { wch: 12 }, // 基础价格
+            { wch: 15 }, // 基础配置
+            { wch: 12 }, // 基础配置价
+            { wch: 8 },  // 数量
+            { wch: 10 }, // 同模数量
+            { wch: 12 }, // 同模单价
+            { wch: 12 }, // 同模总计
+            { wch: 30 }, // 工艺信息
+            { wch: 12 }, // 工艺费用
+            { wch: 30 }, // 额外配置
+            { wch: 12 }  // 制品小计
+        ];
+        detailWorksheet['!cols'] = detailColWidths;
+    }
+    
+    // 导出文件
+    const filename = `历史记录_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, filename);
+    
+    const productCount = productDetailData.length;
+    alert(`已导出 ${exportData.length} 条历史记录（${productCount} 个制品明细）到 ${filename}`);
 }
 
 // 更新用途系数
