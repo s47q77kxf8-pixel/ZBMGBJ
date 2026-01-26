@@ -540,6 +540,162 @@ input:focus, select:focus {
     border-top: 1px solid #e2e8f0;
 }
 
+/* 系数设置样式 - 名称长，系数值短 */
+.coefficient-settings .mb-2.d-flex.items-center.gap-2 {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+}
+
+/* 系数名称输入框 - 占据更多空间 */
+.coefficient-settings .mb-2.d-flex.items-center.gap-2 input.flex-1 {
+    flex: 3 1 auto !important; /* 名称占据更多空间 */
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 0.4rem !important;
+    font-size: 0.85rem !important;
+    box-sizing: border-box !important;
+}
+
+/* 系数值输入框 - 固定宽度，更短 */
+.coefficient-settings .mb-2.d-flex.items-center.gap-2 input.w-80 {
+    flex: 0 0 80px !important; /* 固定宽度，系数值更短 */
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
+    padding: 0.4rem !important;
+    font-size: 0.85rem !important;
+    box-sizing: border-box !important;
+}
+
+/* 系数设置删除按钮 */
+.coefficient-settings .mb-2.d-flex.items-center.gap-2 .btn.danger.small {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 50px !important;
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.75rem !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+}
+
+/* 添加系数弹窗中的系数项样式 */
+.coefficient-item-row {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+}
+
+.coefficient-item-row input.flex-1 {
+    flex: 3 1 auto !important; /* 名称占据更多空间 */
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 0.4rem !important;
+    font-size: 0.85rem !important;
+    box-sizing: border-box !important;
+}
+
+.coefficient-item-row input.w-80 {
+    flex: 0 0 80px !important; /* 固定宽度，系数值更短 */
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
+    padding: 0.4rem !important;
+    font-size: 0.85rem !important;
+    box-sizing: border-box !important;
+}
+
+.coefficient-item-row .btn.danger.xs {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 50px !important;
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.75rem !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+}
+
+/* 移动端系数设置优化 */
+@media (max-width: 768px) {
+    .coefficient-settings .mb-2.d-flex.items-center.gap-2 {
+        gap: 0.3rem !important;
+        padding: 0.25rem 0 !important;
+        flex-wrap: nowrap !important;
+    }
+    
+    /* 系数名称输入框 - 占据剩余空间 */
+    .coefficient-settings .mb-2.d-flex.items-center.gap-2 input.flex-1 {
+        font-size: 0.8rem !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        max-width: calc(100% - 150px) !important; /* 为系数值和按钮预留空间 */
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    
+    /* 系数值输入框 - 固定宽度 */
+    .coefficient-settings .mb-2.d-flex.items-center.gap-2 input.w-80 {
+        font-size: 0.8rem !important;
+        flex: 0 0 70px !important; /* 移动端稍微缩小 */
+        width: 70px !important;
+        min-width: 70px !important;
+        max-width: 70px !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* 系数设置删除按钮 - 移动端优化 */
+    .coefficient-settings .mb-2.d-flex.items-center.gap-2 .btn.danger.small {
+        font-size: 0.7rem !important;
+        padding: 0.2rem 0.4rem !important;
+        min-width: 45px !important;
+    }
+    
+    /* 添加系数弹窗中的系数项 - 移动端优化 */
+    .coefficient-item-row {
+        gap: 0.3rem !important;
+        flex-wrap: nowrap !important;
+    }
+    
+    .coefficient-item-row input.flex-1 {
+        font-size: 0.8rem !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        max-width: calc(100% - 150px) !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    
+    .coefficient-item-row input.w-80 {
+        font-size: 0.8rem !important;
+        flex: 0 0 70px !important;
+        width: 70px !important;
+        min-width: 70px !important;
+        max-width: 70px !important;
+    }
+    
+    .coefficient-item-row .btn.danger.xs {
+        font-size: 0.7rem !important;
+        padding: 0.2rem 0.4rem !important;
+        min-width: 45px !important;
+    }
+}
+
 /* Receipt Styles */
 .receipt {
     width: 400px;
@@ -812,38 +968,47 @@ input:checked + .toggle-slider:before {
 .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded {
     flex-direction: row !important;
     align-items: center !important;
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap !important;
     gap: 0.5rem !important;
     padding: 0.5rem !important;
     background-color: #f8fafc !important;
     border-radius: 4px !important;
     margin-bottom: 0.5rem !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
 }
 
-/* 配置名称输入框占主要宽度 */
+/* 配置名称输入框占主要宽度 - 名称更长 */
 .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.flex-1 {
-    flex: 2 !important;
+    flex: 3 1 auto !important; /* 增加flex值，让名称占据更多空间 */
     width: auto !important;
     min-width: 0 !important;
+    max-width: 100% !important;
     padding: 0.4rem !important;
     font-size: 0.85rem !important;
+    box-sizing: border-box !important;
 }
 
-/* 价格和单位输入框宽度适中 */
+/* 价格和单位输入框宽度适中 - 桌面端：金额80px，单位60px */
 .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.w-100 {
-    flex: 1 !important;
-    width: auto !important;
-    min-width: 0 !important;
+    flex: 0 0 80px !important; /* 桌面端固定宽度，金额80px */
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
     padding: 0.4rem !important;
     font-size: 0.85rem !important;
+    box-sizing: border-box !important;
 }
 
 .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.w-80 {
-    flex: 0.8 !important;
-    width: auto !important;
-    min-width: 0 !important;
+    flex: 0 0 60px !important; /* 桌面端固定宽度，单位60px */
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
     padding: 0.4rem !important;
     font-size: 0.85rem !important;
+    box-sizing: border-box !important;
 }
 
 /* 调整删除按钮大小 */
@@ -866,25 +1031,60 @@ input:checked + .toggle-slider:before {
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded {
         gap: 0.3rem !important;
         padding: 0.3rem !important;
+        min-width: 0 !important; /* 允许flex容器收缩 */
+        overflow: hidden !important; /* 防止溢出 */
+        width: 100% !important; /* 确保容器宽度不超过父元素 */
+        box-sizing: border-box !important;
     }
     
+    /* 配置名称输入框 - 占据更多空间，名称更长 */
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.flex-1 {
         font-size: 0.8rem !important;
+        flex: 1 1 auto !important; /* 占据剩余空间 */
+        min-width: 0 !important;
+        max-width: calc(100% - 130px) !important; /* 为价格(40px) + 单位(30px) + 按钮(50px) + gap(约10px)预留空间 */
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
     }
     
+    /* 价格输入框 - 固定宽度，金额更短 */
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.w-100 {
         font-size: 0.8rem !important;
+        flex: 0 0 40px !important; /* 固定宽度，不允许收缩 */
+        width: 40px !important;
+        min-width: 40px !important;
+        max-width: 40px !important;
+        box-sizing: border-box !important;
     }
     
+    /* 单位输入框 - 固定宽度，单位更短 */
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.w-80 {
         font-size: 0.8rem !important;
+        flex: 0 0 30px !important; /* 固定宽度，不允许收缩 */
+        width: 30px !important;
+        min-width: 30px !important;
+        max-width: 30px !important;
+        box-sizing: border-box !important;
     }
     
+    /* 删除按钮 - 进一步缩小 */
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded .btn.danger.small {
         font-size: 0.65rem !important;
-        padding: 0.3rem 0.4rem !important;
-        min-width: 35px !important;
-        height: 24px !important;
+        padding: 0.25rem 0.35rem !important; /* 进一步减少内边距 */
+        min-width: 40px !important;
+        width: auto !important;
+        height: auto !important;
+        flex-shrink: 0 !important; /* 防止按钮被压缩 */
+        white-space: nowrap !important;
+    }
+    
+    /* 确保递增配置项容器不会溢出 */
+    #additionalConfigsContainer,
+    [id^="additionalConfigsContainer-"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
     }
 }
 
@@ -1248,6 +1448,10 @@ input:checked + .toggle-slider:before {
     border: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    line-height: 1;
 }
 
 .floating-calculate-btn:hover {
@@ -1259,13 +1463,6 @@ input:checked + .toggle-slider:before {
 .floating-calculate-btn:active {
     transform: scale(0.95);
     box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
-}
-
-.floating-calculate-btn {
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    line-height: 1;
 }
 
 /* 手机端优化 */
@@ -1614,6 +1811,20 @@ input:checked + .toggle-slider:before {
         margin-bottom: 0.75rem !important;
     }
     
+    /* 设置页中基础配置和基础价在同一行显示 */
+    #productSettingsContainer .form-row,
+    #configPriceSettings .form-row {
+        flex-direction: row !important;
+        gap: 0.5rem !important;
+    }
+    
+    /* 确保基础配置和基础价在移动端也能并排显示 */
+    #productSettingsContainer .form-row .form-group,
+    #configPriceSettings .form-row .form-group {
+        flex: 1 !important;
+        min-width: 0 !important;
+    }
+    
     /* 调整制品设置中的form-group宽度 */
     .product-item .form-group {
         flex: 1 !important;
@@ -1648,5 +1859,117 @@ input:checked + .toggle-slider:before {
     /* 优化工艺类型选择器 */
     #productsContainer .form-row:last-of-type {
         margin-bottom: 0 !important;
+    }
+}
+
+/* 递增配置项样式 - 移动端优化 */
+.incremental-config-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.incremental-config-base {
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+    color: var(--text-color);
+}
+
+.incremental-config-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background-color: var(--bg-color);
+    border-radius: var(--radius-md);
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.incremental-config-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.incremental-config-input {
+    width: 80px !important;
+    min-width: 80px;
+    max-width: 100px;
+    padding: 0.5rem !important;
+    font-size: 0.85rem !important;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    text-align: center;
+}
+
+.incremental-config-unit {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+    .incremental-config-item {
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        padding: 0.4rem;
+    }
+    
+    .incremental-config-label {
+        flex: 1 1 100%;
+        font-size: 0.8rem;
+        white-space: normal;
+        word-break: break-word;
+        margin-bottom: 0.25rem;
+    }
+    
+    .incremental-config-input {
+        flex: 1;
+        min-width: 70px;
+        max-width: 100px;
+        width: auto !important;
+        font-size: 0.85rem !important;
+        padding: 0.5rem !important;
+    }
+    
+    .incremental-config-unit {
+        font-size: 0.8rem;
+        flex: 0 0 auto;
+    }
+    
+    .incremental-config-base {
+        font-size: 0.85rem;
+        padding: 0.4rem 0;
+    }
+}
+
+/* 超小屏幕进一步优化 */
+@media (max-width: 480px) {
+    .incremental-config-item {
+        padding: 0.35rem;
+        gap: 0.3rem;
+    }
+    
+    .incremental-config-label {
+        font-size: 0.75rem;
+    }
+    
+    .incremental-config-input {
+        min-width: 60px;
+        max-width: 90px;
+        font-size: 0.8rem !important;
+        padding: 0.4rem !important;
+    }
+    
+    .incremental-config-unit {
+        font-size: 0.75rem;
     }
 }

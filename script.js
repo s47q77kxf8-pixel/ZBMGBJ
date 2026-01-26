@@ -330,11 +330,6 @@ function init() {
     // 加载本地存储的数据
     loadData();
     
-    // 初始化动态其他费用数组
-    if (!Array.isArray(dynamicOtherFees)) {
-        window.dynamicOtherFees = [];
-    }
-    
     // 确保默认设置不为空
     addDefaultProductSettings();
     addDefaultProcessSettings();
@@ -1072,23 +1067,21 @@ function updateProductForm(productId) {
             
             html = `
                 <div class="form-row">
-                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.5rem;">
-                        <div style="display: flex; align-items: center; gap: 1rem;">
-                            <label>基础+递增价</label>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 100px;">
+                    <div class="form-group incremental-config-group">
+                        <label>基础+递增价</label>
+                        <div class="incremental-config-base">
                             <span>基础价 (${productSetting.baseConfig})：¥${productSetting.basePrice}</span>
                         </div>
                         ${additionalConfigs.map((config, index) => {
                             const configKey = `config_${productId}_${index}`;
                             const currentValue = product.additionalConfigs && product.additionalConfigs[configKey] ? product.additionalConfigs[configKey] : 0;
                             return `
-                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 100px;">
-                                    <span>+${config.name} (¥${config.price})</span>
+                                <div class="incremental-config-item">
+                                    <span class="incremental-config-label">+${config.name} (¥${config.price})</span>
                                     <input type="number" id="${configKey}" value="${currentValue}" min="0" step="1" 
                                            onchange="updateProductAdditionalConfig(${productId}, '${configKey}', parseInt(this.value))" 
-                                           style="width: 60px;">
-                                    <span>${config.unit}</span>
+                                           class="incremental-config-input">
+                                    <span class="incremental-config-unit">${config.unit}</span>
                                 </div>
                             `;
                         }).join('')}
@@ -1110,11 +1103,6 @@ function updateProductForm(productId) {
         }
     });
 }
-
-// 更新工艺选项
-
-
-
 
 // 更新制品信息
 function updateProduct(id, field, value) {
@@ -4305,8 +4293,6 @@ function renderProductSettings() {
                                 <label>基础配置</label>
                                 <input type="text" value="${setting.baseConfig || ''}" onchange="updateProductSetting(${setting.id}, 'baseConfig', this.value)" placeholder="例如：1插+1底座">
                             </div>
-                        </div>
-                        <div class="form-row">
                             <div class="form-group">
                                 <label>基础价</label>
                                 <input type="number" value="${setting.basePrice || 0}" onchange="updateProductSetting(${setting.id}, 'basePrice', parseFloat(this.value))" placeholder="请输入基础价" min="0" step="1">
@@ -5641,23 +5627,21 @@ function updateGiftForm(giftId) {
             
             html = `
                 <div class="form-row">
-                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.5rem;">
-                        <div style="display: flex; align-items: center; gap: 1rem;">
-                            <label>基础+递增价</label>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 100px;">
+                    <div class="form-group incremental-config-group">
+                        <label>基础+递增价</label>
+                        <div class="incremental-config-base">
                             <span>基础价 (${productSetting.baseConfig})：¥${productSetting.basePrice}</span>
                         </div>
                         ${additionalConfigs.map((config, index) => {
                             const configKey = `gift_config_${giftId}_${index}`;
                             const currentValue = gift.additionalConfigs && gift.additionalConfigs[configKey] ? gift.additionalConfigs[configKey] : 0;
                             return `
-                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 100px;">
-                                    <span>+${config.name} (+¥${config.price}/${config.unit})</span>
+                                <div class="incremental-config-item">
+                                    <span class="incremental-config-label">+${config.name} (+¥${config.price}/${config.unit})</span>
                                     <input type="number" id="${configKey}" value="${currentValue}" min="0" step="1" 
                                            onchange="updateGiftAdditionalConfig(${giftId}, '${configKey}', parseInt(this.value))" 
-                                           style="width: 60px;">
-                                    <span>${config.unit}</span>
+                                           class="incremental-config-input">
+                                    <span class="incremental-config-unit">${config.unit}</span>
                                 </div>
                             `;
                         }).join('')}
