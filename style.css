@@ -631,21 +631,21 @@ input:checked + .toggle-slider:before {
         gap: 0.5rem;
     }
     
-    /* 允许文本换行，增加触摸区域 */
+    /* 允许文本换行，调整布局 */
     .checkbox-item {
         white-space: normal;
-        padding: 0.5rem;
-        border-radius: var(--radius-sm);
+        padding: 0;
+        border-radius: 0;
         transition: all 0.2s;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background-color: #f8fafc;
+        background-color: transparent;
     }
     
-    /* 添加背景色反馈 */
+    /* 添加背景色反馈（可选，如需保留悬停效果可删除） */
     .checkbox-item:hover {
-        background-color: #f1f5f9;
+        background-color: transparent;
     }
     
     /* 隐藏默认勾选框，使用自定义开关 */
