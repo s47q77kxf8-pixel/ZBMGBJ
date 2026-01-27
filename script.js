@@ -347,8 +347,10 @@ function init() {
     addDefaultProductSettings();
     addDefaultProcessSettings();
     
-    // 添加第一个制品项
-    addProduct();
+    // 如果制品列表为空，添加第一个制品项（确保默认只显示一个）
+    if (products.length === 0) {
+        addProduct();
+    }
     
     // 初始化其他费用类型选项
     initOtherFeeTypeOptions();
