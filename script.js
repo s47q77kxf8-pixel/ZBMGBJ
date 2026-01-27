@@ -317,7 +317,7 @@ const defaultSettings = {
             showDesigner: true,  // 是否显示设计师
             showContactInfo: true,  // 是否显示联系方式
             customText: '',  // 自定义文本
-            followSystemTheme: true  // 是否跟随系统主题颜色
+            followSystemTheme: false  // 是否跟随系统主题颜色
         },
         footerText1: '温馨提示',  // 尾部文本1
         footerText2: '感谢惠顾',  // 尾部文本2
@@ -723,8 +723,22 @@ function handleReceiptImageUpload(field, file) {
                     return;
                 }
                 
-                // 处理图片以适应主题颜色
-                processImageForTheme(img, field);
+                // 只有在开启跟随主题颜色功能时才处理图片
+                const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || false;
+                if (followSystemTheme) {
+                    processImageForTheme(img, field);
+                } else {
+                    // 如果不跟随主题，则使用原始图片
+                    defaultSettings.receiptCustomization[field] = originalImageData;
+                    saveData();
+                    
+                    // 更新预览
+                    if (field === 'headerImage' && document.getElementById('headerImagePreview')) {
+                        document.getElementById('headerImagePreview').innerHTML = `<img src="${originalImageData}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
+                    } else if (field === 'footerImage' && document.getElementById('footerImagePreview')) {
+                        document.getElementById('footerImagePreview').innerHTML = `<img src="${originalImageData}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
+                    }
+                }
             };
             img.src = originalImageData;
         };
@@ -742,16 +756,31 @@ function updateReceiptInfo(field, value) {
             showDesigner: true,
             showContactInfo: true,
             customText: '',
-            followSystemTheme: true
+            followSystemTheme: false
         };
     }
     
     defaultSettings.receiptCustomization.receiptInfo[field] = value;
     saveData();
     
-    // 如果是跟随系统主题颜色设置，且设置为启用，重新处理图片
-    if (field === 'followSystemTheme' && value) {
-        reprocessImagesForTheme();
+    // 如果是跟随系统主题颜色设置，重新处理图片
+    if (field === 'followSystemTheme') {
+        if (value) {
+            // 启用跟随主题：处理图片
+            reprocessImagesForTheme();
+        } else {
+            // 禁用跟随主题：使用原始图片
+            if (defaultSettings.receiptCustomization.headerImageOriginal) {
+                defaultSettings.receiptCustomization.headerImage = defaultSettings.receiptCustomization.headerImageOriginal;
+            }
+            if (defaultSettings.receiptCustomization.footerImageOriginal) {
+                defaultSettings.receiptCustomization.footerImage = defaultSettings.receiptCustomization.footerImageOriginal;
+            }
+            saveData();
+            
+            // 更新预览
+            loadReceiptCustomizationToForm();
+        }
     }
 }
 
@@ -781,6 +810,17 @@ function reprocessImagesForTheme() {
     }
 }
 
+// 辅助函数：将十六进制颜色转换为RGB
+function hexToRgb(hex) {
+    // 检查是否是十六进制颜色格式
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : null;
+}
+
 // 处理单个图片以适应主题颜色
 function processImageForTheme(img, field) {
     const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || true;
@@ -798,7 +838,8 @@ function processImageForTheme(img, field) {
     document.body.appendChild(tempElement);
     
     // 获取字体颜色（使用最终计算后的 color，避免直接读 CSS 变量是十六进制导致无法解析）
-    const textColor = getComputedStyle(tempElement).color || 'rgb(51, 51, 51)';
+    const computedStyle = getComputedStyle(tempElement);
+    let textColor = computedStyle.color || 'rgb(51, 51, 51)';
     document.body.removeChild(tempElement);
     
     // 使用Canvas调整图片颜色
@@ -814,36 +855,64 @@ function processImageForTheme(img, field) {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
     
-    // 解析目标颜色（期待形如 rgb(r, g, b) 的字符串）
-    const rgb = textColor && textColor.match(/\d+/g);
-    if (rgb && rgb.length === 3) {
-        const targetR = parseInt(rgb[0]);
-        const targetG = parseInt(rgb[1]);
-        const targetB = parseInt(rgb[2]);
-        
-        // 调整图片颜色
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const a = data[i + 3];
-            
-            // 跳过透明像素
-            if (a === 0) continue;
-            
-            // 计算灰度值
-            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-            
-            // 使用目标颜色的RGB比例，保持灰度值
-            const grayScale = gray / 255;
-            data[i] = Math.round(targetR * grayScale);
-            data[i + 1] = Math.round(targetG * grayScale);
-            data[i + 2] = Math.round(targetB * grayScale);
+    let targetR, targetG, targetB;
+    
+    // 解析目标颜色，支持 RGB 和十六进制格式
+    if (textColor.startsWith('rgb')) {
+        // 如果是 RGB 格式，提取数值
+        const rgb = textColor.match(/\d+/g);
+        if (rgb && rgb.length >= 3) {
+            targetR = parseInt(rgb[0]);
+            targetG = parseInt(rgb[1]);
+            targetB = parseInt(rgb[2]);
+        } else {
+            // 默认颜色
+            targetR = 51;
+            targetG = 51;
+            targetB = 51;
         }
-        
-        // 将调整后的数据放回Canvas
-        ctx.putImageData(imageData, 0, 0);
+    } else if (textColor.startsWith('#')) {
+        // 如果是十六进制格式
+        const rgb = hexToRgb(textColor);
+        if (rgb) {
+            targetR = rgb.r;
+            targetG = rgb.g;
+            targetB = rgb.b;
+        } else {
+            // 默认颜色
+            targetR = 51;
+            targetG = 51;
+            targetB = 51;
+        }
+    } else {
+        // 其他格式，使用默认颜色
+        targetR = 51;
+        targetG = 51;
+        targetB = 51;
     }
+    
+    // 调整图片颜色
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        
+        // 跳过透明像素
+        if (a === 0) continue;
+        
+        // 计算灰度值
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        
+        // 使用目标颜色的RGB比例，保持灰度值
+        const grayScale = gray / 255;
+        data[i] = Math.round(targetR * grayScale);
+        data[i + 1] = Math.round(targetG * grayScale);
+        data[i + 2] = Math.round(targetB * grayScale);
+    }
+    
+    // 将调整后的数据放回Canvas
+    ctx.putImageData(imageData, 0, 0);
     
     // 将Canvas转换为base64
     const adjustedImageData = canvas.toDataURL('image/png');
@@ -942,8 +1011,11 @@ function applyReceiptTheme(themeName) {
         themeSelector.value = themeName;
     }
     
-    // 重新处理图片以适应新主题颜色
-    reprocessImagesForTheme();
+    // 重新处理图片以适应新主题颜色（仅在开启跟随主题功能时）
+    const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || false;
+    if (followSystemTheme) {
+        reprocessImagesForTheme();
+    }
     
     // 如果报价页已生成，立即更新预览
     if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
@@ -986,7 +1058,7 @@ function clearReceiptCustomization() {
                 showDesigner: true,
                 showContactInfo: true,
                 customText: '',
-                followSystemTheme: true
+                followSystemTheme: false
             },
         };
         
@@ -1015,7 +1087,7 @@ function generateReceiptPreview() {
     previewContainer.className = `receipt receipt-theme-${theme}`;
     
     let previewHTML = `
-        ${settings.headerImage ? `<div class="receipt-header-image"><img src="${settings.headerImage}" alt="Header" style="max-width: 100%; height: auto;"></div>` : ''}
+        ${settings.headerImage ? `<div class="receipt-header-image"><img src="${settings.headerImage}" class="receipt-img receipt-theme-${theme}" alt="Header" style="max-width: 100%; height: auto;"></div>` : ''}
         <div class="receipt-title receipt-theme-${theme}">${settings.titleText || 'LIST'}</div>
         <div class="receipt-info">
             ${settings.receiptInfo && settings.receiptInfo.orderNotification ? `<div>${settings.receiptInfo.orderNotification}</div>` : ''}
@@ -1052,7 +1124,7 @@ function generateReceiptPreview() {
         </div>
         <div class="receipt-footer">
             ${settings.footerText1 ? `<p class="receipt-footer-text1">${settings.footerText1}</p>` : ''}
-            ${settings.footerImage ? `<div class="receipt-footer-image"><img src="${settings.footerImage}" alt="Footer" style="max-width: 100px; height: auto;"></div>` : ''}
+            ${settings.footerImage ? `<div class="receipt-footer-image"><img src="${settings.footerImage}" class="receipt-img receipt-theme-${theme}" alt="Footer" style="max-width: 100px; height: auto;"></div>` : ''}
             ${settings.footerText2 ? `<p class="receipt-footer-text2">${settings.footerText2}</p>` : ''}
         </div>
     `;
