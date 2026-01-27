@@ -183,6 +183,24 @@
                 <div id="receiptCustomizationPanel" class="section d-none">
                     <h2>小票设置</h2>
                     
+                    <!-- 主题选择 -->
+                    <div class="section">
+                        <h3>主题样式</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="receiptThemeSelect">选择主题</label>
+                                <select id="receiptThemeSelect" onchange="applyReceiptTheme(this.value)">
+                                    <option value="classic">经典主题</option>
+                                    <option value="modern">现代商务</option>
+                                    <option value="warm">温馨可爱</option>
+                                    <option value="dark">专业设计（深色）</option>
+                                    <option value="minimal">简约极简</option>
+                                </select>
+                                <small class="text-gray">选择主题后，小票样式将实时更新预览</small>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- 小票头部设置 -->
                     <div class="section">
                         <h3>小票头部</h3>

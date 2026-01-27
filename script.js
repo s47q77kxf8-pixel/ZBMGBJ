@@ -296,6 +296,7 @@ const defaultSettings = {
             id: 1,
             name: "不公开展示系数",
             options: {
+                none: { value: 1, name: '无' },
                 private: { value: 1.5, name: '不公开展示' }
             }
         }
@@ -306,6 +307,7 @@ const defaultSettings = {
     extraPricingDown: [],
     // 小票自定义设置
     receiptCustomization: {
+        theme: 'classic',  // 主题名称：classic, modern, warm, dark, minimal
         headerImage: null,  // 头部图片的base64数据
         titleText: 'LIST',  // 标题文本
         receiptInfo: {  // 小票信息行
@@ -330,6 +332,11 @@ function init() {
     // 加载本地存储的数据
     loadData();
     
+    // 确保小票自定义设置中有主题字段
+    if (!defaultSettings.receiptCustomization.theme) {
+        defaultSettings.receiptCustomization.theme = 'classic';
+    }
+    
     // 确保默认设置不为空
     addDefaultProductSettings();
     addDefaultProcessSettings();
@@ -347,6 +354,9 @@ function init() {
     renderProductSettings();
     renderProcessSettings();
     renderCoefficientSettings();
+    
+    // 更新计算页中的系数选择器
+    updateCalculatorCoefficientSelects();
     
     // 添加开始时间事件监听器，实现自动计算截稿时间
     document.addEventListener('DOMContentLoaded', function() {
@@ -679,6 +689,11 @@ function loadReceiptCustomizationToForm() {
     const settings = defaultSettings.receiptCustomization;
     
     if (settings) {
+        // 设置主题选择
+        if (document.getElementById('receiptThemeSelect')) {
+            document.getElementById('receiptThemeSelect').value = settings.theme || 'classic';
+        }
+        
         // 设置文本字段
         if (document.getElementById('receiptTitleText')) {
             document.getElementById('receiptTitleText').value = settings.titleText || 'LIST';
@@ -722,11 +737,35 @@ function loadReceiptCustomizationToForm() {
     }
 }
 
+// 应用小票主题
+function applyReceiptTheme(themeName) {
+    // 验证主题名称
+    const validThemes = ['classic', 'modern', 'warm', 'dark', 'minimal'];
+    if (!validThemes.includes(themeName)) {
+        themeName = 'classic'; // 默认使用经典主题
+    }
+    
+    // 保存主题设置
+    if (!defaultSettings.receiptCustomization) {
+        defaultSettings.receiptCustomization = {};
+    }
+    defaultSettings.receiptCustomization.theme = themeName;
+    
+    // 保存到本地存储
+    saveData();
+    
+    // 如果报价页已生成，立即更新预览
+    if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
+        generateQuote();
+    }
+}
+
 // 清除小票自定义设置
 function clearReceiptCustomization() {
     if (confirm('确定要清除所有小票自定义设置吗？此操作不可撤销。')) {
         // 重置小票自定义设置为默认值
         defaultSettings.receiptCustomization = {
+            theme: 'classic',
             headerImage: null,
             titleText: 'LIST',
             footerText1: '温馨提示',
@@ -1568,9 +1607,13 @@ function generateQuote() {
         });
     };
     
+    // 获取当前主题
+    const currentTheme = defaultSettings.receiptCustomization.theme || 'classic';
+    const themeClass = `receipt-theme-${currentTheme}`;
+    
     // 生成HTML结构 - 使用购物小票样式
     let html = `
-        <div class="receipt">`;
+        <div class="receipt ${themeClass}">`;
     
     // 添加头部图片（如果设置了）
     if (defaultSettings.receiptCustomization.headerImage) {
@@ -4722,7 +4765,7 @@ function updateCalculatorCoefficientSelects() {
                 const keys = Object.keys(e.options || {});
                 const first = keys[0];
                 h += '<div class="form-group"><label>' + (e.name || '') + '</label><select id="extraUp_' + e.id + '">';
-                keys.forEach(k => { const o = e.options[k]; h += '<option value="' + k + '">' + ((o&&o.name)||k) + '*' + (getCoefficientValue(o)||1) + '</option>'; });
+                keys.forEach(k => { const o = e.options[k]; h += '<option value="' + k + '"' + (k === 'none' ? ' selected' : '') + '>' + ((o&&o.name)||k) + '*' + (getCoefficientValue(o)||1) + '</option>'; });
                 h += '</select></div>';
             });
             upRow.innerHTML = h;
@@ -5213,7 +5256,21 @@ function importFromExcel(event) {
                     
                     const name = row['制品名称'] || row['名称'];
                     const category = row['分类'] || row['类别'] || '其他';
-                    const priceType = row['计价方式'] || row['价格类型'] || 'fixed';
+                    // 调试：输出所有可能的价格类型字段
+                    console.log('价格类型字段检查:', {
+                        '计价方式': row['计价方式'],
+                        '价格类型': row['价格类型'],
+                        'rowKeys': Object.keys(row)
+                    });
+                    // 正确映射价格类型
+                    let rawPriceType = row['计价方式'] || row['价格类型'] || 'fixed';
+                    let priceType = 'fixed'; // 默认固定价
+                    if (rawPriceType === '单双面价' || rawPriceType === 'double') {
+                        priceType = 'double';
+                    } else if (rawPriceType === '基础+递增价' || rawPriceType === 'config') {
+                        priceType = 'config';
+                    }
+                    console.log(`第${index + 2}行：制品名称=${name}，原始价格类型=${rawPriceType}，映射后价格类型=${priceType}`);
                     
                     // 创建新制品对象
                     const newProduct = {
@@ -5251,10 +5308,10 @@ function importFromExcel(event) {
                             
                             // 检查是否有多配置项，使用简单的编号方式，如：配置1名称、配置1价格、配置1单位
                             let configIndex = 1;
-                            while (row[`配置${configIndex}名称`] !== undefined || row[`配置${configIndex}名称`] !== undefined) {
-                                const configName = row[`配置${configIndex}名称`] || row[`配置${configIndex}名称`] || row[`配置项${configIndex}名称`];
-                                const configPrice = parseFloat(row[`配置${configIndex}价格`] || row[`配置${configIndex}价格`] || row[`配置项${configIndex}价格`] || 0);
-                                const configUnit = row[`配置${configIndex}单位`] || row[`配置${configIndex}单位`] || row[`配置项${configIndex}单位`] || '';
+                            while (row[`配置${configIndex}名称`] !== undefined || row[`配置${configIndex}价格`] !== undefined) {
+                                const configName = row[`配置${configIndex}名称`] || row[`配置项${configIndex}名称`];
+                                const configPrice = parseFloat(row[`配置${configIndex}价格`] || row[`配置项${configIndex}价格`] || 0);
+                                const configUnit = row[`配置${configIndex}单位`] || row[`配置项${configIndex}单位`] || '';
                                 
                                 if (configName || configPrice > 0) {  // 如果有名称或价格，则添加配置项
                                     newProduct.additionalConfigs.push({
