@@ -1,3 +1,8 @@
+// ========== 文件版本标识 ==========
+console.log('🔧🔧🔧 script.js 文件版本: 2025-01-27-fix-preview-update-v18 🔧🔧🔧');
+console.log('🔧 如果看不到这条日志，说明浏览器加载的是旧版本！');
+// ========== 文件版本标识结束 ==========
+
 // 全局变量
 let products = [];
 let gifts = [];
@@ -713,6 +718,8 @@ function handleReceiptImageUpload(field, file) {
             // 保存原始图片数据
             const originalImageData = e.target.result;
             defaultSettings.receiptCustomization[field + 'Original'] = originalImageData;
+            // 立即保存原图到本地存储
+            saveData();
             
             // 检查图片尺寸
             const img = new Image();
@@ -726,7 +733,8 @@ function handleReceiptImageUpload(field, file) {
                 // 只有在开启跟随主题颜色功能时才处理图片
                 const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || false;
                 if (followSystemTheme) {
-                    processImageForTheme(img, field);
+                    const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+                    processImageForTheme(img, field, currentTheme);
                 } else {
                     // 如果不跟随主题，则使用原始图片
                     defaultSettings.receiptCustomization[field] = originalImageData;
@@ -784,29 +792,71 @@ function updateReceiptInfo(field, value) {
     }
 }
 
+// 主题颜色映射表（确保每个主题都有正确的颜色值）
+// 使用主题的标题颜色（title-color），因为这些颜色更能代表主题特色
+const THEME_COLOR_MAP = {
+    'classic': '#2d3748',    // rgb(45, 55, 72) - 深灰蓝色
+    'modern': '#2c3e50',     // rgb(44, 62, 80) - 深灰蓝色
+    'warm': '#92400e',       // rgb(146, 64, 14) - 暖棕色（使用标题颜色）
+    'dark': '#e2e8f0',       // rgb(226, 232, 240) - 浅灰色
+    'nature': '#15803d',     // rgb(21, 128, 61) - 清新绿色（使用标题颜色，更明显）
+    'vintage': '#5c1a1a',    // rgb(92, 26, 26) - 深红色
+    'sakura': '#be185d',     // rgb(190, 24, 93) - 粉红色（使用标题颜色）
+    'iceBlue': '#075985'     // rgb(7, 89, 133) - 冰蓝色（使用标题颜色）
+};
+
 // 重新处理图片以适应当前主题颜色
 function reprocessImagesForTheme() {
-    const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || true;
-    if (!followSystemTheme) return;
+    console.log('reprocessImagesForTheme called');
+    
+    // 优先从 DOM 读取当前勾选状态（最准确）
+    const followSystemThemeCheckbox = document.getElementById('followSystemTheme');
+    let followSystemTheme = true; // 默认开启
+    
+    if (followSystemThemeCheckbox) {
+        followSystemTheme = followSystemThemeCheckbox.checked;
+        console.log('[FIX] 从 DOM 读取 followSystemTheme:', followSystemTheme);
+    } else {
+        // 如果 DOM 中没有，从设置中读取
+        const receiptInfo = defaultSettings.receiptCustomization.receiptInfo || {};
+        followSystemTheme = receiptInfo.followSystemTheme !== false;
+        console.log('[FIX] 从设置读取 followSystemTheme:', followSystemTheme);
+    }
+    
+    if (!followSystemTheme) {
+        console.log('[SKIP] followSystemTheme 为 false，跳过处理');
+        return;
+    }
     
     const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    console.log('[FIX] 当前主题:', currentTheme, 'followSystemTheme:', followSystemTheme);
     
     // 处理头部图片
     if (defaultSettings.receiptCustomization.headerImageOriginal) {
+        console.log('[FIX] 找到 headerImageOriginal，开始重新处理');
         const img = new Image();
         img.onload = function() {
-            processImageForTheme(img, 'headerImage');
+            console.log('[FIX] headerImage 加载完成，调用 processImageForTheme');
+            // 传递当前主题，避免异步竞态
+            processImageForTheme(img, 'headerImage', currentTheme);
         };
         img.src = defaultSettings.receiptCustomization.headerImageOriginal;
+    } else {
+        console.log('[FIX] headerImageOriginal 不存在！');
     }
     
     // 处理尾部图片
     if (defaultSettings.receiptCustomization.footerImageOriginal) {
+        console.log('[FIX] 找到 footerImageOriginal，开始重新处理');
         const img = new Image();
         img.onload = function() {
-            processImageForTheme(img, 'footerImage');
+            console.log('[FIX] footerImage 加载完成，调用 processImageForTheme');
+            // 传递当前主题，避免异步竞态
+            processImageForTheme(img, 'footerImage', currentTheme);
         };
         img.src = defaultSettings.receiptCustomization.footerImageOriginal;
+    } else {
+        console.log('[FIX] footerImageOriginal 不存在！');
     }
 }
 
@@ -822,25 +872,67 @@ function hexToRgb(hex) {
 }
 
 // 处理单个图片以适应主题颜色
-function processImageForTheme(img, field) {
-    const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || true;
-    if (!followSystemTheme) return;
+function processImageForTheme(img, field, expectedTheme) {
+    console.log('processImageForTheme called', field, 'expectedTheme:', expectedTheme);
     
-    const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
-    const themeClass = `receipt-theme-${currentTheme}`;
+    // 优先从 DOM 读取当前勾选状态（最准确）
+    const followSystemThemeCheckbox = document.getElementById('followSystemTheme');
+    let followSystemTheme = true; // 默认开启
     
-    // 创建临时元素来获取主题颜色
-    const tempElement = document.createElement('div');
-    tempElement.className = `receipt ${themeClass}`;
-    tempElement.style.position = 'absolute';
-    tempElement.style.left = '-9999px';
-    tempElement.style.top = '-9999px';
-    document.body.appendChild(tempElement);
+    if (followSystemThemeCheckbox) {
+        followSystemTheme = followSystemThemeCheckbox.checked;
+        console.log('[FIX] processImageForTheme 从 DOM 读取 followSystemTheme:', followSystemTheme);
+    } else {
+        // 如果 DOM 中没有，从设置中读取
+        const receiptInfo = defaultSettings.receiptCustomization.receiptInfo || {};
+        followSystemTheme = receiptInfo.followSystemTheme !== false;
+        console.log('[FIX] processImageForTheme 从设置读取 followSystemTheme:', followSystemTheme);
+    }
     
-    // 获取字体颜色（使用最终计算后的 color，避免直接读 CSS 变量是十六进制导致无法解析）
-    const computedStyle = getComputedStyle(tempElement);
-    let textColor = computedStyle.color || 'rgb(51, 51, 51)';
-    document.body.removeChild(tempElement);
+    if (!followSystemTheme) {
+        console.log('[SKIP] followSystemTheme 为 false，跳过处理');
+        return;
+    }
+    
+    // 获取当前主题，如果提供了期望主题，使用期望主题（避免异步竞态）
+    const currentTheme = expectedTheme || defaultSettings.receiptCustomization?.theme || 'classic';
+    
+    // 再次检查：如果当前设置的主题和期望主题不一致，说明主题已经切换，跳过这次处理
+    const actualTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    if (expectedTheme && actualTheme !== expectedTheme) {
+        console.log('[SKIP] 主题已切换，跳过旧的处理:', {
+            expectedTheme: expectedTheme,
+            actualTheme: actualTheme
+        });
+        return;
+    }
+    
+    // 使用固定的标题颜色映射表，直接从CSS定义中获取，确保颜色一致且可靠
+    // 这些颜色值来自 style.css 中的 .receipt-theme-xxx .receipt-title 选择器
+    const TITLE_COLOR_MAP = {
+        'classic': '#2d3748',    // rgb(45, 55, 72)
+        'modern': '#2c3e50',      // rgb(44, 62, 80)
+        'warm': '#92400e',        // rgb(146, 64, 14)
+        'dark': '#e2e8f0',        // rgb(226, 232, 240)
+        'nature': '#15803d',      // rgb(21, 128, 61) - 注意：这是标题选择器的颜色，不是CSS变量
+        'vintage': '#5c1a1a',    // rgb(92, 26, 26)
+        'sakura': '#be185d',      // rgb(190, 24, 93)
+        'iceBlue': '#075985'      // rgb(7, 89, 133)
+    };
+    
+    // 直接使用映射表（最可靠，避免动态读取的不确定性）
+    let textColor = TITLE_COLOR_MAP[currentTheme] || 'rgb(51, 51, 51)';
+    
+    console.log('[FIX] 使用标题颜色映射表:', currentTheme, '->', textColor);
+    
+    // 如果颜色是十六进制格式，转换为 rgb（hexToRgb 函数已存在）
+    if (textColor.startsWith('#')) {
+        const rgb = hexToRgb(textColor);
+        if (rgb) {
+            textColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+            console.log('[FIX] 十六进制转 RGB:', textColor);
+        }
+    }
     
     // 使用Canvas调整图片颜色
     const canvas = document.createElement('canvas');
@@ -891,7 +983,61 @@ function processImageForTheme(img, field) {
         targetB = 51;
     }
     
-    // 调整图片颜色
+    console.log('[FIX] processImageForTheme 最终颜色:', {
+        currentTheme,
+        textColor,
+        field,
+        targetRGB: `rgb(${targetR}, ${targetG}, ${targetB})`
+    });
+    
+    // 计算目标颜色的亮度（用于混合）
+    const targetBrightness = 0.299 * targetR + 0.587 * targetG + 0.114 * targetB;
+    const targetMax = Math.max(targetR, targetG, targetB);
+    
+    console.log('[FIX] 开始处理图片:', {
+        targetColor: `rgb(${targetR}, ${targetG}, ${targetB})`,
+        targetBrightness: targetBrightness.toFixed(2),
+        targetMax: targetMax
+    });
+    
+    // 调整图片颜色 - 针对黑色原图的特殊处理
+    // 对于黑色 PNG logo，黑色部分应该直接变成目标颜色，而不是乘以接近0的亮度值
+    let darkPixelCount = 0;
+    let totalPixelCount = 0;
+    
+    // 第一遍：统计原图的亮度分布，判断是否是黑色为主的图片
+    for (let i = 0; i < data.length; i += 4) {
+        const a = data[i + 3];
+        if (a === 0) continue; // 跳过透明像素
+        
+        totalPixelCount++;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const sourceBrightness = 0.299 * r + 0.587 * g + 0.114 * b;
+        
+        // 如果像素很暗（亮度 < 50），认为是黑色像素
+        if (sourceBrightness < 50) {
+            darkPixelCount++;
+        }
+    }
+    
+    const isDarkImage = totalPixelCount > 0 && (darkPixelCount / totalPixelCount) > 0.5;
+    
+    console.log('[FIX] 图片分析:', {
+        totalPixels: totalPixelCount,
+        darkPixels: darkPixelCount,
+        darkRatio: totalPixelCount > 0 ? (darkPixelCount / totalPixelCount).toFixed(2) : 0,
+        isDarkImage: isDarkImage,
+        strategy: isDarkImage ? '黑色原图策略：反转亮度映射' : '普通图片策略：标准混合'
+    });
+    
+    // 第二遍：根据图片类型应用不同的处理策略
+    let processedDarkPixels = 0;
+    let processedGrayPixels = 0;
+    let processedLightPixels = 0;
+    let sampleProcessedColor = null;
+    
     for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
@@ -901,15 +1047,73 @@ function processImageForTheme(img, field) {
         // 跳过透明像素
         if (a === 0) continue;
         
-        // 计算灰度值
-        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        // 计算原图的亮度（0-255）
+        const sourceBrightness = 0.299 * r + 0.587 * g + 0.114 * b;
         
-        // 使用目标颜色的RGB比例，保持灰度值
-        const grayScale = gray / 255;
-        data[i] = Math.round(targetR * grayScale);
-        data[i + 1] = Math.round(targetG * grayScale);
-        data[i + 2] = Math.round(targetB * grayScale);
+        if (isDarkImage) {
+            // 黑色原图策略：黑色部分直接替换为目标颜色
+            // 对于黑色 PNG logo，黑色部分应该完全变成目标颜色，白色部分保持白色
+            const sourceBrightnessNormalized = sourceBrightness / 255;
+            
+            // 如果像素很暗（接近黑色），直接使用目标颜色
+            // 如果像素较亮（接近白色），保持白色
+            if (sourceBrightness < 50) {
+                // 纯黑色部分：直接使用目标颜色
+                data[i] = targetR;
+                data[i + 1] = targetG;
+                data[i + 2] = targetB;
+                processedDarkPixels++;
+                // 记录第一个处理后的颜色作为样本
+                if (!sampleProcessedColor) {
+                    sampleProcessedColor = `rgb(${targetR}, ${targetG}, ${targetB})`;
+                }
+            } else if (sourceBrightness < 128) {
+                // 深灰色部分：使用目标颜色，但根据亮度调整
+                const darkRatio = sourceBrightness / 128;
+                const colorRatio = 1 - darkRatio; // 越暗，目标颜色越明显
+                data[i] = Math.round(targetR * colorRatio + sourceBrightness * (1 - colorRatio));
+                data[i + 1] = Math.round(targetG * colorRatio + sourceBrightness * (1 - colorRatio));
+                data[i + 2] = Math.round(targetB * colorRatio + sourceBrightness * (1 - colorRatio));
+                processedGrayPixels++;
+            } else {
+                // 浅色部分：保持原色（白色或浅灰色）
+                // 不做改变，保持原图的白色部分
+                // data[i], data[i+1], data[i+2] 保持不变
+                processedLightPixels++;
+            }
+        } else {
+            // 普通图片策略：标准混合
+            let sourceBrightnessNormalized = sourceBrightness / 255;
+            
+            // 增强对比度
+            sourceBrightnessNormalized = Math.pow(sourceBrightnessNormalized, 0.8);
+            
+            // 根据目标颜色的亮度，调整混合方式
+            if (targetBrightness > 180) {
+                const enhancedRatio = Math.pow(sourceBrightnessNormalized, 0.6);
+                data[i] = Math.round(targetR * enhancedRatio);
+                data[i + 1] = Math.round(targetG * enhancedRatio);
+                data[i + 2] = Math.round(targetB * enhancedRatio);
+            } else if (targetBrightness < 80) {
+                const enhancedRatio = Math.pow(sourceBrightnessNormalized, 0.9);
+                data[i] = Math.round(targetR * enhancedRatio);
+                data[i + 1] = Math.round(targetG * enhancedRatio);
+                data[i + 2] = Math.round(targetB * enhancedRatio);
+            } else {
+                data[i] = Math.round(targetR * sourceBrightnessNormalized);
+                data[i + 1] = Math.round(targetG * sourceBrightnessNormalized);
+                data[i + 2] = Math.round(targetB * sourceBrightnessNormalized);
+            }
+        }
     }
+    
+    console.log('[FIX] 图片处理完成:', {
+        processedDarkPixels: processedDarkPixels,
+        processedGrayPixels: processedGrayPixels,
+        processedLightPixels: processedLightPixels,
+        sampleProcessedColor: sampleProcessedColor,
+        targetColor: `rgb(${targetR}, ${targetG}, ${targetB})`
+    });
     
     // 将调整后的数据放回Canvas
     ctx.putImageData(imageData, 0, 0);
@@ -917,9 +1121,21 @@ function processImageForTheme(img, field) {
     // 将Canvas转换为base64
     const adjustedImageData = canvas.toDataURL('image/png');
     
+    // 最终检查：如果主题已经切换，不保存这次处理的结果
+    const finalTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    if (expectedTheme && finalTheme !== expectedTheme) {
+        console.log('[SKIP] 主题已切换，不保存处理结果:', {
+            expectedTheme: expectedTheme,
+            finalTheme: finalTheme
+        });
+        return;
+    }
+    
     // 保存调整后的图片
     defaultSettings.receiptCustomization[field] = adjustedImageData;
     saveData();
+    
+    console.log('[FIX] 图片已保存，主题:', finalTheme, '字段:', field);
     
     // 更新预览
     if (field === 'headerImage' && document.getElementById('headerImagePreview')) {
@@ -927,6 +1143,27 @@ function processImageForTheme(img, field) {
     } else if (field === 'footerImage' && document.getElementById('footerImagePreview')) {
         document.getElementById('footerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
     }
+    
+    // 强制更新小票预览，确保显示最新处理的图片
+    // 使用 setTimeout 确保 DOM 更新完成，并在更新前再次检查主题
+    setTimeout(() => {
+        // 最终检查：如果主题已经切换，不更新预览
+        const currentThemeWhenUpdate = defaultSettings.receiptCustomization?.theme || 'classic';
+        if (expectedTheme && currentThemeWhenUpdate !== expectedTheme) {
+            console.log('[SKIP] 主题已切换，不更新预览:', {
+                expectedTheme: expectedTheme,
+                currentThemeWhenUpdate: currentThemeWhenUpdate
+            });
+            return;
+        }
+        
+        console.log('[FIX] 更新预览，主题:', currentThemeWhenUpdate, '字段:', field);
+        generateReceiptPreview();
+        // 如果报价页已生成，也更新报价预览
+        if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
+            generateQuote();
+        }
+    }, 50);
 }
 
 // 加载小票自定义设置到表单
@@ -990,6 +1227,7 @@ function loadReceiptCustomizationToForm() {
 
 // 应用小票主题
 function applyReceiptTheme(themeName) {
+    console.log('applyReceiptTheme called', themeName);
     // 验证主题名称
     const validThemes = ['classic', 'modern', 'warm', 'dark', 'nature', 'vintage', 'sakura', 'iceBlue'];
     if (!validThemes.includes(themeName)) {
@@ -1011,19 +1249,13 @@ function applyReceiptTheme(themeName) {
         themeSelector.value = themeName;
     }
     
-    // 重新处理图片以适应新主题颜色（仅在开启跟随主题功能时）
-    const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || false;
-    if (followSystemTheme) {
-        reprocessImagesForTheme();
-    }
+    // 重新处理图片以适应新主题颜色
+    // 总是调用 reprocessImagesForTheme，函数内部会检查 followSystemTheme
+    console.log('[FIX] applyReceiptTheme 调用 reprocessImagesForTheme，当前主题:', themeName);
+    reprocessImagesForTheme();
     
-    // 如果报价页已生成，立即更新预览
-    if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
-        generateQuote();
-    }
-    
-    // 更新小票设置预览
-    generateReceiptPreview();
+    // 注意：预览更新现在在 processImageForTheme 完成后自动触发
+    // 这里不再立即更新预览，避免显示旧的图片
 }
 
 // 初始化小票设置功能
@@ -1958,7 +2190,7 @@ function generateQuote() {
     
     // 添加头部图片（如果设置了）
     if (defaultSettings.receiptCustomization.headerImage) {
-        html += `<div class="receipt-header-image"><img src="${defaultSettings.receiptCustomization.headerImage}" alt="头部图片" style="max-width: 300px; height: auto;" /></div>`;
+        html += `<div class="receipt-header-image"><img src="${defaultSettings.receiptCustomization.headerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="头部图片" style="max-width: 300px; height: auto;" /></div>`;
     }
     
     // 添加自定义标题（如果设置了）——附带主题类，方便按主题控制标题颜色
@@ -2513,7 +2745,7 @@ function generateQuote() {
                         
             // 添加底部图片（如果设置了）
             if (defaultSettings.receiptCustomization.footerImage) {
-                html += `<div class="receipt-footer-image"><img src="${defaultSettings.receiptCustomization.footerImage}" alt="尾部图片" style="max-width: 200px; height: auto; margin-top: 0.5rem;" /></div>`;
+                html += `<div class="receipt-footer-image"><img src="${defaultSettings.receiptCustomization.footerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="尾部图片" style="max-width: 200px; height: auto; margin-top: 0.5rem;" /></div>`;
             }
                         
             // 添加自定义底部文本2（如果设置了）
