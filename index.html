@@ -175,7 +175,7 @@
                                 <option value="dark">深色</option>
                                 <option value="vintage">复古</option>
                                 <option value="warm">温馨</option>
-                                <option value="nature">自然</option>
+                                <option value="nature">清新</option>
                                 <option value="sakura">粉樱</option>
                                 <option value="iceBlue">冰蓝</option>
                             </select>
@@ -210,6 +210,15 @@
                                             <input type="file" id="receiptHeaderImage" accept="image/*" onchange="handleReceiptImageUpload('headerImage', this.files[0])" title="推荐尺寸: 宽度不超过300px" style="display: none;">
                                             <button type="button" class="upload-btn" onclick="document.getElementById('receiptHeaderImage').click()">上传图片</button>
                                             <small class="text-gray">推荐尺寸: 宽度不超过300px，高度自适应</small>
+                                            <div class="checkbox-row">
+                                                <div class="checkbox-item">
+                                                    <span>跟随系统主题颜色</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="followSystemTheme" onchange="updateReceiptInfo('followSystemTheme', this.checked)" checked>
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                            </div>
                                             <div id="headerImagePreview" class="image-preview"></div>
                                         </div>
                                     </div>
@@ -286,6 +295,15 @@
                                             <input type="file" id="receiptFooterImage" accept="image/*" onchange="handleReceiptImageUpload('footerImage', this.files[0])" title="推荐尺寸: 宽度不超过200px" style="display: none;">
                                             <button type="button" class="upload-btn" onclick="document.getElementById('receiptFooterImage').click()">上传图片</button>
                                             <small class="text-gray">推荐尺寸: 宽度不超过200px，高度自适应</small>
+                                            <div class="checkbox-row">
+                                                <div class="checkbox-item">
+                                                    <span>跟随系统主题颜色</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="followSystemThemeFooter" onchange="updateReceiptInfo('followSystemTheme', this.checked)" checked>
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                            </div>
                                             <div id="footerImagePreview" class="image-preview"></div>
                                         </div>
                                     </div>

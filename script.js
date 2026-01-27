@@ -316,7 +316,8 @@ const defaultSettings = {
             showDeadline: true,  // 是否显示截稿时间
             showDesigner: true,  // 是否显示设计师
             showContactInfo: true,  // 是否显示联系方式
-            customText: ''  // 自定义文本
+            customText: '',  // 自定义文本
+            followSystemTheme: true  // 是否跟随系统主题颜色
         },
         footerText1: '温馨提示',  // 尾部文本1
         footerText2: '感谢惠顾',  // 尾部文本2
@@ -709,6 +710,10 @@ function handleReceiptImageUpload(field, file) {
         
         const reader = new FileReader();
         reader.onload = function(e) {
+            // 保存原始图片数据
+            const originalImageData = e.target.result;
+            defaultSettings.receiptCustomization[field + 'Original'] = originalImageData;
+            
             // 检查图片尺寸
             const img = new Image();
             img.onload = function() {
@@ -718,81 +723,10 @@ function handleReceiptImageUpload(field, file) {
                     return;
                 }
                 
-                // 获取当前主题的字体颜色
-                const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
-                const themeClass = `receipt-theme-${currentTheme}`;
-                
-                // 创建临时元素来获取主题颜色
-                const tempElement = document.createElement('div');
-                tempElement.className = `receipt ${themeClass}`;
-                tempElement.style.position = 'absolute';
-                tempElement.style.left = '-9999px';
-                tempElement.style.top = '-9999px';
-                document.body.appendChild(tempElement);
-                
-                // 获取字体颜色
-                const textColor = getComputedStyle(tempElement).getPropertyValue('--receipt-text') || '#333';
-                document.body.removeChild(tempElement);
-                
-                // 使用Canvas调整图片颜色
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                
-                // 绘制原始图片
-                ctx.drawImage(img, 0, 0);
-                
-                // 获取图片数据
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
-                
-                // 解析目标颜色
-                const rgb = textColor.match(/\d+/g);
-                if (rgb && rgb.length === 3) {
-                    const targetR = parseInt(rgb[0]);
-                    const targetG = parseInt(rgb[1]);
-                    const targetB = parseInt(rgb[2]);
-                    
-                    // 调整图片颜色
-                    for (let i = 0; i < data.length; i += 4) {
-                        const r = data[i];
-                        const g = data[i + 1];
-                        const b = data[i + 2];
-                        const a = data[i + 3];
-                        
-                        // 跳过透明像素
-                        if (a === 0) continue;
-                        
-                        // 计算灰度值
-                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                        
-                        // 使用目标颜色的RGB比例，保持灰度值
-                        const grayScale = gray / 255;
-                        data[i] = Math.round(targetR * grayScale);
-                        data[i + 1] = Math.round(targetG * grayScale);
-                        data[i + 2] = Math.round(targetB * grayScale);
-                    }
-                    
-                    // 将调整后的数据放回Canvas
-                    ctx.putImageData(imageData, 0, 0);
-                }
-                
-                // 将Canvas转换为base64
-                const adjustedImageData = canvas.toDataURL('image/png');
-                
-                // 保存调整后的图片
-                defaultSettings.receiptCustomization[field] = adjustedImageData;
-                saveData();
-                
-                // 更新预览
-                if (field === 'headerImage' && document.getElementById('headerImagePreview')) {
-                    document.getElementById('headerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
-                } else if (field === 'footerImage' && document.getElementById('footerImagePreview')) {
-                    document.getElementById('footerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
-                }
+                // 处理图片以适应主题颜色
+                processImageForTheme(img, field);
             };
-            img.src = e.target.result;
+            img.src = originalImageData;
         };
         reader.readAsDataURL(file);
     }
@@ -806,12 +740,124 @@ function updateReceiptInfo(field, value) {
             showStartTime: true,
             showDeadline: true,
             showDesigner: true,
-            customText: ''
+            showContactInfo: true,
+            customText: '',
+            followSystemTheme: true
         };
     }
     
     defaultSettings.receiptCustomization.receiptInfo[field] = value;
     saveData();
+    
+    // 如果是跟随系统主题颜色设置，且设置为启用，重新处理图片
+    if (field === 'followSystemTheme' && value) {
+        reprocessImagesForTheme();
+    }
+}
+
+// 重新处理图片以适应当前主题颜色
+function reprocessImagesForTheme() {
+    const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || true;
+    if (!followSystemTheme) return;
+    
+    const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    
+    // 处理头部图片
+    if (defaultSettings.receiptCustomization.headerImageOriginal) {
+        const img = new Image();
+        img.onload = function() {
+            processImageForTheme(img, 'headerImage');
+        };
+        img.src = defaultSettings.receiptCustomization.headerImageOriginal;
+    }
+    
+    // 处理尾部图片
+    if (defaultSettings.receiptCustomization.footerImageOriginal) {
+        const img = new Image();
+        img.onload = function() {
+            processImageForTheme(img, 'footerImage');
+        };
+        img.src = defaultSettings.receiptCustomization.footerImageOriginal;
+    }
+}
+
+// 处理单个图片以适应主题颜色
+function processImageForTheme(img, field) {
+    const followSystemTheme = defaultSettings.receiptCustomization.receiptInfo?.followSystemTheme || true;
+    if (!followSystemTheme) return;
+    
+    const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    const themeClass = `receipt-theme-${currentTheme}`;
+    
+    // 创建临时元素来获取主题颜色
+    const tempElement = document.createElement('div');
+    tempElement.className = `receipt ${themeClass}`;
+    tempElement.style.position = 'absolute';
+    tempElement.style.left = '-9999px';
+    tempElement.style.top = '-9999px';
+    document.body.appendChild(tempElement);
+    
+    // 获取字体颜色（使用最终计算后的 color，避免直接读 CSS 变量是十六进制导致无法解析）
+    const textColor = getComputedStyle(tempElement).color || 'rgb(51, 51, 51)';
+    document.body.removeChild(tempElement);
+    
+    // 使用Canvas调整图片颜色
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    
+    // 绘制原始图片
+    ctx.drawImage(img, 0, 0);
+    
+    // 获取图片数据
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    // 解析目标颜色（期待形如 rgb(r, g, b) 的字符串）
+    const rgb = textColor && textColor.match(/\d+/g);
+    if (rgb && rgb.length === 3) {
+        const targetR = parseInt(rgb[0]);
+        const targetG = parseInt(rgb[1]);
+        const targetB = parseInt(rgb[2]);
+        
+        // 调整图片颜色
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const a = data[i + 3];
+            
+            // 跳过透明像素
+            if (a === 0) continue;
+            
+            // 计算灰度值
+            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            
+            // 使用目标颜色的RGB比例，保持灰度值
+            const grayScale = gray / 255;
+            data[i] = Math.round(targetR * grayScale);
+            data[i + 1] = Math.round(targetG * grayScale);
+            data[i + 2] = Math.round(targetB * grayScale);
+        }
+        
+        // 将调整后的数据放回Canvas
+        ctx.putImageData(imageData, 0, 0);
+    }
+    
+    // 将Canvas转换为base64
+    const adjustedImageData = canvas.toDataURL('image/png');
+    
+    // 保存调整后的图片
+    defaultSettings.receiptCustomization[field] = adjustedImageData;
+    saveData();
+    
+    // 更新预览
+    if (field === 'headerImage' && document.getElementById('headerImagePreview')) {
+        document.getElementById('headerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
+    } else if (field === 'footerImage' && document.getElementById('footerImagePreview')) {
+        document.getElementById('footerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
+    }
 }
 
 // 加载小票自定义设置到表单
@@ -855,6 +901,12 @@ function loadReceiptCustomizationToForm() {
             if (document.getElementById('receiptCustomText')) {
                 document.getElementById('receiptCustomText').value = settings.receiptInfo.customText || '';
             }
+            if (document.getElementById('followSystemTheme')) {
+                document.getElementById('followSystemTheme').checked = settings.receiptInfo.followSystemTheme !== false; // 默认为true
+            }
+            if (document.getElementById('followSystemThemeFooter')) {
+                document.getElementById('followSystemThemeFooter').checked = settings.receiptInfo.followSystemTheme !== false; // 默认为true
+            }
         }
         
         // 设置图片预览
@@ -890,6 +942,9 @@ function applyReceiptTheme(themeName) {
         themeSelector.value = themeName;
     }
     
+    // 重新处理图片以适应新主题颜色
+    reprocessImagesForTheme();
+    
     // 如果报价页已生成，立即更新预览
     if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
         generateQuote();
@@ -918,17 +973,20 @@ function clearReceiptCustomization() {
         defaultSettings.receiptCustomization = {
             theme: 'classic',
             headerImage: null,
+            headerImageOriginal: null,
             titleText: 'LIST',
             footerText1: '温馨提示',
             footerText2: '感谢惠顾',
             footerImage: null,
+            footerImageOriginal: null,
             receiptInfo: {
                 orderNotification: '',
                 showStartTime: true,
                 showDeadline: true,
                 showDesigner: true,
                 showContactInfo: true,
-                customText: ''
+                customText: '',
+                followSystemTheme: true
             },
         };
         
@@ -1900,9 +1958,16 @@ function generateQuote() {
         const canMerge = !hasSameModel && !hasProcess && item.productType !== 'config' && (item.productType === 'fixed' || (item.productType === 'double' && !hasAdditionalConfig));
         
         // 获取同模系数值（用于显示）
-        const _arr = Object.values(defaultSettings.sameModelCoefficients || {});
-        const _found = _arr.find(c => c && c.name === '改字、色、柄图');
-        const sameModelRate = getCoefficientValue(_found || _arr[0]) || 0.5;
+        let sameModelRate = 0.5;
+        if (hasSameModel && item.basePrice > 0 && item.sameModelUnitPrice > 0) {
+            // 根据实际计算的同模单价和基础单价计算同模系数
+            sameModelRate = item.sameModelUnitPrice / item.basePrice;
+        } else {
+            // 没有同模制品时，使用默认同模系数
+            const _arr = Object.values(defaultSettings.sameModelCoefficients || {});
+            const _found = _arr.find(c => c && c.name === '改字、色、柄图');
+            sameModelRate = getCoefficientValue(_found || _arr[0]) || 0.5;
+        }
         
         // 计算全价制品单价和数量
         const fullPriceUnitPrice = item.basePrice; // 全价制品单价（基础价，config时已包含配件）
@@ -2039,10 +2104,17 @@ function generateQuote() {
             const hasAdditionalConfigGift = item.productType === 'config' && item.additionalConfigDetails && item.additionalConfigDetails.length > 0;
             const canMergeGift = !hasSameModelGift && !hasProcessGift && item.productType !== 'config' && (item.productType === 'fixed' || (item.productType === 'double' && !hasAdditionalConfigGift));
             
-            // 获取同模系数值
-            const _arrG = Object.values(defaultSettings.sameModelCoefficients || {});
-            const _foundG = _arrG.find(c => c && c.name === '改字、色、柄图');
-            const sameModelRateGift = getCoefficientValue(_foundG || _arrG[0]) || 0.5;
+            // 获取同模系数值（用于显示）
+            let sameModelRateGift = 0.5;
+            if (hasSameModelGift && item.basePrice > 0 && item.sameModelUnitPrice > 0) {
+                // 根据实际计算的同模单价和基础单价计算同模系数
+                sameModelRateGift = item.sameModelUnitPrice / item.basePrice;
+            } else {
+                // 没有同模制品时，使用默认同模系数
+                const _arrG = Object.values(defaultSettings.sameModelCoefficients || {});
+                const _foundG = _arrG.find(c => c && c.name === '改字、色、柄图');
+                sameModelRateGift = getCoefficientValue(_foundG || _arrG[0]) || 0.5;
+            }
             
             // 计算全价制品单价和数量
             const fullPriceUnitPriceGift = item.basePrice;
@@ -2150,7 +2222,7 @@ function generateQuote() {
     const up = quoteData.pricingUpProduct != null ? quoteData.pricingUpProduct : (quoteData.usage * quoteData.urgent || 1);
     const down = quoteData.pricingDownProduct != null ? quoteData.pricingDownProduct : (quoteData.discount || 1);
     const addAmount = quoteData.totalProductsPrice * (up - 1);
-    const discountAmount = Math.round(quoteData.totalProductsPrice * up * (down - 1));
+    const discountAmount = quoteData.totalProductsPrice * up * (down - 1);
     const totalWithCoeff = quoteData.totalWithCoefficients != null ? quoteData.totalWithCoefficients : (quoteData.totalProductsPrice * up * down);
     const totalBeforePlat = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (totalWithCoeff + (quoteData.totalOtherFees || 0));
     const base = quoteData.totalProductsPrice;
