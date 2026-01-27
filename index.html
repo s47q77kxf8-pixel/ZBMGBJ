@@ -179,121 +179,148 @@
                     </div>
                 </div>
                 
-                <!-- 小票设置面板 -->
-                <div id="receiptCustomizationPanel" class="section d-none">
-                    <h2>小票设置</h2>
-                    
-                    <!-- 主题选择 -->
-                    <div class="section">
-                        <h3>主题样式</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="receiptThemeSelect">选择主题</label>
-                                <select id="receiptThemeSelect" onchange="applyReceiptTheme(this.value)">
-                                    <option value="classic">经典主题</option>
-                                    <option value="modern">现代商务</option>
-                                    <option value="warm">温馨可爱</option>
-                                    <option value="dark">专业设计（深色）</option>
-                                    <option value="minimal">简约极简</option>
-                                </select>
-                                <small class="text-gray">选择主题后，小票样式将实时更新预览</small>
-                            </div>
+                <!-- 小票设置弹窗（底部弹出） -->
+                <div id="receiptCustomizationModal" class="receipt-customization-modal d-none">
+                    <div class="receipt-customization-overlay" onclick="closeReceiptCustomizationPanel()"></div>
+                    <div class="receipt-customization-content">
+                        <div class="receipt-customization-header">
+                            <h2>小票设置</h2>
+                            <button class="btn-icon" onclick="closeReceiptCustomizationPanel()">×</button>
                         </div>
-                    </div>
-                    
-                    <!-- 小票头部设置 -->
-                    <div class="section">
-                        <h3>小票头部</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="receiptHeaderImage">小票头部图片</label>
-                                <input type="file" id="receiptHeaderImage" accept="image/*" onchange="handleReceiptImageUpload('headerImage', this.files[0])" title="推荐尺寸: 宽度不超过300px" style="display: none;">
-                                <button type="button" class="upload-btn" onclick="document.getElementById('receiptHeaderImage').click()">上传图片</button>
-                                <small class="text-gray">推荐尺寸: 宽度不超过300px，高度自适应</small>
-                                <div id="headerImagePreview" class="image-preview"></div>
+                        
+                        <div class="receipt-customization-body">
+                            <div class="receipt-customization-tabs">
+                                <button class="tab-btn active" data-tab="settings">设置</button>
+                                <button class="tab-btn" data-tab="preview">预览</button>
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="receiptTitleText">小票标题</label>
-                                <input type="text" id="receiptTitleText" placeholder="例如：LIST 或 个人作品报价单" onchange="updateReceiptCustomization('titleText', this.value)">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="receiptOrderNotification">订单通知</label>
-                                <input type="text" id="receiptOrderNotification" placeholder="例如：单主ID，你有一份订单请查收~" onchange="updateReceiptInfo('orderNotification', this.value)">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <div class="checkbox-row">
-                                    <div class="checkbox-item">
-                                        <span>开始时间</span>
-                                        <label class="custom-toggle">
-                                            <input type="checkbox" id="showStartTime" onchange="updateReceiptInfo('showStartTime', this.checked)" checked>
-                                            <span class="toggle-slider"></span>
-                                        </label>
+                            
+                            <div class="tab-content active" id="settings-tab">
+                                <!-- 主题选择 -->
+                                <div class="section">
+                                    <h3>主题样式</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="receiptThemeSelect">选择主题</label>
+                                            <select id="receiptThemeSelect" onchange="applyReceiptTheme(this.value)">
+                                                <option value="classic">经典主题</option>
+                                                <option value="modern">现代商务</option>
+                                                <option value="warm">温馨可爱</option>
+                                                <option value="dark">专业设计（深色）</option>
+                                                <option value="minimal">简约极简</option>
+                                            </select>
+                                            <small class="text-gray">选择主题后，小票样式将实时更新预览</small>
+                                        </div>
                                     </div>
-                                    <div class="checkbox-item">
-                                        <span>截稿时间</span>
-                                        <label class="custom-toggle">
-                                            <input type="checkbox" id="showDeadline" onchange="updateReceiptInfo('showDeadline', this.checked)" checked>
-                                            <span class="toggle-slider"></span>
-                                        </label>
+                                </div>
+                                
+                                <!-- 小票头部设置 -->
+                                <div class="section">
+                                    <h3>小票头部</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="receiptHeaderImage">小票头部图片</label>
+                                            <input type="file" id="receiptHeaderImage" accept="image/*" onchange="handleReceiptImageUpload('headerImage', this.files[0])" title="推荐尺寸: 宽度不超过300px" style="display: none;">
+                                            <button type="button" class="upload-btn" onclick="document.getElementById('receiptHeaderImage').click()">上传图片</button>
+                                            <small class="text-gray">推荐尺寸: 宽度不超过300px，高度自适应</small>
+                                            <div id="headerImagePreview" class="image-preview"></div>
+                                        </div>
                                     </div>
-                                    <div class="checkbox-item">
-                                        <span>设计师</span>
-                                        <label class="custom-toggle">
-                                            <input type="checkbox" id="showDesigner" onchange="updateReceiptInfo('showDesigner', this.checked)" checked>
-                                            <span class="toggle-slider"></span>
-                                        </label>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="receiptTitleText">小票标题</label>
+                                            <input type="text" id="receiptTitleText" placeholder="例如：LIST 或 个人作品报价单" onchange="updateReceiptCustomization('titleText', this.value)">
+                                        </div>
                                     </div>
-                                    <div class="checkbox-item">
-                                        <span>联系方式</span>
-                                        <label class="custom-toggle">
-                                            <input type="checkbox" id="showContactInfo" onchange="updateReceiptInfo('showContactInfo', this.checked)" checked>
-                                            <span class="toggle-slider"></span>
-                                        </label>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="receiptOrderNotification">订单通知</label>
+                                            <input type="text" id="receiptOrderNotification" placeholder="例如：单主ID，你有一份订单请查收~" onchange="updateReceiptInfo('orderNotification', this.value)">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <div class="checkbox-row">
+                                                <div class="checkbox-item">
+                                                    <span>开始时间</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="showStartTime" onchange="updateReceiptInfo('showStartTime', this.checked)" checked>
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="checkbox-item">
+                                                    <span>截稿时间</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="showDeadline" onchange="updateReceiptInfo('showDeadline', this.checked)" checked>
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="checkbox-item">
+                                                    <span>设计师</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="showDesigner" onchange="updateReceiptInfo('showDesigner', this.checked)" checked>
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="checkbox-item">
+                                                    <span>联系方式</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="showContactInfo" onchange="updateReceiptInfo('showContactInfo', this.checked)" checked>
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="receiptCustomText">自定义文本</label>
+                                            <input type="text" id="receiptCustomText" placeholder="输入自定义文本" onchange="updateReceiptInfo('customText', this.value)">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 小票尾部设置 -->
+                                <div class="section">
+                                    <h3>小票尾部</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                        <label for="receiptFooterText1">小票尾部图片前文本</label>
+                                        <input type="text" id="receiptFooterText1" placeholder="例如：温馨提示" onchange="updateReceiptCustomization('footerText1', this.value)">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="receiptFooterText2">小票尾部图片后文本</label>
+                                        <input type="text" id="receiptFooterText2" placeholder="例如：感谢惠顾" onchange="updateReceiptCustomization('footerText2', this.value)">
+                                    </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="receiptFooterImage">小票尾部图片</label>
+                                            <input type="file" id="receiptFooterImage" accept="image/*" onchange="handleReceiptImageUpload('footerImage', this.files[0])" title="推荐尺寸: 宽度不超过200px" style="display: none;">
+                                            <button type="button" class="upload-btn" onclick="document.getElementById('receiptFooterImage').click()">上传图片</button>
+                                            <small class="text-gray">推荐尺寸: 宽度不超过200px，高度自适应</small>
+                                            <div id="footerImagePreview" class="image-preview"></div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="receiptCustomText">自定义文本</label>
-                                <input type="text" id="receiptCustomText" placeholder="输入自定义文本" onchange="updateReceiptInfo('customText', this.value)">
+                            
+                            <div class="tab-content" id="preview-tab">
+                                <div class="section">
+                                    <h3>小票预览</h3>
+                                    <div class="receipt-preview-container">
+                                        <div id="receiptPreview" class="receipt">
+                                            <!-- 预览内容将通过JavaScript动态生成 -->
+                                        </div>
+                                    </div>
+                                    <small class="text-gray">预览显示小票的部分内容，实际效果以最终生成为准</small>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    
-                    <!-- 小票尾部设置 -->
-                    <div class="section">
-                        <h3>小票尾部</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                            <label for="receiptFooterText1">小票尾部图片前文本</label>
-                            <input type="text" id="receiptFooterText1" placeholder="例如：温馨提示" onchange="updateReceiptCustomization('footerText1', this.value)">
+                        
+                        <div class="receipt-customization-footer">
+                            <button class="btn" onclick="clearReceiptCustomization()">清除设置</button>
+                            <button class="btn" onclick="closeReceiptCustomizationPanel()">保存设置</button>
                         </div>
-                        <div class="form-group">
-                            <label for="receiptFooterText2">小票尾部图片后文本</label>
-                            <input type="text" id="receiptFooterText2" placeholder="例如：感谢惠顾" onchange="updateReceiptCustomization('footerText2', this.value)">
-                        </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="receiptFooterImage">小票尾部图片</label>
-                                <input type="file" id="receiptFooterImage" accept="image/*" onchange="handleReceiptImageUpload('footerImage', this.files[0])" title="推荐尺寸: 宽度不超过200px" style="display: none;">
-                                <button type="button" class="upload-btn" onclick="document.getElementById('receiptFooterImage').click()">上传图片</button>
-                                <small class="text-gray">推荐尺寸: 宽度不超过200px，高度自适应</small>
-                                <div id="footerImagePreview" class="image-preview"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <button class="btn" onclick="clearReceiptCustomization()">清除设置</button>
-                        <button class="btn" onclick="closeReceiptCustomizationPanel()">保存设置</button>
                     </div>
                 </div>
 

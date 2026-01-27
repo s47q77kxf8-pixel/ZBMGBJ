@@ -383,6 +383,9 @@ function init() {
             backgroundFeeInput.value = defaultSettings.backgroundFee || 10;
         }
         
+        // 初始化小票设置功能
+        initReceiptCustomization();
+        
         // 初始化悬浮计算按钮的显示状态
         function updateFloatingButton() {
             const floatingBtn = document.querySelector('.floating-calculate-btn');
@@ -613,22 +616,24 @@ function previewImage(inputId, previewId) {
 
 // 切换小票自定义设置面板
 function toggleReceiptCustomizationPanel() {
-    const panel = document.getElementById('receiptCustomizationPanel');
+    const modal = document.getElementById('receiptCustomizationModal');
     
-    if (panel.classList.contains('d-none')) {
+    if (modal.classList.contains('d-none')) {
         // 显示面板
-        panel.classList.remove('d-none');
+        modal.classList.remove('d-none');
         // 加载当前的自定义设置到表单中
         loadReceiptCustomizationToForm();
+        // 生成预览
+        generateReceiptPreview();
     } else {
         // 隐藏面板
-        panel.classList.add('d-none');
+        modal.classList.add('d-none');
     }
 }
 
 // 关闭小票自定义设置面板
 function closeReceiptCustomizationPanel() {
-    document.getElementById('receiptCustomizationPanel').classList.add('d-none');
+    document.getElementById('receiptCustomizationModal').classList.add('d-none');
 }
 
 // 加载小票自定义设置到表单
@@ -758,6 +763,49 @@ function applyReceiptTheme(themeName) {
     if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
         generateQuote();
     }
+    
+    // 更新小票设置预览
+    generateReceiptPreview();
+}
+
+// 标签页切换功能
+function initReceiptCustomizationTabs() {
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab;
+            
+            // 更新标签按钮状态
+            tabButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // 更新内容显示
+            tabContents.forEach(content => {
+                content.classList.remove('active');
+                if (content.id === `${tabId}-tab`) {
+                    content.classList.add('active');
+                }
+            });
+            
+            // 如果切换到预览标签，生成预览
+            if (tabId === 'preview') {
+                generateReceiptPreview();
+            }
+        });
+    });
+}
+
+// 初始化小票设置功能
+function initReceiptCustomization() {
+    initReceiptCustomizationTabs();
+    
+    // 绑定表单字段变更事件，实时更新预览
+    const formFields = document.querySelectorAll('#settings-tab input, #settings-tab select');
+    formFields.forEach(field => {
+        field.addEventListener('change', generateReceiptPreview);
+    });
 }
 
 // 清除小票自定义设置
@@ -787,8 +835,67 @@ function clearReceiptCustomization() {
         // 重新加载表单以反映更改
         loadReceiptCustomizationToForm();
         
+        // 更新预览
+        generateReceiptPreview();
+        
         alert('小票自定义设置已清除！');
     }
+}
+
+// 生成小票预览
+function generateReceiptPreview() {
+    const previewContainer = document.getElementById('receiptPreview');
+    if (!previewContainer) return;
+    
+    const settings = defaultSettings.receiptCustomization;
+    const theme = settings.theme || 'classic';
+    
+    let previewHTML = `
+        <div class="receipt receipt-theme-${theme}">
+            ${settings.headerImage ? `<div class="receipt-header-image"><img src="${settings.headerImage}" alt="Header" style="max-width: 100%; height: auto;"></div>` : ''}
+            <div class="receipt-title">${settings.titleText || 'LIST'}</div>
+            <div class="receipt-info">
+                ${settings.receiptInfo && settings.receiptInfo.orderNotification ? `<div>${settings.receiptInfo.orderNotification}</div>` : ''}
+                ${settings.receiptInfo && settings.receiptInfo.showStartTime ? '<div>开始时间: 2024-01-01</div>' : ''}
+                ${settings.receiptInfo && settings.receiptInfo.showDeadline ? '<div>截稿时间: 2024-01-10</div>' : ''}
+                ${settings.receiptInfo && settings.receiptInfo.showDesigner ? '<div>设计师: 测试设计师</div>' : ''}
+                ${settings.receiptInfo && settings.receiptInfo.showContactInfo ? '<div>联系方式: QQ 123456</div>' : ''}
+                ${settings.receiptInfo && settings.receiptInfo.customText ? `<div>${settings.receiptInfo.customText}</div>` : ''}
+            </div>
+            <div class="receipt-details">
+                <div class="receipt-row">
+                    <div class="receipt-col-2">测试制品</div>
+                    <div class="receipt-col-1">¥100</div>
+                </div>
+                <div class="receipt-row">
+                    <div class="receipt-col-2">+ 工艺</div>
+                    <div class="receipt-col-1">¥20</div>
+                </div>
+            </div>
+            <div class="receipt-divider-full"></div>
+            <div class="receipt-summary">
+                <div class="receipt-summary-row">
+                    <div class="receipt-summary-label">制品小计</div>
+                    <div class="receipt-summary-value">¥120</div>
+                </div>
+                <div class="receipt-summary-row">
+                    <div class="receipt-summary-label">系数</div>
+                    <div class="receipt-summary-value">×1.0</div>
+                </div>
+                <div class="receipt-total">
+                    <div>总计</div>
+                    <div>¥120</div>
+                </div>
+            </div>
+            <div class="receipt-footer">
+                ${settings.footerText1 ? `<p class="receipt-footer-text1">${settings.footerText1}</p>` : ''}
+                ${settings.footerImage ? `<div class="receipt-footer-image"><img src="${settings.footerImage}" alt="Footer" style="max-width: 100px; height: auto;"></div>` : ''}
+                ${settings.footerText2 ? `<p class="receipt-footer-text2">${settings.footerText2}</p>` : ''}
+            </div>
+        </div>
+    `;
+    
+    previewContainer.innerHTML = previewHTML;
 }
 
 // 页面切换功能
