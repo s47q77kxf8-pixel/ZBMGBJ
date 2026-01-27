@@ -1719,14 +1719,14 @@ input:checked + .toggle-slider:before {
 
 /* 自然主题（nature） */
 .receipt-theme-nature {
-    --receipt-bg: #f0fdf4;
-    --receipt-text: #15803d;
+    --receipt-bg: #f6fdf7; /* 比原来更浅一点的绿白背景 */
+    --receipt-text: #2f855a; /* 清醒但饱和度更低的绿灰文字 */
     --receipt-border: none;
     --receipt-accent: #22c55e;
     --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
     --receipt-border-radius: 10px;
     --receipt-box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);
-    --receipt-title-color: #15803d;
+    --receipt-title-color: #2f855a;
     --receipt-divider-color: #86efac;
 }
 
@@ -1743,6 +1743,31 @@ input:checked + .toggle-slider:before {
     --receipt-divider-color: #c89b6e;
 }
 
+/* 粉樱主题（sakura） */
+.receipt-theme-sakura {
+    --receipt-bg: #fef7fb; /* 更浅的粉樱背景 */
+    --receipt-text: #4a5568;
+    --receipt-border: none;
+    --receipt-accent: #f9a8d4; /* 更柔和的粉色强调色 */
+    --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
+    --receipt-border-radius: 10px;
+    --receipt-box-shadow: 0 2px 8px rgba(219, 39, 119, 0.12);
+    --receipt-title-color: #be185d;
+    --receipt-divider-color: #fecdd3;
+}
+
+/* 冰蓝主题（iceBlue） */
+.receipt-theme-iceBlue {
+    --receipt-bg: #f0f9ff; /* 更浅的冰蓝背景 */
+    --receipt-text: #1f2933;
+    --receipt-border: none;
+    --receipt-accent: #0284c7;
+    --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
+    --receipt-border-radius: 10px;
+    --receipt-box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
+    --receipt-title-color: #075985;
+    --receipt-divider-color: #bae6fd;
+}
 
 
 /* 小票标题主题颜色（保证无论是否使用 CSS 变量，都能按主题着色） */
@@ -1768,6 +1793,14 @@ input:checked + .toggle-slider:before {
 
 .receipt-theme-vintage .receipt-title {
     color: #5c1a1a;
+}
+
+.receipt-theme-sakura .receipt-title {
+    color: #be185d;
+}
+
+.receipt-theme-iceBlue .receipt-title {
+    color: #075985;
 }
 
 /* 保存图片弹窗（手机端：长按存相册 / 下载） */

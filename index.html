@@ -172,10 +172,12 @@
                             <select id="themeSelector" onchange="applyReceiptTheme(this.value)" class="form-control mr-2">
                                 <option value="classic">经典</option>
                                 <option value="modern">现代</option>
-                                <option value="warm">温馨</option>
                                 <option value="dark">深色</option>
-                                <option value="nature">自然</option>
                                 <option value="vintage">复古</option>
+                                <option value="warm">温馨</option>
+                                <option value="nature">自然</option>
+                                <option value="sakura">粉樱</option>
+                                <option value="iceBlue">冰蓝</option>
                             </select>
                             <button class="btn" onclick="toggleReceiptCustomizationPanel()">小票设置</button>
                             <button class="btn" onclick="saveQuoteAsImage()">保存图片</button>
@@ -197,11 +199,6 @@
                         </div>
                         
                         <div class="receipt-customization-body">
-                            <div class="receipt-customization-tabs">
-                                <button class="tab-btn active" data-tab="settings">设置</button>
-                                <button class="tab-btn" data-tab="preview">预览</button>
-                            </div>
-                            
                             <div class="tab-content active" id="settings-tab">
 
                                 <!-- 小票头部设置 -->
@@ -224,7 +221,7 @@
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label for="receiptOrderNotification">订单通知</label>
+                                            <label for="receiptOrderNotification">标题后文本</label>
                                             <input type="text" id="receiptOrderNotification" placeholder="例如：单主ID，你有一份订单请查收~" onchange="updateReceiptInfo('orderNotification', this.value)">
                                         </div>
                                     </div>
@@ -264,8 +261,8 @@
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label for="receiptCustomText">自定义文本</label>
-                                            <input type="text" id="receiptCustomText" placeholder="输入自定义文本" onchange="updateReceiptInfo('customText', this.value)">
+                                            <label for="receiptCustomText">制品前文本</label>
+                                            <input type="text" id="receiptCustomText" placeholder="输入制品前文本" onchange="updateReceiptInfo('customText', this.value)">
                                         </div>
                                     </div>
                                 </div>
@@ -292,18 +289,6 @@
                                             <div id="footerImagePreview" class="image-preview"></div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                            
-                            <div class="tab-content" id="preview-tab">
-                                <div class="section">
-                                    <h3>小票预览</h3>
-                                    <div class="receipt-preview-container">
-                                        <div id="receiptPreview" class="receipt">
-                                            <!-- 预览内容将通过JavaScript动态生成 -->
-                                        </div>
-                                    </div>
-                                    <small class="text-gray">预览显示小票的部分内容，实际效果以最终生成为准</small>
                                 </div>
                             </div>
                         </div>

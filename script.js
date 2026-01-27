@@ -548,6 +548,51 @@ function saveData() {
     }
 }
 
+// 导出设置为JSON文件
+function exportSettings() {
+    try {
+        // 收集所有设置数据
+        const exportData = {
+            calculatorSettings: defaultSettings,
+            productSettings: productSettings,
+            processSettings: processSettings,
+            templates: templates,
+            exportDate: new Date().toISOString()
+        };
+        
+        // 将设置转换为JSON字符串，添加缩进以提高可读性
+        const settingsJSON = JSON.stringify(exportData, null, 2);
+        
+        // 创建Blob对象
+        const blob = new Blob([settingsJSON], { type: 'application/json' });
+        
+        // 创建下载链接
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // 生成包含日期的文件名
+        const date = new Date();
+        const timestamp = date.toISOString().replace(/[:.]/g, '-');
+        a.download = `calculator-settings-${timestamp}.json`;
+        
+        // 触发下载
+        document.body.appendChild(a);
+        a.click();
+        
+        // 清理
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        
+        alert('设置导出成功！');
+    } catch (e) {
+        console.error('导出设置失败:', e);
+        alert('导出设置失败，请重试');
+    }
+}
+
 // 添加默认制品设置
 function addDefaultProductSettings() {
     if (productSettings.length === 0) {
@@ -673,14 +718,78 @@ function handleReceiptImageUpload(field, file) {
                     return;
                 }
                 
-                defaultSettings.receiptCustomization[field] = e.target.result;
+                // 获取当前主题的字体颜色
+                const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+                const themeClass = `receipt-theme-${currentTheme}`;
+                
+                // 创建临时元素来获取主题颜色
+                const tempElement = document.createElement('div');
+                tempElement.className = `receipt ${themeClass}`;
+                tempElement.style.position = 'absolute';
+                tempElement.style.left = '-9999px';
+                tempElement.style.top = '-9999px';
+                document.body.appendChild(tempElement);
+                
+                // 获取字体颜色
+                const textColor = getComputedStyle(tempElement).getPropertyValue('--receipt-text') || '#333';
+                document.body.removeChild(tempElement);
+                
+                // 使用Canvas调整图片颜色
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                
+                // 绘制原始图片
+                ctx.drawImage(img, 0, 0);
+                
+                // 获取图片数据
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                // 解析目标颜色
+                const rgb = textColor.match(/\d+/g);
+                if (rgb && rgb.length === 3) {
+                    const targetR = parseInt(rgb[0]);
+                    const targetG = parseInt(rgb[1]);
+                    const targetB = parseInt(rgb[2]);
+                    
+                    // 调整图片颜色
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        const a = data[i + 3];
+                        
+                        // 跳过透明像素
+                        if (a === 0) continue;
+                        
+                        // 计算灰度值
+                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                        
+                        // 使用目标颜色的RGB比例，保持灰度值
+                        const grayScale = gray / 255;
+                        data[i] = Math.round(targetR * grayScale);
+                        data[i + 1] = Math.round(targetG * grayScale);
+                        data[i + 2] = Math.round(targetB * grayScale);
+                    }
+                    
+                    // 将调整后的数据放回Canvas
+                    ctx.putImageData(imageData, 0, 0);
+                }
+                
+                // 将Canvas转换为base64
+                const adjustedImageData = canvas.toDataURL('image/png');
+                
+                // 保存调整后的图片
+                defaultSettings.receiptCustomization[field] = adjustedImageData;
                 saveData();
                 
                 // 更新预览
                 if (field === 'headerImage' && document.getElementById('headerImagePreview')) {
-                    document.getElementById('headerImagePreview').innerHTML = `<img src="${e.target.result}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
+                    document.getElementById('headerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
                 } else if (field === 'footerImage' && document.getElementById('footerImagePreview')) {
-                    document.getElementById('footerImagePreview').innerHTML = `<img src="${e.target.result}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
+                    document.getElementById('footerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
                 }
             };
             img.src = e.target.result;
@@ -761,7 +870,7 @@ function loadReceiptCustomizationToForm() {
 // 应用小票主题
 function applyReceiptTheme(themeName) {
     // 验证主题名称
-    const validThemes = ['classic', 'modern', 'warm', 'dark', 'nature', 'vintage'];
+    const validThemes = ['classic', 'modern', 'warm', 'dark', 'nature', 'vintage', 'sakura', 'iceBlue'];
     if (!validThemes.includes(themeName)) {
         themeName = 'classic'; // 默认使用经典主题
     }
@@ -790,43 +899,15 @@ function applyReceiptTheme(themeName) {
     generateReceiptPreview();
 }
 
-// 标签页切换功能
-function initReceiptCustomizationTabs() {
-    const tabButtons = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
-    
-    tabButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tabId = btn.dataset.tab;
-            
-            // 更新标签按钮状态
-            tabButtons.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            
-            // 更新内容显示
-            tabContents.forEach(content => {
-                content.classList.remove('active');
-                if (content.id === `${tabId}-tab`) {
-                    content.classList.add('active');
-                }
-            });
-            
-            // 如果切换到预览标签，生成预览
-            if (tabId === 'preview') {
-                generateReceiptPreview();
-            }
-        });
-    });
-}
-
 // 初始化小票设置功能
 function initReceiptCustomization() {
-    initReceiptCustomizationTabs();
-    
-    // 绑定表单字段变更事件，实时更新预览
+    // 绑定表单字段变更事件
     const formFields = document.querySelectorAll('#settings-tab input, #settings-tab select');
     formFields.forEach(field => {
-        field.addEventListener('change', generateReceiptPreview);
+        field.addEventListener('change', () => {
+            // 保存设置变更
+            saveData();
+        });
     });
 }
 
