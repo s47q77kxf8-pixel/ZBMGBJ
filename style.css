@@ -172,9 +172,9 @@ input:focus, select:focus {
     box-shadow: 0 0 0 3px var(--primary-light);
 }
 
-/* 按钮样式 */
+/* 按钮样式 - 高度、宽度由字体决定 */
 .btn {
-    padding: 0.4rem 0.8rem;
+    padding: 0.5em 1em;
     border: none;
     border-radius: var(--radius-md);
     font-weight: 600;
@@ -183,11 +183,16 @@ input:focus, select:focus {
     background-color: var(--primary-color);
     color: white;
     font-size: 0.8rem;
+    line-height: 1.35;
+    height: auto;
+    width: auto;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
 /* 主要按钮样式 - 保持较大尺寸 */
 .btn.main, .btn.calculate-btn {
-    padding: 0.6rem 1.2rem;
+    padding: 0.55em 1.1em;
     font-size: 0.9rem;
 }
 
@@ -221,18 +226,20 @@ input:focus, select:focus {
 }
 
 .btn.small {
-    padding: 0.3rem 0.6rem;
+    padding: 0.4em 0.8em;
     font-size: 0.75rem;
 }
 
 .add-product {
     width: 100%;
-    padding: 0.75rem;
+    padding: 0.6em 1em;
     border: 2px dashed var(--border-color);
     background: transparent;
     color: var(--text-light);
     margin-top: 0.75rem;
     font-size: 0.9rem;
+    line-height: 1.35;
+    height: auto;
 }
 
 .add-product:hover {
@@ -242,11 +249,12 @@ input:focus, select:focus {
 }
 
 .add-product-setting {
-    padding: 0.4rem 0.6rem;
+    padding: 0.5em 0.75em;
     border: 1px solid var(--primary-color);
     background-color: var(--primary-color);
     color: white;
     min-width: auto;
+    height: auto;
     font-size: 0.8rem;
 }
 
@@ -257,11 +265,12 @@ input:focus, select:focus {
 }
 
 .add-process-setting {
-    padding: 0.4rem 0.6rem;
+    padding: 0.5em 0.75em;
     border: 1px solid var(--primary-color);
     background-color: var(--primary-color);
     color: white;
     min-width: auto;
+    height: auto;
     font-size: 0.8rem;
 }
 
@@ -428,32 +437,23 @@ input:focus, select:focus {
         min-width: 0;
     }
     
-    /* 加价类：用途、加急、其他加价类 - 移动端一行显示两个 */
-    #calculator #pricingUpRow,
-    #calculator #extraPricingUpSelectsRow {
-        flex-direction: row !important;
-        flex-wrap: wrap !important;
-        gap: 0.5rem !important;
+    /* 设置选项：手机端全部并行，两列网格（用途、加急、不公开展示、折扣、同模、平台均两两并排） */
+    #calculator .section:nth-of-type(2) {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
     }
-    
-    #calculator #pricingUpRow .form-group,
-    #calculator #extraPricingUpSelectsRow .form-group {
-        flex: 1 1 calc(50% - 0.25rem) !important;
+    #calculator .section:nth-of-type(2) .section-title-row {
+        grid-column: 1 / -1;
+    }
+    #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) {
+        display: contents;
+    }
+    #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) .form-group {
         min-width: 0;
     }
-    
-    /* 折扣类：折扣系数、其他折扣类 - 移动端一行显示两个 */
-    #calculator #pricingDownRow,
-    #calculator #extraPricingDownSelectsRow {
-        flex-direction: row !important;
-        flex-wrap: wrap !important;
-        gap: 0.5rem !important;
-    }
-    
-    #calculator #pricingDownRow .form-group,
-    #calculator #extraPricingDownSelectsRow .form-group {
-        flex: 1 1 calc(50% - 0.25rem) !important;
-        min-width: 0;
+    #calculator .section:nth-of-type(2) .form-row:last-of-type {
+        grid-column: 1 / -1;
     }
     
     /* 联系方式选择框和输入框在同一行 - 手机端优化 */
@@ -489,33 +489,7 @@ input:focus, select:focus {
         box-sizing: border-box !important;
     }
     
-    /* 同模、平台费 - 移动端一行显示两个（它们已经在同一个form-row中） */
-    #calculator .section:nth-of-type(2) .form-row:has(#sameModel) {
-        flex-direction: row !important;
-        flex-wrap: wrap !important;
-        gap: 0.5rem !important;
-    }
-    
-    #calculator .section:nth-of-type(2) .form-row:has(#sameModel) .form-group {
-        flex: 1 1 calc(50% - 0.25rem) !important;
-        min-width: 0;
-    }
-    
-    /* 备用方案：如果浏览器不支持:has()，直接选择包含同模和平台费的form-row */
-    @supports not selector(:has(*)) {
-        #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) {
-            flex-direction: row !important;
-            flex-wrap: wrap !important;
-            gap: 0.5rem !important;
-        }
-        
-        #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) .form-group {
-            flex: 1 1 calc(50% - 0.25rem) !important;
-            min-width: 0;
-        }
-    }
-    
-    /* 其他费用部分在移动端保持垂直布局（因为内容较多） */
+    /* 其他费用在移动端仍占整行，已由上方 grid-column: 1 / -1 保证 */
     #calculator .section:nth-of-type(2) .form-row:last-of-type {
         flex-direction: column !important;
     }
@@ -536,15 +510,27 @@ input:focus, select:focus {
     }
 }
 
-/* 超小屏（如窄手机）下，单主信息改为上下排列，避免开始时间和截稿时间输入框轻微重叠 */
+/* 超小屏下仅「单主ID+联系方式」一行改为上下排列；开始时间、截稿时间保持并行 */
 @media (max-width: 480px) {
-    #calculator .section:first-of-type .form-row {
+    #calculator .section:first-of-type .form-row:first-of-type {
         flex-direction: column !important;
     }
     
-    #calculator .section:first-of-type .form-row .form-group {
+    #calculator .section:first-of-type .form-row:first-of-type .form-group {
         flex: 1 1 100% !important;
         width: 100%;
+    }
+    
+    /* 开始时间、截稿时间所在行保持并行（该 section 第 2 个 form-row，即第 3 个子元素） */
+    #calculator .section:first-of-type .form-row:has(#startTime),
+    #calculator .section:first-of-type .form-row:nth-child(3) {
+        flex-direction: row !important;
+    }
+    
+    #calculator .section:first-of-type .form-row:has(#startTime) .form-group,
+    #calculator .section:first-of-type .form-row:nth-child(3) .form-group {
+        flex: 1 1 calc(50% - 0.25rem) !important;
+        min-width: 0;
     }
 }
 
@@ -573,8 +559,8 @@ input:focus, select:focus {
 .relative { position: relative; }
 .font-bold { font-weight: bold; }
 .text-gray { color: var(--text-light); }
-.btn.xs { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
-.btn-compact { padding: 0.35rem 0.6rem; font-size: 0.8rem; min-height: auto; }
+.btn.xs { padding: 0.35em 0.65em; font-size: 0.75rem; height: auto; }
+.btn-compact { padding: 0.4em 0.75em; font-size: 0.8rem; min-height: auto; height: auto; }
 .text-right { text-align: right; }
 .p-2 { padding: 0.5rem !important; }
 .bg-light { background-color: #f8fafc; }
@@ -1169,6 +1155,26 @@ input[type="range"]#customThemeTextureOpacity {
     border-top: 1px solid #e2e8f0;
 }
 
+/* 加价类/折扣类均为单数时：加价类最后一项与折扣类第一项并排显示 */
+.coefficient-pair-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+.coefficient-pair-row .pair-row-half {
+    flex: 1;
+    min-width: 200px;
+}
+.coefficient-pair-row .pair-row-half .mb-2.d-flex.items-center.gap-2 {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    flex-wrap: nowrap !important;
+}
+
 /* 系数设置样式 - 名称长，系数值短 */
 .coefficient-settings .mb-2.d-flex.items-center.gap-2 {
     display: flex !important;
@@ -1585,8 +1591,9 @@ input:checked + .toggle-slider:before {
     }
     
     #receiptCustomizationPanel .btn {
-        padding: 0.5rem 1rem;
+        padding: 0.5em 1em;
         font-size: 0.9rem;
+        height: auto;
         border-radius: var(--radius-md);
         transition: all 0.2s ease;
         cursor: pointer;
@@ -1751,8 +1758,9 @@ input:checked + .toggle-slider:before {
     #receiptCustomizationPanel .form-row:last-child .btn {
         flex: 1;
         max-width: none;
-        padding: 0.6rem;
+        padding: 0.55em 0.9em;
         font-size: 0.85rem;
+        height: auto;
     }
     
     /* 优化复选框行 - 一行显示两个 */
@@ -2424,8 +2432,10 @@ input:checked + .toggle-slider:before {
 
 .receipt-customization-footer .btn {
     flex: 1;
-    padding: 0.75rem;
+    padding: 0.5em 0.9em;
     font-size: 0.95rem;
+    height: auto;
+    line-height: 1.35;
     text-align: center;
 }
 
@@ -2505,13 +2515,16 @@ input:checked + .toggle-slider:before {
 }
 
 .quote-actions select {
-    padding: 0.5rem;
+    padding: 0.5em 0.75em;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background: var(--card-bg);
     color: var(--text-color);
     font-size: 0.9rem;
-    min-width: 80px;
+    line-height: 1.35;
+    height: auto;
+    min-width: 4.5em;
+    width: auto;
 }
 
 /* 手机端：小票标题与按钮一排，按钮宽度由文字决定 */

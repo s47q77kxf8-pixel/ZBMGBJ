@@ -6471,6 +6471,7 @@ function renderCoefficientSettings() {
     renderUrgentCoefficients();
     renderSameModelCoefficients();
     renderDiscountCoefficients();
+    renderUrgentDiscountPairRow();
     renderPlatformFees();
     renderExtraPricingUp();
     renderExtraPricingDown();
@@ -6795,23 +6796,29 @@ function renderUsageCoefficients() {
     container.innerHTML = html;
 }
 
-// 渲染加急系数
+// 渲染加急系数（当加价类、折扣类均为单数时，最后一项移到并排行，此处不渲染）
 function renderUrgentCoefficients() {
     const container = document.querySelector('#urgentCoefficient-content .coefficient-settings');
     if (!container) return;
     
-    let html = '';
-    // 按系数值升序排序后渲染
-    const sortedEntries = Object.entries(defaultSettings.urgentCoefficients).sort((a, b) => {
+    const urgentEntries = Object.entries(defaultSettings.urgentCoefficients).sort((a, b) => {
         const va = getCoefficientValue(a[1]);
         const vb = getCoefficientValue(b[1]);
         return va - vb;
     });
-    for (const [key, item] of sortedEntries) {
+    const discountEntries = Object.entries(defaultSettings.discountCoefficients).sort((a, b) => {
+        const va = getCoefficientValue(a[1]);
+        const vb = getCoefficientValue(b[1]);
+        return vb - va;
+    });
+    const bothOdd = (urgentEntries.length % 2 === 1) && (discountEntries.length % 2 === 1);
+    const entriesToRender = bothOdd && urgentEntries.length >= 1 ? urgentEntries.slice(0, -1) : urgentEntries;
+    
+    let html = '';
+    for (const [key, item] of entriesToRender) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
         const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        
         html += `
             <div class="mb-2 d-flex items-center gap-2">
                 <input type="text" value="${escapedName}" class="flex-1" 
@@ -6823,7 +6830,6 @@ function renderUrgentCoefficients() {
             </div>
         `;
     }
-        
     container.innerHTML = html;
 }
 
@@ -6853,23 +6859,29 @@ function renderSameModelCoefficients() {
     container.innerHTML = html;
 }
 
-// 渲染折扣系数
+// 渲染折扣系数（当加价类、折扣类均为单数时，第一项移到并排行，此处不渲染）
 function renderDiscountCoefficients() {
     const container = document.querySelector('#discountCoefficient-content .coefficient-settings');
     if (!container) return;
     
-    let html = '';
-    // 按系数值降序排序后渲染（折扣类降序）
+    const urgentEntries = Object.entries(defaultSettings.urgentCoefficients).sort((a, b) => {
+        const va = getCoefficientValue(a[1]);
+        const vb = getCoefficientValue(b[1]);
+        return va - vb;
+    });
     const sortedEntries = Object.entries(defaultSettings.discountCoefficients).sort((a, b) => {
         const va = getCoefficientValue(a[1]);
         const vb = getCoefficientValue(b[1]);
         return vb - va;
     });
-    for (const [key, item] of sortedEntries) {
+    const bothOdd = (urgentEntries.length % 2 === 1) && (sortedEntries.length % 2 === 1);
+    const entriesToRender = bothOdd && sortedEntries.length >= 1 ? sortedEntries.slice(1) : sortedEntries;
+    
+    let html = '';
+    for (const [key, item] of entriesToRender) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
         const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        
         html += `
             <div class="mb-2 d-flex items-center gap-2">
                 <input type="text" value="${escapedName}" class="flex-1" 
@@ -6881,8 +6893,60 @@ function renderDiscountCoefficients() {
             </div>
         `;
     }
-        
     container.innerHTML = html;
+}
+
+// 当加价类、折扣类系数均为单数时：加价类最后一项与折扣类第一项并排显示
+function renderUrgentDiscountPairRow() {
+    const pairRowEl = document.getElementById('urgentDiscountPairRow');
+    if (!pairRowEl) return;
+    const urgentEntries = Object.entries(defaultSettings.urgentCoefficients).sort((a, b) => {
+        const va = getCoefficientValue(a[1]);
+        const vb = getCoefficientValue(b[1]);
+        return va - vb;
+    });
+    const discountEntries = Object.entries(defaultSettings.discountCoefficients).sort((a, b) => {
+        const va = getCoefficientValue(a[1]);
+        const vb = getCoefficientValue(b[1]);
+        return vb - va;
+    });
+    const bothOdd = (urgentEntries.length % 2 === 1) && (discountEntries.length % 2 === 1);
+    if (!bothOdd || urgentEntries.length === 0 || discountEntries.length === 0) {
+        pairRowEl.classList.add('d-none');
+        pairRowEl.innerHTML = '';
+        return;
+    }
+    const [lastKey, lastItem] = urgentEntries[urgentEntries.length - 1];
+    const [firstKey, firstItem] = discountEntries[0];
+    const lastVal = getCoefficientValue(lastItem);
+    const firstVal = getCoefficientValue(firstItem);
+    const lastDisplay = (lastItem && typeof lastItem === 'object' && lastItem.name) ? lastItem.name : lastKey;
+    const firstDisplay = (firstItem && typeof firstItem === 'object' && firstItem.name) ? firstItem.name : firstKey;
+    const lastEsc = lastDisplay.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const firstEsc = firstDisplay.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    pairRowEl.innerHTML = `
+        <div class="pair-row-half pair-urgent coefficient-settings">
+            <div class="mb-2 d-flex items-center gap-2">
+                <input type="text" value="${lastEsc}" class="flex-1" 
+                       onchange="updateUrgentCoefficientName('${lastKey}', this.value)" placeholder="名称">
+                <input type="number" value="${lastVal}" min="0" step="0.1" class="w-80" 
+                       onchange="updateUrgentCoefficient('${lastKey}', this.value)">
+                <button class="btn danger small" onclick="deleteCoefficient('urgent', '${lastKey}')" 
+                        style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button>
+            </div>
+        </div>
+        <div class="pair-row-half pair-discount coefficient-settings">
+            <div class="mb-2 d-flex items-center gap-2">
+                <input type="text" value="${firstEsc}" class="flex-1" 
+                       onchange="updateDiscountCoefficientName('${firstKey}', this.value)" placeholder="名称">
+                <input type="number" value="${firstVal}" min="0" step="0.1" class="w-80" 
+                       onchange="updateDiscountCoefficient('${firstKey}', this.value)">
+                <button class="btn danger small" onclick="deleteCoefficient('discount', '${firstKey}')" 
+                        style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">删除</button>
+            </div>
+        </div>
+    `;
+    pairRowEl.classList.remove('d-none');
 }
 
 // 渲染平台手续费
