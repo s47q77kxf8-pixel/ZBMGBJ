@@ -416,7 +416,7 @@ input:focus, select:focus {
         gap: 0.5rem;
     }
     
-    /* 计算页单主信息在移动端保持一行两个内容 */
+    /* 计算页单主信息在移动端保持一行两个内容（中等屏） */
     #calculator .section:first-of-type .form-row {
         flex-direction: row !important;
         gap: 0.5rem !important;
@@ -533,6 +533,18 @@ input:focus, select:focus {
     .receipt {
         transform-origin: top center;
         /* 缩放比例由 JavaScript 动态计算设置 */
+    }
+}
+
+/* 超小屏（如窄手机）下，单主信息改为上下排列，避免开始时间和截稿时间输入框轻微重叠 */
+@media (max-width: 480px) {
+    #calculator .section:first-of-type .form-row {
+        flex-direction: column !important;
+    }
+    
+    #calculator .section:first-of-type .form-row .form-group {
+        flex: 1 1 100% !important;
+        width: 100%;
     }
 }
 
@@ -1601,6 +1613,16 @@ input:checked + .toggle-slider:before {
     margin: 0.1rem 0;
     padding-bottom: 0.15rem;
 }
+.receipt-gift-free-amount {
+    font-weight: bold;
+    font-size: 1.1em;
+    /* 默认跟主题强调色走，避免固定绿色在某些主题下不协调 */
+    color: var(--receipt-accent, #16a34a);
+}
+/* 经典主题保留绿色优惠色，符合“0 元优惠”直觉 */
+.receipt-theme-classic .receipt-gift-free-amount {
+    color: #16a34a;
+}
 .receipt-summary-coefficient-detail {
     padding-left: 1.6rem;
     font-size: 11px;
@@ -1706,6 +1728,28 @@ input:checked + .toggle-slider:before {
     --receipt-divider-color: #e0e0e0;
 }
 
+/* 小票标题主题颜色（保证无论是否使用 CSS 变量，都能按主题着色） */
+.receipt-theme-classic .receipt-title {
+    color: #1f2937;
+}
+
+.receipt-theme-modern .receipt-title {
+    color: #4b5563;
+}
+
+.receipt-theme-warm .receipt-title {
+    /* 与温馨可爱主题正文文字颜色保持一致，避免过于突兀 */
+    color: #8b4513;
+}
+
+.receipt-theme-dark .receipt-title {
+    color: #f3f4f6;
+}
+
+.receipt-theme-minimal .receipt-title {
+    color: #374151;
+}
+
 /* 保存图片弹窗（手机端：长按存相册 / 下载） */
 .save-image-modal-overlay {
     position: fixed;
@@ -1782,6 +1826,7 @@ input:checked + .toggle-slider:before {
     position: relative;
     background: var(--card-bg);
     width: 100%;
+    max-width: 600px;
     max-height: 80vh;
     border-radius: 16px 16px 0 0;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
@@ -1789,6 +1834,15 @@ input:checked + .toggle-slider:before {
     flex-direction: column;
     animation: slideInUp 0.3s ease-out;
     z-index: 1;
+}
+
+/* 桌面端适配 */
+@media (min-width: 769px) {
+    .receipt-customization-content {
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        margin-bottom: 2rem;
+    }
 }
 
 .receipt-customization-header {
@@ -1898,6 +1952,45 @@ input:checked + .toggle-slider:before {
     to {
         transform: translateY(0);
         opacity: 1;
+    }
+}
+
+/* 报价页头部操作区样式 */
+.quote-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.quote-actions select {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--card-bg);
+    color: var(--text-color);
+    font-size: 0.9rem;
+    min-width: 120px;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+    .quote-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    
+    .quote-actions select {
+        padding: 0.4rem;
+        font-size: 0.8rem;
+        min-width: 100px;
+        margin-bottom: 0.25rem;
+        flex: 1;
+        max-width: 150px;
+    }
+    
+    .quote-actions .btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
     }
 }
 

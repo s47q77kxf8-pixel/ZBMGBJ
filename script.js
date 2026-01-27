@@ -383,6 +383,22 @@ function init() {
             backgroundFeeInput.value = defaultSettings.backgroundFee || 10;
         }
         
+        // 初始化主题选择器
+        const themeSelector = document.getElementById('themeSelector');
+        if (themeSelector) {
+            const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+            themeSelector.value = currentTheme;
+            
+            // 初始化移动端分段控件
+            const segmentBtns = document.querySelectorAll('.theme-segment-btn');
+            segmentBtns.forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.theme === currentTheme) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+        
         // 初始化小票设置功能
         initReceiptCustomization();
         
@@ -759,6 +775,12 @@ function applyReceiptTheme(themeName) {
     // 保存到本地存储
     saveData();
     
+    // 更新主题选择器状态
+    const themeSelector = document.getElementById('themeSelector');
+    if (themeSelector) {
+        themeSelector.value = themeName;
+    }
+    
     // 如果报价页已生成，立即更新预览
     if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
         generateQuote();
@@ -850,48 +872,49 @@ function generateReceiptPreview() {
     const settings = defaultSettings.receiptCustomization;
     const theme = settings.theme || 'classic';
     
+    // 更新预览容器的类，确保主题样式正确应用
+    previewContainer.className = `receipt receipt-theme-${theme}`;
+    
     let previewHTML = `
-        <div class="receipt receipt-theme-${theme}">
-            ${settings.headerImage ? `<div class="receipt-header-image"><img src="${settings.headerImage}" alt="Header" style="max-width: 100%; height: auto;"></div>` : ''}
-            <div class="receipt-title">${settings.titleText || 'LIST'}</div>
-            <div class="receipt-info">
-                ${settings.receiptInfo && settings.receiptInfo.orderNotification ? `<div>${settings.receiptInfo.orderNotification}</div>` : ''}
-                ${settings.receiptInfo && settings.receiptInfo.showStartTime ? '<div>开始时间: 2024-01-01</div>' : ''}
-                ${settings.receiptInfo && settings.receiptInfo.showDeadline ? '<div>截稿时间: 2024-01-10</div>' : ''}
-                ${settings.receiptInfo && settings.receiptInfo.showDesigner ? '<div>设计师: 测试设计师</div>' : ''}
-                ${settings.receiptInfo && settings.receiptInfo.showContactInfo ? '<div>联系方式: QQ 123456</div>' : ''}
-                ${settings.receiptInfo && settings.receiptInfo.customText ? `<div>${settings.receiptInfo.customText}</div>` : ''}
+        ${settings.headerImage ? `<div class="receipt-header-image"><img src="${settings.headerImage}" alt="Header" style="max-width: 100%; height: auto;"></div>` : ''}
+        <div class="receipt-title receipt-theme-${theme}">${settings.titleText || 'LIST'}</div>
+        <div class="receipt-info">
+            ${settings.receiptInfo && settings.receiptInfo.orderNotification ? `<div>${settings.receiptInfo.orderNotification}</div>` : ''}
+            ${settings.receiptInfo && settings.receiptInfo.showStartTime ? '<div>开始时间: 2024-01-01</div>' : ''}
+            ${settings.receiptInfo && settings.receiptInfo.showDeadline ? '<div>截稿时间: 2024-01-10</div>' : ''}
+            ${settings.receiptInfo && settings.receiptInfo.showDesigner ? '<div>设计师: 测试设计师</div>' : ''}
+            ${settings.receiptInfo && settings.receiptInfo.showContactInfo ? '<div>联系方式: QQ 123456</div>' : ''}
+            ${settings.receiptInfo && settings.receiptInfo.customText ? `<div>${settings.receiptInfo.customText}</div>` : ''}
+        </div>
+        <div class="receipt-details">
+            <div class="receipt-row">
+                <div class="receipt-col-2">测试制品</div>
+                <div class="receipt-col-1">¥100</div>
             </div>
-            <div class="receipt-details">
-                <div class="receipt-row">
-                    <div class="receipt-col-2">测试制品</div>
-                    <div class="receipt-col-1">¥100</div>
-                </div>
-                <div class="receipt-row">
-                    <div class="receipt-col-2">+ 工艺</div>
-                    <div class="receipt-col-1">¥20</div>
-                </div>
+            <div class="receipt-row">
+                <div class="receipt-col-2">+ 工艺</div>
+                <div class="receipt-col-1">¥20</div>
             </div>
-            <div class="receipt-divider-full"></div>
-            <div class="receipt-summary">
-                <div class="receipt-summary-row">
-                    <div class="receipt-summary-label">制品小计</div>
-                    <div class="receipt-summary-value">¥120</div>
-                </div>
-                <div class="receipt-summary-row">
-                    <div class="receipt-summary-label">系数</div>
-                    <div class="receipt-summary-value">×1.0</div>
-                </div>
-                <div class="receipt-total">
-                    <div>总计</div>
-                    <div>¥120</div>
-                </div>
+        </div>
+        <div class="receipt-divider-full"></div>
+        <div class="receipt-summary">
+            <div class="receipt-summary-row">
+                <div class="receipt-summary-label">制品小计</div>
+                <div class="receipt-summary-value">¥120</div>
             </div>
-            <div class="receipt-footer">
-                ${settings.footerText1 ? `<p class="receipt-footer-text1">${settings.footerText1}</p>` : ''}
-                ${settings.footerImage ? `<div class="receipt-footer-image"><img src="${settings.footerImage}" alt="Footer" style="max-width: 100px; height: auto;"></div>` : ''}
-                ${settings.footerText2 ? `<p class="receipt-footer-text2">${settings.footerText2}</p>` : ''}
+            <div class="receipt-summary-row">
+                <div class="receipt-summary-label">系数</div>
+                <div class="receipt-summary-value">×1.0</div>
             </div>
+            <div class="receipt-total">
+                <div>总计</div>
+                <div>¥120</div>
+            </div>
+        </div>
+        <div class="receipt-footer">
+            ${settings.footerText1 ? `<p class="receipt-footer-text1">${settings.footerText1}</p>` : ''}
+            ${settings.footerImage ? `<div class="receipt-footer-image"><img src="${settings.footerImage}" alt="Footer" style="max-width: 100px; height: auto;"></div>` : ''}
+            ${settings.footerText2 ? `<p class="receipt-footer-text2">${settings.footerText2}</p>` : ''}
         </div>
     `;
     
@@ -1727,9 +1750,9 @@ function generateQuote() {
         html += `<div class="receipt-header-image"><img src="${defaultSettings.receiptCustomization.headerImage}" alt="头部图片" style="max-width: 300px; height: auto;" /></div>`;
     }
     
-    // 添加自定义标题（如果设置了）
+    // 添加自定义标题（如果设置了）——附带主题类，方便按主题控制标题颜色
     if (defaultSettings.receiptCustomization.titleText) {
-        html += `<h2 class="receipt-title">${defaultSettings.receiptCustomization.titleText}</h2>`;
+        html += `<div class="receipt-title receipt-theme-${currentTheme}">${defaultSettings.receiptCustomization.titleText}</div>`;
     }
     
     // 添加小票信息行
@@ -1959,13 +1982,13 @@ function generateQuote() {
             // 总览行（赠品特殊：显示¥0.00 + 划线原价）
             if (canMergeGift) {
                 // fixed/double 无同模无工艺：合并到总览行
-                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">¥${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span style="color: green; font-weight: bold; font-size: 1.1em;">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">¥${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
             } else {
                 // 需要拆明细
                 if (item.productType === 'config') {
-                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span style="color: green; font-weight: bold; font-size: 1.1em;">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
                 } else {
-                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span style="color: green; font-weight: bold; font-size: 1.1em;">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
                 }
                 
                 // 明细：全价制品行（赠品显示原价）
@@ -2348,7 +2371,9 @@ async function saveQuoteAsImage() {
         });
         
         const filename = `报价单_${quoteData.clientId}_${Date.now()}.png`;
-        const isMobile = window.innerWidth <= 768 || ('ontouchstart' in window);
+        // 更精确地区分“手机/平板”与“桌面端”，避免桌面浏览器也走分享流程
+        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+        const isMobile = isTouchDevice && window.innerWidth <= 768;
         
         if (isMobile) {
             // 手机端：直接触发系统分享，用户在分享界面选"保存图片"即可
@@ -5937,4 +5962,11 @@ function resetToDefaultSettings() {
 // 排单日历功能
 
 
-
+// 自动初始化应用，确保小票设置与预览可用
+if (typeof init === 'function') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+}
