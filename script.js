@@ -761,7 +761,7 @@ function loadReceiptCustomizationToForm() {
 // 应用小票主题
 function applyReceiptTheme(themeName) {
     // 验证主题名称
-    const validThemes = ['classic', 'modern', 'warm', 'dark', 'minimal'];
+    const validThemes = ['classic', 'modern', 'warm', 'dark', 'nature', 'vintage'];
     if (!validThemes.includes(themeName)) {
         themeName = 'classic'; // 默认使用经典主题
     }

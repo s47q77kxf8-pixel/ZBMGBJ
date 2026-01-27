@@ -1666,88 +1666,108 @@ input:checked + .toggle-slider:before {
 /* 经典主题（classic）- 默认 */
 .receipt-theme-classic {
     --receipt-bg: #fdfdfd;
-    --receipt-text: #333;
+    --receipt-text: #2d3748;
     --receipt-border: none;
-    --receipt-accent: #333;
+    --receipt-accent: #4a5568;
     --receipt-font-family: 'Courier New', 'SimSun', 'Songti SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace;
-    --receipt-border-radius: 0px;
-    --receipt-box-shadow: none;
-    --receipt-title-color: #333;
-    --receipt-divider-color: #333;
+    --receipt-border-radius: 4px;
+    --receipt-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --receipt-title-color: #2d3748;
+    --receipt-divider-color: #cbd5e0;
 }
 
 /* 现代商务主题（modern） */
 .receipt-theme-modern {
     --receipt-bg: #ffffff;
     --receipt-text: #2c3e50;
-    --receipt-border: 1px solid #e0e0e0;
-    --receipt-accent: #3498db;
+    --receipt-border: none;
+    --receipt-accent: #2563eb;
     --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
     --receipt-border-radius: 8px;
-    --receipt-box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    --receipt-box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
     --receipt-title-color: #2c3e50;
-    --receipt-divider-color: #e0e0e0;
+    --receipt-divider-color: #cbd5e0;
 }
 
 /* 温馨可爱主题（warm） */
 .receipt-theme-warm {
-    --receipt-bg: #fef9e7;
-    --receipt-text: #8b4513;
-    --receipt-border: 2px dashed #d4a574;
-    --receipt-accent: #ff8c42;
+    --receipt-bg: #fefce8;
+    --receipt-text: #92400e;
+    --receipt-border: none;
+    --receipt-accent: #f97316;
     --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
-    --receipt-border-radius: 6px;
-    --receipt-box-shadow: 0 2px 6px rgba(255, 140, 66, 0.2);
-    --receipt-title-color: #8b4513;
-    --receipt-divider-color: #d4a574;
+    --receipt-border-radius: 12px;
+    --receipt-box-shadow: 0 2px 8px rgba(249, 115, 22, 0.15);
+    --receipt-title-color: #92400e;
+    --receipt-divider-color: #fdba74;
 }
 
 /* 专业设计主题（dark） */
 .receipt-theme-dark {
-    --receipt-bg: #1a1a1a;
-    --receipt-text: #e0e0e0;
+    --receipt-bg: #1a1a2e;
+    --receipt-text: #e2e8f0;
     --receipt-border: none;
-    --receipt-accent: #ffd700;
-    --receipt-font-family: 'Courier New', 'Monaco', 'Consolas', monospace;
-    --receipt-border-radius: 4px;
-    --receipt-box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    --receipt-title-color: #ffd700;
-    --receipt-divider-color: #444;
+    --receipt-accent: #fbbf24;
+    --receipt-font-family: 'Courier New', 'Monaco', 'Consolas', 'Source Code Pro', 'Inconsolata', monospace;
+    --receipt-border-radius: 8px;
+    --receipt-box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    --receipt-title-color: #e2e8f0;
+    --receipt-divider-color: #475569;
 }
 
-/* 简约极简主题（minimal） */
-.receipt-theme-minimal {
-    --receipt-bg: #ffffff;
-    --receipt-text: #2c2c2c;
-    --receipt-border: 1px solid #e0e0e0;
-    --receipt-accent: #2c2c2c;
+
+
+/* 自然主题（nature） */
+.receipt-theme-nature {
+    --receipt-bg: #f0fdf4;
+    --receipt-text: #15803d;
+    --receipt-border: none;
+    --receipt-accent: #22c55e;
     --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
-    --receipt-border-radius: 0px;
-    --receipt-box-shadow: none;
-    --receipt-title-color: #2c2c2c;
-    --receipt-divider-color: #e0e0e0;
+    --receipt-border-radius: 10px;
+    --receipt-box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);
+    --receipt-title-color: #15803d;
+    --receipt-divider-color: #86efac;
 }
+
+/* 复古主题（vintage） */
+.receipt-theme-vintage {
+    --receipt-bg: #f8f0e3;
+    --receipt-text: #5c1a1a;
+    --receipt-border: none;
+    --receipt-accent: #8b3e2f;
+    --receipt-font-family: 'SimSun', 'Songti SC', 'FangSong', 'KaiTi', serif;
+    --receipt-border-radius: 8px;
+    --receipt-box-shadow: 0 2px 8px rgba(139, 62, 47, 0.15);
+    --receipt-title-color: #5c1a1a;
+    --receipt-divider-color: #c89b6e;
+}
+
+
 
 /* 小票标题主题颜色（保证无论是否使用 CSS 变量，都能按主题着色） */
 .receipt-theme-classic .receipt-title {
-    color: #1f2937;
+    color: #2d3748;
 }
 
 .receipt-theme-modern .receipt-title {
-    color: #4b5563;
+    color: #2c3e50;
 }
 
 .receipt-theme-warm .receipt-title {
-    /* 与温馨可爱主题正文文字颜色保持一致，避免过于突兀 */
-    color: #8b4513;
+    color: #92400e;
 }
 
 .receipt-theme-dark .receipt-title {
-    color: #f3f4f6;
+    color: #e2e8f0;
 }
 
-.receipt-theme-minimal .receipt-title {
-    color: #374151;
+.receipt-theme-nature .receipt-title {
+    color: #15803d;
+}
+
+.receipt-theme-vintage .receipt-title {
+    color: #5c1a1a;
 }
 
 /* 保存图片弹窗（手机端：长按存相册 / 下载） */
@@ -1969,7 +1989,7 @@ input:checked + .toggle-slider:before {
     background: var(--card-bg);
     color: var(--text-color);
     font-size: 0.9rem;
-    min-width: 120px;
+    min-width: 80px;
 }
 
 /* 移动端适配 */
@@ -1980,12 +2000,12 @@ input:checked + .toggle-slider:before {
     }
     
     .quote-actions select {
-        padding: 0.4rem;
-        font-size: 0.8rem;
-        min-width: 100px;
+        padding: 0.3rem;
+        font-size: 0.75rem;
+        min-width: 70px;
         margin-bottom: 0.25rem;
         flex: 1;
-        max-width: 150px;
+        max-width: 100px;
     }
     
     .quote-actions .btn {
