@@ -15,6 +15,8 @@
     --spacing-md: 1rem;
     --spacing-lg: 1.5rem;
     --toggle-off-bg: #94a3b8;
+    /* 小票默认字体（作为后备，主题类会覆盖此值） */
+    --receipt-font-family: 'Courier New', 'Monaco', 'Consolas', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Courier', monospace;
 }
 
 * {
@@ -1337,7 +1339,7 @@ input[type="range"]#customThemeTextureOpacity {
     min-width: 400px;
     max-width: 400px;
     margin: 0 auto;
-    font-family: var(--receipt-font-family, 'Courier New', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace);
+    /* 字体通过主题类直接设置，使用 !important 确保不被继承的字体覆盖 */
     background: var(--receipt-bg, #fdfdfd);
     padding: 2.5rem;
     border: var(--receipt-border, none);
@@ -1367,12 +1369,16 @@ input[type="range"]#customThemeTextureOpacity {
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--receipt-divider-color, var(--receipt-text, #333));
     text-align: left;
+    /* 确保日期等数字也使用主题字体 */
+    font-family: inherit;
 }
 .receipt-text-sm {
     margin: 0.2rem 0;
     font-size: 11px;
     color: var(--receipt-text, #333);
     text-align: left;
+    /* 确保日期等数字也使用主题字体 */
+    font-family: inherit;
 }
 
 /* Receipt checkbox layout */
@@ -1949,6 +1955,7 @@ input:checked + .toggle-slider:before {
     display: flex;
     margin: 0.2rem 0;
     font-size: 12px;
+    /* 确保行内所有数字（包括项目编号、数量）都使用主题字体 */
     font-family: inherit;
 }
 .receipt-header {
@@ -1966,12 +1973,15 @@ input:checked + .toggle-slider:before {
     text-align: left;
     display: flex;
     align-items: center;
+    /* 确保项目编号等数字也使用主题字体（与价格列一致） */
+    font-family: inherit;
 }
 .receipt-col-1 {
     flex: 1;
     text-align: right !important;
     min-width: 60px;
-    font-family: var(--receipt-number-font, 'Courier New', monospace);
+    /* 如果设置了分类字体数字，用那个；否则继承主题字体（让数字也用主题的完整字体栈） */
+    font-family: var(--receipt-number-font, inherit);
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -1994,7 +2004,8 @@ input:checked + .toggle-slider:before {
 .receipt-sub-row .receipt-col-1 {
     text-align: right !important;
     min-width: 60px;
-    font-family: var(--receipt-number-font, 'Courier New', monospace);
+    /* 如果设置了分类字体数字，用那个；否则继承主题字体 */
+    font-family: var(--receipt-number-font, inherit);
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -2038,10 +2049,13 @@ input:checked + .toggle-slider:before {
     justify-content: space-between;
     margin: 0.1rem 0;
     font-size: 12px;
+    /* 确保汇总区域所有数字都使用主题字体 */
+    font-family: inherit;
 }
 .receipt-summary-label {
     flex: 1;
     text-align: left;
+    font-family: inherit;
 }
 .receipt-summary-value {
     flex: 1;
@@ -2123,43 +2137,53 @@ input:checked + .toggle-slider:before {
 
 /* ========== 小票主题样式 ========== */
 
-/* 经典主题（classic）- 默认 */
+/* 经典主题（classic）- 默认：传统等宽字体，经典小票感 */
 .receipt-theme-classic {
     --receipt-bg: #fdfdfd;
     --receipt-text: #2d3748;
     --receipt-border: none;
     --receipt-accent: #4a5568;
-    --receipt-font-family: 'Courier New', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace;
+    --receipt-font-family: 'Courier', 'Letter Gothic', 'Courier New', 'Monaco', 'Consolas', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', monospace;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     --receipt-title-color: #2d3748;
     --receipt-divider-color: #cbd5e0;
 }
+.receipt.receipt-theme-classic {
+    /* 打印机风格：Courier（更粗更传统）优先，Letter Gothic（打印机感），然后 Courier New；中文用后面 CJK 字体 */
+    font-family: 'Courier', 'Letter Gothic', 'Courier New', 'Monaco', 'Consolas', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', monospace !important;
+}
 
-/* 现代商务主题（modern） */
+/* 现代商务主题（modern）：现代无衬线字体，简洁专业 */
 .receipt-theme-modern {
     --receipt-bg: #ffffff;
     --receipt-text: #2c3e50;
     --receipt-border: none;
     --receipt-accent: #2563eb;
-    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
+    --receipt-font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
     --receipt-title-color: #2c3e50;
     --receipt-divider-color: #cbd5e0;
 }
+.receipt.receipt-theme-modern {
+    font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif !important;
+}
 
-/* 温馨可爱主题（warm） */
+/* 温馨可爱主题（warm）：圆润友好字体，温暖可爱 */
 .receipt-theme-warm {
     --receipt-bg: #fff7ed; /* 更偏奶油橙的背景，更可爱柔和 */
     --receipt-text: #9a3412; /* 略偏红一点的暖棕色，提升可爱感 */
     --receipt-border: 3px dashed #fdba74; /* 稍粗的虚线边框，更有存在感 */
     --receipt-accent: #fb923c; /* 更明亮一点的暖橙作为强调色 */
-    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
+    --receipt-font-family: 'Trebuchet MS', 'Verdana', 'Arial Rounded MT Bold', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
     --receipt-border-radius: 14px; /* 圆角再大一点，更偏可爱风格 */
     --receipt-box-shadow: 0 3px 10px rgba(248, 153, 64, 0.18); /* 稍微明显一点的暖色阴影 */
     --receipt-title-color: #9a3412;
     --receipt-divider-color: #fed7aa; /* 更浅的暖橙分割线 */
+}
+.receipt.receipt-theme-warm {
+    font-family: 'Trebuchet MS', 'Verdana', 'Arial Rounded MT Bold', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif !important;
 }
 
 /* 温馨主题下，让内容稍微离边框远一点，看起来虚线更“往里面” */
@@ -2167,72 +2191,88 @@ input:checked + .toggle-slider:before {
     padding: 2.75rem;
 }
 
-/* 专业设计主题（dark） */
+/* 专业设计主题（dark）：等宽代码字体，科技感强 */
 .receipt-theme-dark {
     --receipt-bg: #1a1a2e;
     --receipt-text: #e2e8f0;
     --receipt-border: none;
     --receipt-accent: #fbbf24;
-    --receipt-font-family: 'Courier New', 'Monaco', 'Consolas', 'Source Code Pro', 'Inconsolata', monospace;
+    --receipt-font-family: 'Consolas', 'Monaco', 'Courier New', 'Source Code Pro', 'Fira Code', 'Inconsolata', 'Source Han Sans SC', 'Noto Sans SC', monospace;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
     --receipt-title-color: #e2e8f0;
     --receipt-divider-color: #475569;
 }
+.receipt.receipt-theme-dark {
+    font-family: 'Consolas', 'Monaco', 'Courier New', 'Source Code Pro', 'Fira Code', 'Inconsolata', 'Source Han Sans SC', 'Noto Sans SC', monospace !important;
+}
 
 
 
-/* 自然主题（nature） */
+/* 自然主题（nature）：清新现代无衬线字体 */
 .receipt-theme-nature {
     --receipt-bg: #f6fdf7; /* 清新淡绿背景 */
     --receipt-text: #2f855a; /* 清新但饱和度更低的绿灰文字 */
     --receipt-border: none;
     --receipt-accent: #48bb78; /* 更不刺眼的清新绿强调色 */
-    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
+    --receipt-font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);
     --receipt-title-color: #2f855a;
     --receipt-divider-color: #c6f6d5; /* 更浅的线条颜色，减少刺眼感 */
 }
+.receipt.receipt-theme-nature {
+    font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif !important;
+}
 
-/* 复古主题（vintage） */
+/* 复古主题（vintage）：衬线字体，复古印刷机感 */
 .receipt-theme-vintage {
     --receipt-bg: #f8f0e3;
     --receipt-text: #5c1a1a;
     --receipt-border: none;
     --receipt-accent: #8b3e2f;
-    /* 复古印刷机感：以思源宋体为主，辅以西文字体 */
-    --receipt-font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Times New Roman', serif;
+    --receipt-font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Times New Roman', 'Georgia', 'Garamond', serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(139, 62, 47, 0.15);
     --receipt-title-color: #5c1a1a;
     --receipt-divider-color: #c89b6e;
 }
+.receipt.receipt-theme-vintage {
+    /* 西文字体在前，英文与数字用 Times/Georgia；中文用后面宋体/衬线 */
+    font-family: 'Times New Roman', 'Georgia', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', serif !important;
+}
 
-/* 粉樱主题（sakura） */
+/* 粉樱主题（sakura）：优雅衬线字体，柔美精致 */
 .receipt-theme-sakura {
     --receipt-bg: #fef7fb; /* 更浅的粉樱背景 */
     --receipt-text: #4a5568;
     --receipt-border: none;
     --receipt-accent: #be185d; /* 与标题同色，统一视觉强调 */
-    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
+    --receipt-font-family: 'Georgia', 'Palatino', 'Garamond', 'Source Han Serif SC', 'Noto Serif SC', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(219, 39, 119, 0.12);
     --receipt-title-color: #be185d;
     --receipt-divider-color: #fecdd3;
 }
+.receipt.receipt-theme-sakura {
+    /* 西文字体在前，英文与数字用 Georgia/Palatino；中文用后面宋体/衬线 */
+    font-family: 'Georgia', 'Palatino', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', serif !important;
+}
 
-/* 冰蓝主题（iceBlue） */
+/* 冰蓝主题（iceBlue）：清爽现代无衬线字体 */
 .receipt-theme-iceBlue {
     --receipt-bg: #f0f9ff; /* 更浅的冰蓝背景 */
     --receipt-text: #1f2933;
     --receipt-border: none;
     --receipt-accent: #0284c7;
-    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
+    --receipt-font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
     --receipt-title-color: #075985;
     --receipt-divider-color: #bae6fd;
+}
+.receipt.receipt-theme-iceBlue {
+    font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif !important;
 }
 
 

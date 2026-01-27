@@ -1508,7 +1508,7 @@ function updateCategoryFont(category, value) {
     debouncedApplyFontSettings();
 }
 
-// 应用字体设置
+// 应用字体设置（用户自定义时覆盖主题字体，否则使用主题字体）
 function applyFontSettings() {
     const fontSettings = defaultSettings.receiptCustomization.fontSettings || {
         fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
@@ -1525,6 +1525,10 @@ function applyFontSettings() {
         }
     };
     
+    const defaultFontFamily = 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace';
+    const storedFont = String(fontSettings.fontFamily || '').trim();
+    const isUsingDefaultFont = (fontSettings.fontFamily === defaultFontFamily) || (storedFont === 'Courier');
+    
     const styleId = 'custom-font-style';
     let styleElement = document.getElementById(styleId);
     
@@ -1539,14 +1543,17 @@ function applyFontSettings() {
     // 如果启用了分类字体设置
     if (fontSettings.categoryFonts && fontSettings.categoryFonts.enabled) {
         const catFonts = fontSettings.categoryFonts;
-        const baseFont = fontSettings.fontFamily;
+        // 如果使用默认字体且 body 未设置，不设置 font-family（让主题 CSS 变量生效）
+        const bodyFontRule = catFonts.body 
+            ? `font-family: ${catFonts.body} !important;`
+            : (isUsingDefaultFont ? '' : `font-family: ${fontSettings.fontFamily} !important;`);
         
         styleContent = `
             :root {
                 ${catFonts.number ? `--receipt-number-font: ${catFonts.number};` : ''}
             }
             .receipt {
-                font-family: ${catFonts.body || baseFont} !important;
+                ${bodyFontRule}
                 font-size: ${fontSettings.fontSize}px !important;
                 font-weight: ${fontSettings.fontWeight} !important;
                 line-height: ${fontSettings.lineHeight} !important;
@@ -1557,17 +1564,19 @@ function applyFontSettings() {
             ${catFonts.footer ? `.receipt-footer, .receipt-footer-text1, .receipt-footer-text2 { font-family: ${catFonts.footer} !important; }` : ''}
         `;
     } else {
-        // 统一字体设置
+        // 统一字体设置：如果使用默认字体，不设置 font-family（让主题 CSS 变量生效）；否则使用用户自定义字体
+        const fontFamilyRule = isUsingDefaultFont 
+            ? ''  // 不设置 font-family，让 CSS 变量 --receipt-font-family 生效
+            : `font-family: ${fontSettings.fontFamily} !important;`;
         styleContent = `
             .receipt {
-                font-family: ${fontSettings.fontFamily} !important;
+                ${fontFamilyRule}
                 font-size: ${fontSettings.fontSize}px !important;
                 font-weight: ${fontSettings.fontWeight} !important;
                 line-height: ${fontSettings.lineHeight} !important;
             }
         `;
     }
-    
     styleElement.textContent = styleContent;
 }
 
@@ -2561,6 +2570,9 @@ function applyReceiptTheme(themeName) {
     if (isCustomTheme) {
         applyCustomThemeStyles(themeName);
     }
+    
+    // 重新应用字体设置（确保主题字体生效）
+    applyFontSettings();
     
     // 重新处理图片以适应新主题颜色
     // 总是调用 reprocessImagesForTheme，函数内部会检查 followSystemTheme

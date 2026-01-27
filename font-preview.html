@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Courier New / Monaco / Consolas 字体预览</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        h1 {
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+            color: #333;
+        }
+        .sample {
+            background: #fff;
+            padding: 1.5rem 2rem;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            max-width: 400px;
+        }
+        .sample .name {
+            font-size: 0.75rem;
+            color: #888;
+            margin-bottom: 0.5rem;
+        }
+        .sample .text {
+            font-size: 14px;
+            line-height: 1.5;
+            color: #333;
+        }
+        .sample.courier .text { font-family: 'Courier New', Consolas, monospace; }
+        .sample.monaco .text { font-family: Monaco, 'Courier New', Consolas, monospace; }
+        .sample.consolas .text { font-family: Consolas, Monaco, 'Courier New', monospace; }
+    </style>
+</head>
+<body>
+    <h1>Courier New / Monaco / Consolas 小票风格预览</h1>
+
+    <div class="sample courier">
+        <div class="name">Courier New</div>
+        <div class="text">
+            LIST<br>
+            开始时间: 2024-01-01<br>
+            截稿时间: 2024-01-10<br>
+            测试制品　　　　　¥100<br>
+            + 工艺　　　　　　¥20<br>
+            ─────────────────<br>
+            制品小计　　　　　¥120<br>
+            系数　　　　　　　×1.0<br>
+            总计　　　　　　　¥120
+        </div>
+    </div>
+
+    <div class="sample monaco">
+        <div class="name">Monaco</div>
+        <div class="text">
+            LIST<br>
+            开始时间: 2024-01-01<br>
+            截稿时间: 2024-01-10<br>
+            测试制品　　　　　¥100<br>
+            + 工艺　　　　　　¥20<br>
+            ─────────────────<br>
+            制品小计　　　　　¥120<br>
+            系数　　　　　　　×1.0<br>
+            总计　　　　　　　¥120
+        </div>
+    </div>
+
+    <div class="sample consolas">
+        <div class="name">Consolas</div>
+        <div class="text">
+            LIST<br>
+            开始时间: 2024-01-01<br>
+            截稿时间: 2024-01-10<br>
+            测试制品　　　　　¥100<br>
+            + 工艺　　　　　　¥20<br>
+            ─────────────────<br>
+            制品小计　　　　　¥120<br>
+            系数　　　　　　　×1.0<br>
+            总计　　　　　　　¥120
+        </div>
+    </div>
+
+    <p style="font-size:0.85rem;color:#666;">说明：Monaco 多见于 macOS；Windows 上常见 Courier New、Consolas。若某字体未安装，会 fallback 到后面的字体。</p>
+</body>
+</html>
