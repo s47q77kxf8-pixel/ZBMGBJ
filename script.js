@@ -326,8 +326,24 @@ const defaultSettings = {
         },
         footerText1: '温馨提示',  // 尾部文本1
         footerText2: '感谢惠顾',  // 尾部文本2
-        footerImage: null  // 尾部图片的base64数据
-    }
+        footerImage: null,  // 尾部图片的base64数据
+        fontSettings: {  // 字体设置
+            fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+            fontSize: 13,
+            fontWeight: 400,
+            lineHeight: 1.3,
+            categoryFonts: {  // 分类字体设置
+                enabled: false,
+                title: '',      // 标题字体
+                body: '',        // 正文字体
+                number: '',      // 价格/数字字体
+                summary: '',     // 汇总字体
+                footer: ''       // 尾部字体
+            }
+        }
+    },
+    customThemes: {},  // 自定义主题存储 {themeId: {name, bg, text, accent, title, divider, borderRadius}}
+    importedFonts: {}  // 导入的字体存储 {fontId: {name, family, data, format, size}}
 };
 
 // 默认制品分类（单一定义，避免多处硬编码）
@@ -342,6 +358,61 @@ function init() {
     if (!defaultSettings.receiptCustomization.theme) {
         defaultSettings.receiptCustomization.theme = 'classic';
     }
+    
+    // 确保自定义主题对象存在
+    if (!defaultSettings.customThemes) {
+        defaultSettings.customThemes = {};
+    }
+    
+    // 确保导入字体对象存在
+    if (!defaultSettings.importedFonts) {
+        defaultSettings.importedFonts = {};
+    }
+    
+    // 加载已导入的字体
+    loadImportedFonts();
+    
+    // 确保字体设置存在
+    if (!defaultSettings.receiptCustomization.fontSettings) {
+        defaultSettings.receiptCustomization.fontSettings = {
+            fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+            fontSize: 13,
+            fontWeight: 400,
+            lineHeight: 1.3,
+            categoryFonts: {
+                enabled: false,
+                title: '',
+                body: '',
+                number: '',
+                summary: '',
+                footer: ''
+            }
+        };
+    }
+    
+    // 确保分类字体设置存在
+    if (!defaultSettings.receiptCustomization.fontSettings.categoryFonts) {
+        defaultSettings.receiptCustomization.fontSettings.categoryFonts = {
+            enabled: false,
+            title: '',
+            body: '',
+            number: '',
+            summary: '',
+            footer: ''
+        };
+    }
+    
+    // 应用当前主题样式（如果是自定义主题）
+    const currentTheme = defaultSettings.receiptCustomization.theme;
+    if (currentTheme && currentTheme.startsWith('custom_')) {
+        applyCustomThemeStyles(currentTheme);
+    }
+    
+    // 应用字体设置
+    applyFontSettings();
+    
+    // 更新主题选择器（添加自定义主题选项）
+    updateThemeSelector();
     
     // 确保默认设置不为空
     addDefaultProductSettings();
@@ -705,6 +776,846 @@ function closeReceiptCustomizationPanel() {
     document.getElementById('receiptCustomizationModal').classList.add('d-none');
 }
 
+// 切换小票设置标签页
+function switchReceiptTab(tabName) {
+    // 隐藏所有标签页内容
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // 移除所有标签按钮的active状态
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // 显示选中的标签页
+    const targetTab = document.getElementById(tabName + '-tab');
+    if (targetTab) {
+        targetTab.classList.add('active');
+    }
+    
+    // 激活对应的标签按钮
+    const targetBtn = Array.from(document.querySelectorAll('.tab-btn')).find(btn => {
+        return btn.textContent.trim() === (tabName === 'settings' ? '设置' : tabName === 'theme' ? '主题' : '字体');
+    });
+    if (targetBtn) {
+        targetBtn.classList.add('active');
+    }
+    
+    // 如果是主题标签页，加载自定义主题列表
+    if (tabName === 'theme') {
+        loadCustomThemesList();
+    }
+    
+    // 如果是字体标签页，加载字体设置
+    if (tabName === 'font') {
+        loadFontSettings();
+    }
+}
+
+// 保存自定义主题
+function saveCustomTheme() {
+    const name = document.getElementById('customThemeName').value.trim();
+    if (!name) {
+        alert('请输入主题名称');
+        return;
+    }
+    
+    const themeId = 'custom_' + Date.now();
+    const theme = {
+        name: name,
+        bg: document.getElementById('customThemeBg').value,
+        text: document.getElementById('customThemeText').value,
+        accent: document.getElementById('customThemeAccent').value,
+        title: document.getElementById('customThemeTitle').value,
+        divider: document.getElementById('customThemeDivider').value,
+        borderRadius: parseInt(document.getElementById('customThemeBorderRadius').value) || 0
+    };
+    
+    if (!defaultSettings.customThemes) {
+        defaultSettings.customThemes = {};
+    }
+    defaultSettings.customThemes[themeId] = theme;
+    saveData();
+    
+    // 更新主题选择器
+    updateThemeSelector();
+    
+    // 重新加载自定义主题列表
+    loadCustomThemesList();
+    
+    alert('自定义主题已保存！');
+}
+
+// 从当前主题加载到自定义主题编辑器
+function loadCurrentThemeToCustom() {
+    const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    
+    // 如果是自定义主题，直接加载
+    if (currentTheme.startsWith('custom_') && defaultSettings.customThemes && defaultSettings.customThemes[currentTheme]) {
+        const theme = defaultSettings.customThemes[currentTheme];
+        document.getElementById('customThemeName').value = theme.name;
+        document.getElementById('customThemeBg').value = theme.bg;
+        document.getElementById('customThemeText').value = theme.text;
+        document.getElementById('customThemeAccent').value = theme.accent;
+        document.getElementById('customThemeTitle').value = theme.title;
+        document.getElementById('customThemeDivider').value = theme.divider;
+        document.getElementById('customThemeBorderRadius').value = theme.borderRadius || 0;
+        return;
+    }
+    
+    // 如果是预设主题，从CSS变量读取
+    const themeColors = {
+        classic: { bg: '#fdfdfd', text: '#2d3748', accent: '#4a5568', title: '#2d3748', divider: '#cbd5e0', borderRadius: 0 },
+        modern: { bg: '#ffffff', text: '#2c3e50', accent: '#2563eb', title: '#2c3e50', divider: '#cbd5e0', borderRadius: 0 },
+        warm: { bg: '#fff7ed', text: '#9a3412', accent: '#fb923c', title: '#92400e', divider: '#fed7aa', borderRadius: 14 },
+        dark: { bg: '#1a1a2e', text: '#e2e8f0', accent: '#fbbf24', title: '#e2e8f0', divider: '#475569', borderRadius: 0 },
+        nature: { bg: '#f6fdf7', text: '#2f855a', accent: '#48bb78', title: '#15803d', divider: '#c6f6d5', borderRadius: 0 },
+        vintage: { bg: '#f8f0e3', text: '#5c1a1a', accent: '#8b3e2f', title: '#5c1a1a', divider: '#c89b6e', borderRadius: 0 },
+        sakura: { bg: '#fef7fb', text: '#4a5568', accent: '#be185d', title: '#be185d', divider: '#fecdd3', borderRadius: 0 },
+        iceBlue: { bg: '#f0f9ff', text: '#1f2933', accent: '#0284c7', title: '#075985', divider: '#bae6fd', borderRadius: 0 }
+    };
+    
+    const colors = themeColors[currentTheme] || themeColors.classic;
+    document.getElementById('customThemeBg').value = colors.bg;
+    document.getElementById('customThemeText').value = colors.text;
+    document.getElementById('customThemeAccent').value = colors.accent;
+    document.getElementById('customThemeTitle').value = colors.title;
+    document.getElementById('customThemeDivider').value = colors.divider;
+    document.getElementById('customThemeBorderRadius').value = colors.borderRadius;
+}
+
+// 加载自定义主题列表
+function loadCustomThemesList() {
+    const listContainer = document.getElementById('customThemesList');
+    if (!listContainer) return;
+    
+    if (!defaultSettings.customThemes || Object.keys(defaultSettings.customThemes).length === 0) {
+        listContainer.innerHTML = '<p class="text-gray">暂无自定义主题</p>';
+        return;
+    }
+    
+    listContainer.innerHTML = Object.entries(defaultSettings.customThemes).map(([id, theme]) => `
+        <div class="custom-theme-item">
+            <div class="custom-theme-preview" style="background: ${theme.bg}; color: ${theme.text}; border-radius: ${theme.borderRadius}px; padding: 0.5rem; margin-bottom: 0.5rem;">
+                <strong style="color: ${theme.title};">${theme.name}</strong>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn small" onclick="applyCustomTheme('${id}')">应用</button>
+                <button class="btn small secondary" onclick="editCustomTheme('${id}')">编辑</button>
+                <button class="btn small danger" onclick="deleteCustomTheme('${id}')">删除</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// 应用自定义主题
+function applyCustomTheme(themeId) {
+    if (!defaultSettings.customThemes || !defaultSettings.customThemes[themeId]) {
+        alert('主题不存在');
+        return;
+    }
+    
+    defaultSettings.receiptCustomization.theme = themeId;
+    saveData();
+    
+    // 应用主题样式
+    applyCustomThemeStyles(themeId);
+    
+    // 更新主题选择器
+    const themeSelector = document.getElementById('themeSelector');
+    if (themeSelector) {
+        themeSelector.value = themeId;
+    }
+    
+    // 重新处理图片
+    reprocessImagesForTheme();
+    
+    // 更新预览
+    generateReceiptPreview();
+    if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
+        generateQuote();
+    }
+}
+
+// 编辑自定义主题
+function editCustomTheme(themeId) {
+    if (!defaultSettings.customThemes || !defaultSettings.customThemes[themeId]) {
+        alert('主题不存在');
+        return;
+    }
+    
+    const theme = defaultSettings.customThemes[themeId];
+    document.getElementById('customThemeName').value = theme.name;
+    document.getElementById('customThemeBg').value = theme.bg;
+    document.getElementById('customThemeText').value = theme.text;
+    document.getElementById('customThemeAccent').value = theme.accent;
+    document.getElementById('customThemeTitle').value = theme.title;
+    document.getElementById('customThemeDivider').value = theme.divider;
+    document.getElementById('customThemeBorderRadius').value = theme.borderRadius || 0;
+    
+    // 切换到主题标签页
+    switchReceiptTab('theme');
+}
+
+// 删除自定义主题
+function deleteCustomTheme(themeId) {
+    if (!confirm('确定要删除这个自定义主题吗？')) {
+        return;
+    }
+    
+    if (defaultSettings.customThemes && defaultSettings.customThemes[themeId]) {
+        delete defaultSettings.customThemes[themeId];
+        saveData();
+        
+        // 如果当前使用的是这个主题，切换到经典主题
+        if (defaultSettings.receiptCustomization.theme === themeId) {
+            applyReceiptTheme('classic');
+        }
+        
+        // 更新主题选择器
+        updateThemeSelector();
+        
+        // 重新加载列表
+        loadCustomThemesList();
+    }
+}
+
+// 更新主题选择器（添加自定义主题选项）
+function updateThemeSelector() {
+    const themeSelector = document.getElementById('themeSelector');
+    if (!themeSelector) return;
+    
+    // 移除现有的自定义主题选项
+    const customGroup = document.getElementById('customThemesGroup');
+    if (customGroup) {
+        customGroup.innerHTML = '';
+    }
+    
+    // 添加自定义主题选项
+    if (defaultSettings.customThemes && Object.keys(defaultSettings.customThemes).length > 0) {
+        Object.entries(defaultSettings.customThemes).forEach(([id, theme]) => {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = theme.name;
+            if (customGroup) {
+                customGroup.appendChild(option);
+            }
+        });
+    }
+}
+
+// 应用自定义主题样式
+function applyCustomThemeStyles(themeId) {
+    if (!defaultSettings.customThemes || !defaultSettings.customThemes[themeId]) {
+        return;
+    }
+    
+    const theme = defaultSettings.customThemes[themeId];
+    const styleId = 'custom-theme-style';
+    let styleElement = document.getElementById(styleId);
+    
+    if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        document.head.appendChild(styleElement);
+    }
+    
+    styleElement.textContent = `
+        .receipt-theme-${themeId} {
+            --receipt-bg: ${theme.bg};
+            --receipt-text: ${theme.text};
+            --receipt-accent: ${theme.accent};
+            --receipt-title-color: ${theme.title};
+            --receipt-divider-color: ${theme.divider};
+            --receipt-border-radius: ${theme.borderRadius}px;
+        }
+        .receipt-theme-${themeId} .receipt-title {
+            color: ${theme.title};
+        }
+    `;
+}
+
+// 处理字体选择变化
+function handleFontFamilyChange(value) {
+    const customContainer = document.getElementById('customFontContainer');
+    const hint = document.getElementById('fontFamilyHint');
+    const detectedList = document.getElementById('detectedFontsList');
+    
+    if (value === 'custom') {
+        // 显示自定义输入框容器
+        if (customContainer) {
+            customContainer.style.display = 'block';
+        }
+        if (hint) {
+            hint.style.display = 'block';
+        }
+        
+        // 如果已有自定义字体值，填充到输入框
+        const customInput = document.getElementById('customFontFamily');
+        const fontSettings = defaultSettings.receiptCustomization.fontSettings;
+        if (customInput && fontSettings && fontSettings.fontFamily && 
+            !['Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+              'Source Han Sans SC, Noto Sans SC, PingFang SC, sans-serif',
+              'Source Han Serif SC, Noto Serif SC, Times New Roman, serif',
+              'Source Han Sans SC, Noto Sans SC, sans-serif',
+              'Source Han Serif SC, Noto Serif SC, serif'].includes(fontSettings.fontFamily)) {
+            customInput.value = fontSettings.fontFamily;
+        } else if (customInput) {
+            customInput.value = '';
+        }
+        
+        // 聚焦输入框
+        if (customInput) {
+            setTimeout(() => customInput.focus(), 100);
+        }
+    } else {
+        // 隐藏自定义输入框容器
+        if (customContainer) {
+            customContainer.style.display = 'none';
+        }
+        if (hint) {
+            hint.style.display = 'none';
+        }
+        if (detectedList) {
+            detectedList.style.display = 'none';
+        }
+        
+        // 更新字体设置
+        updateReceiptFont('fontFamily', value);
+    }
+}
+
+// 更新字体设置
+function updateReceiptFont(field, value) {
+    if (!defaultSettings.receiptCustomization.fontSettings) {
+        defaultSettings.receiptCustomization.fontSettings = {
+            fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+            fontSize: 13,
+            fontWeight: 400,
+            lineHeight: 1.3
+        };
+    }
+    
+    // 如果输入的是自定义字体，确保值不为空
+    if (field === 'fontFamily' && value && value.trim()) {
+        defaultSettings.receiptCustomization.fontSettings[field] = value.trim();
+    } else if (field === 'fontFamily') {
+        // 如果自定义字体为空，使用默认值
+        defaultSettings.receiptCustomization.fontSettings[field] = 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace';
+    } else {
+        defaultSettings.receiptCustomization.fontSettings[field] = field === 'fontSize' || field === 'fontWeight' ? parseInt(value) : (field === 'lineHeight' ? parseFloat(value) : value);
+    }
+    
+    saveData();
+    
+    // 应用字体样式（使用防抖版本）
+    applyFontSettings();
+    
+    // 更新预览（使用防抖版本）
+    debouncedApplyFontSettings();
+}
+
+// 加载字体设置到表单
+function loadFontSettings() {
+    const fontSettings = defaultSettings.receiptCustomization.fontSettings || {
+        fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+        fontSize: 13,
+        fontWeight: 400,
+        lineHeight: 1.3,
+        categoryFonts: {
+            enabled: false,
+            title: '',
+            body: '',
+            number: '',
+            summary: '',
+            footer: ''
+        }
+    };
+    
+    const fontFamilySelect = document.getElementById('receiptFontFamily');
+    const customInput = document.getElementById('customFontFamily');
+    const hint = document.getElementById('fontFamilyHint');
+    
+        // 预设字体列表
+        const presetFonts = [
+            'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+            'Source Han Sans SC, Noto Sans SC, PingFang SC, sans-serif',
+            'Source Han Serif SC, Noto Serif SC, Times New Roman, serif',
+            'Source Han Sans SC, Noto Sans SC, sans-serif',
+            'Source Han Serif SC, Noto Serif SC, serif'
+        ];
+    
+    // 检查是否是预设字体
+    const isPresetFont = presetFonts.includes(fontSettings.fontFamily);
+    
+    if (fontFamilySelect) {
+        if (isPresetFont) {
+            fontFamilySelect.value = fontSettings.fontFamily;
+            const customContainer = document.getElementById('customFontContainer');
+            if (customContainer) {
+                customContainer.style.display = 'none';
+            }
+            if (hint) {
+                hint.style.display = 'none';
+            }
+        } else {
+            // 是自定义字体
+            fontFamilySelect.value = 'custom';
+            if (customInput) {
+                customInput.value = fontSettings.fontFamily;
+            }
+            const customContainer = document.getElementById('customFontContainer');
+            if (customContainer) {
+                customContainer.style.display = 'block';
+            }
+            if (hint) {
+                hint.style.display = 'block';
+            }
+        }
+    }
+    
+    if (document.getElementById('receiptFontSize')) {
+        document.getElementById('receiptFontSize').value = fontSettings.fontSize;
+    }
+    if (document.getElementById('receiptFontWeight')) {
+        document.getElementById('receiptFontWeight').value = fontSettings.fontWeight;
+    }
+    if (document.getElementById('receiptLineHeight')) {
+        document.getElementById('receiptLineHeight').value = fontSettings.lineHeight;
+    }
+    
+    // 加载分类字体设置
+    if (fontSettings.categoryFonts) {
+        const catFonts = fontSettings.categoryFonts;
+        if (document.getElementById('enableCategoryFonts')) {
+            document.getElementById('enableCategoryFonts').checked = catFonts.enabled || false;
+            toggleCategoryFonts(catFonts.enabled || false);
+        }
+        if (document.getElementById('fontTitle')) {
+            document.getElementById('fontTitle').value = catFonts.title || '';
+        }
+        if (document.getElementById('fontBody')) {
+            document.getElementById('fontBody').value = catFonts.body || '';
+        }
+        if (document.getElementById('fontNumber')) {
+            document.getElementById('fontNumber').value = catFonts.number || '';
+        }
+        if (document.getElementById('fontSummary')) {
+            document.getElementById('fontSummary').value = catFonts.summary || '';
+        }
+        if (document.getElementById('fontFooter')) {
+            document.getElementById('fontFooter').value = catFonts.footer || '';
+        }
+    }
+    
+    // 加载已导入字体列表
+    loadImportedFontsList();
+}
+
+// 切换分类字体设置
+function toggleCategoryFonts(enabled) {
+    const container = document.getElementById('categoryFontsContainer');
+    if (container) {
+        container.style.display = enabled ? 'block' : 'none';
+    }
+    
+    if (!defaultSettings.receiptCustomization.fontSettings.categoryFonts) {
+        defaultSettings.receiptCustomization.fontSettings.categoryFonts = {
+            enabled: false,
+            title: '',
+            body: '',
+            number: '',
+            summary: '',
+            footer: ''
+        };
+    }
+    
+    defaultSettings.receiptCustomization.fontSettings.categoryFonts.enabled = enabled;
+    saveData();
+    
+    // 应用字体设置
+    applyFontSettings();
+    debouncedApplyFontSettings();
+}
+
+// 更新分类字体
+function updateCategoryFont(category, value) {
+    if (!defaultSettings.receiptCustomization.fontSettings.categoryFonts) {
+        defaultSettings.receiptCustomization.fontSettings.categoryFonts = {
+            enabled: true,
+            title: '',
+            body: '',
+            number: '',
+            summary: '',
+            footer: ''
+        };
+    }
+    
+    defaultSettings.receiptCustomization.fontSettings.categoryFonts[category] = value.trim();
+    defaultSettings.receiptCustomization.fontSettings.categoryFonts.enabled = true;
+    saveData();
+    
+    // 应用字体设置
+    applyFontSettings();
+    debouncedApplyFontSettings();
+}
+
+// 应用字体设置
+function applyFontSettings() {
+    const fontSettings = defaultSettings.receiptCustomization.fontSettings || {
+        fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+        fontSize: 13,
+        fontWeight: 400,
+        lineHeight: 1.3,
+        categoryFonts: {
+            enabled: false,
+            title: '',
+            body: '',
+            number: '',
+            summary: '',
+            footer: ''
+        }
+    };
+    
+    const styleId = 'custom-font-style';
+    let styleElement = document.getElementById(styleId);
+    
+    if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        document.head.appendChild(styleElement);
+    }
+    
+    let styleContent = '';
+    
+    // 如果启用了分类字体设置
+    if (fontSettings.categoryFonts && fontSettings.categoryFonts.enabled) {
+        const catFonts = fontSettings.categoryFonts;
+        const baseFont = fontSettings.fontFamily;
+        
+        styleContent = `
+            :root {
+                ${catFonts.number ? `--receipt-number-font: ${catFonts.number};` : ''}
+            }
+            .receipt {
+                font-family: ${catFonts.body || baseFont} !important;
+                font-size: ${fontSettings.fontSize}px !important;
+                font-weight: ${fontSettings.fontWeight} !important;
+                line-height: ${fontSettings.lineHeight} !important;
+            }
+            ${catFonts.title ? `.receipt-title { font-family: ${catFonts.title} !important; }` : ''}
+            ${catFonts.number ? `.receipt-col-1, .receipt-sub-row .receipt-col-1 { font-family: ${catFonts.number} !important; }` : ''}
+            ${catFonts.summary ? `.receipt-summary, .receipt-summary-row, .receipt-summary-label, .receipt-summary-value, .receipt-total { font-family: ${catFonts.summary} !important; }` : ''}
+            ${catFonts.footer ? `.receipt-footer, .receipt-footer-text1, .receipt-footer-text2 { font-family: ${catFonts.footer} !important; }` : ''}
+        `;
+    } else {
+        // 统一字体设置
+        styleContent = `
+            .receipt {
+                font-family: ${fontSettings.fontFamily} !important;
+                font-size: ${fontSettings.fontSize}px !important;
+                font-weight: ${fontSettings.fontWeight} !important;
+                line-height: ${fontSettings.lineHeight} !important;
+            }
+        `;
+    }
+    
+    styleElement.textContent = styleContent;
+}
+
+// 检测系统可用字体
+async function detectSystemFonts() {
+    const detectedList = document.getElementById('detectedFontsList');
+    if (!detectedList) return;
+    
+    // 显示加载状态
+    detectedList.style.display = 'block';
+    detectedList.innerHTML = '<div class="text-gray" style="padding: 0.5rem; text-align: center;">正在检测系统字体...</div>';
+    
+    // 常见系统字体列表（Windows、Mac、Linux、移动端）
+    const commonFonts = [
+        // 中文字体
+        'SimHei', '黑体', 'FangSong', '仿宋', 'STSong', '华文宋体',
+        'STHeiti', '华文黑体', 'STKaiti', '华文楷体', 'STFangsong', '华文仿宋',
+        'PingFang SC', '苹方', 'Hiragino Sans GB', '冬青黑体',
+        'Source Han Sans SC', '思源黑体', 'Noto Sans SC',
+        'Source Han Serif SC', '思源宋体', 'Noto Serif SC',
+        'LXGW WenKai', '霞鹜文楷', 'LXGW WenKai Mono',
+        // 英文字体
+        'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana',
+        'Courier New', 'Comic Sans MS', 'Impact', 'Trebuchet MS',
+        'Tahoma', 'Calibri', 'Segoe UI', 'Roboto', 'Open Sans',
+        'Lato', 'Montserrat', 'Ubuntu', 'DejaVu Sans',
+        // 等宽字体
+        'Consolas', 'Monaco', 'Menlo', 'Courier', 'Lucida Console',
+        'Monaco', 'Menlo', 'Source Code Pro', 'Fira Code'
+    ];
+    
+    const availableFonts = [];
+    const testString = 'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz0123456789中文测试字体';
+    const testSize = '72px';
+    const baselineFonts = ['monospace', 'sans-serif', 'serif'];
+    
+    // 创建测试canvas
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    context.textBaseline = 'top';
+    context.textAlign = 'left';
+    
+    // 获取基准宽度（使用通用字体）
+    const baselineWidths = {};
+    for (const baseline of baselineFonts) {
+        context.font = testSize + ' ' + baseline;
+        baselineWidths[baseline] = context.measureText(testString).width;
+    }
+    
+    // 检测每个字体
+    for (const fontName of commonFonts) {
+        let isAvailable = false;
+        
+        for (const baseline of baselineFonts) {
+            const testFont = testSize + ' "' + fontName + '", ' + baseline;
+            context.font = testFont;
+            const width = context.measureText(testString).width;
+            
+            // 如果宽度与基准不同，说明字体可用
+            if (Math.abs(width - baselineWidths[baseline]) > 0.1) {
+                isAvailable = true;
+                break;
+            }
+        }
+        
+        if (isAvailable) {
+            availableFonts.push(fontName);
+        }
+    }
+    
+    // 显示检测结果
+    if (availableFonts.length === 0) {
+        detectedList.innerHTML = '<div class="text-gray" style="padding: 0.5rem; text-align: center;">未检测到可用字体，请手动输入字体名称</div>';
+    } else {
+        detectedList.innerHTML = `
+            <div style="padding: 0.5rem; border-bottom: 1px solid var(--border-color); font-weight: 600;">
+                检测到 ${availableFonts.length} 个可用字体（点击使用）：
+            </div>
+            ${availableFonts.map(font => `
+                <div class="detected-font-item" onclick="selectDetectedFont('${font}')" data-font-family="${font}">
+                    <div>
+                        <div class="detected-font-name">${font}</div>
+                        <div class="detected-font-preview" style="font-family: '${font}', sans-serif;">预览：AaBbCc 中文测试</div>
+                    </div>
+                </div>
+            `).join('')}
+        `;
+    }
+}
+
+// 选择检测到的字体
+function selectDetectedFont(fontName) {
+    const customInput = document.getElementById('customFontFamily');
+    if (customInput) {
+        customInput.value = fontName;
+        updateReceiptFont('fontFamily', fontName);
+    }
+}
+
+// 处理字体文件上传
+function handleFontFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // 检查文件大小（限制5MB）
+    if (file.size > 5 * 1024 * 1024) {
+        alert('字体文件过大，请选择小于5MB的字体文件');
+        event.target.value = '';
+        return;
+    }
+    
+    // 检查文件格式
+    const validFormats = ['ttf', 'otf', 'woff', 'woff2'];
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    if (!validFormats.includes(fileExtension)) {
+        alert('不支持的字体格式，请选择 TTF、OTF、WOFF 或 WOFF2 格式的字体文件');
+        event.target.value = '';
+        return;
+    }
+    
+    // 读取字体文件
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const fontData = e.target.result;
+        const fontId = 'imported_' + Date.now();
+        
+        // 从文件名提取字体名称（去掉扩展名）
+        const fontName = file.name.replace(/\.[^/.]+$/, '');
+        
+        // 确定字体格式
+        let fontFormat = 'truetype';
+        if (fileExtension === 'otf') {
+            fontFormat = 'opentype';
+        } else if (fileExtension === 'woff') {
+            fontFormat = 'woff';
+        } else if (fileExtension === 'woff2') {
+            fontFormat = 'woff2';
+        }
+        
+        // 保存字体信息
+        if (!defaultSettings.importedFonts) {
+            defaultSettings.importedFonts = {};
+        }
+        defaultSettings.importedFonts[fontId] = {
+            name: fontName,
+            family: fontName, // 使用文件名作为字体族名
+            data: fontData, // base64 数据
+            format: fontFormat,
+            size: file.size,
+            fileName: file.name
+        };
+        
+        saveData();
+        
+        // 加载字体
+        loadImportedFont(fontId, defaultSettings.importedFonts[fontId]);
+        
+        // 更新已导入字体列表
+        loadImportedFontsList();
+        
+        // 清空文件输入
+        event.target.value = '';
+        
+        alert(`字体 "${fontName}" 导入成功！`);
+    };
+    
+    reader.onerror = function() {
+        alert('字体文件读取失败，请重试');
+        event.target.value = '';
+    };
+    
+    reader.readAsDataURL(file);
+}
+
+// 加载单个导入的字体
+function loadImportedFont(fontId, fontInfo) {
+    const styleId = 'imported-font-' + fontId;
+    let styleElement = document.getElementById(styleId);
+    
+    if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        document.head.appendChild(styleElement);
+    }
+    
+    // 创建 @font-face 规则
+    styleElement.textContent = `
+        @font-face {
+            font-family: '${fontInfo.family}';
+            src: url('${fontInfo.data}') format('${fontInfo.format}');
+            font-display: swap;
+        }
+    `;
+}
+
+// 加载所有已导入的字体
+function loadImportedFonts() {
+    if (!defaultSettings.importedFonts) {
+        defaultSettings.importedFonts = {};
+        return;
+    }
+    
+    Object.entries(defaultSettings.importedFonts).forEach(([fontId, fontInfo]) => {
+        loadImportedFont(fontId, fontInfo);
+    });
+}
+
+// 加载已导入字体列表到UI
+function loadImportedFontsList() {
+    const listContainer = document.getElementById('importedFontsList');
+    if (!listContainer) return;
+    
+    if (!defaultSettings.importedFonts || Object.keys(defaultSettings.importedFonts).length === 0) {
+        listContainer.innerHTML = '<div class="text-gray" style="padding: 0.5rem; text-align: center;">暂无导入的字体</div>';
+        return;
+    }
+    
+    listContainer.innerHTML = Object.entries(defaultSettings.importedFonts).map(([fontId, fontInfo]) => {
+        const formatFileSize = (bytes) => {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        };
+        
+        return `
+            <div class="imported-font-item" data-font-family="${fontInfo.family}">
+                <div class="imported-font-info">
+                    <div class="imported-font-name">${fontInfo.name}</div>
+                    <div class="imported-font-preview" style="font-family: '${fontInfo.family}', sans-serif;">
+                        预览：AaBbCc 中文测试字体 0123456789
+                    </div>
+                    <div class="imported-font-file-size">${fontInfo.fileName} | ${formatFileSize(fontInfo.size)}</div>
+                </div>
+                <div class="imported-font-actions">
+                    <button class="btn small" onclick="useImportedFont('${fontInfo.family}')">使用</button>
+                    <button class="btn small danger" onclick="deleteImportedFont('${fontId}')">删除</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 使用导入的字体
+function useImportedFont(fontFamily) {
+    const customInput = document.getElementById('customFontFamily');
+    if (customInput) {
+        customInput.value = fontFamily;
+        updateReceiptFont('fontFamily', fontFamily);
+    }
+    
+    // 切换到自定义字体选项
+    const fontFamilySelect = document.getElementById('receiptFontFamily');
+    if (fontFamilySelect) {
+        fontFamilySelect.value = 'custom';
+        handleFontFamilyChange('custom');
+    }
+}
+
+// 删除导入的字体
+function deleteImportedFont(fontId) {
+    if (!confirm('确定要删除这个导入的字体吗？')) {
+        return;
+    }
+    
+    if (defaultSettings.importedFonts && defaultSettings.importedFonts[fontId]) {
+        const fontInfo = defaultSettings.importedFonts[fontId];
+        
+        // 移除字体样式
+        const styleElement = document.getElementById('imported-font-' + fontId);
+        if (styleElement) {
+            styleElement.remove();
+        }
+        
+        // 如果当前使用的是这个字体，切换到默认字体
+        const currentFont = defaultSettings.receiptCustomization.fontSettings?.fontFamily;
+        if (currentFont && currentFont.includes(fontInfo.family)) {
+            updateReceiptFont('fontFamily', 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace');
+        }
+        
+        // 删除字体数据
+        delete defaultSettings.importedFonts[fontId];
+        saveData();
+        
+        // 更新列表
+        loadImportedFontsList();
+    }
+}
+
+// 打开自定义主题管理弹窗（已废弃，使用小票设置面板中的主题标签页）
+// 保留此函数以保持向后兼容，但不再使用
+function openCustomThemeModal() {
+    switchReceiptTab('theme');
+    toggleReceiptCustomizationPanel();
+}
+
 // 加载小票自定义设置到表单
 // 处理小票图片上传
 function handleReceiptImageUpload(field, file) {
@@ -742,18 +1653,82 @@ function handleReceiptImageUpload(field, file) {
                     defaultSettings.receiptCustomization[field] = originalImageData;
                     saveData();
                     
-                    // 更新预览
-                    if (field === 'headerImage' && document.getElementById('headerImagePreview')) {
-                        document.getElementById('headerImagePreview').innerHTML = `<img src="${originalImageData}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
-                    } else if (field === 'footerImage' && document.getElementById('footerImagePreview')) {
-                        document.getElementById('footerImagePreview').innerHTML = `<img src="${originalImageData}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
-                    }
+                    // 更新预览（包含尺寸信息）
+                    updateImagePreview(field, originalImageData, img.width, img.height, file.size);
                 }
             };
             img.src = originalImageData;
         };
         reader.readAsDataURL(file);
     }
+}
+
+// 更新图片预览（包含尺寸和删除功能）
+function updateImagePreview(field, imageData, width, height, fileSize) {
+    const previewId = field === 'headerImage' ? 'headerImagePreview' : 'footerImagePreview';
+    const previewElement = document.getElementById(previewId);
+    if (!previewElement) return;
+    
+    // 格式化文件大小
+    const formatFileSize = (bytes) => {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    };
+    
+    previewElement.innerHTML = `
+        <img src="${imageData}" alt="${field === 'headerImage' ? '头部' : '尾部'}图片预览" style="max-width: 200px; max-height: 100px;">
+        <button class="image-preview-delete" onclick="deleteReceiptImage('${field}')" title="删除图片">×</button>
+        <div class="image-preview-info">
+            尺寸: ${width} × ${height}px | 大小: ${formatFileSize(fileSize)}
+        </div>
+    `;
+}
+
+// 删除小票图片
+function deleteReceiptImage(field) {
+    if (confirm(`确定要删除${field === 'headerImage' ? '头部' : '尾部'}图片吗？`)) {
+        // 删除图片数据
+        delete defaultSettings.receiptCustomization[field];
+        delete defaultSettings.receiptCustomization[field + 'Original'];
+        saveData();
+        
+        // 清空预览
+        const previewId = field === 'headerImage' ? 'headerImagePreview' : 'footerImagePreview';
+        const previewElement = document.getElementById(previewId);
+        if (previewElement) {
+            previewElement.innerHTML = '';
+        }
+        
+        // 更新预览
+        generateReceiptPreview();
+    }
+}
+
+// 处理拖拽上传
+function handleImageDrop(event, field) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const uploadArea = event.currentTarget;
+    uploadArea.classList.remove('drag-over');
+    
+    const files = event.dataTransfer.files;
+    if (files.length > 0) {
+        handleReceiptImageUpload(field, files[0]);
+    }
+}
+
+function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.add('drag-over');
+}
+
+function handleDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.remove('drag-over');
 }
 
 // 更新小票信息设置
@@ -873,7 +1848,55 @@ function hexToRgb(hex) {
     } : null;
 }
 
-// 处理单个图片以适应主题颜色
+// 防抖函数
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// 创建图片处理Worker（单例）
+let imageProcessorWorker = null;
+function getImageProcessorWorker() {
+    if (!imageProcessorWorker) {
+        try {
+            imageProcessorWorker = new Worker('image-processor-worker.js');
+            imageProcessorWorker.onerror = function(e) {
+                console.error('Worker error:', e);
+                imageProcessorWorker = null;
+            };
+        } catch (e) {
+            console.error('Failed to create worker:', e);
+            return null;
+        }
+    }
+    return imageProcessorWorker;
+}
+
+// 防抖版本的预览更新（300ms延迟）
+const debouncedGenerateReceiptPreview = debounce(() => {
+    generateReceiptPreview();
+    if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
+        generateQuote();
+    }
+}, 300);
+
+// 防抖版本的字体设置更新（200ms延迟）
+const debouncedApplyFontSettings = debounce(() => {
+    applyFontSettings();
+    generateReceiptPreview();
+    if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
+        generateQuote();
+    }
+}, 200);
+
+// 处理单个图片以适应主题颜色（使用Web Worker）
 function processImageForTheme(img, field, expectedTheme) {
     console.log('processImageForTheme called', field, 'expectedTheme:', expectedTheme);
     
@@ -922,8 +1945,14 @@ function processImageForTheme(img, field, expectedTheme) {
         'iceBlue': '#075985'      // rgb(7, 89, 133)
     };
     
-    // 直接使用映射表（最可靠，避免动态读取的不确定性）
-    let textColor = TITLE_COLOR_MAP[currentTheme] || 'rgb(51, 51, 51)';
+    // 如果是自定义主题，从自定义主题设置中获取颜色
+    let textColor;
+    if (currentTheme.startsWith('custom_') && defaultSettings.customThemes && defaultSettings.customThemes[currentTheme]) {
+        textColor = defaultSettings.customThemes[currentTheme].title || '#2d3748';
+    } else {
+        // 直接使用映射表（最可靠，避免动态读取的不确定性）
+        textColor = TITLE_COLOR_MAP[currentTheme] || 'rgb(51, 51, 51)';
+    }
     
     console.log('[FIX] 使用标题颜色映射表:', currentTheme, '->', textColor);
     
@@ -1139,12 +2168,17 @@ function processImageForTheme(img, field, expectedTheme) {
     
     console.log('[FIX] 图片已保存，主题:', finalTheme, '字段:', field);
     
-    // 更新预览
-    if (field === 'headerImage' && document.getElementById('headerImagePreview')) {
-        document.getElementById('headerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
-    } else if (field === 'footerImage' && document.getElementById('footerImagePreview')) {
-        document.getElementById('footerImagePreview').innerHTML = `<img src="${adjustedImageData}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
-    }
+    // 更新预览（包含尺寸信息）
+    const originalSize = defaultSettings.receiptCustomization[field + 'Original'] 
+        ? (function() {
+            // 估算base64大小
+            const base64 = defaultSettings.receiptCustomization[field + 'Original'];
+            const base64Length = base64.length;
+            const padding = base64.match(/=/g) ? base64.match(/=/g).length : 0;
+            return Math.floor((base64Length * 3) / 4) - padding;
+        })() 
+        : 0;
+    updateImagePreview(field, adjustedImageData, img.width, img.height, originalSize);
     
     // 强制更新小票预览，确保显示最新处理的图片
     // 使用 setTimeout 确保 DOM 更新完成，并在更新前再次检查主题
@@ -1160,11 +2194,8 @@ function processImageForTheme(img, field, expectedTheme) {
         }
         
         console.log('[FIX] 更新预览，主题:', currentThemeWhenUpdate, '字段:', field);
-        generateReceiptPreview();
-        // 如果报价页已生成，也更新报价预览
-        if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
-            generateQuote();
-        }
+        // 使用防抖版本的预览更新
+        debouncedGenerateReceiptPreview();
     }, 50);
 }
 
@@ -1217,12 +2248,38 @@ function loadReceiptCustomizationToForm() {
             }
         }
         
-        // 设置图片预览
+        // 设置图片预览（包含尺寸信息）
         if (settings.headerImage && document.getElementById('headerImagePreview')) {
-            document.getElementById('headerImagePreview').innerHTML = `<img src="${settings.headerImage}" alt="头部图片预览" style="max-width: 200px; max-height: 100px;">`;
+            const img = new Image();
+            img.onload = function() {
+                const originalSize = defaultSettings.receiptCustomization.headerImageOriginal 
+                    ? (function() {
+                        // 估算base64大小
+                        const base64 = defaultSettings.receiptCustomization.headerImageOriginal;
+                        const base64Length = base64.length;
+                        const padding = base64.match(/=/g) ? base64.match(/=/g).length : 0;
+                        return Math.floor((base64Length * 3) / 4) - padding;
+                    })() 
+                    : 0;
+                updateImagePreview('headerImage', settings.headerImage, img.width, img.height, originalSize);
+            };
+            img.src = settings.headerImage;
         }
         if (settings.footerImage && document.getElementById('footerImagePreview')) {
-            document.getElementById('footerImagePreview').innerHTML = `<img src="${settings.footerImage}" alt="尾部图片预览" style="max-width: 200px; max-height: 100px;">`;
+            const img = new Image();
+            img.onload = function() {
+                const originalSize = defaultSettings.receiptCustomization.footerImageOriginal 
+                    ? (function() {
+                        // 估算base64大小
+                        const base64 = defaultSettings.receiptCustomization.footerImageOriginal;
+                        const base64Length = base64.length;
+                        const padding = base64.match(/=/g) ? base64.match(/=/g).length : 0;
+                        return Math.floor((base64Length * 3) / 4) - padding;
+                    })() 
+                    : 0;
+                updateImagePreview('footerImage', settings.footerImage, img.width, img.height, originalSize);
+            };
+            img.src = settings.footerImage;
         }
     }
 }
@@ -1230,9 +2287,11 @@ function loadReceiptCustomizationToForm() {
 // 应用小票主题
 function applyReceiptTheme(themeName) {
     console.log('applyReceiptTheme called', themeName);
-    // 验证主题名称
+    // 验证主题名称（包括自定义主题）
     const validThemes = ['classic', 'modern', 'warm', 'dark', 'nature', 'vintage', 'sakura', 'iceBlue'];
-    if (!validThemes.includes(themeName)) {
+    const isCustomTheme = themeName.startsWith('custom_');
+    
+    if (!validThemes.includes(themeName) && !isCustomTheme) {
         themeName = 'classic'; // 默认使用经典主题
     }
     
@@ -1251,13 +2310,21 @@ function applyReceiptTheme(themeName) {
         themeSelector.value = themeName;
     }
     
+    // 如果是自定义主题，应用自定义主题样式
+    if (isCustomTheme) {
+        applyCustomThemeStyles(themeName);
+    }
+    
     // 重新处理图片以适应新主题颜色
     // 总是调用 reprocessImagesForTheme，函数内部会检查 followSystemTheme
     console.log('[FIX] applyReceiptTheme 调用 reprocessImagesForTheme，当前主题:', themeName);
     reprocessImagesForTheme();
     
-    // 注意：预览更新现在在 processImageForTheme 完成后自动触发
-    // 这里不再立即更新预览，避免显示旧的图片
+    // 更新预览
+    generateReceiptPreview();
+    if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
+        generateQuote();
+    }
 }
 
 // 初始化小票设置功能

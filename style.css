@@ -608,12 +608,179 @@ input:focus, select:focus {
     max-width: 200px;
     max-height: 100px;
     overflow: hidden;
+    position: relative;
 }
 
 .image-preview img {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+}
+
+.image-preview-info {
+    font-size: 0.7rem;
+    color: var(--text-light);
+    margin-top: 0.25rem;
+}
+
+.image-preview-delete {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    z-index: 10;
+}
+
+.image-preview-delete:hover {
+    background: rgba(239, 68, 68, 1);
+    transform: scale(1.1);
+}
+
+.image-upload-area {
+    position: relative;
+}
+
+.image-upload-area.drag-over {
+    background-color: var(--primary-light);
+    border: 2px dashed var(--primary-color);
+    border-radius: var(--radius-md);
+    padding: 0.5rem;
+}
+
+/* 自定义主题样式 */
+.custom-themes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.custom-theme-item {
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-color);
+}
+
+.custom-theme-preview {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 检测到的字体列表 */
+.detected-fonts-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.5rem;
+    background: var(--bg-color);
+}
+
+.detected-font-item {
+    padding: 0.5rem;
+    margin-bottom: 0.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.detected-font-item:hover {
+    background: var(--primary-light);
+    border-color: var(--primary-color);
+}
+
+.detected-font-name {
+    font-weight: 500;
+    flex: 1;
+}
+
+.detected-font-preview {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-left: 0.5rem;
+    font-family: inherit;
+}
+
+.detected-font-item[data-font-family] .detected-font-preview {
+    font-family: var(--preview-font, inherit);
+}
+
+/* 已导入字体列表 */
+.imported-fonts-list {
+    margin-top: 0.5rem;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.5rem;
+    background: var(--bg-color);
+}
+
+.imported-font-item {
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.imported-font-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.imported-font-name {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    word-break: break-word;
+}
+
+.imported-font-preview {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-top: 0.25rem;
+    font-family: inherit;
+}
+
+.imported-font-item[data-font-family] .imported-font-preview {
+    font-family: var(--imported-font-family, inherit);
+}
+
+.imported-font-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.imported-font-file-size {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    margin-top: 0.25rem;
 }
 
 /* Upload button styling */
@@ -880,7 +1047,7 @@ input:focus, select:focus {
     min-width: 400px;
     max-width: 400px;
     margin: 0 auto;
-    font-family: var(--receipt-font-family, 'Courier New', 'SimSun', 'Songti SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace);
+    font-family: var(--receipt-font-family, 'Courier New', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace);
     background: var(--receipt-bg, #fdfdfd);
     padding: 2.5rem;
     border: var(--receipt-border, none);
@@ -1512,7 +1679,7 @@ input:checked + .toggle-slider:before {
     flex: 1;
     text-align: right !important;
     min-width: 60px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--receipt-number-font, 'Courier New', monospace);
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -1535,7 +1702,7 @@ input:checked + .toggle-slider:before {
 .receipt-sub-row .receipt-col-1 {
     text-align: right !important;
     min-width: 60px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--receipt-number-font, 'Courier New', monospace);
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -1670,7 +1837,7 @@ input:checked + .toggle-slider:before {
     --receipt-text: #2d3748;
     --receipt-border: none;
     --receipt-accent: #4a5568;
-    --receipt-font-family: 'Courier New', 'SimSun', 'Songti SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace;
+    --receipt-font-family: 'Courier New', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     --receipt-title-color: #2d3748;
@@ -1683,7 +1850,7 @@ input:checked + .toggle-slider:before {
     --receipt-text: #2c3e50;
     --receipt-border: none;
     --receipt-accent: #2563eb;
-    --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
+    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
     --receipt-title-color: #2c3e50;
@@ -1696,7 +1863,7 @@ input:checked + .toggle-slider:before {
     --receipt-text: #9a3412; /* 略偏红一点的暖棕色，提升可爱感 */
     --receipt-border: 3px dashed #fdba74; /* 稍粗的虚线边框，更有存在感 */
     --receipt-accent: #fb923c; /* 更明亮一点的暖橙作为强调色 */
-    --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
+    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
     --receipt-border-radius: 14px; /* 圆角再大一点，更偏可爱风格 */
     --receipt-box-shadow: 0 3px 10px rgba(248, 153, 64, 0.18); /* 稍微明显一点的暖色阴影 */
     --receipt-title-color: #9a3412;
@@ -1729,7 +1896,7 @@ input:checked + .toggle-slider:before {
     --receipt-text: #2f855a; /* 清新但饱和度更低的绿灰文字 */
     --receipt-border: none;
     --receipt-accent: #48bb78; /* 更不刺眼的清新绿强调色 */
-    --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
+    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);
     --receipt-title-color: #2f855a;
@@ -1742,8 +1909,8 @@ input:checked + .toggle-slider:before {
     --receipt-text: #5c1a1a;
     --receipt-border: none;
     --receipt-accent: #8b3e2f;
-    /* 复古印刷机感：以宋体 / 明朝体为主，辅以西文字体 */
-    --receipt-font-family: 'SimSun', 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', 'Times New Roman', serif;
+    /* 复古印刷机感：以思源宋体为主，辅以西文字体 */
+    --receipt-font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Times New Roman', serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(139, 62, 47, 0.15);
     --receipt-title-color: #5c1a1a;
@@ -1756,7 +1923,7 @@ input:checked + .toggle-slider:before {
     --receipt-text: #4a5568;
     --receipt-border: none;
     --receipt-accent: #be185d; /* 与标题同色，统一视觉强调 */
-    --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
+    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(219, 39, 119, 0.12);
     --receipt-title-color: #be185d;
@@ -1769,7 +1936,7 @@ input:checked + .toggle-slider:before {
     --receipt-text: #1f2933;
     --receipt-border: none;
     --receipt-accent: #0284c7;
-    --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
+    --receipt-font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', sans-serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
     --receipt-title-color: #075985;

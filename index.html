@@ -178,6 +178,7 @@
                                 <option value="nature">清新</option>
                                 <option value="sakura">粉樱</option>
                                 <option value="iceBlue">冰蓝</option>
+                                <optgroup label="自定义主题" id="customThemesGroup"></optgroup>
                             </select>
                             <button class="btn" onclick="toggleReceiptCustomizationPanel()">小票设置</button>
                             <button class="btn" onclick="saveQuoteAsImage()">保存图片</button>
@@ -199,6 +200,11 @@
                         </div>
                         
                         <div class="receipt-customization-body">
+                            <div class="receipt-customization-tabs">
+                                <button class="tab-btn active" onclick="switchReceiptTab('settings')">设置</button>
+                                <button class="tab-btn" onclick="switchReceiptTab('theme')">主题</button>
+                                <button class="tab-btn" onclick="switchReceiptTab('font')">字体</button>
+                            </div>
                             <div class="tab-content active" id="settings-tab">
 
                                 <!-- 小票头部设置 -->
@@ -207,19 +213,21 @@
                                     <div class="form-row">
                                         <div class="form-group">
                                             <label for="receiptHeaderImage">小票头部图片</label>
-                                            <input type="file" id="receiptHeaderImage" accept="image/*" onchange="handleReceiptImageUpload('headerImage', this.files[0])" title="推荐尺寸: 宽度不超过300px" style="display: none;">
-                                            <button type="button" class="upload-btn" onclick="document.getElementById('receiptHeaderImage').click()">上传图片</button>
-                                            <small class="text-gray">推荐尺寸: 宽度不超过300px，高度自适应</small>
-                                            <div class="checkbox-row">
-                                                <div class="checkbox-item">
-                                                    <span>跟随系统主题颜色</span>
-                                                    <label class="custom-toggle">
-                                                        <input type="checkbox" id="followSystemTheme" onchange="updateReceiptInfo('followSystemTheme', this.checked)" checked>
-                                                        <span class="toggle-slider"></span>
-                                                    </label>
+                                            <div class="image-upload-area" id="headerImageUploadArea" ondrop="handleImageDrop(event, 'headerImage')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                                                <input type="file" id="receiptHeaderImage" accept="image/*" onchange="handleReceiptImageUpload('headerImage', this.files[0])" title="推荐尺寸: 宽度不超过300px" style="display: none;">
+                                                <button type="button" class="upload-btn" onclick="document.getElementById('receiptHeaderImage').click()">上传图片</button>
+                                                <small class="text-gray">推荐尺寸: 宽度不超过300px，高度自适应 | 支持拖拽上传</small>
+                                                <div class="checkbox-row">
+                                                    <div class="checkbox-item">
+                                                        <span>跟随系统主题颜色</span>
+                                                        <label class="custom-toggle">
+                                                            <input type="checkbox" id="followSystemTheme" onchange="updateReceiptInfo('followSystemTheme', this.checked)" checked>
+                                                            <span class="toggle-slider"></span>
+                                                        </label>
+                                                    </div>
                                                 </div>
+                                                <div id="headerImagePreview" class="image-preview"></div>
                                             </div>
-                                            <div id="headerImagePreview" class="image-preview"></div>
                                         </div>
                                     </div>
                                     <div class="form-row">
@@ -292,19 +300,259 @@
                                     <div class="form-row">
                                         <div class="form-group">
                                             <label for="receiptFooterImage">小票尾部图片</label>
-                                            <input type="file" id="receiptFooterImage" accept="image/*" onchange="handleReceiptImageUpload('footerImage', this.files[0])" title="推荐尺寸: 宽度不超过200px" style="display: none;">
-                                            <button type="button" class="upload-btn" onclick="document.getElementById('receiptFooterImage').click()">上传图片</button>
-                                            <small class="text-gray">推荐尺寸: 宽度不超过200px，高度自适应</small>
+                                            <div class="image-upload-area" id="footerImageUploadArea" ondrop="handleImageDrop(event, 'footerImage')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                                                <input type="file" id="receiptFooterImage" accept="image/*" onchange="handleReceiptImageUpload('footerImage', this.files[0])" title="推荐尺寸: 宽度不超过200px" style="display: none;">
+                                                <button type="button" class="upload-btn" onclick="document.getElementById('receiptFooterImage').click()">上传图片</button>
+                                                <small class="text-gray">推荐尺寸: 宽度不超过200px，高度自适应 | 支持拖拽上传</small>
+                                                <div class="checkbox-row">
+                                                    <div class="checkbox-item">
+                                                        <span>跟随系统主题颜色</span>
+                                                        <label class="custom-toggle">
+                                                            <input type="checkbox" id="followSystemThemeFooter" onchange="updateReceiptInfo('followSystemTheme', this.checked)" checked>
+                                                            <span class="toggle-slider"></span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div id="footerImagePreview" class="image-preview"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 主题标签页 -->
+                            <div class="tab-content" id="theme-tab">
+                                <div class="section">
+                                    <h3>自定义主题</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="customThemeName">主题名称</label>
+                                            <input type="text" id="customThemeName" placeholder="输入主题名称">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="customThemeBg">背景色</label>
+                                            <input type="color" id="customThemeBg" value="#fdfdfd">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="customThemeText">文字色</label>
+                                            <input type="color" id="customThemeText" value="#2d3748">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="customThemeAccent">强调色</label>
+                                            <input type="color" id="customThemeAccent" value="#4a5568">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="customThemeTitle">标题色</label>
+                                            <input type="color" id="customThemeTitle" value="#2d3748">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="customThemeDivider">分割线色</label>
+                                            <input type="color" id="customThemeDivider" value="#cbd5e0">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="customThemeBorderRadius">圆角 (px)</label>
+                                            <input type="number" id="customThemeBorderRadius" value="0" min="0" max="20">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <button class="btn" onclick="saveCustomTheme()">保存自定义主题</button>
+                                            <button class="btn secondary" onclick="loadCurrentThemeToCustom()">从当前主题加载</button>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>已保存的自定义主题</label>
+                                            <div id="customThemesList" class="custom-themes-list"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 字体标签页 -->
+                            <div class="tab-content" id="font-tab">
+                                <div class="section">
+                                    <h3>字体设置</h3>
+                                    
+                                    <!-- 快速设置：统一字体 -->
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>快速设置（统一字体）</label>
+                                            <select id="receiptFontFamily" onchange="handleFontFamilyChange(this.value)">
+                                                <option value="Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace">等宽字体（默认）</option>
+                                                <option value="Source Han Sans SC, Noto Sans SC, PingFang SC, sans-serif">无衬线字体</option>
+                                                <option value="Source Han Serif SC, Noto Serif SC, Times New Roman, serif">衬线字体</option>
+                                                <option value="Source Han Sans SC, Noto Sans SC, sans-serif">思源黑体（推荐）</option>
+                                                <option value="Source Han Serif SC, Noto Serif SC, serif">思源宋体（推荐）</option>
+                                                <option value="custom">自定义字体</option>
+                                            </select>
+                                            <div id="customFontContainer" style="display: none; margin-top: 0.5rem;">
+                                                <div class="d-flex gap-2 items-center mb-2">
+                                                    <input type="text" id="customFontFamily" placeholder="输入字体名称，例如：Arial, Helvetica, 思源黑体" 
+                                                           class="flex-1"
+                                                           onchange="updateReceiptFont('fontFamily', this.value)"
+                                                           onblur="updateReceiptFont('fontFamily', this.value)"
+                                                           list="fontSuggestions">
+                                                    <button class="btn small" onclick="detectSystemFonts()" title="检测系统可用字体">检测字体</button>
+                                                </div>
+                                                <div id="detectedFontsList" class="detected-fonts-list" style="display: none; margin-top: 0.5rem;"></div>
+                                            </div>
+                                            <datalist id="fontSuggestions">
+                                                <!-- 免费可商用字体（推荐） -->
+                                                <option value="Source Han Sans SC, Noto Sans SC, sans-serif">思源黑体（免费可商用）</option>
+                                                <option value="Noto Sans SC, Source Han Sans SC, sans-serif">Noto Sans（免费可商用）</option>
+                                                <option value="Source Han Serif SC, Noto Serif SC, serif">思源宋体（免费可商用）</option>
+                                                <option value="Noto Serif SC, Source Han Serif SC, serif">Noto Serif（免费可商用）</option>
+                                                <option value="LXGW WenKai, sans-serif">霞鹜文楷（免费可商用）</option>
+                                                <option value="LXGW WenKai Mono, monospace">霞鹜文楷等宽（免费可商用）</option>
+                                                <option value="Ma Shan Zheng, cursive">马善政毛笔（免费可商用）</option>
+                                                <option value="ZCOOL KuaiLe, cursive">站酷快乐体（免费可商用）</option>
+                                                <option value="ZCOOL XiaoWei, serif">站酷小薇体（免费可商用）</option>
+                                                <option value="ZCOOL QingKe HuangYou, sans-serif">站酷庆科黄油体（免费可商用）</option>
+                                                <option value="ZCOOL Addict Italic, cursive">站酷高端黑（免费可商用）</option>
+                                                <option value="FZShuTi, serif">方正舒体（需授权）</option>
+                                                <option value="FZYaoti, cursive">方正姚体（需授权）</option>
+                                                <!-- 系统字体（需注意授权） -->
+                                                <option value="Arial, sans-serif">Arial（系统字体）</option>
+                                                <option value="Helvetica, Arial, sans-serif">Helvetica（系统字体）</option>
+                                                <option value="Times New Roman, serif">Times New Roman（系统字体）</option>
+                                                <option value="Georgia, serif">Georgia（系统字体）</option>
+                                                <option value="Verdana, sans-serif">Verdana（系统字体）</option>
+                                                <option value="Courier New, monospace">Courier New（系统字体）</option>
+                                                <!-- 需授权字体（仅作参考） -->
+                                                <option value="SimHei, sans-serif">黑体（需授权）</option>
+                                                <option value="FangSong, serif">仿宋（需授权）</option>
+                                                <option value="PingFang SC, sans-serif">苹方（需授权）</option>
+                                                <option value="Hiragino Sans GB, sans-serif">冬青黑体（需授权）</option>
+                                            </datalist>
+                                            <small class="text-gray" id="fontFamilyHint" style="display: none; margin-top: 0.25rem;">
+                                                提示：可以输入多个字体，用逗号分隔，系统会按顺序尝试使用。推荐使用标注"免费可商用"的字体（如思源黑体、Noto Sans等），商用更安全。
+                                            </small>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 分类字体设置 -->
+                                    <div class="form-row">
+                                        <div class="form-group">
                                             <div class="checkbox-row">
                                                 <div class="checkbox-item">
-                                                    <span>跟随系统主题颜色</span>
+                                                    <span>启用分类字体设置</span>
                                                     <label class="custom-toggle">
-                                                        <input type="checkbox" id="followSystemThemeFooter" onchange="updateReceiptInfo('followSystemTheme', this.checked)" checked>
+                                                        <input type="checkbox" id="enableCategoryFonts" onchange="toggleCategoryFonts(this.checked)">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                             </div>
-                                            <div id="footerImagePreview" class="image-preview"></div>
+                                            <small class="text-gray">开启后可以为小票的不同部分分别设置字体</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="categoryFontsContainer" style="display: none;">
+                                        <!-- 标题字体 -->
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="fontTitle">标题字体（小票标题）</label>
+                                                <input type="text" id="fontTitle" placeholder="留空则使用正文字体" 
+                                                       onchange="updateCategoryFont('title', this.value)"
+                                                       onblur="updateCategoryFont('title', this.value)"
+                                                       list="fontSuggestions">
+                                                <small class="text-gray">例如：Source Han Serif SC, Noto Serif SC, serif</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 正文字体 -->
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="fontBody">正文字体（内容、信息行）</label>
+                                                <input type="text" id="fontBody" placeholder="留空则使用默认字体" 
+                                                       onchange="updateCategoryFont('body', this.value)"
+                                                       onblur="updateCategoryFont('body', this.value)"
+                                                       list="fontSuggestions">
+                                                <small class="text-gray">例如：Source Han Sans SC, Noto Sans SC, sans-serif</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 价格/数字字体 -->
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="fontNumber">价格/数字字体（价格列、金额）</label>
+                                                <input type="text" id="fontNumber" placeholder="留空则使用等宽字体" 
+                                                       onchange="updateCategoryFont('number', this.value)"
+                                                       onblur="updateCategoryFont('number', this.value)"
+                                                       list="fontSuggestions">
+                                                <small class="text-gray">例如：Courier New, Consolas, Monaco, monospace（推荐等宽字体）</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 汇总字体 -->
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="fontSummary">汇总字体（小计、总计）</label>
+                                                <input type="text" id="fontSummary" placeholder="留空则使用正文字体" 
+                                                       onchange="updateCategoryFont('summary', this.value)"
+                                                       onblur="updateCategoryFont('summary', this.value)"
+                                                       list="fontSuggestions">
+                                                <small class="text-gray">例如：Source Han Sans SC, Noto Sans SC, sans-serif</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 尾部字体 -->
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="fontFooter">尾部字体（尾部文字）</label>
+                                                <input type="text" id="fontFooter" placeholder="留空则使用正文字体" 
+                                                       onchange="updateCategoryFont('footer', this.value)"
+                                                       onblur="updateCategoryFont('footer', this.value)"
+                                                       list="fontSuggestions">
+                                                <small class="text-gray">例如：Source Han Sans SC, Noto Sans SC, sans-serif</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="receiptFontSize">字号 (px)</label>
+                                            <input type="number" id="receiptFontSize" value="13" min="10" max="20" step="1" onchange="updateReceiptFont('fontSize', this.value)">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="receiptFontWeight">字重</label>
+                                            <select id="receiptFontWeight" onchange="updateReceiptFont('fontWeight', this.value)">
+                                                <option value="300">细 (300)</option>
+                                                <option value="400" selected>正常 (400)</option>
+                                                <option value="500">中等 (500)</option>
+                                                <option value="600">半粗 (600)</option>
+                                                <option value="700">粗体 (700)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="receiptLineHeight">行高</label>
+                                            <input type="number" id="receiptLineHeight" value="1.3" min="1" max="2" step="0.1" onchange="updateReceiptFont('lineHeight', this.value)">
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 导入字体文件 -->
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>导入字体文件</label>
+                                            <input type="file" id="fontFileInput" accept=".ttf,.otf,.woff,.woff2" style="display: none;" onchange="handleFontFileUpload(event)">
+                                            <button type="button" class="btn small" onclick="document.getElementById('fontFileInput').click()">选择字体文件</button>
+                                            <small class="text-gray">支持格式：TTF, OTF, WOFF, WOFF2（建议文件小于5MB）</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 已导入的字体列表 -->
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>已导入的字体</label>
+                                            <div id="importedFontsList" class="imported-fonts-list"></div>
                                         </div>
                                     </div>
                                 </div>
