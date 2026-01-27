@@ -802,15 +802,30 @@ function switchReceiptTab(tabName) {
         targetBtn.classList.add('active');
     }
     
-    // 如果是主题标签页，加载自定义主题列表
+    // 如果是主题标签页，加载当前主题到表单（保证边框等颜色显示正确）并刷新拾色器
     if (tabName === 'theme') {
         loadCustomThemesList();
+        loadCurrentThemeToCustom();
+        updateCustomThemePreview();
+        if (typeof updateCustomThemeBorder === 'function') updateCustomThemeBorder();
+        syncBorderColorInputDisplay();
     }
     
     // 如果是字体标签页，加载字体设置
     if (tabName === 'font') {
         loadFontSettings();
     }
+}
+
+// 将颜色统一为 #rrggbb 六位十六进制格式（用于保存与展示 #000000 格式）
+function toHex6(color) {
+    if (!color || typeof color !== 'string') return '#000000';
+    const c = color.trim();
+    const short = /^#?([a-f\d])([a-f\d])([a-f\d])$/i.exec(c);
+    if (short) return '#' + short[1] + short[1] + short[2] + short[2] + short[3] + short[3];
+    const full = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(c);
+    if (full) return '#' + full[1].toLowerCase() + full[2].toLowerCase() + full[3].toLowerCase();
+    return '#000000';
 }
 
 // 保存自定义主题
@@ -824,12 +839,17 @@ function saveCustomTheme() {
     const themeId = 'custom_' + Date.now();
     const theme = {
         name: name,
-        bg: document.getElementById('customThemeBg').value,
-        text: document.getElementById('customThemeText').value,
-        accent: document.getElementById('customThemeAccent').value,
-        title: document.getElementById('customThemeTitle').value,
-        divider: document.getElementById('customThemeDivider').value,
-        borderRadius: parseInt(document.getElementById('customThemeBorderRadius').value) || 0
+        bg: toHex6(document.getElementById('customThemeBg').value),
+        text: toHex6(document.getElementById('customThemeText').value),
+        accent: toHex6(document.getElementById('customThemeAccent').value),
+        title: toHex6(document.getElementById('customThemeTitle').value),
+        divider: toHex6(document.getElementById('customThemeDivider').value),
+        borderRadius: parseInt(document.getElementById('customThemeBorderRadius').value) || 0,
+        borderStyle: document.getElementById('customThemeBorderStyle').value || 'none',
+        borderWidth: parseInt(document.getElementById('customThemeBorderWidth').value) || 0,
+        borderColor: toHex6(document.getElementById('customThemeBorderColor').value) || '#cbd5e0',
+        texture: document.getElementById('customThemeTexture').value || 'none',
+        textureOpacity: parseFloat(document.getElementById('customThemeTextureOpacity').value) || 0.1
     };
     
     if (!defaultSettings.customThemes) {
@@ -847,6 +867,24 @@ function saveCustomTheme() {
     alert('自定义主题已保存！');
 }
 
+// 更新颜色值显示（统一 #000000 格式）
+function updateCustomThemePreview() {
+    const colorInputs = ['customThemeBg', 'customThemeText', 'customThemeAccent', 'customThemeTitle', 'customThemeDivider'];
+    colorInputs.forEach(inputId => {
+        const input = document.getElementById(inputId);
+        const valueSpan = document.getElementById(inputId + 'Value');
+        if (input && valueSpan) {
+            valueSpan.textContent = toHex6(input.value).toUpperCase();
+        }
+    });
+    
+    const borderColorInput = document.getElementById('customThemeBorderColor');
+    const borderColorValue = document.getElementById('customThemeBorderColorValue');
+    if (borderColorInput && borderColorValue) {
+        borderColorValue.textContent = toHex6(borderColorInput.value).toUpperCase();
+    }
+}
+
 // 从当前主题加载到自定义主题编辑器
 function loadCurrentThemeToCustom() {
     const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
@@ -855,12 +893,35 @@ function loadCurrentThemeToCustom() {
     if (currentTheme.startsWith('custom_') && defaultSettings.customThemes && defaultSettings.customThemes[currentTheme]) {
         const theme = defaultSettings.customThemes[currentTheme];
         document.getElementById('customThemeName').value = theme.name;
-        document.getElementById('customThemeBg').value = theme.bg;
-        document.getElementById('customThemeText').value = theme.text;
-        document.getElementById('customThemeAccent').value = theme.accent;
-        document.getElementById('customThemeTitle').value = theme.title;
-        document.getElementById('customThemeDivider').value = theme.divider;
+        document.getElementById('customThemeBg').value = toHex6(theme.bg);
+        document.getElementById('customThemeText').value = toHex6(theme.text);
+        document.getElementById('customThemeAccent').value = toHex6(theme.accent);
+        document.getElementById('customThemeTitle').value = toHex6(theme.title);
+        document.getElementById('customThemeDivider').value = toHex6(theme.divider);
         document.getElementById('customThemeBorderRadius').value = theme.borderRadius || 0;
+        
+        if (document.getElementById('customThemeBorderStyle')) {
+            document.getElementById('customThemeBorderStyle').value = theme.borderStyle || 'none';
+        }
+        if (document.getElementById('customThemeBorderWidth')) {
+            document.getElementById('customThemeBorderWidth').value = theme.borderWidth || 0;
+        }
+        if (document.getElementById('customThemeBorderColor')) {
+            document.getElementById('customThemeBorderColor').value = toHex6(theme.borderColor || '#cbd5e0');
+        }
+        
+        // 加载底纹设置
+        if (document.getElementById('customThemeTexture')) {
+            document.getElementById('customThemeTexture').value = theme.texture || 'none';
+        }
+        if (document.getElementById('customThemeTextureOpacity')) {
+            document.getElementById('customThemeTextureOpacity').value = theme.textureOpacity || 0.1;
+        }
+        
+        updateCustomThemePreview();
+        updateCustomThemeBorder();
+        updateCustomThemeTexture();
+        syncBorderColorInputDisplay();
         return;
     }
     
@@ -877,12 +938,43 @@ function loadCurrentThemeToCustom() {
     };
     
     const colors = themeColors[currentTheme] || themeColors.classic;
-    document.getElementById('customThemeBg').value = colors.bg;
-    document.getElementById('customThemeText').value = colors.text;
-    document.getElementById('customThemeAccent').value = colors.accent;
-    document.getElementById('customThemeTitle').value = colors.title;
-    document.getElementById('customThemeDivider').value = colors.divider;
+    document.getElementById('customThemeBg').value = toHex6(colors.bg);
+    document.getElementById('customThemeText').value = toHex6(colors.text);
+    document.getElementById('customThemeAccent').value = toHex6(colors.accent);
+    document.getElementById('customThemeTitle').value = toHex6(colors.title);
+    document.getElementById('customThemeDivider').value = toHex6(colors.divider);
     document.getElementById('customThemeBorderRadius').value = colors.borderRadius;
+    
+    // 设置默认边框和底纹
+    if (document.getElementById('customThemeBorderStyle')) {
+        document.getElementById('customThemeBorderStyle').value = 'none';
+    }
+    if (document.getElementById('customThemeBorderWidth')) {
+        document.getElementById('customThemeBorderWidth').value = '0';
+    }
+    if (document.getElementById('customThemeBorderColor')) {
+        document.getElementById('customThemeBorderColor').value = toHex6('#cbd5e0');
+    }
+    if (document.getElementById('customThemeTexture')) {
+        document.getElementById('customThemeTexture').value = 'none';
+    }
+    if (document.getElementById('customThemeTextureOpacity')) {
+        document.getElementById('customThemeTextureOpacity').value = '0.1';
+    }
+    
+    updateCustomThemePreview();
+    updateCustomThemeBorder();
+    updateCustomThemeTexture();
+    syncBorderColorInputDisplay();
+}
+
+// 强制边框颜色拾色器显示与 value 一致（避免色块显示为白）
+function syncBorderColorInputDisplay() {
+    const el = document.getElementById('customThemeBorderColor');
+    if (!el || !el.value) return;
+    const hex = toHex6(el.value);
+    el.setAttribute('value', hex);
+    el.value = hex;
 }
 
 // 加载自定义主题列表
@@ -947,12 +1039,34 @@ function editCustomTheme(themeId) {
     
     const theme = defaultSettings.customThemes[themeId];
     document.getElementById('customThemeName').value = theme.name;
-    document.getElementById('customThemeBg').value = theme.bg;
-    document.getElementById('customThemeText').value = theme.text;
-    document.getElementById('customThemeAccent').value = theme.accent;
-    document.getElementById('customThemeTitle').value = theme.title;
-    document.getElementById('customThemeDivider').value = theme.divider;
+    document.getElementById('customThemeBg').value = toHex6(theme.bg);
+    document.getElementById('customThemeText').value = toHex6(theme.text);
+    document.getElementById('customThemeAccent').value = toHex6(theme.accent);
+    document.getElementById('customThemeTitle').value = toHex6(theme.title);
+    document.getElementById('customThemeDivider').value = toHex6(theme.divider);
     document.getElementById('customThemeBorderRadius').value = theme.borderRadius || 0;
+    
+    if (document.getElementById('customThemeBorderStyle')) {
+        document.getElementById('customThemeBorderStyle').value = theme.borderStyle || 'none';
+    }
+    if (document.getElementById('customThemeBorderWidth')) {
+        document.getElementById('customThemeBorderWidth').value = theme.borderWidth || 0;
+    }
+    if (document.getElementById('customThemeBorderColor')) {
+        document.getElementById('customThemeBorderColor').value = toHex6(theme.borderColor || '#cbd5e0');
+    }
+    
+    // 加载底纹设置
+    if (document.getElementById('customThemeTexture')) {
+        document.getElementById('customThemeTexture').value = theme.texture || 'none';
+    }
+    if (document.getElementById('customThemeTextureOpacity')) {
+        document.getElementById('customThemeTextureOpacity').value = theme.textureOpacity || 0.1;
+    }
+    
+    updateCustomThemePreview();
+    updateCustomThemeBorder();
+    updateCustomThemeTexture();
     
     // 切换到主题标签页
     switchReceiptTab('theme');
@@ -1021,6 +1135,19 @@ function applyCustomThemeStyles(themeId) {
         document.head.appendChild(styleElement);
     }
     
+    // 构建边框样式
+    let borderStyle = 'none';
+    if (theme.borderStyle && theme.borderStyle !== 'none' && theme.borderWidth && theme.borderWidth > 0) {
+        borderStyle = `${theme.borderWidth}px ${theme.borderStyle} ${theme.borderColor || '#cbd5e0'}`;
+    }
+    
+    // 构建底纹样式
+    let textureStyle = '';
+    if (theme.texture && theme.texture !== 'none') {
+        const opacity = theme.textureOpacity || 0.1;
+        textureStyle = getTextureStyle(theme.texture, opacity);
+    }
+    
     styleElement.textContent = `
         .receipt-theme-${themeId} {
             --receipt-bg: ${theme.bg};
@@ -1029,11 +1156,114 @@ function applyCustomThemeStyles(themeId) {
             --receipt-title-color: ${theme.title};
             --receipt-divider-color: ${theme.divider};
             --receipt-border-radius: ${theme.borderRadius}px;
+            --receipt-border: ${borderStyle};
         }
         .receipt-theme-${themeId} .receipt-title {
             color: ${theme.title};
         }
+        ${textureStyle ? `
+        .receipt-theme-${themeId} .receipt {
+            position: relative;
+        }
+        .receipt-theme-${themeId} .receipt::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            ${textureStyle}
+            opacity: ${theme.textureOpacity || 0.1};
+        }
+        ` : ''}
     `;
+}
+
+// 获取底纹样式
+function getTextureStyle(textureType, opacity) {
+    const styles = {
+        'paper': `
+            background-image: 
+                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+        `,
+        'lined': `
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(0,0,0,0.1) 19px, rgba(0,0,0,0.1) 20px);
+        `,
+        'grid': `
+            background-image: 
+                repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(0,0,0,0.08) 19px, rgba(0,0,0,0.08) 20px),
+                repeating-linear-gradient(90deg, transparent, transparent 19px, rgba(0,0,0,0.08) 19px, rgba(0,0,0,0.08) 20px);
+        `,
+        'dots': `
+            background-image: radial-gradient(circle, rgba(0,0,0,0.15) 1px, transparent 1px);
+            background-size: 10px 10px;
+        `,
+        'vintage': `
+            background-image: 
+                repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(139, 69, 19, 0.05) 10px, rgba(139, 69, 19, 0.05) 20px),
+                repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(139, 69, 19, 0.05) 10px, rgba(139, 69, 19, 0.05) 20px);
+        `,
+        'noise': `
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /></filter><rect width="100" height="100" filter="url(%23noise)" opacity="0.3"/></svg>');
+            background-size: 100px 100px;
+        `
+    };
+    return styles[textureType] || '';
+}
+
+// 更新边框设置
+function updateCustomThemeBorder() {
+    const borderStyle = document.getElementById('customThemeBorderStyle').value;
+    const borderWidth = parseInt(document.getElementById('customThemeBorderWidth').value) || 0;
+    const borderColor = document.getElementById('customThemeBorderColor').value;
+    
+    const colorValueSpan = document.getElementById('customThemeBorderColorValue');
+    if (colorValueSpan) {
+        colorValueSpan.textContent = toHex6(borderColor).toUpperCase();
+    }
+    
+    // 如果当前使用的是自定义主题，实时更新样式
+    const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    if (currentTheme.startsWith('custom_') && defaultSettings.customThemes && defaultSettings.customThemes[currentTheme]) {
+        const theme = defaultSettings.customThemes[currentTheme];
+        theme.borderStyle = borderStyle;
+        theme.borderWidth = borderWidth;
+        theme.borderColor = borderColor;
+        saveData();
+        applyCustomThemeStyles(currentTheme);
+        generateReceiptPreview();
+        if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
+            generateQuote();
+        }
+    }
+}
+
+// 更新底纹设置
+function updateCustomThemeTexture() {
+    const texture = document.getElementById('customThemeTexture').value;
+    const opacity = parseFloat(document.getElementById('customThemeTextureOpacity').value) || 0.1;
+    
+    // 更新透明度显示
+    const opacityValueSpan = document.getElementById('textureOpacityValue');
+    if (opacityValueSpan) {
+        opacityValueSpan.textContent = Math.round(opacity * 100) + '%';
+    }
+    
+    // 如果当前使用的是自定义主题，实时更新样式
+    const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    if (currentTheme.startsWith('custom_') && defaultSettings.customThemes && defaultSettings.customThemes[currentTheme]) {
+        const theme = defaultSettings.customThemes[currentTheme];
+        theme.texture = texture;
+        theme.textureOpacity = opacity;
+        saveData();
+        applyCustomThemeStyles(currentTheme);
+        generateReceiptPreview();
+        if (document.getElementById('quoteContent') && document.getElementById('quoteContent').innerHTML.trim()) {
+            generateQuote();
+        }
+    }
 }
 
 // 处理字体选择变化

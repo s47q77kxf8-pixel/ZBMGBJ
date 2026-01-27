@@ -682,6 +682,311 @@ input:focus, select:focus {
     justify-content: center;
 }
 
+/* 圆形颜色选择器 */
+.color-pickers-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.color-picker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.color-picker-label {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.color-picker-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    width: 100%;
+}
+
+.color-picker-round {
+    width: 50px;
+    height: 50px;
+    min-width: 50px;
+    min-height: 50px;
+    max-width: 50px;
+    max-height: 50px;
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    cursor: pointer;
+    padding: 0;
+    overflow: hidden;
+    background: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.color-picker-round::-webkit-color-swatch-wrapper {
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+}
+
+.color-picker-round::-webkit-color-swatch {
+    border: none;
+    border-radius: 50%;
+}
+
+.color-picker-round::-moz-color-swatch {
+    border: none;
+    border-radius: 50%;
+}
+
+/* 边框颜色拾色器：固定正方形 + 圆形裁剪，保证正圆且色块正确显示 */
+.border-color-picker-wrap {
+    width: 50px;
+    height: 50px;
+    min-width: 50px;
+    min-height: 50px;
+    max-width: 50px;
+    max-height: 50px;
+    flex-shrink: 0;
+    align-self: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    box-sizing: border-box;
+}
+.border-color-picker-wrap .border-color-picker-input {
+    width: 50px !important;
+    height: 50px !important;
+    min-width: 50px !important;
+    min-height: 50px !important;
+    max-width: 50px !important;
+    max-height: 50px !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    cursor: pointer;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+.border-color-picker-wrap .border-color-picker-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    width: 100%;
+    height: 100%;
+}
+.border-color-picker-wrap .border-color-picker-input::-webkit-color-swatch {
+    border: none;
+    border-radius: 50%;
+    width: 100%;
+    height: 100%;
+}
+.border-color-picker-wrap .border-color-picker-input::-moz-color-swatch {
+    border: none;
+    border-radius: 50%;
+    width: 100%;
+    height: 100%;
+}
+
+.color-picker-round:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.color-picker-round:active {
+    transform: scale(0.95);
+}
+
+/* 方形颜色选择器（如边框颜色） */
+.color-picker-square {
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 0;
+    overflow: hidden;
+    background: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+.color-picker-square::-webkit-color-swatch-wrapper { padding: 0; border: none; border-radius: 2px; }
+.color-picker-square::-webkit-color-swatch { border: none; border-radius: 2px; }
+.color-picker-square::-moz-color-swatch { border: none; border-radius: 2px; }
+.color-picker-square:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* HEX 格式提示 */
+.color-format-hint {
+    font-size: 0.65rem;
+    color: var(--text-light);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin-left: 0.25rem;
+    vertical-align: middle;
+}
+.color-format-hint-inline {
+    margin-left: 0;
+    margin-right: 0.15rem;
+}
+
+.color-value {
+    font-size: 0.7rem;
+    color: var(--text-light);
+    font-family: 'Courier New', monospace;
+    text-align: center;
+    word-break: break-all;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+    .color-pickers-row {
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 0.5rem;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .color-picker-item {
+        flex: 0 0 auto;
+        min-width: 60px;
+    }
+    
+    .color-picker-round {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+        max-width: 40px;
+        max-height: 40px;
+        border-width: 2px;
+    }
+    .border-color-picker-wrap,
+    .border-color-picker-wrap .border-color-picker-input {
+        width: 40px !important;
+        height: 40px !important;
+        min-width: 40px !important;
+        min-height: 40px !important;
+        max-width: 40px !important;
+        max-height: 40px !important;
+    }
+    
+    .color-picker-label {
+        font-size: 0.7rem;
+    }
+    
+    .color-value {
+        font-size: 0.65rem;
+        max-width: 60px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .color-picker-wrapper {
+        gap: 0.2rem;
+    }
+}
+
+/* 超小屏幕进一步优化 */
+@media (max-width: 480px) {
+    .color-pickers-row {
+        gap: 0.4rem;
+    }
+    
+    .color-picker-item {
+        min-width: 55px;
+    }
+    
+    .color-picker-round {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        min-height: 36px;
+        max-width: 36px;
+        max-height: 36px;
+    }
+    .border-color-picker-wrap,
+    .border-color-picker-wrap .border-color-picker-input {
+        width: 36px !important;
+        height: 36px !important;
+        min-width: 36px !important;
+        min-height: 36px !important;
+        max-width: 36px !important;
+        max-height: 36px !important;
+    }
+    
+    .color-value {
+        font-size: 0.6rem;
+        max-width: 55px;
+    }
+}
+
+/* 底纹样式 */
+.receipt-texture-paper {
+    background-image: 
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+}
+
+.receipt-texture-lined {
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(0,0,0,0.1) 19px, rgba(0,0,0,0.1) 20px);
+}
+
+.receipt-texture-grid {
+    background-image: 
+        repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(0,0,0,0.08) 19px, rgba(0,0,0,0.08) 20px),
+        repeating-linear-gradient(90deg, transparent, transparent 19px, rgba(0,0,0,0.08) 19px, rgba(0,0,0,0.08) 20px);
+}
+
+.receipt-texture-dots {
+    background-image: radial-gradient(circle, rgba(0,0,0,0.15) 1px, transparent 1px);
+    background-size: 10px 10px;
+}
+
+.receipt-texture-vintage {
+    background-image: 
+        repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(139, 69, 19, 0.05) 10px, rgba(139, 69, 19, 0.05) 20px),
+        repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(139, 69, 19, 0.05) 10px, rgba(139, 69, 19, 0.05) 20px);
+}
+
+.receipt-texture-noise {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /></filter><rect width="100" height="100" filter="url(%23noise)" opacity="0.3"/></svg>');
+    background-size: 100px 100px;
+}
+
+/* 底纹透明度滑块样式 */
+input[type="range"]#customThemeTextureOpacity {
+    width: 100%;
+    margin: 0.5rem 0;
+}
+
+#textureOpacityValue {
+    margin-left: 0.5rem;
+    font-size: 0.85rem;
+}
+
 /* 检测到的字体列表 */
 .detected-fonts-list {
     max-height: 200px;

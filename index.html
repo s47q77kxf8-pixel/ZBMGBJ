@@ -332,32 +332,96 @@
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label for="customThemeBg">背景色</label>
-                                            <input type="color" id="customThemeBg" value="#fdfdfd">
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="customThemeText">文字色</label>
-                                            <input type="color" id="customThemeText" value="#2d3748">
+                                            <label>颜色设置 <span class="color-format-hint">HEX</span></label>
+                                            <div class="color-pickers-row">
+                                                <div class="color-picker-item">
+                                                    <label for="customThemeBg" class="color-picker-label">背景</label>
+                                                    <div class="color-picker-wrapper">
+                                                        <input type="color" id="customThemeBg" value="#fdfdfd" class="color-picker-round" onchange="updateCustomThemePreview()">
+                                                        <span class="color-value" id="customThemeBgValue">#FDFDFD</span>
+                                                    </div>
+                                                </div>
+                                                <div class="color-picker-item">
+                                                    <label for="customThemeText" class="color-picker-label">文字</label>
+                                                    <div class="color-picker-wrapper">
+                                                        <input type="color" id="customThemeText" value="#2d3748" class="color-picker-round" onchange="updateCustomThemePreview()">
+                                                        <span class="color-value" id="customThemeTextValue">#2D3748</span>
+                                                    </div>
+                                                </div>
+                                                <div class="color-picker-item">
+                                                    <label for="customThemeAccent" class="color-picker-label">强调</label>
+                                                    <div class="color-picker-wrapper">
+                                                        <input type="color" id="customThemeAccent" value="#4a5568" class="color-picker-round" onchange="updateCustomThemePreview()">
+                                                        <span class="color-value" id="customThemeAccentValue">#4A5568</span>
+                                                    </div>
+                                                </div>
+                                                <div class="color-picker-item">
+                                                    <label for="customThemeTitle" class="color-picker-label">标题</label>
+                                                    <div class="color-picker-wrapper">
+                                                        <input type="color" id="customThemeTitle" value="#2d3748" class="color-picker-round" onchange="updateCustomThemePreview()">
+                                                        <span class="color-value" id="customThemeTitleValue">#2D3748</span>
+                                                    </div>
+                                                </div>
+                                                <div class="color-picker-item">
+                                                    <label for="customThemeDivider" class="color-picker-label">分割</label>
+                                                    <div class="color-picker-wrapper">
+                                                        <input type="color" id="customThemeDivider" value="#cbd5e0" class="color-picker-round" onchange="updateCustomThemePreview()">
+                                                        <span class="color-value" id="customThemeDividerValue">#CBD5E0</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="form-row">
-                                        <div class="form-group">
-                                            <label for="customThemeAccent">强调色</label>
-                                            <input type="color" id="customThemeAccent" value="#4a5568">
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="customThemeTitle">标题色</label>
-                                            <input type="color" id="customThemeTitle" value="#2d3748">
-                                        </div>
-                                    </div>
-                                    <div class="form-row">
-                                        <div class="form-group">
-                                            <label for="customThemeDivider">分割线色</label>
-                                            <input type="color" id="customThemeDivider" value="#cbd5e0">
-                                        </div>
                                         <div class="form-group">
                                             <label for="customThemeBorderRadius">圆角 (px)</label>
                                             <input type="number" id="customThemeBorderRadius" value="0" min="0" max="20">
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 边框设置 -->
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>边框设置</label>
+                                            <div class="d-flex flex-wrap gap-2 items-center" style="align-items: center;">
+                                                <select id="customThemeBorderStyle" onchange="updateCustomThemeBorder()" class="flex-1" style="min-width: 80px;">
+                                                    <option value="none">无边框</option>
+                                                    <option value="solid">实线</option>
+                                                    <option value="dashed">虚线</option>
+                                                    <option value="dotted">点线</option>
+                                                    <option value="double">双线</option>
+                                                </select>
+                                                <input type="number" id="customThemeBorderWidth" value="0" min="0" max="10" step="1" 
+                                                       placeholder="宽度" class="w-80" onchange="updateCustomThemeBorder()">
+                                                <span>px</span>
+                                                <div class="border-color-picker-wrap" title="边框颜色">
+                                                    <input type="color" id="customThemeBorderColor" value="#cbd5e0" class="color-picker-round border-color-picker-input" onchange="updateCustomThemeBorder()">
+                                                </div>
+                                                <span class="color-value" id="customThemeBorderColorValue">#CBD5E0</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 纸张底纹设置 -->
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="customThemeTexture">纸张底纹</label>
+                                            <select id="customThemeTexture" onchange="updateCustomThemeTexture()">
+                                                <option value="none">无底纹</option>
+                                                <option value="paper">纸张纹理</option>
+                                                <option value="lined">横线</option>
+                                                <option value="grid">网格</option>
+                                                <option value="dots">点阵</option>
+                                                <option value="vintage">复古纹理</option>
+                                                <option value="noise">噪点</option>
+                                            </select>
+                                            <small class="text-gray">选择纸张底纹样式</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="customThemeTextureOpacity">底纹透明度</label>
+                                            <input type="range" id="customThemeTextureOpacity" value="0.1" min="0" max="0.5" step="0.05" 
+                                                   onchange="updateCustomThemeTexture()">
+                                            <span id="textureOpacityValue" class="text-gray">10%</span>
                                         </div>
                                     </div>
                                     <div class="form-row">
