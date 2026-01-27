@@ -180,9 +180,9 @@
                                 <option value="iceBlue">冰蓝</option>
                                 <optgroup label="自定义主题" id="customThemesGroup"></optgroup>
                             </select>
-                            <button class="btn" onclick="toggleReceiptCustomizationPanel()">小票设置</button>
-                            <button class="btn" onclick="saveQuoteAsImage()">保存图片</button>
-                            <button class="btn" onclick="saveToHistory()">保存历史</button>
+                            <button class="btn" onclick="toggleReceiptCustomizationPanel()">设置</button>
+                            <button class="btn" onclick="saveQuoteAsImage()">存图</button>
+                            <button class="btn" onclick="saveToHistory()">存历史</button>
                         </div>
                     </div>
                     <div id="quoteContent" class="quote-content">
@@ -395,7 +395,8 @@
                                                        placeholder="宽度" class="w-80" onchange="updateCustomThemeBorder()">
                                                 <span>px</span>
                                                 <div class="border-color-picker-wrap" title="边框颜色">
-                                                    <input type="color" id="customThemeBorderColor" value="#cbd5e0" class="color-picker-round border-color-picker-input" onchange="updateCustomThemeBorder()">
+                                                    <span class="border-color-swatch" id="customThemeBorderColorSwatch" style="background-color: #cbd5e0;"></span>
+                                                    <input type="color" id="customThemeBorderColor" value="#cbd5e0" class="border-color-picker-input" onchange="updateCustomThemeBorder()">
                                                 </div>
                                                 <span class="color-value" id="customThemeBorderColorValue">#CBD5E0</span>
                                             </div>

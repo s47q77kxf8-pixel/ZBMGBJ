@@ -759,6 +759,13 @@ function toggleReceiptCustomizationPanel() {
     const modal = document.getElementById('receiptCustomizationModal');
     
     if (modal.classList.contains('d-none')) {
+        // 手机端：先把小票滚到视口上方，方便上半屏预览
+        if (window.innerWidth <= 768) {
+            const quoteEl = document.getElementById('quoteContent');
+            if (quoteEl && quoteEl.scrollIntoView) {
+                quoteEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
         // 显示面板
         modal.classList.remove('d-none');
         // 加载当前的自定义设置到表单中
@@ -968,13 +975,23 @@ function loadCurrentThemeToCustom() {
     syncBorderColorInputDisplay();
 }
 
-// 强制边框颜色拾色器显示与 value 一致（避免色块显示为白）
+// 更新边框颜色自定义色块显示（正圆 + 颜色与 HEX 一致）
+function updateBorderColorSwatch(hex) {
+    const swatch = document.getElementById('customThemeBorderColorSwatch');
+    const input = document.getElementById('customThemeBorderColor');
+    if (!swatch) return;
+    const color = hex != null ? toHex6(hex) : (input && input.value ? toHex6(input.value) : '#cbd5e0');
+    swatch.style.backgroundColor = color;
+}
+
+// 强制边框颜色 input 与自定义色块同步
 function syncBorderColorInputDisplay() {
     const el = document.getElementById('customThemeBorderColor');
     if (!el || !el.value) return;
     const hex = toHex6(el.value);
     el.setAttribute('value', hex);
     el.value = hex;
+    updateBorderColorSwatch(hex);
 }
 
 // 加载自定义主题列表
@@ -1218,11 +1235,11 @@ function updateCustomThemeBorder() {
     const borderStyle = document.getElementById('customThemeBorderStyle').value;
     const borderWidth = parseInt(document.getElementById('customThemeBorderWidth').value) || 0;
     const borderColor = document.getElementById('customThemeBorderColor').value;
+    const hex = toHex6(borderColor);
     
     const colorValueSpan = document.getElementById('customThemeBorderColorValue');
-    if (colorValueSpan) {
-        colorValueSpan.textContent = toHex6(borderColor).toUpperCase();
-    }
+    if (colorValueSpan) colorValueSpan.textContent = hex.toUpperCase();
+    updateBorderColorSwatch(hex);
     
     // 如果当前使用的是自定义主题，实时更新样式
     const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
