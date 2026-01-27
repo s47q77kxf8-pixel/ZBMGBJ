@@ -1671,7 +1671,7 @@ input:checked + .toggle-slider:before {
     --receipt-border: none;
     --receipt-accent: #4a5568;
     --receipt-font-family: 'Courier New', 'SimSun', 'Songti SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Courier', 'Monaco', 'Consolas', monospace;
-    --receipt-border-radius: 4px;
+    --receipt-border-radius: 0;
     --receipt-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     --receipt-title-color: #2d3748;
     --receipt-divider-color: #cbd5e0;
@@ -1684,7 +1684,7 @@ input:checked + .toggle-slider:before {
     --receipt-border: none;
     --receipt-accent: #2563eb;
     --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
-    --receipt-border-radius: 8px;
+    --receipt-border-radius: 0;
     --receipt-box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
     --receipt-title-color: #2c3e50;
     --receipt-divider-color: #cbd5e0;
@@ -1715,7 +1715,7 @@ input:checked + .toggle-slider:before {
     --receipt-border: none;
     --receipt-accent: #fbbf24;
     --receipt-font-family: 'Courier New', 'Monaco', 'Consolas', 'Source Code Pro', 'Inconsolata', monospace;
-    --receipt-border-radius: 8px;
+    --receipt-border-radius: 0;
     --receipt-box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
     --receipt-title-color: #e2e8f0;
     --receipt-divider-color: #475569;
@@ -1730,7 +1730,7 @@ input:checked + .toggle-slider:before {
     --receipt-border: none;
     --receipt-accent: #48bb78; /* 更不刺眼的清新绿强调色 */
     --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
-    --receipt-border-radius: 10px;
+    --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);
     --receipt-title-color: #2f855a;
     --receipt-divider-color: #c6f6d5; /* 更浅的线条颜色，减少刺眼感 */
@@ -1744,7 +1744,7 @@ input:checked + .toggle-slider:before {
     --receipt-accent: #8b3e2f;
     /* 复古印刷机感：以宋体 / 明朝体为主，辅以西文字体 */
     --receipt-font-family: 'SimSun', 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', 'Times New Roman', serif;
-    --receipt-border-radius: 8px;
+    --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(139, 62, 47, 0.15);
     --receipt-title-color: #5c1a1a;
     --receipt-divider-color: #c89b6e;
@@ -1757,7 +1757,7 @@ input:checked + .toggle-slider:before {
     --receipt-border: none;
     --receipt-accent: #be185d; /* 与标题同色，统一视觉强调 */
     --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
-    --receipt-border-radius: 10px;
+    --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(219, 39, 119, 0.12);
     --receipt-title-color: #be185d;
     --receipt-divider-color: #fecdd3;
@@ -1770,7 +1770,7 @@ input:checked + .toggle-slider:before {
     --receipt-border: none;
     --receipt-accent: #0284c7;
     --receipt-font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'Songti SC', sans-serif;
-    --receipt-border-radius: 10px;
+    --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
     --receipt-title-color: #075985;
     --receipt-divider-color: #bae6fd;
