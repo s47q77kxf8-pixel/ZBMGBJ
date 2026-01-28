@@ -4595,9 +4595,9 @@ function renderScheduleCalendar() {
                 track.forEach(function (s) {
                     const b = s.bar;
                     const color = SCHEDULE_BAR_COLORS[Math.abs(b.id) % SCHEDULE_BAR_COLORS.length];
-                    const label = (b.clientId || '—') + '：' + b.productCount + '个';
+                    const label = (b.clientId || '—') + '  ' + b.productCount + '制品';
                     var textColor = SCHEDULE_BAR_TEXT_COLORS[Math.abs(b.id) % SCHEDULE_BAR_TEXT_COLORS.length];
-                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + '; border-left: 3px solid ' + textColor + '; padding-left: 4px;" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '">' + label + '</div>';
+                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '">' + label + '</div>';
                 });
             });
             html += '</div>';
@@ -4711,7 +4711,7 @@ function renderScheduleTodoSection() {
             + '    <div class="schedule-todo-card-day" style="width:100%;text-align:right;">' + dayText + '</div>'
             + '  </div>'
             + '  <div class="schedule-todo-card-body">'
-            + '    <div class="schedule-todo-card-line1">单主：' + client + '，已完成' + doneCount + '个 共' + total + '个</div>'
+            + '    <div class="schedule-todo-card-line1">单主ID：' + client + '（' + doneCount + ' ' + (total - doneCount) + ' ' + total + '）</div>'
             + '    <div class="schedule-todo-card-line2">'
             + '      <div class="schedule-todo-card-products">'
             +           chipHtml
