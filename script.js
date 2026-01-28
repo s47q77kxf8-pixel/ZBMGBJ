@@ -4707,17 +4707,55 @@ function computeMonthProductStats(items) {
 }
 
 function renderScheduleMonthTitleStats(year, month) {
-    const titleEl = document.querySelector('.schedule-title');
-    if (!titleEl) return;
-    // 只统计当前月数据
-    const items = getScheduleItemsForMonth(year, month);
-    const s = computeMonthProductStats(items);
-    titleEl.innerHTML =
-        month + '月 <span class="schedule-title-stats">(' +
-        '<span class="schedule-stat schedule-stat-done">' + s.done + '</span>' +
-        '<span class="schedule-stat schedule-stat-undone">' + s.undone + '</span>' +
-        '<span class="schedule-stat schedule-stat-total">' + s.total + '</span>' +
-        ')</span>';
+    // 标题区月份
+    const monthEl = document.querySelector('.schedule-title-month');
+    if (monthEl) monthEl.textContent = month + '月';
+
+    // 标题区统计（只统计当前月）
+    const statsEl = document.querySelector('.schedule-title-row .schedule-title-stats');
+    if (statsEl) {
+        const items = getScheduleItemsForMonth(year, month);
+        const s = computeMonthProductStats(items);
+        statsEl.innerHTML =
+            '(' +
+            '<span class="schedule-stat schedule-stat-done">' + s.done + '</span>' +
+            '<span class="schedule-stat schedule-stat-undone">' + s.undone + '</span>' +
+            '<span class="schedule-stat schedule-stat-total">' + s.total + '</span>' +
+            ')';
+    }
+
+    // 日期选择器默认值
+    const now = new Date();
+    const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const todayYmd = toYmd(now);
+    const dateInput = document.getElementById('scheduleTitleDateInput');
+    if (dateInput) dateInput.value = window.scheduleSelectedDate || todayYmd;
+}
+
+// 点击标题月份弹出日期选择
+function openScheduleDatePicker() {
+    const dateInput = document.getElementById('scheduleTitleDateInput');
+    if (!dateInput) return;
+    if (typeof dateInput.showPicker === 'function') dateInput.showPicker();
+    else {
+        dateInput.focus();
+        dateInput.click();
+    }
+}
+
+// 标题区日期选择器变化：跳转到对应月份并选中日期
+function onScheduleTitleDateChange() {
+    const dateInput = document.getElementById('scheduleTitleDateInput');
+    if (!dateInput || !dateInput.value) return;
+    const v = dateInput.value;
+    window.scheduleSelectedDate = v;
+    const d = new Date(v);
+    if (!isNaN(d.getTime())) {
+        window.scheduleCalendarYear = d.getFullYear();
+        window.scheduleCalendarMonth = d.getMonth() + 1;
+    }
+    renderScheduleCalendar();
+    renderScheduleTodoSection();
 }
 
 // 当前批次：返回「最近截稿日」或「选中日所在截稿日」的那批排单。返回 { deadline: 'YYYY-MM-DD', items: schedule[] }

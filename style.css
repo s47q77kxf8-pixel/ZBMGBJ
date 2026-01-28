@@ -4084,6 +4084,7 @@ input:checked + .toggle-slider:before {
     top: 0;
     z-index: 10;
     background: var(--bg-color);
+    flex-wrap: nowrap;
 }
 .schedule-title {
     font-size: 1.1rem;
@@ -4096,6 +4097,8 @@ input:checked + .toggle-slider:before {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
+    min-width: 0;
+    flex: 1;
 }
 .schedule-title-prev,
 .schedule-title-next {
@@ -4121,12 +4124,19 @@ input:checked + .toggle-slider:before {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
 }
 .schedule-title-btn:hover {
     background: rgba(0, 0, 0, 0.04);
 }
 .schedule-title-month {
     font-weight: 600;
+    white-space: nowrap;
+}
+.schedule-title-stats {
+    white-space: nowrap;
 }
 .schedule-title-date-input {
     position: absolute;
@@ -4135,16 +4145,11 @@ input:checked + .toggle-slider:before {
     width: 1px;
     height: 1px;
 }
-.schedule-title-today-btn {
-    font-size: 0.72rem;
-    color: var(--primary-color);
-    cursor: pointer;
-    text-decoration: underline;
-    font-weight: 500;
-    margin-left: 0.25rem;
-}
-.schedule-title-today-btn:hover {
-    opacity: 0.8;
+.schedule-title-today-pill {
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.78rem;
+    line-height: 1;
 }
 .schedule-calendar {
     background: var(--card-bg);
