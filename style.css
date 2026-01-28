@@ -4118,10 +4118,14 @@ input:checked + .toggle-slider:before {
 
 /* ========== 排单日历与当前批次 todo ========== */
 .schedule-section {
-    margin-top: 1rem;
+    margin-top: 0.5rem;
 }
 .schedule-toolbar {
     margin-bottom: 0.75rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-color);
 }
 .schedule-title {
     font-size: 1.1rem;
@@ -4317,10 +4321,6 @@ input:checked + .toggle-slider:before {
     border-radius: 0;
     padding: 0.25rem 0;
     box-shadow: none;
-    max-height: 44vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
 }
 .schedule-todo-title {
     display: none;
@@ -4329,23 +4329,21 @@ input:checked + .toggle-slider:before {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    overflow: auto;
+    /* 取消内部滚动，由整个页面滚动承载 */
     padding-right: 2px;
-    flex: 1 1 auto;
-    min-height: 0;
 }
 .schedule-todo-card {
     display: flex;
-    gap: 0.6rem;
-    padding: 0.35rem 0.5rem;
-    border-radius: 10px;
+    gap: 0.5rem;
+    padding: 0.25rem 0.45rem;
+    border-radius: 8px;
     border: 1px solid var(--border-color);
     background: #fff;
     width: 100%;
     box-sizing: border-box;
 }
 .schedule-todo-card-date {
-    flex: 0 0 34px;
+    flex: 0 0 30px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -4359,7 +4357,7 @@ input:checked + .toggle-slider:before {
     line-height: 1.1;
 }
 .schedule-todo-card-day {
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-color);
 }
@@ -4371,12 +4369,12 @@ input:checked + .toggle-slider:before {
     gap: 0.2rem;
 }
 .schedule-todo-card-line1 {
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     color: var(--text-light);
     line-height: 1.2;
 }
 .schedule-todo-card-line2 {
-    font-size: 1rem;
+    font-size: 0.9rem;
 }
 .schedule-todo-card-products {
     display: flex;
@@ -4532,8 +4530,8 @@ input:checked + .toggle-slider:before {
         padding: 1px 3px;
     }
     .schedule-todo-section {
-        max-height: 50vh;
-        padding: 0.55rem 0.65rem;
+        /* 保持全宽，不收窄 */
+        padding: 0.25rem 0;
         width: 100%;
         box-sizing: border-box;
     }
@@ -4544,6 +4542,21 @@ input:checked + .toggle-slider:before {
     .schedule-todo-card {
         width: 100%;
         box-sizing: border-box;
+        /* 手机端整体高度收紧 */
+        padding: 0.25rem 0.45rem;
+        border-radius: 8px;
+    }
+    .schedule-todo-card-date {
+        flex: 0 0 30px;
+    }
+    .schedule-todo-card-day {
+        font-size: 0.9rem;
+    }
+    .schedule-todo-card-line1 {
+        font-size: 0.6rem;
+    }
+    .schedule-todo-card-line2 {
+        font-size: 0.9rem;
     }
     
     /* 修复单主行与月份行对齐 */
