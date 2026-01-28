@@ -179,9 +179,18 @@
                 <!-- 排单日历区（作为排单页主视图），去掉外层卡片框，仅保留排单布局 -->
                 <div class="schedule-section">
                     <div class="schedule-toolbar d-flex justify-between items-center">
-                        <h2 class="schedule-title">排单</h2>
+                        <div class="schedule-title-row">
+                            <button type="button" class="btn secondary schedule-title-prev" onclick="scheduleCalendarPrevMonth()">‹</button>
+                            <button type="button" class="schedule-title-btn" onclick="openScheduleDatePicker()">
+                                <span class="schedule-title-month"></span>
+                                <span class="schedule-title-stats"></span>
+                            </button>
+                            <input type="date" id="scheduleTitleDateInput" class="schedule-title-date-input">
+                            <button type="button" class="btn secondary schedule-title-next" onclick="scheduleCalendarNextMonth()">›</button>
+                            <span class="schedule-title-today-btn d-none" onclick="scheduleTodoBackToToday()">Today</span>
+                        </div>
                         <div class="d-flex gap-2">
-                            <button type="button" class="btn secondary" id="openHistoryRecordBtn" onclick="openHistoryRecordModal()">记录</button>
+                            <button type="button" class="btn secondary" id="openHistoryRecordBtn" onclick="openRecordPage()">记录</button>
                         </div>
                     </div>
                     <div id="scheduleCalendar" class="schedule-calendar">
@@ -763,6 +772,100 @@
                                 <!-- 历史记录由 JS 渲染 -->
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 记录页（简洁列表：单主ID / 金额 / 完成状态） -->
+            <div id="record" class="page">
+                <div class="schedule-section">
+                    <div class="schedule-toolbar d-flex justify-between items-center">
+                        <h2 class="schedule-title">记录</h2>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn secondary" onclick="exportRecordToExcel()">导出Excel</button>
+                            <button type="button" class="btn secondary" onclick="showPage('quote')">返回</button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group w-full">
+                            <div class="d-flex gap-2">
+                                <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="flex-1" oninput="applyRecordFilters()">
+                                <button class="btn" onclick="clearRecordSearch()">清空</button>
+                                <button class="btn" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()">
+                                    <span id="recordFilterBtnText">筛选</span>
+                                    <span id="recordFilterBadge" class="filter-badge d-none">0</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="recordFilterDrawer" class="history-filter-drawer">
+                        <div class="filter-drawer-overlay" onclick="closeRecordFilterDrawer()"></div>
+                        <div class="filter-drawer-content">
+                            <div class="filter-drawer-header">
+                                <h3>筛选与排序</h3>
+                                <button class="btn-icon" onclick="closeRecordFilterDrawer()">×</button>
+                            </div>
+                            <div class="filter-drawer-body">
+                                <div class="filter-section">
+                                    <label class="filter-label">时间范围</label>
+                                    <select id="recordTimeFilter" class="filter-select" onchange="onRecordFilterChange()">
+                                        <option value="all">全部</option>
+                                        <option value="today">今天</option>
+                                        <option value="week">最近一周</option>
+                                        <option value="month">最近一月</option>
+                                        <option value="custom">自定义</option>
+                                    </select>
+                                    <div id="recordCustomDateRange" class="d-none mt-2">
+                                        <input type="date" id="recordStartDate" class="filter-input" onchange="onRecordFilterChange()" placeholder="开始日期">
+                                        <span class="mx-2">至</span>
+                                        <input type="date" id="recordEndDate" class="filter-input" onchange="onRecordFilterChange()" placeholder="结束日期">
+                                    </div>
+                                </div>
+                                <div class="filter-section">
+                                    <label class="filter-label">价格范围</label>
+                                    <div class="d-flex gap-2 items-center">
+                                        <input type="number" id="recordMinPrice" class="filter-input flex-1" placeholder="最低价" min="0" step="0.01" onchange="onRecordFilterChange()">
+                                        <span>至</span>
+                                        <input type="number" id="recordMaxPrice" class="filter-input flex-1" placeholder="最高价" min="0" step="0.01" onchange="onRecordFilterChange()">
+                                    </div>
+                                </div>
+                                <div class="filter-section">
+                                    <label class="filter-label">排序方式</label>
+                                    <select id="recordSortBy" class="filter-select" onchange="onRecordFilterChange()">
+                                        <option value="time-desc">时间（最新）</option>
+                                        <option value="time-asc">时间（最早）</option>
+                                        <option value="price-desc">价格（高到低）</option>
+                                        <option value="price-asc">价格（低到高）</option>
+                                        <option value="client-asc">单主ID（A-Z）</option>
+                                        <option value="client-desc">单主ID（Z-A）</option>
+                                    </select>
+                                </div>
+                                <div class="filter-section">
+                                    <label class="filter-label">显示方式</label>
+                                    <select id="recordGroupBy" class="filter-select" onchange="onRecordFilterChange()">
+                                        <option value="none">列表</option>
+                                        <option value="month">按月分组</option>
+                                    </select>
+                                </div>
+                                <div class="filter-section">
+                                    <label class="filter-label">批量操作</label>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn secondary flex-1" onclick="selectAllHistory()">全选</button>
+                                        <button class="btn danger flex-1" id="recordBatchDeleteBtn" onclick="batchDeleteHistory()" disabled>批量删除</button>
+                                    </div>
+                                </div>
+                                <div class="filter-section">
+                                    <button class="btn w-full" onclick="exportRecordToExcel(); closeRecordFilterDrawer();">导出Excel</button>
+                                </div>
+                            </div>
+                            <div class="filter-drawer-footer">
+                                <button class="btn secondary flex-1" onclick="resetRecordFilters()">重置</button>
+                                <button class="btn flex-1" onclick="applyRecordFilters(); closeRecordFilterDrawer();">应用</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="recordContainer" class="record-container">
+                        <!-- 记录列表由 JS 渲染 -->
                     </div>
                 </div>
             </div>
