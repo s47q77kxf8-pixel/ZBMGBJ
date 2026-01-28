@@ -50,7 +50,10 @@ function createSearchableSelect(inputId, options, placeholder, onChange, initial
                    placeholder="${placeholder || '请选择或输入'}"
                    value="${selectedOption ? selectedOption.label : ''}"
                    autocomplete="off">
-            <button type="button" class="searchable-select-clear" title="清空">×</button>
+            <button type="button" class="searchable-select-clear btn-icon btn--icon" aria-label="清空" title="清空">
+                <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
+                <span class="sr-only">清空</span>
+            </button>
             <span class="searchable-select-arrow">▼</span>
             <div class="searchable-select-dropdown"></div>
         </div>
@@ -2817,15 +2820,22 @@ function applyRecordFilters() {
         return `
             <div class="record-item history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
                 <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
-                <div class="record-item-left">
-                    <div class="record-item-client">${clientId}</div>
-                </div>
+                <span class="record-item-client">${clientId}</span>
                 <div class="record-item-right">
-                    <div class="record-item-amount">${amount}</div>
+                    <span class="record-item-amount">${amount}</span>
                     <span class="record-status ${status.className}">${status.text}</span>
-                    <button class="btn secondary" onclick="loadQuoteFromHistory(${item.id})">小票</button>
-                    <button class="btn" onclick="editHistoryItem(${item.id})">修改</button>
-                    <button class="btn danger" onclick="deleteHistoryItem(${item.id})">删除</button>
+                    <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看小票" title="小票">
+                        <svg class="icon sm" aria-hidden="true"><use href="#i-receipt"></use></svg>
+                        <span class="sr-only">小票</span>
+                    </button>
+                    <button class="icon-action-btn edit" onclick="editHistoryItem(${item.id})" aria-label="编辑" title="编辑">
+                        <svg class="icon sm" aria-hidden="true"><use href="#i-edit"></use></svg>
+                        <span class="sr-only">改</span>
+                    </button>
+                    <button class="icon-action-btn delete" onclick="deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
+                        <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
+                        <span class="sr-only">删</span>
+                    </button>
                 </div>
             </div>
         `;
@@ -3017,7 +3027,10 @@ function renderGift(gift) {
     giftElement.innerHTML = `
         <div class="product-item-header">
             <div class="product-item-title">赠品 ${gift.id}</div>
-            <button class="btn danger" onclick="removeGift(${gift.id})">删除</button>
+            <button class="btn danger btn--icon" onclick="removeGift(${gift.id})" aria-label="删除赠品" title="删除">
+                <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>
+                <span class="sr-only">删除</span>
+            </button>
         </div>
         <div class="form-row">
             <div class="form-group">
@@ -3107,7 +3120,10 @@ function renderProduct(product) {
     productElement.innerHTML = `
         <div class="product-item-header">
             <div class="product-item-title">制品 ${product.id}</div>
-            <button class="btn danger" onclick="removeProduct(${product.id})">删除</button>
+            <button class="btn danger btn--icon" onclick="removeProduct(${product.id})" aria-label="删除制品" title="删除">
+                <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>
+                <span class="sr-only">删除</span>
+            </button>
         </div>
         <div class="form-row">
             <div class="form-group">
@@ -5272,9 +5288,18 @@ function generateHistoryItemHTML(item) {
                 最终总价: ¥${item.finalTotal.toFixed(2)}
             </div>
             <div class="history-item-actions">
-                <button class="btn secondary" onclick="loadQuoteFromHistory(${item.id})">查看详情</button>
-                <button class="btn" onclick="editHistoryItem(${item.id})">编辑</button>
-                <button class="btn danger" onclick="deleteHistoryItem(${item.id})">删除</button>
+                <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
+                    <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+                    <span class="sr-only">查看详情</span>
+                </button>
+                <button class="icon-action-btn edit" onclick="editHistoryItem(${item.id})" aria-label="编辑" title="编辑">
+                    <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
+                    <span class="sr-only">编辑</span>
+                </button>
+                <button class="icon-action-btn delete" onclick="deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">删除</span>
+                </button>
             </div>
         </div>
     `;
