@@ -38,6 +38,7 @@
                     <div class="calculator-drawer-header">
                         <button type="button" class="btn-icon calculator-drawer-close" onclick="closeCalculatorDrawer()" aria-label="关闭计算面板">×</button>
                         <h2 class="calculator-drawer-title">计算报价</h2>
+                        <button type="button" class="btn calculator-drawer-action" onclick="calculatePrice()">报价</button>
                     </div>
                     <div class="calculator-drawer-body">
                         <!-- 计算页原有内容 -->
@@ -168,11 +169,6 @@
                             <!-- 输入框放在右侧 -->
                             <input type="text" id="templateName" placeholder="模板名称">
                         </div>
-
-                        <!-- 计算报价按钮（悬浮球，保留在抽屉内部） -->
-                        <div class="floating-calculate-btn" onclick="calculatePrice()" title="计算报价">
-                            报价
-                        </div>
                         </div>
                     </div>
                 </div>
@@ -213,6 +209,7 @@
                         <div class="receipt-drawer-header">
                             <button type="button" class="btn-icon receipt-drawer-close" onclick="handleReceiptDrawerClose()" aria-label="关闭小票页">×</button>
                             <h2 class="receipt-drawer-title">报价小票</h2>
+                            <button type="button" class="btn receipt-drawer-action" onclick="handleReceiptSchedule()">排单</button>
                         </div>
                         <div class="receipt-drawer-body">
                             <div class="receipt-drawer-toolbar d-flex justify-between items-center">
@@ -237,10 +234,6 @@
                             </div>
                             <div class="receipt-drawer-content">
                                 <div id="receiptDrawerContent"></div>
-                            </div>
-                            <!-- 小票页内的“排单”悬浮球 -->
-                            <div class="floating-schedule-btn" onclick="handleReceiptSchedule()" title="排单">
-                                排单
                             </div>
                         </div>
                     </div>
@@ -360,15 +353,7 @@
                                                 <input type="file" id="receiptFooterImage" accept="image/*" onchange="handleReceiptImageUpload('footerImage', this.files[0])" title="推荐尺寸: 宽度不超过200px" style="display: none;">
                                                 <button type="button" class="upload-btn" onclick="document.getElementById('receiptFooterImage').click()">上传图片</button>
                                                 <small class="text-gray">推荐尺寸: 宽度不超过200px，高度自适应 | 支持拖拽上传</small>
-                                                <div class="checkbox-row">
-                                                    <div class="checkbox-item">
-                                                        <span>跟随系统主题颜色</span>
-                                                        <label class="custom-toggle">
-                                                            <input type="checkbox" id="followSystemThemeFooter" onchange="updateReceiptInfo('followSystemTheme', this.checked)" checked>
-                                                            <span class="toggle-slider"></span>
-                                                        </label>
-                                                    </div>
-                                                </div>
+                                                <small class="text-gray" style="display:block;margin-top:0.25rem">头尾图跟随系统主题颜色由上方「小票头部」中开关统一控制</small>
                                                 <div id="footerImagePreview" class="image-preview"></div>
                                             </div>
                                         </div>

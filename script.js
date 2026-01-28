@@ -555,11 +555,9 @@ function loadData() {
         
         if (savedHistory) {
             history = JSON.parse(savedHistory);
-            // 排单 todo 兼容：旧数据补全 productDoneStates
+            // 排单 todo 兼容：旧数据补全 productDoneStates（制品+赠品）
             history.forEach(item => {
-                if (item.productDoneStates == null && Array.isArray(item.productPrices)) {
-                    item.productDoneStates = item.productPrices.map(() => false);
-                }
+                ensureProductDoneStates(item);
             });
         }
         
@@ -2029,56 +2027,39 @@ const THEME_COLOR_MAP = {
 
 // 重新处理图片以适应当前主题颜色
 function reprocessImagesForTheme() {
-    console.log('reprocessImagesForTheme called');
-    
     // 优先从 DOM 读取当前勾选状态（最准确）
     const followSystemThemeCheckbox = document.getElementById('followSystemTheme');
     let followSystemTheme = true; // 默认开启
     
     if (followSystemThemeCheckbox) {
         followSystemTheme = followSystemThemeCheckbox.checked;
-        console.log('[FIX] 从 DOM 读取 followSystemTheme:', followSystemTheme);
     } else {
-        // 如果 DOM 中没有，从设置中读取
         const receiptInfo = defaultSettings.receiptCustomization.receiptInfo || {};
         followSystemTheme = receiptInfo.followSystemTheme !== false;
-        console.log('[FIX] 从设置读取 followSystemTheme:', followSystemTheme);
     }
     
-    if (!followSystemTheme) {
-        console.log('[SKIP] followSystemTheme 为 false，跳过处理');
-        return;
-    }
+    if (!followSystemTheme) return;
     
     const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
-    console.log('[FIX] 当前主题:', currentTheme, 'followSystemTheme:', followSystemTheme);
     
     // 处理头部图片
     if (defaultSettings.receiptCustomization.headerImageOriginal) {
-        console.log('[FIX] 找到 headerImageOriginal，开始重新处理');
         const img = new Image();
         img.onload = function() {
-            console.log('[FIX] headerImage 加载完成，调用 processImageForTheme');
             // 传递当前主题，避免异步竞态
             processImageForTheme(img, 'headerImage', currentTheme);
         };
         img.src = defaultSettings.receiptCustomization.headerImageOriginal;
-    } else {
-        console.log('[FIX] headerImageOriginal 不存在！');
     }
-    
+
     // 处理尾部图片
     if (defaultSettings.receiptCustomization.footerImageOriginal) {
-        console.log('[FIX] 找到 footerImageOriginal，开始重新处理');
         const img = new Image();
         img.onload = function() {
-            console.log('[FIX] footerImage 加载完成，调用 processImageForTheme');
             // 传递当前主题，避免异步竞态
             processImageForTheme(img, 'footerImage', currentTheme);
         };
         img.src = defaultSettings.receiptCustomization.footerImageOriginal;
-    } else {
-        console.log('[FIX] footerImageOriginal 不存在！');
     }
 }
 
@@ -2143,39 +2124,21 @@ const debouncedApplyFontSettings = debounce(() => {
 
 // 处理单个图片以适应主题颜色（使用Web Worker）
 function processImageForTheme(img, field, expectedTheme) {
-    console.log('processImageForTheme called', field, 'expectedTheme:', expectedTheme);
-    
-    // 优先从 DOM 读取当前勾选状态（最准确）
     const followSystemThemeCheckbox = document.getElementById('followSystemTheme');
-    let followSystemTheme = true; // 默认开启
-    
+    let followSystemTheme = true;
+
     if (followSystemThemeCheckbox) {
         followSystemTheme = followSystemThemeCheckbox.checked;
-        console.log('[FIX] processImageForTheme 从 DOM 读取 followSystemTheme:', followSystemTheme);
     } else {
-        // 如果 DOM 中没有，从设置中读取
         const receiptInfo = defaultSettings.receiptCustomization.receiptInfo || {};
         followSystemTheme = receiptInfo.followSystemTheme !== false;
-        console.log('[FIX] processImageForTheme 从设置读取 followSystemTheme:', followSystemTheme);
     }
-    
-    if (!followSystemTheme) {
-        console.log('[SKIP] followSystemTheme 为 false，跳过处理');
-        return;
-    }
-    
-    // 获取当前主题，如果提供了期望主题，使用期望主题（避免异步竞态）
+
+    if (!followSystemTheme) return;
+
     const currentTheme = expectedTheme || defaultSettings.receiptCustomization?.theme || 'classic';
-    
-    // 再次检查：如果当前设置的主题和期望主题不一致，说明主题已经切换，跳过这次处理
     const actualTheme = defaultSettings.receiptCustomization?.theme || 'classic';
-    if (expectedTheme && actualTheme !== expectedTheme) {
-        console.log('[SKIP] 主题已切换，跳过旧的处理:', {
-            expectedTheme: expectedTheme,
-            actualTheme: actualTheme
-        });
-        return;
-    }
+    if (expectedTheme && actualTheme !== expectedTheme) return;
     
     // 使用固定的标题颜色映射表，直接从CSS定义中获取，确保颜色一致且可靠
     // 这些颜色值来自 style.css 中的 .receipt-theme-xxx .receipt-title 选择器
@@ -2198,15 +2161,11 @@ function processImageForTheme(img, field, expectedTheme) {
         // 直接使用映射表（最可靠，避免动态读取的不确定性）
         textColor = TITLE_COLOR_MAP[currentTheme] || 'rgb(51, 51, 51)';
     }
-    
-    console.log('[FIX] 使用标题颜色映射表:', currentTheme, '->', textColor);
-    
-    // 如果颜色是十六进制格式，转换为 rgb（hexToRgb 函数已存在）
+
     if (textColor.startsWith('#')) {
         const rgb = hexToRgb(textColor);
         if (rgb) {
             textColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-            console.log('[FIX] 十六进制转 RGB:', textColor);
         }
     }
     
@@ -2258,24 +2217,11 @@ function processImageForTheme(img, field, expectedTheme) {
         targetG = 51;
         targetB = 51;
     }
-    
-    console.log('[FIX] processImageForTheme 最终颜色:', {
-        currentTheme,
-        textColor,
-        field,
-        targetRGB: `rgb(${targetR}, ${targetG}, ${targetB})`
-    });
-    
+
     // 计算目标颜色的亮度（用于混合）
     const targetBrightness = 0.299 * targetR + 0.587 * targetG + 0.114 * targetB;
     const targetMax = Math.max(targetR, targetG, targetB);
-    
-    console.log('[FIX] 开始处理图片:', {
-        targetColor: `rgb(${targetR}, ${targetG}, ${targetB})`,
-        targetBrightness: targetBrightness.toFixed(2),
-        targetMax: targetMax
-    });
-    
+
     // 调整图片颜色 - 针对黑色原图的特殊处理
     // 对于黑色 PNG logo，黑色部分应该直接变成目标颜色，而不是乘以接近0的亮度值
     let darkPixelCount = 0;
@@ -2299,15 +2245,7 @@ function processImageForTheme(img, field, expectedTheme) {
     }
     
     const isDarkImage = totalPixelCount > 0 && (darkPixelCount / totalPixelCount) > 0.5;
-    
-    console.log('[FIX] 图片分析:', {
-        totalPixels: totalPixelCount,
-        darkPixels: darkPixelCount,
-        darkRatio: totalPixelCount > 0 ? (darkPixelCount / totalPixelCount).toFixed(2) : 0,
-        isDarkImage: isDarkImage,
-        strategy: isDarkImage ? '黑色原图策略：反转亮度映射' : '普通图片策略：标准混合'
-    });
-    
+
     // 第二遍：根据图片类型应用不同的处理策略
     let processedDarkPixels = 0;
     let processedGrayPixels = 0;
@@ -2382,15 +2320,7 @@ function processImageForTheme(img, field, expectedTheme) {
             }
         }
     }
-    
-    console.log('[FIX] 图片处理完成:', {
-        processedDarkPixels: processedDarkPixels,
-        processedGrayPixels: processedGrayPixels,
-        processedLightPixels: processedLightPixels,
-        sampleProcessedColor: sampleProcessedColor,
-        targetColor: `rgb(${targetR}, ${targetG}, ${targetB})`
-    });
-    
+
     // 将调整后的数据放回Canvas
     ctx.putImageData(imageData, 0, 0);
     
@@ -2399,20 +2329,11 @@ function processImageForTheme(img, field, expectedTheme) {
     
     // 最终检查：如果主题已经切换，不保存这次处理的结果
     const finalTheme = defaultSettings.receiptCustomization?.theme || 'classic';
-    if (expectedTheme && finalTheme !== expectedTheme) {
-        console.log('[SKIP] 主题已切换，不保存处理结果:', {
-            expectedTheme: expectedTheme,
-            finalTheme: finalTheme
-        });
-        return;
-    }
-    
-    // 保存调整后的图片
+    if (expectedTheme && finalTheme !== expectedTheme) return;
+
     defaultSettings.receiptCustomization[field] = adjustedImageData;
     saveData();
-    
-    console.log('[FIX] 图片已保存，主题:', finalTheme, '字段:', field);
-    
+
     // 更新预览（包含尺寸信息）
     const originalSize = defaultSettings.receiptCustomization[field + 'Original'] 
         ? (function() {
@@ -2428,18 +2349,8 @@ function processImageForTheme(img, field, expectedTheme) {
     // 强制更新小票预览，确保显示最新处理的图片
     // 使用 setTimeout 确保 DOM 更新完成，并在更新前再次检查主题
     setTimeout(() => {
-        // 最终检查：如果主题已经切换，不更新预览
         const currentThemeWhenUpdate = defaultSettings.receiptCustomization?.theme || 'classic';
-        if (expectedTheme && currentThemeWhenUpdate !== expectedTheme) {
-            console.log('[SKIP] 主题已切换，不更新预览:', {
-                expectedTheme: expectedTheme,
-                currentThemeWhenUpdate: currentThemeWhenUpdate
-            });
-            return;
-        }
-        
-        console.log('[FIX] 更新预览，主题:', currentThemeWhenUpdate, '字段:', field);
-        // 使用防抖版本的预览更新
+        if (expectedTheme && currentThemeWhenUpdate !== expectedTheme) return;
         debouncedGenerateReceiptPreview();
     }, 50);
 }
@@ -2449,9 +2360,10 @@ function loadReceiptCustomizationToForm() {
     const settings = defaultSettings.receiptCustomization;
     
     if (settings) {
-        // 设置主题选择
-        if (document.getElementById('receiptThemeSelect')) {
-            document.getElementById('receiptThemeSelect').value = settings.theme || 'classic';
+        // 设置主题选择（小票抽屉内 themeSelector）
+        const themeSel = document.getElementById('themeSelector');
+        if (themeSel) {
+            themeSel.value = settings.theme || 'classic';
         }
         
         // 设置文本字段
@@ -2487,9 +2399,6 @@ function loadReceiptCustomizationToForm() {
             }
             if (document.getElementById('followSystemTheme')) {
                 document.getElementById('followSystemTheme').checked = settings.receiptInfo.followSystemTheme !== false; // 默认为true
-            }
-            if (document.getElementById('followSystemThemeFooter')) {
-                document.getElementById('followSystemThemeFooter').checked = settings.receiptInfo.followSystemTheme !== false; // 默认为true
             }
         }
         
@@ -2531,7 +2440,6 @@ function loadReceiptCustomizationToForm() {
 
 // 应用小票主题
 function applyReceiptTheme(themeName) {
-    console.log('applyReceiptTheme called', themeName);
     // 验证主题名称（包括自定义主题）
     const validThemes = ['classic', 'modern', 'warm', 'dark', 'nature', 'vintage', 'sakura', 'iceBlue'];
     const isCustomTheme = themeName.startsWith('custom_');
@@ -2563,9 +2471,7 @@ function applyReceiptTheme(themeName) {
     // 重新应用字体设置（确保主题字体生效）
     applyFontSettings();
     
-    // 重新处理图片以适应新主题颜色
-    // 总是调用 reprocessImagesForTheme，函数内部会检查 followSystemTheme
-    console.log('[FIX] applyReceiptTheme 调用 reprocessImagesForTheme，当前主题:', themeName);
+    // 重新处理图片以适应新主题颜色（函数内部会检查 followSystemTheme）
     reprocessImagesForTheme();
     
     // 更新预览
@@ -4374,8 +4280,10 @@ function saveToHistory() {
         }
         window.editingHistoryId = null;
     } else {
-        // 添加新排单，补全 productDoneStates
-        const productDoneStates = (quoteData.productPrices || []).map(() => false);
+        // 添加新排单，补全 productDoneStates（制品+赠品）
+        const productLen = (quoteData.productPrices || []).length;
+        const giftLen = (quoteData.giftPrices || []).length;
+        const productDoneStates = Array(productLen + giftLen).fill(false);
         history.unshift({
             id: Date.now(),
             ...quoteData,
@@ -4410,11 +4318,18 @@ function saveToHistory() {
     else loadHistory();
 }
 
-// 排单制品完成状态：取单条排单时补全 productDoneStates（供日历/todo 等使用）
+// 排单制品完成状态：取单条排单时补全 productDoneStates（供日历/todo 等使用，含制品+赠品）
 function ensureProductDoneStates(item) {
     if (!item) return item;
-    if (item.productDoneStates == null && Array.isArray(item.productPrices)) {
-        item.productDoneStates = item.productPrices.map(() => false);
+    const productLen = Array.isArray(item.productPrices) ? item.productPrices.length : 0;
+    const giftLen = Array.isArray(item.giftPrices) ? item.giftPrices.length : 0;
+    const needLen = productLen + giftLen;
+    if (item.productDoneStates == null) {
+        item.productDoneStates = Array(needLen).fill(false);
+    } else if (item.productDoneStates.length < needLen) {
+        while (item.productDoneStates.length < needLen) item.productDoneStates.push(false);
+    } else if (item.productDoneStates.length > needLen) {
+        item.productDoneStates = item.productDoneStates.slice(0, needLen);
     }
     return item;
 }
@@ -4477,10 +4392,12 @@ function computeMonthProductStats(items) {
     let done = 0;
     items.forEach(item => {
         ensureProductDoneStates(item);
-        const prices = Array.isArray(item.productPrices) ? item.productPrices : [];
+        const productLen = Array.isArray(item.productPrices) ? item.productPrices.length : 0;
+        const giftLen = Array.isArray(item.giftPrices) ? item.giftPrices.length : 0;
+        const n = productLen + giftLen;
         const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
-        total += prices.length;
-        for (let i = 0; i < prices.length; i++) {
+        total += n;
+        for (let i = 0; i < n && i < states.length; i++) {
             if (states[i] === true) done++;
         }
     });
@@ -4548,7 +4465,7 @@ function getScheduleBarsForCalendar(year, month) {
         if (end < monthStart || start > monthEnd) return;
         const startDate = toYmd(start);
         const endDate = toYmd(end);
-        const productCount = Array.isArray(item.productPrices) ? item.productPrices.length : 0;
+        const productCount = (Array.isArray(item.productPrices) ? item.productPrices.length : 0) + (Array.isArray(item.giftPrices) ? item.giftPrices.length : 0);
         bars.push({ id: item.id, clientId: item.clientId || '', productCount, startDate, endDate });
     });
     return bars;
@@ -4768,31 +4685,30 @@ function renderScheduleTodoSection() {
         ensureProductDoneStates(item);
         const doneStates = item.productDoneStates || [];
         const products = Array.isArray(item.productPrices) ? item.productPrices : [];
-        const total = products.length;
+        const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
+        const total = products.length + gifts.length;
         let doneCount = 0;
-        products.forEach((_, i) => {
-            if (doneStates[i]) doneCount++;
-        });
+        for (let i = 0; i < doneStates.length; i++) { if (doneStates[i]) doneCount++; }
         const dateStr = item.deadline || item.startTime || item.timestamp;
         const d = dateStr ? new Date(dateStr) : null;
         const monthText = d && !isNaN(d.getTime()) ? (d.getMonth() + 1) + '月' : '';
-        const dayText = d && !isNaN(d.getTime()) ? d.getDate() : '';
+        const dayText = d && !isNaN(d.getTime()) ? String(d.getDate()).padStart(2, '0') : '';
         const client = item.clientId || '单主';
-        // 生成制品 chips（未完成在前，已完成在后）
-        const chipHtml = products
-            .map((p, i) => ({ p, i, done: !!doneStates[i] }))
-            .sort((a, b) => Number(a.done) - Number(b.done))
-            .map(({ p, i, done }) => {
-                const label = (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : '');
-                return '<div class="schedule-todo-row schedule-todo-chip' + (done ? ' schedule-todo-done' : '') + '">' +
-                    '<input type="checkbox" class="schedule-todo-checkbox" ' + (done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + i + '" onchange="toggleScheduleTodoDone(this)">' +
-                    '<span class="schedule-todo-label">' + label + '</span></div>';
-            }).join('');
+        // 合并制品与赠品为带全局下标的列表（制品在前，赠品在后）
+        const productItems = products.map((p, i) => ({ label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: i, done: !!doneStates[i] }));
+        const giftItems = gifts.map((p, i) => ({ label: '[赠品] ' + (p.product || '赠品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: products.length + i, done: !!doneStates[products.length + i] }));
+        const allItems = productItems.concat(giftItems).sort((a, b) => Number(a.done) - Number(b.done));
+        const chipHtml = allItems.map(({ label, idx, done }) =>
+            '<div class="schedule-todo-row schedule-todo-chip' + (done ? ' schedule-todo-done' : '') + '">' +
+            '<input type="checkbox" class="schedule-todo-checkbox" ' + (done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + idx + '" onchange="toggleScheduleTodoDone(this)">' +
+            '<span class="schedule-todo-label">' + label + '</span></div>'
+        ).join('');
         modulesEl.innerHTML += ''
             + '<div class="schedule-todo-card">'
-            + '  <div class="schedule-todo-card-date">'
-            + '    <div class="schedule-todo-card-month">' + monthText + '</div>'
-            + '    <div class="schedule-todo-card-day">' + dayText + '</div>'
+            // 左侧日期块：稍微加宽，并让「月」和「日」一起右对齐
+            + '  <div class="schedule-todo-card-date" style="flex:0 0 30px;display:flex;flex-direction:column;align-items:flex-end;">'
+            + '    <div class="schedule-todo-card-month" style="width:100%;text-align:right;">' + monthText + '</div>'
+            + '    <div class="schedule-todo-card-day" style="width:100%;text-align:right;">' + dayText + '</div>'
             + '  </div>'
             + '  <div class="schedule-todo-card-body">'
             + '    <div class="schedule-todo-card-line1">单主：' + client + '，已完成' + doneCount + '个 共' + total + '个</div>'
@@ -4809,15 +4725,21 @@ function renderScheduleTodoSection() {
 function toggleScheduleTodoDone(checkbox) {
     const id = parseInt(checkbox.dataset.id, 10);
     const idx = parseInt(checkbox.dataset.idx, 10);
+    
+    // 验证数据有效性
+    if (isNaN(id) || isNaN(idx)) {
+        console.error('Invalid data attributes:', checkbox.dataset);
+        return;
+    }
+    
     setScheduleProductDone(id, idx, checkbox.checked);
     const row = checkbox.closest('.schedule-todo-row');
     if (row) {
         row.classList.toggle('schedule-todo-done', checkbox.checked);
-        // 勾选后把该制品移动到列表最后
-        const container = row.parentElement;
-        if (container && checkbox.checked) {
-            container.appendChild(row);
-        }
+        // 勾选后重新渲染整个todo部分以保持排序
+        setTimeout(() => {
+            renderScheduleTodoSection();
+        }, 0);
     }
 }
 
@@ -5307,9 +5229,9 @@ function editHistoryItem(id) {
         return;
     }
     
-    // 切换到计算页
-    showPage('calculator');
-    
+    // 打开计算抽屉，将历史记录加载到计算表单
+    openCalculatorDrawer();
+
     // 清空当前制品和赠品
     products = [];
     gifts = [];

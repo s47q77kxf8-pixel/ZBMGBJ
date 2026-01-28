@@ -226,8 +226,14 @@ body {
     padding: 0.75rem 1rem;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 0.5rem;
     border-bottom: 1px solid var(--border-color);
+}
+
+.calculator-drawer-header .calculator-drawer-close {
+    flex-shrink: 0;
+    min-width: 4.5rem;
+    justify-content: flex-start;
 }
 
 .calculator-drawer-title {
@@ -235,6 +241,13 @@ body {
     font-weight: 600;
     color: var(--text-color);
     margin: 0;
+    flex: 1;
+    text-align: center;
+}
+
+.calculator-drawer-action {
+    flex-shrink: 0;
+    min-width: 4.5rem;
 }
 
 .calculator-drawer-close {
@@ -975,9 +988,9 @@ input:focus, select:focus {
     text-align: center;
 }
 .schedule-title-stats .schedule-stat + .schedule-stat {
-    margin-left: 0.35rem;
+    margin-left: 0.25em;
 }
-.schedule-stat-done { color: #111111; }   /* 柔和黑 */
+.schedule-stat-done { color: #2563eb; }
 .schedule-stat-undone { color: #f97316; } /* 橙 */
 .schedule-stat-total { color: #111827; }  /* 黑 */
 
@@ -2068,11 +2081,6 @@ input:checked + .toggle-slider:before {
     #receiptCustomizationPanel .form-row:last-child .btn {
         flex: 1;
         max-width: 150px;
-    }
-    
-    /* 优化主题选择 */
-    #receiptThemeSelect {
-        background-color: white;
     }
     
     /* 优化复选框行 */
@@ -3334,56 +3342,6 @@ input:checked + .toggle-slider:before {
     font-size: 0.85rem;
 }
 
-/* 计算报价悬浮球按钮 */
-.floating-calculate-btn {
-    position: fixed;
-    bottom: 5rem;
-    right: 1.5rem;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: var(--primary-color);
-    color: white;
-    display: flex; /* 默认显示，JavaScript会在非计算页时隐藏 */
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
-    cursor: pointer;
-    z-index: 10000; /* 提高z-index，确保在所有元素之上 */
-    transition: all 0.3s ease;
-    border: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    line-height: 1;
-}
-
-.floating-calculate-btn:hover {
-    background: var(--primary-hover);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
-    transform: scale(1.1);
-}
-
-.floating-calculate-btn:active {
-    transform: scale(0.95);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
-}
-
-/* 手机端优化 */
-@media (max-width: 768px) {
-    .floating-calculate-btn {
-        width: 64px;
-        height: 64px;
-        bottom: max(6rem, calc(env(safe-area-inset-bottom) + 4.5rem));
-        right: max(1rem, env(safe-area-inset-right));
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
-        font-size: 16px;
-        z-index: 10000; /* 确保在手机端也在最上层 */
-    }
-}
-
 /* 隐藏原来的计算按钮区域 */
 .calculate-section {
     display: none;
@@ -4214,7 +4172,7 @@ input:checked + .toggle-slider:before {
     gap: 3px;
 }
 .schedule-calendar-cell {
-    height: 60px;
+    height: 72px;
     border-radius: 10px;
     padding: 4px 2px;
     font-size: 0.8rem;
@@ -4262,8 +4220,7 @@ input:checked + .toggle-slider:before {
     font-weight: 600;
     border-radius: 3px;
     box-shadow: 0 0 0 1px #000;
-    min-height: 66px;
-    height: auto;
+    height: 72px;
 }
 .schedule-calendar-cell-selected.schedule-calendar-cell-weekend {
     color: #fff;
@@ -4343,13 +4300,13 @@ input:checked + .toggle-slider:before {
     box-sizing: border-box;
 }
 .schedule-todo-card-date {
-    flex: 0 0 30px;
+    flex: 0 0 42px;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     border-right: 1px solid rgba(0, 0, 0, 0.08);
-    padding-right: 0.45rem;
+    padding-right: 0.5rem;
 }
 .schedule-todo-card-month {
     font-size: 0.65rem;
@@ -4357,21 +4314,24 @@ input:checked + .toggle-slider:before {
     line-height: 1.1;
 }
 .schedule-todo-card-day {
-    font-size: 0.9rem;
+    font-size: 1.2rem;
     font-weight: 600;
     color: var(--text-color);
+    text-align: right;
+    width: 100%;
 }
 .schedule-todo-card-body {
     flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 0;
 }
 .schedule-todo-card-line1 {
     font-size: 0.6rem;
     color: var(--text-light);
     line-height: 1.2;
+    margin-bottom: 0.12rem;
 }
 .schedule-todo-card-line2 {
     font-size: 0.9rem;
@@ -4484,9 +4444,12 @@ input:checked + .toggle-slider:before {
         border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     }
     .schedule-calendar-cell {
-        height: 50px;
+        height: 60px;
         padding: 3px 1px;
         font-size: 0.75rem;
+    }
+    .schedule-calendar-cell-selected {
+        height: 60px;
     }
     .schedule-calendar-header {
         margin-bottom: 0.5rem;
@@ -4550,15 +4513,21 @@ input:checked + .toggle-slider:before {
         flex: 0 0 30px;
     }
     .schedule-todo-card-day {
-        font-size: 0.9rem;
+        font-size: 1.2rem;
+        text-align: right;
+        width: 100%;
+    }
+    .schedule-todo-card-body {
+        gap: 0;
+        justify-content: flex-end;
     }
     .schedule-todo-card-line1 {
         font-size: 0.6rem;
+        margin-bottom: 0.12rem;
     }
     .schedule-todo-card-line2 {
         font-size: 0.9rem;
     }
-    
     /* 修复单主行与月份行对齐 */
     .schedule-todo-card-line2 {
         align-self: flex-start;
@@ -4607,9 +4576,15 @@ input:checked + .toggle-slider:before {
 .receipt-drawer-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 0.5rem;
     padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--border-color);
+}
+
+.receipt-drawer-header .receipt-drawer-close {
+    flex-shrink: 0;
+    min-width: 4.5rem;
+    justify-content: flex-start;
 }
 
 .receipt-drawer-title {
@@ -4617,6 +4592,13 @@ input:checked + .toggle-slider:before {
     font-size: 1rem;
     font-weight: 600;
     color: var(--text-color);
+    flex: 1;
+    text-align: center;
+}
+
+.receipt-drawer-action {
+    flex-shrink: 0;
+    min-width: 4.5rem;
 }
 
 .receipt-drawer-body {
@@ -4685,38 +4667,3 @@ input:checked + .toggle-slider:before {
     opacity: 1;
 }
 
-/* 小票页内“排单”悬浮球，参考计算页报价悬浮球样式 */
-.floating-schedule-btn {
-    position: absolute;
-    right: 1.5rem;
-    bottom: 1.5rem;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: var(--primary-color);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
-    cursor: pointer;
-    z-index: 2;
-    border: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    line-height: 1;
-}
-
-.floating-schedule-btn:hover {
-    background: var(--primary-hover);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
-    transform: scale(1.05);
-}
-
-.floating-schedule-btn:active {
-    transform: scale(0.95);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
-}
