@@ -483,6 +483,11 @@ function init() {
         
         // 悬浮计算按钮现在固定在计算抽屉内部，不再依赖页面切换控制显隐
     });
+
+    // 默认进入时渲染排单页（报价页），确保刷新后排单日历正常显示
+    if (typeof showPage === 'function') {
+        showPage('quote');
+    }
 }
 
 // 兼容处理：将旧格式系数转换为新格式（默认名称以 defaultSettings 为准，不在此处重复维护）
