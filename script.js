@@ -572,6 +572,12 @@ function loadData() {
         
         if (savedHistory) {
             history = JSON.parse(savedHistory);
+            // 排单 todo 兼容：旧数据补全 productDoneStates
+            history.forEach(item => {
+                if (item.productDoneStates == null && Array.isArray(item.productPrices)) {
+                    item.productDoneStates = item.productPrices.map(() => false);
+                }
+            });
         }
         
         if (savedSettings) {
@@ -2718,14 +2724,13 @@ function showPage(pageId) {
         targetBtn.classList.add('active');
     }
     
-    // 如果是报价页，只在quoteData为空时加载历史记录
-    if (pageId === 'quote' && !quoteData) {
-        // 使用applyHistoryFilters确保筛选功能正常工作
-        const searchInput = document.getElementById('historySearchInput');
-        if (searchInput) {
-            applyHistoryFilters();
-        } else {
-            loadHistory();
+    if (pageId === 'quote') {
+        renderScheduleCalendar();
+        renderScheduleTodoSection();
+        if (!quoteData) {
+            const searchInput = document.getElementById('historySearchInput');
+            if (searchInput) applyHistoryFilters();
+            else loadHistory();
         }
     }
     
@@ -3485,6 +3490,16 @@ function calculatePrice() {
     
     // 切换到报价页
     showPage('quote');
+    
+    // 滚动到报价页顶部（小票区域）
+    setTimeout(function() {
+        const quotePage = document.getElementById('quote');
+        if (quotePage) {
+            quotePage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // 如果页面本身不在顶部，也滚动窗口到顶部
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }, 100);
 }
 
 // 生成报价单
@@ -4219,47 +4234,475 @@ function saveToHistory() {
     
     // 检查是否在编辑模式下
     if (window.editingHistoryId) {
-        // 更新现有历史记录
+        // 更新现有排单
         const index = history.findIndex(item => item.id === window.editingHistoryId);
         if (index !== -1) {
-            // 保留原始时间戳，更新其他数据
+            const existing = history[index];
+            const prevLen = (existing.productDoneStates || []).length;
+            const newLen = (quoteData.productPrices || []).length;
+            let doneStates = existing.productDoneStates;
+            if (!Array.isArray(doneStates)) doneStates = (existing.productPrices || []).map(() => false);
+            if (newLen !== prevLen) {
+                doneStates = (quoteData.productPrices || []).map((_, i) => (doneStates[i] === true));
+            }
             history[index] = {
                 ...quoteData,
                 id: window.editingHistoryId,
-                timestamp: history[index].timestamp // 保留原始时间
+                timestamp: existing.timestamp,
+                productDoneStates: doneStates
             };
-            alert('历史记录已更新！');
+            alert('排单已更新！');
         } else {
-            alert('未找到要更新的历史记录！');
+            alert('未找到要更新的排单！');
             window.editingHistoryId = null;
             return;
         }
-        // 清除编辑标记
         window.editingHistoryId = null;
     } else {
-        // 添加新历史记录
+        // 添加新排单，补全 productDoneStates
+        const productDoneStates = (quoteData.productPrices || []).map(() => false);
         history.unshift({
             id: Date.now(),
-            ...quoteData
+            ...quoteData,
+            productDoneStates
         });
-        
-        // 限制历史记录数量
         if (history.length > 20) {
             history = history.slice(0, 20);
         }
-        
-        alert('报价单已保存到历史记录！');
+        alert('报价单已加入排单！');
     }
     
-    // 保存到本地存储
     saveData();
-    
-    // 刷新历史记录显示
+    if (document.getElementById('quote') && document.getElementById('quote').classList.contains('active')) {
+        renderScheduleCalendar();
+        renderScheduleTodoSection();
+        
+        // 自动折叠小票显示：只隐藏小票图片（头图/尾图），不隐藏整个小票
+        const quotePage = document.getElementById('quote');
+        if (quotePage) {
+            const scheduleSection = quotePage.querySelector('.schedule-section');
+            quotePage.classList.add('quote-receipt-images-collapsed');
+            // 滚动到排单日历区域
+            if (scheduleSection) {
+                setTimeout(function() {
+                    scheduleSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+            }
+        }
+    }
     const searchInput = document.getElementById('historySearchInput');
-    if (searchInput) {
-        applyHistoryFilters();
+    if (searchInput) applyHistoryFilters();
+    else loadHistory();
+}
+
+// 排单制品完成状态：取单条排单时补全 productDoneStates（供日历/todo 等使用）
+function ensureProductDoneStates(item) {
+    if (!item) return item;
+    if (item.productDoneStates == null && Array.isArray(item.productPrices)) {
+        item.productDoneStates = item.productPrices.map(() => false);
+    }
+    return item;
+}
+
+// 更新某条排单的制品完成状态并持久化
+function setScheduleProductDone(scheduleId, productIndex, done) {
+    const item = history.find(h => h.id === scheduleId);
+    if (!item) return;
+    ensureProductDoneStates(item);
+    if (!Array.isArray(item.productDoneStates) || productIndex < 0 || productIndex >= item.productDoneStates.length) return;
+    item.productDoneStates[productIndex] = !!done;
+    saveData();
+}
+
+// 按选中日期获取所有排单：返回该日期在时间范围内的所有排单
+function getScheduleItemsForDate(selectedDate) {
+    if (!selectedDate) return [];
+    const normalizeYmd = (d) => {
+        if (!d) return null;
+        const x = typeof d === 'string' ? new Date(d) : d;
+        if (isNaN(x.getTime())) return null;
+        return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+    };
+    const target = normalizeYmd(selectedDate);
+    if (!target) return [];
+    return history.filter(h => {
+        ensureProductDoneStates(h);
+        const start = h.startTime ? normalizeYmd(h.startTime) : normalizeYmd(h.timestamp);
+        const end = h.deadline ? normalizeYmd(h.deadline) : start;
+        if (!start || !end) return false;
+        return target >= start && target <= end;
+    });
+}
+
+// 默认 todo：返回当前月内（与该月有交集）的所有排单
+function getScheduleItemsForMonth(year, month) {
+    const monthStart = new Date(year, month - 1, 1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthEnd = new Date(year, month, 0);
+    monthEnd.setHours(23, 59, 59, 999);
+    return history.filter(h => {
+        ensureProductDoneStates(h);
+        const start = h.startTime ? new Date(h.startTime) : new Date(h.timestamp);
+        const end = h.deadline ? new Date(h.deadline) : start;
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        return !(end < monthStart || start > monthEnd);
+    });
+}
+
+function formatYmdCn(dateStr) {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr || '—';
+    return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+
+function computeMonthProductStats(items) {
+    let total = 0;
+    let done = 0;
+    items.forEach(item => {
+        ensureProductDoneStates(item);
+        const prices = Array.isArray(item.productPrices) ? item.productPrices : [];
+        const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
+        total += prices.length;
+        for (let i = 0; i < prices.length; i++) {
+            if (states[i] === true) done++;
+        }
+    });
+    return { done, undone: Math.max(0, total - done), total };
+}
+
+function renderScheduleMonthTitleStats(year, month) {
+    const titleEl = document.querySelector('.schedule-title');
+    if (!titleEl) return;
+    // 如果选中了某天且该天在当前月视图内，则展示当天统计；否则展示本月统计
+    let items = getScheduleItemsForMonth(year, month);
+    if (window.scheduleSelectedDate) {
+        const d = new Date(window.scheduleSelectedDate);
+        if (!isNaN(d.getTime()) && d.getFullYear() === year && (d.getMonth() + 1) === month) {
+            items = getScheduleItemsForDate(window.scheduleSelectedDate);
+        }
+    }
+    const s = computeMonthProductStats(items);
+    titleEl.innerHTML =
+        '排单 <span class="schedule-title-stats">(' +
+        '<span class="schedule-stat schedule-stat-done">' + s.done + '</span>' +
+        '<span class="schedule-stat schedule-stat-undone">' + s.undone + '</span>' +
+        '<span class="schedule-stat schedule-stat-total">' + s.total + '</span>' +
+        ')</span>';
+}
+
+// 当前批次：返回「最近截稿日」或「选中日所在截稿日」的那批排单。返回 { deadline: 'YYYY-MM-DD', items: schedule[] }
+function getScheduleBatchForDisplay(selectedDate) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const normalizeYmd = (d) => {
+        if (!d) return null;
+        const x = typeof d === 'string' ? new Date(d) : d;
+        if (isNaN(x.getTime())) return null;
+        return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+    };
+    const items = history.filter(h => h.deadline).map(ensureProductDoneStates);
+    if (items.length === 0) return { deadline: null, items: [] };
+    if (selectedDate) {
+        const target = normalizeYmd(selectedDate);
+        if (!target) return { deadline: null, items: [] };
+        const batch = items.filter(h => normalizeYmd(h.deadline) === target);
+        return { deadline: target, items: batch };
+    }
+    const deadlines = [...new Set(items.map(h => normalizeYmd(h.deadline)))].filter(Boolean).sort();
+    const todayStr = normalizeYmd(today);
+    const nearest = deadlines.find(d => d >= todayStr) || deadlines[deadlines.length - 1];
+    const batch = items.filter(h => normalizeYmd(h.deadline) === nearest);
+    return { deadline: nearest, items: batch };
+}
+
+// 日历条带数据：指定年月，返回该月内可见的排单条带 { id, clientId, productCount, startDate, endDate }[]
+function getScheduleBarsForCalendar(year, month) {
+    const bars = [];
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+    const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    history.forEach(item => {
+        if (!item.startTime && !item.deadline) return;
+        const start = item.startTime ? new Date(item.startTime) : new Date(item.timestamp);
+        const end = item.deadline ? new Date(item.deadline) : start;
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        if (end < monthStart || start > monthEnd) return;
+        const startDate = toYmd(start);
+        const endDate = toYmd(end);
+        const productCount = Array.isArray(item.productPrices) ? item.productPrices.length : 0;
+        bars.push({ id: item.id, clientId: item.clientId || '', productCount, startDate, endDate });
+    });
+    return bars;
+}
+
+// 排单日历条带色板（浅色透明，苹果风格）
+var SCHEDULE_BAR_COLORS = [
+    'rgba(147, 197, 253, 0.24)',
+    'rgba(134, 239, 172, 0.24)',
+    'rgba(253, 211, 77, 0.26)',
+    'rgba(249, 168, 212, 0.24)',
+    'rgba(165, 180, 252, 0.24)',
+    'rgba(103, 232, 249, 0.24)'
+];
+var SCHEDULE_BAR_TEXT_COLORS = ['#1e3a5f', '#14532d', '#713f12', '#831843', '#312e81', '#134e4a'];
+
+// 按星期视图：同周内条带轨道分配，最多 3 条（一行一天最多显示 3 个）
+function assignWeekBarsToTracks(segments) {
+    var tracks = [];
+    var maxTracks = 3;
+    segments.forEach(function (s) {
+        var placed = false;
+        for (var t = 0; t < tracks.length && t < maxTracks; t++) {
+            var ok = tracks[t].every(function (o) {
+                return s.endCol < o.startCol || s.startCol > o.endCol;
+            });
+            if (ok) {
+                tracks[t].push(s);
+                placed = true;
+                break;
+            }
+        }
+        if (!placed && tracks.length < maxTracks) tracks.push([s]);
+    });
+    return tracks.slice(0, maxTracks);
+}
+
+// 渲染排单日历：按星期显示（一～日），跨日彩条横跨多列
+function renderScheduleCalendar() {
+    const container = document.getElementById('scheduleCalendar');
+    if (!container) return;
+    const now = new Date();
+    if (window.scheduleCalendarYear == null) window.scheduleCalendarYear = now.getFullYear();
+    if (window.scheduleCalendarMonth == null) window.scheduleCalendarMonth = now.getMonth() + 1;
+    const y = window.scheduleCalendarYear;
+    const m = window.scheduleCalendarMonth;
+    const first = new Date(y, m - 1, 1);
+    const last = new Date(y, m, 0);
+    const daysInMonth = last.getDate();
+    // 周一为第一列：(getDay() + 6) % 7 → 0=周一, 6=周日
+    const startPad = (first.getDay() + 6) % 7;
+    const totalCells = Math.ceil((startPad + daysInMonth) / 7) * 7;
+    const numRows = totalCells / 7;
+    const bars = getScheduleBarsForCalendar(y, m);
+    const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const todayYmd = toYmd(now);
+
+    // 本月内条带起止日（1-based）
+    const barsWithDays = [];
+    for (let i = 0; i < bars.length; i++) {
+        const b = bars[i];
+        const startParts = b.startDate.split('-').map(Number);
+        const endParts = b.endDate.split('-').map(Number);
+        let startDay = (startParts[0] === y && startParts[1] === m) ? startParts[2] : 1;
+        let endDay = (endParts[0] === y && endParts[1] === m) ? endParts[2] : daysInMonth;
+        if (startParts[0] !== y || startParts[1] !== m) startDay = 1;
+        if (endParts[0] !== y || endParts[1] !== m) endDay = daysInMonth;
+        if (startDay > endDay) continue;
+        barsWithDays.push({ startDay: startDay, endDay: endDay, bar: b });
+    }
+
+    const isOtherDay = !!window.scheduleSelectedDate && window.scheduleSelectedDate !== todayYmd;
+    let html = '<div class="schedule-calendar-inner">';
+    html += '<div class="schedule-calendar-header">';
+    html += '<button type="button" class="btn secondary schedule-calendar-prev" onclick="scheduleCalendarPrevMonth()">‹</button>';
+    html += '<span class="schedule-calendar-title">' + y + '年' + m + '月' + (isOtherDay ? '<span class="schedule-calendar-today-btn" onclick="scheduleTodoBackToToday()">Today</span>' : '') + '</span>';
+    html += '<button type="button" class="btn secondary schedule-calendar-next" onclick="scheduleCalendarNextMonth()">›</button>';
+    html += '</div>';
+    // 星期表头
+    html += '<div class="schedule-calendar-weekdays">';
+    ['一', '二', '三', '四', '五', '六', '日'].forEach(function (w) { html += '<span>' + w + '</span>'; });
+    html += '</div>';
+    // 按周：每周一行日期，彩条用绝对定位层横跨
+    for (let row = 0; row < numRows; row++) {
+        html += '<div class="schedule-week-block">';
+        html += '<div class="schedule-calendar-grid schedule-week-dates">';
+        for (let col = 0; col < 7; col++) {
+            const i = row * 7 + col;
+            const dayIndex = i - startPad + 1;
+            const isWeekend = col >= 5;
+            let dateStr = '';
+            let cellClass = 'schedule-calendar-cell';
+            let label = '';
+            if (dayIndex < 1) {
+                const prevLast = new Date(y, m - 1, 0);
+                label = String(prevLast.getDate() + dayIndex);
+                cellClass += ' schedule-calendar-cell-other';
+            } else if (dayIndex > daysInMonth) {
+                label = String(dayIndex - daysInMonth);
+                cellClass += ' schedule-calendar-cell-other';
+            } else {
+                dateStr = toYmd(new Date(y, m - 1, dayIndex));
+                label = String(dayIndex);
+                if (dateStr === todayYmd) cellClass += ' schedule-calendar-cell-today';
+                if (window.scheduleSelectedDate === dateStr) cellClass += ' schedule-calendar-cell-selected';
+                if (isWeekend) cellClass += ' schedule-calendar-cell-weekend';
+            }
+            html += '<div class="' + cellClass + '" data-date="' + (dateStr || '') + '">';
+            html += '<span class="schedule-cell-num">' + label + '</span></div>';
+        }
+        html += '</div>';
+        // 彩条层：绝对定位，横跨多个日期格
+        const weekFirstDay = row * 7 - startPad + 1;
+        const weekLastDay = row * 7 + 6 - startPad + 1;
+        const segments = [];
+        barsWithDays.forEach(function (b) {
+            if (b.endDay < weekFirstDay || b.startDay > weekLastDay) return;
+            const startCol = Math.max(0, b.startDay - weekFirstDay);
+            const endCol = Math.min(6, b.endDay - weekFirstDay);
+            if (startCol > endCol) return;
+            segments.push({ startCol: startCol, endCol: endCol, bar: b.bar });
+        });
+        const weekTracks = assignWeekBarsToTracks(segments);
+        if (weekTracks.length > 0) {
+            html += '<div class="schedule-week-bars">';
+            weekTracks.forEach(function (track, ti) {
+                track.forEach(function (s) {
+                    const b = s.bar;
+                    const color = SCHEDULE_BAR_COLORS[Math.abs(b.id) % SCHEDULE_BAR_COLORS.length];
+                    const label = (b.clientId || '—') + '：' + b.productCount + '个';
+                    var textColor = SCHEDULE_BAR_TEXT_COLORS[Math.abs(b.id) % SCHEDULE_BAR_TEXT_COLORS.length];
+                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + '; border-left: 3px solid ' + textColor + '; padding-left: 4px;" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '">' + label + '</div>';
+                });
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+    // 更新排单标题统计（本月完成/未完成/总制品数）
+    renderScheduleMonthTitleStats(y, m);
+
+    container.querySelectorAll('.schedule-calendar-cell[data-date]').forEach(el => {
+        const d = el.getAttribute('data-date');
+        if (!d) return;
+        el.addEventListener('click', function () {
+            window.scheduleSelectedDate = d;
+            renderScheduleCalendar();
+            renderScheduleTodoSection();
+        });
+    });
+
+    // 彩条点击事件：根据点击位置选中对应日期
+    container.querySelectorAll('.schedule-bar-strip').forEach(strip => {
+        strip.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const weekFirstDay = parseInt(strip.dataset.weekFirstDay, 10);
+            const startCol = parseInt(strip.dataset.startCol, 10);
+            const endCol = parseInt(strip.dataset.endCol, 10);
+            const relativeX = e.offsetX / e.target.offsetWidth;
+            const clickedCol = startCol + Math.floor(relativeX * (endCol - startCol + 1));
+            const clickedDay = weekFirstDay + clickedCol;
+            if (clickedDay >= 1 && clickedDay <= daysInMonth) {
+                const dateStr = toYmd(new Date(y, m - 1, clickedDay));
+                window.scheduleSelectedDate = dateStr;
+                renderScheduleCalendar();
+                renderScheduleTodoSection();
+            }
+        });
+    });
+}
+
+function scheduleCalendarPrevMonth() {
+    if (window.scheduleCalendarMonth <= 1) {
+        window.scheduleCalendarMonth = 12;
+        window.scheduleCalendarYear--;
     } else {
-        loadHistory();
+        window.scheduleCalendarMonth--;
+    }
+    renderScheduleCalendar();
+    renderScheduleTodoSection();
+}
+
+function scheduleCalendarNextMonth() {
+    if (window.scheduleCalendarMonth >= 12) {
+        window.scheduleCalendarMonth = 1;
+        window.scheduleCalendarYear++;
+    } else {
+        window.scheduleCalendarMonth++;
+    }
+    renderScheduleCalendar();
+    renderScheduleTodoSection();
+}
+
+// 渲染当前批次制品 todo 区（按选中日期显示所有排单的制品）
+function renderScheduleTodoSection() {
+    const titleEl = document.getElementById('scheduleTodoTitle');
+    const modulesEl = document.getElementById('scheduleTodoModules');
+    if (!titleEl || !modulesEl) return;
+    // 默认选中当天，todo 显示当日排单
+    if (!window.scheduleSelectedDate) {
+        const now = new Date();
+        const y0 = now.getFullYear();
+        const m0 = String(now.getMonth() + 1).padStart(2, '0');
+        const d0 = String(now.getDate()).padStart(2, '0');
+        window.scheduleSelectedDate = y0 + '-' + m0 + '-' + d0;
+    }
+    const items = getScheduleItemsForDate(window.scheduleSelectedDate);
+    titleEl.textContent = '选中日期：' + formatYmdCn(window.scheduleSelectedDate);
+    if (items.length === 0) {
+        modulesEl.innerHTML = '<p class="schedule-todo-empty">该日期暂无排单</p>';
+        return;
+    }
+    modulesEl.innerHTML = '';
+    items.forEach(item => {
+        ensureProductDoneStates(item);
+        const doneStates = item.productDoneStates || [];
+        const products = Array.isArray(item.productPrices) ? item.productPrices : [];
+        const total = products.length;
+        let doneCount = 0;
+        products.forEach((_, i) => {
+            if (doneStates[i]) doneCount++;
+        });
+        const dateStr = item.deadline || item.startTime || item.timestamp;
+        const d = dateStr ? new Date(dateStr) : null;
+        const monthText = d && !isNaN(d.getTime()) ? (d.getMonth() + 1) + '月' : '';
+        const dayText = d && !isNaN(d.getTime()) ? d.getDate() : '';
+        const client = item.clientId || '单主';
+        // 生成制品 chips（未完成在前，已完成在后）
+        const chipHtml = products
+            .map((p, i) => ({ p, i, done: !!doneStates[i] }))
+            .sort((a, b) => Number(a.done) - Number(b.done))
+            .map(({ p, i, done }) => {
+                const label = (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : '');
+                return '<div class="schedule-todo-row schedule-todo-chip' + (done ? ' schedule-todo-done' : '') + '">' +
+                    '<input type="checkbox" class="schedule-todo-checkbox" ' + (done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + i + '" onchange="toggleScheduleTodoDone(this)">' +
+                    '<span class="schedule-todo-label">' + label + '</span></div>';
+            }).join('');
+        modulesEl.innerHTML += ''
+            + '<div class="schedule-todo-card">'
+            + '  <div class="schedule-todo-card-date">'
+            + '    <div class="schedule-todo-card-month">' + monthText + '</div>'
+            + '    <div class="schedule-todo-card-day">' + dayText + '</div>'
+            + '  </div>'
+            + '  <div class="schedule-todo-card-body">'
+            + '    <div class="schedule-todo-card-line1">单主：' + client + '，已完成' + doneCount + '个 共' + total + '个</div>'
+            + '    <div class="schedule-todo-card-line2">'
+            + '      <div class="schedule-todo-card-products">'
+            +           chipHtml
+            + '      </div>'
+            + '    </div>'
+            + '  </div>'
+            + '</div>';
+    });
+}
+
+function toggleScheduleTodoDone(checkbox) {
+    const id = parseInt(checkbox.dataset.id, 10);
+    const idx = parseInt(checkbox.dataset.idx, 10);
+    setScheduleProductDone(id, idx, checkbox.checked);
+    const row = checkbox.closest('.schedule-todo-row');
+    if (row) {
+        row.classList.toggle('schedule-todo-done', checkbox.checked);
+        // 勾选后把该制品移动到列表最后
+        const container = row.parentElement;
+        if (container && checkbox.checked) {
+            container.appendChild(row);
+        }
     }
 }
 
@@ -4468,6 +4911,28 @@ function closeHistoryFilterDrawer() {
     if (drawer) {
         drawer.classList.remove('active');
         document.body.style.overflow = '';
+    }
+}
+
+// 打开价格历史记录弹窗
+function openHistoryRecordModal() {
+    const modal = document.getElementById('historyRecordModal');
+    if (modal) {
+        modal.classList.remove('d-none');
+        document.body.style.overflow = 'hidden';
+        applyHistoryFilters();
+    }
+}
+
+// 关闭价格历史记录弹窗
+function closeHistoryRecordModal() {
+    const modal = document.getElementById('historyRecordModal');
+    if (modal) {
+        modal.classList.add('d-none');
+        document.body.style.overflow = '';
+        closeHistoryFilterDrawer();
+        renderScheduleCalendar();
+        renderScheduleTodoSection();
     }
 }
 

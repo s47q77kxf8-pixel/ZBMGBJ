@@ -607,6 +607,30 @@ input:focus, select:focus {
 .text-sm { font-size: 0.875rem; }
 .text-xs { font-size: 0.75rem; }
 
+/* 报价页：折叠小票图片（头图/尾图） */
+#quote.quote-receipt-images-collapsed .receipt-header-image,
+#quote.quote-receipt-images-collapsed .receipt-footer-image {
+    display: none !important;
+}
+
+/* 排单标题统计（蓝/橙/黑） */
+.schedule-title-stats {
+    font-weight: 600;
+    font-size: 0.9em;
+    margin-left: 0.25rem;
+}
+.schedule-title-stats .schedule-stat {
+    display: inline-block;
+    min-width: 1.6em;
+    text-align: center;
+}
+.schedule-title-stats .schedule-stat + .schedule-stat {
+    margin-left: 0.35rem;
+}
+.schedule-stat-done { color: #2563eb; }   /* 蓝 */
+.schedule-stat-undone { color: #f97316; } /* 橙 */
+.schedule-stat-total { color: #111827; }  /* 黑 */
+
 /* 设置选项标题行、模版填表下拉、保存模板行 */
 .section-title-row { margin-bottom: 0.25rem; }
 .template-fill-wrap { position: relative; }
@@ -3042,13 +3066,20 @@ input:checked + .toggle-slider:before {
 .history-container {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
 }
 
-/* 历史记录项卡片 */
+.history-container > p {
+    color: var(--text-light);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 0.75rem 1rem;
+}
+
+/* 历史记录项卡片（紧凑） */
 .history-item {
     position: relative;
-    padding: 0.75rem 0.75rem 0.75rem 2.25rem;
+    padding: 0.5rem 0.6rem 0.5rem 2rem;
     background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
@@ -3059,49 +3090,49 @@ input:checked + .toggle-slider:before {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: 0.35rem;
     flex-wrap: wrap;
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.2rem;
 }
 
 .history-item-title {
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-color);
-    line-height: 1.3;
+    line-height: 1.2;
 }
 
 .history-item-date {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--text-light);
     white-space: nowrap;
 }
 
 .history-item-content {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: var(--text-light);
     white-space: pre-line;
-    line-height: 1.5;
-    margin-bottom: 0.5rem;
+    line-height: 1.35;
+    margin-bottom: 0.35rem;
 }
 
 .history-item-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.35rem;
 }
 
 .history-item-actions .btn {
-    padding: 0.4em 0.75em;
-    font-size: 0.8rem;
+    padding: 0.3em 0.6em;
+    font-size: 0.75rem;
 }
 
 .history-item-checkbox {
     position: absolute;
-    top: 0.75rem;
-    left: 0.75rem;
-    width: 18px;
-    height: 18px;
+    top: 0.5rem;
+    left: 0.5rem;
+    width: 16px;
+    height: 16px;
     cursor: pointer;
 }
 
@@ -3112,22 +3143,22 @@ input:checked + .toggle-slider:before {
 
 /* 历史记录分组 */
 .history-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .history-group-header {
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     color: var(--text-color);
-    padding: 0.5rem 0;
-    border-bottom: 2px solid var(--border-color);
-    margin-bottom: 0.5rem;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 0.35rem;
 }
 
 .history-group-items {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
 }
 
 
@@ -3313,6 +3344,57 @@ input:checked + .toggle-slider:before {
     /* 移动端搜索框区域，确保按钮不被压缩 */
     #historySearchInput {
         min-width: 0; /* 允许flex压缩 */
+    }
+    
+    /* 报价页历史列表移动端排版（更紧凑） */
+    .history-container {
+        gap: 0.4rem;
+    }
+    .history-container > p {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+    }
+    .history-item {
+        padding: 0.4rem 0.5rem 0.4rem 1.75rem;
+    }
+    .history-item-header {
+        margin-bottom: 0.15rem;
+    }
+    .history-item-title {
+        font-size: 0.85rem;
+    }
+    .history-item-date {
+        font-size: 0.7rem;
+    }
+    .history-item-content {
+        font-size: 0.75rem;
+        line-height: 1.3;
+        margin-bottom: 0.25rem;
+    }
+    .history-item-actions {
+        gap: 0.25rem;
+    }
+    .history-item-actions .btn {
+        min-height: 32px;
+        padding: 0.25em 0.5em;
+        font-size: 0.7rem;
+    }
+    .history-item-checkbox {
+        top: 0.4rem;
+        left: 0.4rem;
+        width: 14px;
+        height: 14px;
+    }
+    .history-group {
+        margin-bottom: 0.75rem;
+    }
+    .history-group-header {
+        font-size: 0.9rem;
+        padding: 0.25rem 0;
+        margin-bottom: 0.25rem;
+    }
+    .history-group-items {
+        gap: 0.4rem;
     }
     
     /* 工艺设置移动端优化 */
@@ -3533,5 +3615,428 @@ input:checked + .toggle-slider:before {
     
     .incremental-config-unit {
         font-size: 0.75rem;
+    }
+}
+
+/* ========== 排单日历与当前批次 todo ========== */
+.schedule-section {
+    margin-top: 1rem;
+}
+.schedule-toolbar {
+    margin-bottom: 0.75rem;
+}
+.schedule-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-color);
+    letter-spacing: -0.02em;
+}
+.schedule-calendar {
+    background: var(--card-bg);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.schedule-calendar-inner {
+    min-width: 0;
+}
+.schedule-calendar-inner .schedule-calendar-grid {
+    min-width: 0;
+}
+@media (max-width: 768px) {
+    .schedule-calendar {
+        overflow-x: auto;
+    }
+}
+.schedule-calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+.schedule-calendar-title {
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: var(--text-color);
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.schedule-calendar-today-btn {
+    font-size: 0.75rem;
+    color: var(--primary-color);
+    cursor: pointer;
+    text-decoration: underline;
+    font-weight: 500;
+}
+.schedule-calendar-today-btn:hover {
+    opacity: 0.8;
+}
+.schedule-calendar-prev,
+.schedule-calendar-next {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font-size: 0.78rem;
+    border-radius: 999px;
+    font-weight: 600;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: #fff;
+    color: var(--text-color);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.schedule-calendar-prev:hover,
+.schedule-calendar-next:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+/* 按星期显示：苹果风格，无日期底灰，选中为深底白字 */
+.schedule-calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+    font-size: 0.7rem;
+    color: rgba(0, 0, 0, 0.45);
+    margin-bottom: 6px;
+    text-align: center;
+    font-weight: 500;
+}
+.schedule-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+}
+.schedule-calendar-cell {
+    height: 60px;
+    border-radius: 10px;
+    padding: 4px 2px;
+    font-size: 0.8rem;
+    text-align: center;
+    border: none;
+    background: transparent;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+.schedule-calendar-cell .schedule-cell-num {
+    flex-shrink: 0;
+    line-height: 1.2;
+    display: block;
+}
+.schedule-calendar-cell .schedule-cell-bars {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+    min-height: 0;
+    margin-top: 2px;
+}
+.schedule-calendar-cell[data-date]:not(.schedule-calendar-cell-other) {
+    cursor: pointer;
+    color: var(--text-color);
+}
+.schedule-calendar-cell[data-date]:hover:not(.schedule-calendar-cell-other):not(.schedule-calendar-cell-selected) {
+    background: rgba(0, 0, 0, 0.05);
+}
+.schedule-calendar-cell-other {
+    color: rgba(0, 0, 0, 0.28);
+}
+.schedule-calendar-cell-weekend {
+    color: #e53935;
+}
+.schedule-calendar-cell-today {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+.schedule-calendar-cell-selected {
+    background: #111827 !important;
+    color: #fff !important;
+    font-weight: 600;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px #000;
+    min-height: 66px;
+    height: auto;
+}
+.schedule-calendar-cell-selected.schedule-calendar-cell-weekend {
+    color: #fff;
+}
+.schedule-week-block {
+    margin-bottom: 10px;
+    position: relative;
+}
+.schedule-week-block:last-child {
+    margin-bottom: 0;
+}
+.schedule-week-dates {
+    margin-bottom: 0;
+}
+.schedule-week-bars {
+    position: absolute;
+    top: 22px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+    grid-auto-rows: 12px;
+    align-items: start;
+    min-height: 0;
+    pointer-events: none;
+    padding: 1px 0 0 0;
+    margin: 0;
+    z-index: 1;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.schedule-bar-strip {
+    min-width: 0;
+    cursor: pointer;
+    border-radius: 1px;
+    padding: 0 3px;
+    font-size: 0.6rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 12px;
+    height: 12px;
+    letter-spacing: 0.01em;
+    pointer-events: auto;
+    margin-bottom: 0.5px;
+}
+.schedule-bar-strip:hover {
+    filter: brightness(0.92);
+}
+.schedule-todo-section {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0.25rem 0;
+    box-shadow: none;
+    max-height: 44vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.schedule-todo-title {
+    display: none;
+}
+.schedule-todo-modules {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow: auto;
+    padding-right: 2px;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.schedule-todo-card {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: #fff;
+    width: 100%;
+    box-sizing: border-box;
+}
+.schedule-todo-card-date {
+    flex: 0 0 34px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    padding-right: 0.45rem;
+}
+.schedule-todo-card-month {
+    font-size: 0.65rem;
+    color: var(--text-light);
+    line-height: 1.1;
+}
+.schedule-todo-card-day {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+.schedule-todo-card-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.schedule-todo-card-line1 {
+    font-size: 0.65rem;
+    color: var(--text-light);
+    line-height: 1.2;
+}
+.schedule-todo-card-line2 {
+    font-size: 1rem;
+}
+.schedule-todo-card-products {
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+}
+.schedule-todo-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 1rem;
+    min-width: 0;
+    line-height: 1.2;
+}
+.schedule-todo-chip {
+    padding: 0.15rem 0.35rem;
+    border-radius: 999px;
+}
+.schedule-todo-row.schedule-todo-done .schedule-todo-label {
+    text-decoration: line-through;
+    color: var(--text-light);
+}
+.schedule-todo-checkbox {
+    width: 12px;
+    height: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin: 0;
+}
+.schedule-todo-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 1rem;
+    line-height: 1.2;
+}
+.schedule-todo-empty {
+    color: var(--text-light);
+    font-size: 0.9rem;
+    margin: 0;
+    padding: 0.5rem 0;
+}
+
+/* 价格历史记录弹窗 */
+.history-record-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 99998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.history-record-modal.d-none {
+    display: none;
+}
+.history-record-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+.history-record-content {
+    position: relative;
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    max-width: 560px;
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.history-record-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.history-record-header h2 {
+    font-size: 1.1rem;
+    margin: 0;
+}
+.history-record-body {
+    padding: 0.75rem 1rem;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+.history-record-body .history-container {
+    margin-top: 0.5rem;
+}
+
+@media (max-width: 768px) {
+    .history-record-modal {
+        align-items: flex-end;
+        padding: 0;
+    }
+    .history-record-content {
+        max-height: 80vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    }
+    .schedule-calendar-cell {
+        height: 50px;
+        padding: 3px 1px;
+        font-size: 0.75rem;
+    }
+    .schedule-calendar-header {
+        margin-bottom: 0.5rem;
+    }
+    .schedule-calendar-title {
+        font-size: 0.95rem;
+    }
+    .schedule-calendar-prev,
+    .schedule-calendar-next {
+        width: 26px;
+        height: 26px;
+        font-size: 0.72rem;
+    }
+    .schedule-calendar-weekdays {
+        gap: 2px;
+        margin-bottom: 4px;
+    }
+    .schedule-calendar-grid {
+        gap: 2px;
+    }
+    .schedule-week-block {
+        margin-bottom: 6px;
+    }
+    .schedule-week-bars {
+        top: 18px;
+        height: calc(100% - 18px);
+        gap: 2px;
+        grid-auto-rows: 10px;
+        padding: 1px 0 0 0;
+    }
+    .schedule-bar-strip {
+        padding: 0 3px;
+        font-size: 0.58rem;
+        line-height: 10px;
+        height: 10px;
+        border-radius: 3px;
+        margin-bottom: 1px;
+    }
+    .schedule-bar-chip {
+        font-size: 0.6rem;
+        padding: 1px 3px;
+    }
+    .schedule-todo-section {
+        max-height: 50vh;
+        padding: 0.55rem 0.65rem;
+    }
+    .schedule-todo-title {
+        font-size: 0.88rem;
+        margin-bottom: 0.4rem;
     }
 }

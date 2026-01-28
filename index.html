@@ -182,11 +182,28 @@
                             </select>
                             <button class="btn" onclick="toggleReceiptCustomizationPanel()">设置</button>
                             <button class="btn" onclick="saveQuoteAsImage()">存图</button>
-                            <button class="btn" onclick="saveToHistory()">存历史</button>
+                            <button class="btn" onclick="saveToHistory()">排单</button>
                         </div>
                     </div>
                     <div id="quoteContent" class="quote-content">
                         <!-- 报价内容将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 排单日历区 -->
+                <div class="section schedule-section">
+                    <div class="schedule-toolbar d-flex justify-between items-center">
+                        <h2 class="schedule-title">排单</h2>
+                        <button type="button" class="btn secondary" id="openHistoryRecordBtn" onclick="openHistoryRecordModal()">历史记录</button>
+                    </div>
+                    <div id="scheduleCalendar" class="schedule-calendar">
+                        <!-- 月历与跨日彩条由 JS 渲染 -->
+                    </div>
+                    <div id="scheduleTodoSection" class="schedule-todo-section">
+                        <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
+                        <div id="scheduleTodoModules" class="schedule-todo-modules">
+                            <!-- 按排单分模块的制品 todo 由 JS 渲染 -->
+                        </div>
                     </div>
                 </div>
                 
@@ -631,102 +648,97 @@
                     </div>
                 </div>
 
-                <div class="section">
-                    <h2>历史记录</h2>
-                    <div class="form-row">
-                        <div class="form-group w-full">
-                            <div class="d-flex gap-2">
-                                <input type="text" id="historySearchInput" placeholder="输入关键词搜索历史记录..." class="flex-1" oninput="searchHistory()">
-                                <button class="btn" onclick="clearHistorySearch()">清空</button>
-                                <button class="btn" id="historyFilterBtn" onclick="toggleHistoryFilterDrawer()">
-                                    <span id="historyFilterBtnText">筛选</span>
-                                    <span id="historyFilterBadge" class="filter-badge d-none">0</span>
-                                </button>
-                            </div>
+                <!-- 历史记录弹窗 -->
+                <div id="historyRecordModal" class="history-record-modal d-none">
+                    <div class="history-record-overlay" onclick="closeHistoryRecordModal()"></div>
+                    <div class="history-record-content">
+                        <div class="history-record-header">
+                            <h2>历史记录</h2>
+                            <button type="button" class="btn-icon" onclick="closeHistoryRecordModal()">×</button>
                         </div>
-                    </div>
-                    
-                    <!-- 筛选抽屉面板（移动端风格） -->
-                    <div id="historyFilterDrawer" class="history-filter-drawer">
-                        <div class="filter-drawer-overlay" onclick="closeHistoryFilterDrawer()"></div>
-                        <div class="filter-drawer-content">
-                            <div class="filter-drawer-header">
-                                <h3>筛选与排序</h3>
-                                <button class="btn-icon" onclick="closeHistoryFilterDrawer()">×</button>
-                            </div>
-                            <div class="filter-drawer-body">
-                                <!-- 时间范围 -->
-                                <div class="filter-section">
-                                    <label class="filter-label">时间范围</label>
-                                    <select id="historyTimeFilter" class="filter-select" onchange="onHistoryFilterChange()">
-                                        <option value="all">全部</option>
-                                        <option value="today">今天</option>
-                                        <option value="week">最近一周</option>
-                                        <option value="month">最近一月</option>
-                                        <option value="custom">自定义</option>
-                                    </select>
-                                    <div id="historyCustomDateRange" class="d-none mt-2">
-                                        <input type="date" id="historyStartDate" class="filter-input" onchange="onHistoryFilterChange()" placeholder="开始日期">
-                                        <span class="mx-2">至</span>
-                                        <input type="date" id="historyEndDate" class="filter-input" onchange="onHistoryFilterChange()" placeholder="结束日期">
-                                    </div>
-                                </div>
-                                
-                                <!-- 价格范围 -->
-                                <div class="filter-section">
-                                    <label class="filter-label">价格范围</label>
-                                    <div class="d-flex gap-2 items-center">
-                                        <input type="number" id="historyMinPrice" class="filter-input flex-1" placeholder="最低价" min="0" step="0.01" onchange="onHistoryFilterChange()">
-                                        <span>至</span>
-                                        <input type="number" id="historyMaxPrice" class="filter-input flex-1" placeholder="最高价" min="0" step="0.01" onchange="onHistoryFilterChange()">
-                                    </div>
-                                </div>
-                                
-                                <!-- 排序 -->
-                                <div class="filter-section">
-                                    <label class="filter-label">排序方式</label>
-                                    <select id="historySortBy" class="filter-select" onchange="onHistoryFilterChange()">
-                                        <option value="time-desc">时间（最新）</option>
-                                        <option value="time-asc">时间（最早）</option>
-                                        <option value="price-desc">价格（高到低）</option>
-                                        <option value="price-asc">价格（低到高）</option>
-                                        <option value="client-asc">单主ID（A-Z）</option>
-                                        <option value="client-desc">单主ID（Z-A）</option>
-                                    </select>
-                                </div>
-                                
-                                <!-- 显示方式 -->
-                                <div class="filter-section">
-                                    <label class="filter-label">显示方式</label>
-                                    <select id="historyGroupBy" class="filter-select" onchange="onHistoryFilterChange()">
-                                        <option value="none">列表</option>
-                                        <option value="month">按月分组</option>
-                                    </select>
-                                </div>
-                                
-                                <!-- 批量操作 -->
-                                <div class="filter-section">
-                                    <label class="filter-label">批量操作</label>
+                        <div class="history-record-body">
+                            <div class="form-row">
+                                <div class="form-group w-full">
                                     <div class="d-flex gap-2">
-                                        <button class="btn secondary flex-1" onclick="selectAllHistory()">全选</button>
-                                        <button class="btn danger flex-1" id="batchDeleteBtn" onclick="batchDeleteHistory()" disabled>批量删除</button>
+                                        <input type="text" id="historySearchInput" placeholder="输入关键词搜索..." class="flex-1" oninput="searchHistory()">
+                                        <button class="btn" onclick="clearHistorySearch()">清空</button>
+                                        <button class="btn" id="historyFilterBtn" onclick="toggleHistoryFilterDrawer()">
+                                            <span id="historyFilterBtnText">筛选</span>
+                                            <span id="historyFilterBadge" class="filter-badge d-none">0</span>
+                                        </button>
                                     </div>
                                 </div>
-                                
-                                <!-- 导出 -->
-                                <div class="filter-section">
-                                    <button class="btn w-full" onclick="exportHistoryToExcel(); closeHistoryFilterDrawer();">导出Excel</button>
+                            </div>
+                            <div id="historyFilterDrawer" class="history-filter-drawer">
+                                <div class="filter-drawer-overlay" onclick="closeHistoryFilterDrawer()"></div>
+                                <div class="filter-drawer-content">
+                                    <div class="filter-drawer-header">
+                                        <h3>筛选与排序</h3>
+                                        <button class="btn-icon" onclick="closeHistoryFilterDrawer()">×</button>
+                                    </div>
+                                    <div class="filter-drawer-body">
+                                        <div class="filter-section">
+                                            <label class="filter-label">时间范围</label>
+                                            <select id="historyTimeFilter" class="filter-select" onchange="onHistoryFilterChange()">
+                                                <option value="all">全部</option>
+                                                <option value="today">今天</option>
+                                                <option value="week">最近一周</option>
+                                                <option value="month">最近一月</option>
+                                                <option value="custom">自定义</option>
+                                            </select>
+                                            <div id="historyCustomDateRange" class="d-none mt-2">
+                                                <input type="date" id="historyStartDate" class="filter-input" onchange="onHistoryFilterChange()" placeholder="开始日期">
+                                                <span class="mx-2">至</span>
+                                                <input type="date" id="historyEndDate" class="filter-input" onchange="onHistoryFilterChange()" placeholder="结束日期">
+                                            </div>
+                                        </div>
+                                        <div class="filter-section">
+                                            <label class="filter-label">价格范围</label>
+                                            <div class="d-flex gap-2 items-center">
+                                                <input type="number" id="historyMinPrice" class="filter-input flex-1" placeholder="最低价" min="0" step="0.01" onchange="onHistoryFilterChange()">
+                                                <span>至</span>
+                                                <input type="number" id="historyMaxPrice" class="filter-input flex-1" placeholder="最高价" min="0" step="0.01" onchange="onHistoryFilterChange()">
+                                            </div>
+                                        </div>
+                                        <div class="filter-section">
+                                            <label class="filter-label">排序方式</label>
+                                            <select id="historySortBy" class="filter-select" onchange="onHistoryFilterChange()">
+                                                <option value="time-desc">时间（最新）</option>
+                                                <option value="time-asc">时间（最早）</option>
+                                                <option value="price-desc">价格（高到低）</option>
+                                                <option value="price-asc">价格（低到高）</option>
+                                                <option value="client-asc">单主ID（A-Z）</option>
+                                                <option value="client-desc">单主ID（Z-A）</option>
+                                            </select>
+                                        </div>
+                                        <div class="filter-section">
+                                            <label class="filter-label">显示方式</label>
+                                            <select id="historyGroupBy" class="filter-select" onchange="onHistoryFilterChange()">
+                                                <option value="none">列表</option>
+                                                <option value="month">按月分组</option>
+                                            </select>
+                                        </div>
+                                        <div class="filter-section">
+                                            <label class="filter-label">批量操作</label>
+                                            <div class="d-flex gap-2">
+                                                <button class="btn secondary flex-1" onclick="selectAllHistory()">全选</button>
+                                                <button class="btn danger flex-1" id="batchDeleteBtn" onclick="batchDeleteHistory()" disabled>批量删除</button>
+                                            </div>
+                                        </div>
+                                        <div class="filter-section">
+                                            <button class="btn w-full" onclick="exportHistoryToExcel(); closeHistoryFilterDrawer();">导出Excel</button>
+                                        </div>
+                                    </div>
+                                    <div class="filter-drawer-footer">
+                                        <button class="btn secondary flex-1" onclick="resetHistoryFilters()">重置</button>
+                                        <button class="btn flex-1" onclick="applyHistoryFilters(); closeHistoryFilterDrawer();">应用</button>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="filter-drawer-footer">
-                                <button class="btn secondary flex-1" onclick="resetHistoryFilters()">重置</button>
-                                <button class="btn flex-1" onclick="applyHistoryFilters(); closeHistoryFilterDrawer();">应用</button>
+                            <div id="historyContainer" class="history-container">
+                                <!-- 历史记录由 JS 渲染 -->
                             </div>
                         </div>
-                    </div>
-                    
-                    <div id="historyContainer" class="history-container">
-                        <!-- 历史记录将通过JavaScript动态生成 -->
                     </div>
                 </div>
             </div>
