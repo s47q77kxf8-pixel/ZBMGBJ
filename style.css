@@ -984,11 +984,12 @@ input:focus, select:focus {
 }
 .schedule-title-stats .schedule-stat {
     display: inline-block;
-    min-width: 1.6em;
+    /* 三个数字靠近些 */
+    min-width: 1.1em;
     text-align: center;
 }
 .schedule-title-stats .schedule-stat + .schedule-stat {
-    margin-left: 0.25em;
+    margin-left: 0.1em;
 }
 .schedule-stat-done { color: #2563eb; }
 .schedule-stat-undone { color: #f97316; } /* 橙 */
@@ -4102,13 +4103,26 @@ input:checked + .toggle-slider:before {
 }
 .schedule-title-prev,
 .schedule-title-next {
+    /* 扁平化上月/下月按钮：去掉边框与块状底色，仅保留文字 */
     width: 26px;
     height: 26px;
     padding: 0;
     font-size: 0.75rem;
-    border-radius: 999px;
+    border-radius: 6px;
     font-weight: 600;
     min-width: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-color);
+}
+.schedule-title-prev:hover,
+.schedule-title-next:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+.schedule-title-prev:active,
+.schedule-title-next:active {
+    background: rgba(0, 0, 0, 0.08);
 }
 .schedule-title-btn {
     appearance: none;
@@ -4224,18 +4238,28 @@ input:checked + .toggle-slider:before {
 }
 .schedule-calendar-prev,
 .schedule-calendar-next {
-    width: 30px;
-    height: 30px;
+    /* 扁平化：不显示框 */
+    width: 28px;
+    height: 28px;
     padding: 0;
     font-size: 0.78rem;
-    border-radius: 999px;
+    border-radius: 8px;
     font-weight: 600;
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    background: #fff;
+    border: none;
+    background: transparent;
+    box-shadow: none;
     color: var(--text-color);
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+.schedule-calendar-prev:hover,
+.schedule-calendar-next:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+.schedule-calendar-prev:active,
+.schedule-calendar-next:active {
+    background: rgba(0, 0, 0, 0.08);
 }
 .schedule-calendar-prev:hover,
 .schedule-calendar-next:hover {

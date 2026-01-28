@@ -4730,6 +4730,11 @@ function renderScheduleMonthTitleStats(year, month) {
     const todayYmd = toYmd(now);
     const dateInput = document.getElementById('scheduleTitleDateInput');
     if (dateInput) dateInput.value = window.scheduleSelectedDate || todayYmd;
+
+    // Today 按钮：只在选中日期不是今天时显示
+    const isOtherDay = !!window.scheduleSelectedDate && window.scheduleSelectedDate !== todayYmd;
+    const todayBtn = document.querySelector('.schedule-title-today-pill');
+    if (todayBtn) todayBtn.classList.toggle('d-none', !isOtherDay);
 }
 
 // 点击标题月份弹出日期选择
@@ -4754,6 +4759,17 @@ function onScheduleTitleDateChange() {
         window.scheduleCalendarYear = d.getFullYear();
         window.scheduleCalendarMonth = d.getMonth() + 1;
     }
+    renderScheduleCalendar();
+    renderScheduleTodoSection();
+}
+
+// 点击 Today 按钮：跳回今天
+function scheduleTodoBackToToday() {
+    const now = new Date();
+    const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    window.scheduleSelectedDate = toYmd(now);
+    window.scheduleCalendarYear = now.getFullYear();
+    window.scheduleCalendarMonth = now.getMonth() + 1;
     renderScheduleCalendar();
     renderScheduleTodoSection();
 }
