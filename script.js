@@ -481,7 +481,11 @@ function init() {
         // 初始化小票设置功能
         initReceiptCustomization();
         
-        // 悬浮计算按钮现在固定在计算抽屉内部，不再依赖页面切换控制显隐
+        // 标题区日期选择器绑定事件
+        const scheduleTitleDateInput = document.getElementById('scheduleTitleDateInput');
+        if (scheduleTitleDateInput) {
+            scheduleTitleDateInput.addEventListener('change', onScheduleTitleDateChange);
+        }
     });
 
     // 默认进入时渲染排单页（报价页），确保刷新后排单日历正常显示
@@ -4895,33 +4899,6 @@ function renderScheduleCalendar() {
     // 更新排单标题统计（本月完成/未完成/总制品数）
     renderScheduleMonthTitleStats(y, m);
 
-    // 标题月份点击：弹出日期选择（选择后自动跳转到对应月份并选中日期）
-    const titleBtn = container.querySelector('.schedule-calendar-title-btn');
-    const dateInput = container.querySelector('.schedule-calendar-date-input');
-    if (titleBtn && dateInput) {
-        titleBtn.addEventListener('click', function () {
-            // iOS/Safari 可能不支持 showPicker
-            if (typeof dateInput.showPicker === 'function') dateInput.showPicker();
-            else {
-                dateInput.focus();
-                dateInput.click();
-            }
-        });
-        dateInput.addEventListener('click', function (e) { e.stopPropagation(); });
-        dateInput.addEventListener('change', function () {
-            const v = dateInput.value;
-            if (!v) return;
-            window.scheduleSelectedDate = v;
-            const d = new Date(v);
-            if (!isNaN(d.getTime())) {
-                window.scheduleCalendarYear = d.getFullYear();
-                window.scheduleCalendarMonth = d.getMonth() + 1;
-            }
-            renderScheduleCalendar();
-            renderScheduleTodoSection();
-        });
-    }
-
     container.querySelectorAll('.schedule-calendar-cell[data-date]').forEach(el => {
         const d = el.getAttribute('data-date');
         if (!d) return;
@@ -5507,6 +5484,11 @@ function updateBatchDeleteButton() {
         btn.disabled = selectedHistoryIds.size === 0;
         btn.textContent = selectedHistoryIds.size > 0 ? `批量删除(${selectedHistoryIds.size})` : '批量删除';
     }
+    const recordBtn = document.getElementById('recordBatchDeleteBtn');
+    if (recordBtn) {
+        recordBtn.disabled = selectedHistoryIds.size === 0;
+        recordBtn.textContent = selectedHistoryIds.size > 0 ? `批量删除(${selectedHistoryIds.size})` : '批量删除';
+    }
 }
 
 // 恢复复选框状态（在重新渲染后）
@@ -5540,6 +5522,9 @@ function batchDeleteHistory() {
     
     // 重新应用当前筛选条件
     applyHistoryFilters();
+    if (document.getElementById('recordContainer')) {
+        applyRecordFilters();
+    }
     
     alert('已删除选中的历史记录！');
 }
@@ -6112,6 +6097,10 @@ function loadQuoteFromHistory(id) {
         setTimeout(() => {
             if (quoteData) {
                 generateQuote();  // 生成报价单
+                // 自动打开小票抽屉，跳转到“小票页”
+                if (typeof openReceiptDrawer === 'function') {
+                    openReceiptDrawer();
+                }
             }
         }, 50);  // 稍微增加延迟，确保页面完全切换
     }
@@ -6123,6 +6112,10 @@ function deleteHistoryItem(id) {
     selectedHistoryIds.delete(id);
     saveData();
     applyHistoryFilters();
+    // 同步刷新记录页
+    if (document.getElementById('recordContainer')) {
+        applyRecordFilters();
+    }
 }
 
 // 导出历史记录为Excel
