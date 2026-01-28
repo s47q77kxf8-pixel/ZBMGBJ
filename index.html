@@ -10,26 +10,38 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- 导航栏 (响应式：移动端在下，桌面端在上) -->
+        <!-- 导航栏：报价 | + | 设置 -->
         <nav class="navbar">
             <div class="nav-buttons">
-                <button class="nav-btn active" onclick="showPage('calculator')">
-                    计算页
+                <!-- 左侧：报价（主业务） -->
+                <button class="nav-btn nav-btn-main nav-btn-quote active" onclick="showPage('quote')">
+                    排单
                 </button>
-                <button class="nav-btn" onclick="showPage('quote')">
-                    报价页
+
+                <!-- 中间：开始计算（打开计算抽屉） -->
+                <button class="nav-btn nav-btn-plus" id="openCalculatorBtn" type="button" onclick="openCalculatorDrawer()" aria-label="开始计算">
+                    <span class="nav-plus-icon">+</span>
                 </button>
-                
-                <button class="nav-btn" onclick="showPage('settings')">
-                    设置页
+
+                <!-- 右侧：设置（辅助配置） -->
+                <button class="nav-btn nav-btn-main nav-btn-settings" onclick="showPage('settings')">
+                    设置
                 </button>
             </div>
         </nav>
 
         <!-- 主要内容区域 -->
         <main class="main-content">
-            <!-- 计算页 -->
-            <div id="calculator" class="page active">
+            <!-- 计算页抽屉容器（覆盖在报价/设置之上） -->
+            <div id="calculatorDrawer" class="calculator-drawer">
+                <div class="calculator-drawer-panel">
+                    <div class="calculator-drawer-header">
+                        <button type="button" class="btn-icon calculator-drawer-close" onclick="closeCalculatorDrawer()" aria-label="关闭计算面板">×</button>
+                        <h2 class="calculator-drawer-title">计算报价</h2>
+                    </div>
+                    <div class="calculator-drawer-body">
+                        <!-- 计算页原有内容 -->
+                        <div id="calculator" class="calculator-content">
                 <div class="section">
                     <h2>单主信息</h2>
                     <div class="form-row">
@@ -150,51 +162,31 @@
                     <button class="btn add-product" onclick="addGift()">+ 赠品</button>
                 </div>
                 
-                <div class="save-template-row d-flex gap-2 items-center">
-                    <!-- 保存按钮放在左侧 -->
-                    <button class="btn" onclick="saveTemplate()">保存为模板</button>
-                    <!-- 输入框放在右侧 -->
-                    <input type="text" id="templateName" placeholder="模板名称">
-                </div>
-                
-                <!-- 计算报价按钮（悬浮球） -->
-                <div class="floating-calculate-btn" onclick="calculatePrice()" title="计算报价">
-                    报价
+                        <div class="save-template-row d-flex gap-2 items-center">
+                            <!-- 保存按钮放在左侧 -->
+                            <button class="btn" onclick="saveTemplate()">保存为模板</button>
+                            <!-- 输入框放在右侧 -->
+                            <input type="text" id="templateName" placeholder="模板名称">
+                        </div>
+
+                        <!-- 计算报价按钮（悬浮球，保留在抽屉内部） -->
+                        <div class="floating-calculate-btn" onclick="calculatePrice()" title="计算报价">
+                            报价
+                        </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- 报价页 -->
-            <div id="quote" class="page">
-                <div class="section">
-                    <div class="quote-header d-flex justify-between items-center mb-4">
-                        <h2>小票</h2>
-                        <div class="quote-actions">
-                            <select id="themeSelector" onchange="applyReceiptTheme(this.value)" class="form-control mr-2">
-                                <option value="classic">经典</option>
-                                <option value="modern">现代</option>
-                                <option value="dark">深色</option>
-                                <option value="vintage">复古</option>
-                                <option value="warm">温馨</option>
-                                <option value="nature">清新</option>
-                                <option value="sakura">粉樱</option>
-                                <option value="iceBlue">冰蓝</option>
-                                <optgroup label="自定义主题" id="customThemesGroup"></optgroup>
-                            </select>
-                            <button class="btn" onclick="toggleReceiptCustomizationPanel()">设置</button>
-                            <button class="btn" onclick="saveQuoteAsImage()">存图</button>
-                            <button class="btn" onclick="saveToHistory()">排单</button>
-                        </div>
-                    </div>
-                    <div id="quoteContent" class="quote-content">
-                        <!-- 报价内容将通过JavaScript动态生成 -->
-                    </div>
-                </div>
-
-                <!-- 排单日历区 -->
+            <!-- 报价页（默认主页面） -->
+            <div id="quote" class="page active">
+                <!-- 排单日历区（作为排单页主视图） -->
                 <div class="section schedule-section">
                     <div class="schedule-toolbar d-flex justify-between items-center">
                         <h2 class="schedule-title">排单</h2>
-                        <button type="button" class="btn secondary" id="openHistoryRecordBtn" onclick="openHistoryRecordModal()">历史记录</button>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn secondary" id="openHistoryRecordBtn" onclick="openHistoryRecordModal()">记录</button>
+                        </div>
                     </div>
                     <div id="scheduleCalendar" class="schedule-calendar">
                         <!-- 月历与跨日彩条由 JS 渲染 -->
@@ -206,7 +198,54 @@
                         </div>
                     </div>
                 </div>
-                
+
+                <!-- 隐藏的主小票真源区域（仅用于渲染与截图，不在排单主视图中展示） -->
+                <div class="section quote-main-receipt-section">
+                    <div id="quoteContent" class="quote-content">
+                        <!-- 报价内容将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 小票抽屉：作为“小票页”，从左侧滑出 -->
+                <div id="receiptDrawer" class="receipt-drawer d-none">
+                    <div class="receipt-drawer-overlay" onclick="handleReceiptDrawerClose()"></div>
+                    <div class="receipt-drawer-panel">
+                        <div class="receipt-drawer-header">
+                            <button type="button" class="btn-icon receipt-drawer-close" onclick="handleReceiptDrawerClose()" aria-label="关闭小票页">×</button>
+                            <h2 class="receipt-drawer-title">报价小票</h2>
+                        </div>
+                        <div class="receipt-drawer-body">
+                            <div class="receipt-drawer-toolbar d-flex justify-between items-center">
+                                <div class="receipt-drawer-toolbar-left">
+                                    <span class="receipt-drawer-subtitle">小票</span>
+                                </div>
+                                <div class="receipt-drawer-toolbar-actions d-flex gap-2 items-center">
+                                    <select id="themeSelector" onchange="applyReceiptTheme(this.value)" class="form-control mr-2">
+                                        <option value="classic">经典</option>
+                                        <option value="modern">现代</option>
+                                        <option value="dark">深色</option>
+                                        <option value="vintage">复古</option>
+                                        <option value="warm">温馨</option>
+                                        <option value="nature">清新</option>
+                                        <option value="sakura">粉樱</option>
+                                        <option value="iceBlue">冰蓝</option>
+                                        <optgroup label="自定义主题" id="customThemesGroup"></optgroup>
+                                    </select>
+                                    <button class="btn" onclick="toggleReceiptCustomizationPanel()">设置</button>
+                                    <button class="btn" onclick="saveQuoteAsImage()">存图</button>
+                                </div>
+                            </div>
+                            <div class="receipt-drawer-content">
+                                <div id="receiptDrawerContent"></div>
+                            </div>
+                            <!-- 小票页内的“排单”悬浮球 -->
+                            <div class="floating-schedule-btn" onclick="handleReceiptSchedule()" title="排单">
+                                排单
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 小票设置弹窗（底部弹出） -->
                 <div id="receiptCustomizationModal" class="receipt-customization-modal d-none">
                     <div class="receipt-customization-overlay" onclick="closeReceiptCustomizationPanel()"></div>
@@ -653,7 +692,7 @@
                     <div class="history-record-overlay" onclick="closeHistoryRecordModal()"></div>
                     <div class="history-record-content">
                         <div class="history-record-header">
-                            <h2>历史记录</h2>
+                            <h2>记录</h2>
                             <button type="button" class="btn-icon" onclick="closeHistoryRecordModal()">×</button>
                         </div>
                         <div class="history-record-body">
@@ -1111,6 +1150,9 @@
 
         </main>
     </div>
+
+    <!-- 全局轻提示（toast），用于非阻塞提示“排单已更新”等信息 -->
+    <div id="globalToast" class="global-toast d-none"></div>
 
     <script src="script.js?v=20250127-fix-preview-update-v18"></script>
 </body>

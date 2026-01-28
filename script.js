@@ -481,29 +481,7 @@ function init() {
         // 初始化小票设置功能
         initReceiptCustomization();
         
-        // 初始化悬浮计算按钮的显示状态
-        function updateFloatingButton() {
-            const floatingBtn = document.querySelector('.floating-calculate-btn');
-            if (floatingBtn) {
-                const calculatorPage = document.getElementById('calculator');
-                const isCalculatorActive = calculatorPage && calculatorPage.classList.contains('active');
-                if (isCalculatorActive) {
-                    floatingBtn.style.display = 'flex';
-                    floatingBtn.style.visibility = 'visible';
-                    floatingBtn.style.opacity = '1';
-                } else {
-                    floatingBtn.style.display = 'none';
-                }
-            }
-        }
-        
-        // 立即执行一次
-        updateFloatingButton();
-        
-        // 延迟执行多次，确保DOM完全加载
-        setTimeout(updateFloatingButton, 100);
-        setTimeout(updateFloatingButton, 300);
-        setTimeout(updateFloatingButton, 500);
+        // 悬浮计算按钮现在固定在计算抽屉内部，不再依赖页面切换控制显隐
     });
 }
 
@@ -2698,7 +2676,13 @@ function generateReceiptPreview() {
     previewContainer.innerHTML = previewHTML;
 }
 
-// 页面切换功能
+// ===== 页面与计算 / 小票抽屉切换状态 =====
+let activeTab = 'quote';              // 'quote' | 'settings'
+let isCalculatorOpen = false;         // 计算抽屉是否打开
+let isReceiptDrawerOpen = false;      // 小票抽屉是否打开
+let isCurrentQuoteScheduled = false;  // 当前报价是否已排单保存（用于小票页关闭确认）
+
+// 页面切换功能（底层：报价 / 设置）
 function showPage(pageId) {
     // 隐藏所有页面
     document.querySelectorAll('.page').forEach(page => {
@@ -2706,22 +2690,24 @@ function showPage(pageId) {
     });
     
     // 显示目标页面
-    document.getElementById(pageId).classList.add('active');
+    const pageEl = document.getElementById(pageId);
+    if (pageEl) {
+        pageEl.classList.add('active');
+    }
     
-    // 更新导航按钮状态
-    document.querySelectorAll('.nav-btn').forEach(btn => {
+    // 更新导航按钮状态（只高亮左右主 Tab）
+    document.querySelectorAll('.nav-btn-main').forEach(btn => {
         btn.classList.remove('active');
     });
-    
-    // 激活对应的导航按钮
-    // 检查当前活动的按钮并激活它（通过查找含有对应onclick调用的按钮）
-    const targetBtn = Array.from(document.querySelectorAll('.nav-btn')).find(btn => {
-        const onclickStr = btn.getAttribute('onclick') || '';
-        return onclickStr.includes(`showPage('${pageId}')`);
-    });
-    
-    if (targetBtn) {
-        targetBtn.classList.add('active');
+
+    if (pageId === 'quote') {
+        activeTab = 'quote';
+        const quoteBtn = document.querySelector('.nav-btn-quote');
+        if (quoteBtn) quoteBtn.classList.add('active');
+    } else if (pageId === 'settings') {
+        activeTab = 'settings';
+        const settingsBtn = document.querySelector('.nav-btn-settings');
+        if (settingsBtn) settingsBtn.classList.add('active');
     }
     
     if (pageId === 'quote') {
@@ -2756,23 +2742,28 @@ function showPage(pageId) {
         renderProcessSettings();
         renderCoefficientSettings();
     }
-    // 切换到计算页时刷新所有系数选择器
-    if (pageId === 'calculator') {
-        updateCalculatorBuiltinSelects();
-        updateCalculatorCoefficientSelects();
-    }
-    
-    // 控制悬浮计算按钮的显示/隐藏
-    const floatingBtn = document.querySelector('.floating-calculate-btn');
-    if (floatingBtn) {
-        if (pageId === 'calculator') {
-            floatingBtn.style.display = 'flex';
-            floatingBtn.style.visibility = 'visible';
-            floatingBtn.style.opacity = '1';
-        } else {
-            floatingBtn.style.display = 'none';
-        }
-    }
+    // 页面切换时不再直接显示/隐藏计算页，只控制报价 / 设置下的逻辑
+}
+
+// 打开计算抽屉
+function openCalculatorDrawer() {
+    const drawer = document.getElementById('calculatorDrawer');
+    if (!drawer) return;
+
+    // 每次打开时刷新计算页的选择器与系数
+    updateCalculatorBuiltinSelects();
+    updateCalculatorCoefficientSelects();
+
+    drawer.classList.add('open');
+    isCalculatorOpen = true;
+}
+
+// 关闭计算抽屉
+function closeCalculatorDrawer() {
+    const drawer = document.getElementById('calculatorDrawer');
+    if (!drawer) return;
+    drawer.classList.remove('open');
+    isCalculatorOpen = false;
 }
 
 // 添加制品项
@@ -3485,13 +3476,26 @@ function calculatePrice() {
         timestamp: new Date().toISOString()
     };
     
-    // 生成报价单
+    // 生成报价单（主小票区域）
     generateQuote();
     
-    // 切换到报价页
-    showPage('quote');
+    // 如果小票抽屉当前是打开状态，同步抽屉里的小票内容
+    if (typeof isReceiptDrawerOpen !== 'undefined' && isReceiptDrawerOpen) {
+        syncReceiptDrawerContent();
+    }
     
-    // 滚动到报价页顶部（小票区域）
+    // 关闭计算抽屉（从计算页返回排单页）
+    if (typeof closeCalculatorDrawer === 'function') {
+        closeCalculatorDrawer();
+    }
+    
+    // 切换到报价/排单页
+    showPage('quote');
+
+    // 自动打开小票抽屉，直接展示最新小票
+    openReceiptDrawer();
+    
+    // 滚动到报价页顶部（排单区）
     setTimeout(function() {
         const quotePage = document.getElementById('quote');
         if (quotePage) {
@@ -4105,26 +4109,103 @@ function generateQuote() {
     adjustReceiptScale();
 }
 
+// 同步小票抽屉内容为当前主小票 DOM
+function syncReceiptDrawerContent() {
+    const mainContainer = document.getElementById('quoteContent');
+    const drawerContainer = document.getElementById('receiptDrawerContent');
+
+    if (!drawerContainer) return;
+
+    // 如果还没有主小票，但已有报价数据，先生成一次
+    if ((!mainContainer || !mainContainer.innerHTML.trim()) && quoteData) {
+        generateQuote();
+    }
+
+    if (!mainContainer || !mainContainer.innerHTML.trim()) {
+        drawerContainer.innerHTML = '<p>请先在计算页完成一次报价计算</p>';
+        return;
+    }
+
+    drawerContainer.innerHTML = mainContainer.innerHTML;
+}
+
+// 打开小票抽屉
+function openReceiptDrawer() {
+    const drawer = document.getElementById('receiptDrawer');
+    if (!drawer) return;
+
+    isReceiptDrawerOpen = true;
+
+    // 确保先显示容器，再做开启动画
+    drawer.classList.remove('d-none');
+    drawer.classList.add('open');
+
+    // 同步当前小票内容
+    syncReceiptDrawerContent();
+
+    // 打开抽屉后再次根据当前屏幕尺寸调整小票缩放
+    adjustReceiptScale();
+
+    // 移动端防止背景滚动，PC 端仍允许排单区滚动
+    if (window.innerWidth <= 768) {
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+// 关闭小票抽屉
+function closeReceiptDrawer() {
+    const drawer = document.getElementById('receiptDrawer');
+    if (!drawer) return;
+
+    isReceiptDrawerOpen = false;
+
+    drawer.classList.remove('open');
+    document.body.style.overflow = '';
+
+    // 等待过渡动画结束后再隐藏容器，避免闪烁
+    setTimeout(() => {
+        if (!isReceiptDrawerOpen && drawer) {
+            drawer.classList.add('d-none');
+        }
+    }, 250);
+}
+
+// 处理小票抽屉关闭（遮罩点击或关闭按钮）
+function handleReceiptDrawerClose() {
+    closeReceiptDrawer();
+}
+
+// 在小票页内点击“排单”悬浮球时，复用保存到历史记录的逻辑
+function handleReceiptSchedule() {
+    saveToHistory();
+    // 完成排单后自动关闭小票页，返回排单主视图
+    if (typeof closeReceiptDrawer === 'function') {
+        closeReceiptDrawer();
+    }
+}
+
 // 手机上自动缩放小票以适应屏幕宽度（保持 400px 内部排版不变）
 function adjustReceiptScale() {
-    const receipt = document.querySelector('.receipt');
-    if (!receipt) return;
+    const receipts = document.querySelectorAll('.receipt');
+    if (!receipts.length) return;
     
-    // 只在手机端（屏幕宽度 <= 768px）进行缩放
-    if (window.innerWidth <= 768) {
-        // 计算缩放比例：屏幕宽度 - 左右边距（约 3rem = 48px）后，除以 400px
-        const screenWidth = window.innerWidth;
-        const padding = 48; // 左右各 1.5rem，共约 48px
-        const availableWidth = screenWidth - padding;
-        const scale = Math.min(availableWidth / 400, 1); // 不超过 1（不放大）
-        
-        receipt.style.transform = 'scale(' + scale + ')';
-        receipt.style.transformOrigin = 'top center';
-    } else {
-        // 桌面端：移除缩放
-        receipt.style.transform = '';
-        receipt.style.transformOrigin = '';
-    }
+    receipts.forEach(receipt => {
+        // 只在手机端（屏幕宽度 <= 768px）进行缩放
+        if (window.innerWidth <= 768) {
+            // 计算缩放比例：屏幕宽度 - 左右边距（约 3rem = 48px）后，除以 400px
+            const screenWidth = window.innerWidth;
+            const padding = 48; // 左右各 1.5rem，共约 48px
+            const availableWidth = screenWidth - padding;
+            const scale = Math.min(availableWidth / 400, 1); // 不超过 1（不放大）
+            
+            receipt.style.transform = 'scale(' + scale + ')';
+            receipt.style.transformOrigin = 'top center';
+        } else {
+            // 桌面端：移除缩放
+            receipt.style.transform = '';
+            receipt.style.transformOrigin = '';
+        }
+    });
 }
 
 // 窗口大小改变时重新调整缩放
@@ -4141,7 +4222,11 @@ async function saveQuoteAsImage() {
         return;
     }
     
-    const receipt = document.querySelector('.receipt');
+    // 优先使用隐藏的主小票真源（避免抽屉样式干扰截图）
+    const receipt =
+        document.querySelector('.quote-main-receipt-section .receipt') ||
+        document.querySelector('#receiptDrawerContent .receipt') ||
+        document.querySelector('.receipt');
     if (!receipt) {
         alert('找不到报价单元素！');
         return;
@@ -4225,6 +4310,31 @@ function triggerDownload(dataUrl, filename) {
     link.click();
 }
 
+// 轻量提示：在底部显示一条不打断操作的消息
+let globalToastTimer = null;
+function showGlobalToast(message, duration = 2000) {
+    const toast = document.getElementById('globalToast');
+    if (!toast) {
+        console.log(message);
+        return;
+    }
+    toast.textContent = message;
+    toast.classList.remove('d-none');
+    // 触发表现动画
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+    if (globalToastTimer) {
+        clearTimeout(globalToastTimer);
+    }
+    globalToastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+        globalToastTimer = setTimeout(() => {
+            toast.classList.add('d-none');
+        }, 200);
+    }, duration);
+}
+
 // 保存到历史记录
 function saveToHistory() {
     if (!quoteData) {
@@ -4251,9 +4361,9 @@ function saveToHistory() {
                 timestamp: existing.timestamp,
                 productDoneStates: doneStates
             };
-            alert('排单已更新！');
+            showGlobalToast('排单已更新！');
         } else {
-            alert('未找到要更新的排单！');
+            showGlobalToast('未找到要更新的排单！');
             window.editingHistoryId = null;
             return;
         }
@@ -4269,7 +4379,7 @@ function saveToHistory() {
         if (history.length > 20) {
             history = history.slice(0, 20);
         }
-        alert('报价单已加入排单！');
+        showGlobalToast('报价单已加入排单！');
     }
     
     saveData();
