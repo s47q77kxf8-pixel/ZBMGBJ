@@ -2608,16 +2608,20 @@ function clearRecordSearch() {
 }
 
 function getRecordProgressStatus(item) {
-    if (!item) return { text: '未开始', className: 'record-status--not-started' };
+    if (!item) return { text: '未开始', className: 'record-status--not-started', pending: false, overdue: false };
     ensureProductDoneStates(item);
     const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
     const total = states.length;
-    if (total === 0) return { text: '未开始', className: 'record-status--not-started' };
     let doneCount = 0;
     for (let i = 0; i < total; i++) if (states[i]) doneCount++;
-    if (doneCount === 0) return { text: '未开始', className: 'record-status--not-started' };
-    if (doneCount === total) return { text: '已完成', className: 'record-status--completed' };
-    return { text: '进行中', className: 'record-status--in-progress' };
+    const pending = !item.startTime && !item.deadline;
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    const overdue = !!(item.deadline && new Date(item.deadline).getTime() < now.getTime() && total > 0 && doneCount < total);
+    if (total === 0) return { text: '未开始', className: 'record-status--not-started', pending, overdue };
+    if (doneCount === 0) return { text: '未开始', className: 'record-status--not-started', pending, overdue };
+    if (doneCount === total) return { text: '已完成', className: 'record-status--completed', pending, overdue };
+    return { text: '进行中', className: 'record-status--in-progress', pending, overdue };
 }
 
 function formatMoney(value) {
@@ -2823,6 +2827,10 @@ function applyRecordFilters() {
         const amount = formatMoney(item && item.finalTotal);
         const status = getRecordProgressStatus(item);
         const isSelected = selectedHistoryIds.has(item.id);
+        const badges = [];
+        if (status.pending) badges.push('<span class="record-badge record-badge-pending">待排单</span>');
+        if (status.overdue) badges.push('<span class="record-badge record-badge-overdue">已逾期</span>');
+        const badgesHtml = badges.length ? '<span class="record-item-badges">' + badges.join('') + '</span>' : '';
         return `
             <div class="record-item history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
                 <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
@@ -2830,7 +2838,8 @@ function applyRecordFilters() {
                 <div class="record-item-right">
                     <span class="record-item-amount">${amount}</span>
                     <span class="record-status ${status.className}">${status.text}</span>
-                    <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看小票" title="小票">
+                    ${badgesHtml}
+                    <button class="icon-action-btn view" onclick="setReceiptFromRecord(); loadQuoteFromHistory(${item.id})" aria-label="查看小票" title="小票">
                         <svg class="icon sm" aria-hidden="true"><use href="#i-receipt"></use></svg>
                         <span class="sr-only">小票</span>
                     </button>
@@ -4405,18 +4414,26 @@ function closeReceiptDrawer() {
     }, 250);
 }
 
+// 从记录页打开小票时设为 true，关闭小票时若为 true 则返回记录页
+window.receiptOpenedFromRecord = false;
+function setReceiptFromRecord() { window.receiptOpenedFromRecord = true; }
+function maybeReturnToRecordAndCloseReceipt() {
+    if (window.receiptOpenedFromRecord) {
+        window.receiptOpenedFromRecord = false;
+        showPage('record');
+    }
+    closeReceiptDrawer();
+}
+
 // 处理小票抽屉关闭（遮罩点击或关闭按钮）
 function handleReceiptDrawerClose() {
-    closeReceiptDrawer();
+    maybeReturnToRecordAndCloseReceipt();
 }
 
 // 在小票页内点击“排单”悬浮球时，复用保存到历史记录的逻辑
 function handleReceiptSchedule() {
     saveToHistory();
-    // 完成排单后自动关闭小票页，返回排单主视图
-    if (typeof closeReceiptDrawer === 'function') {
-        closeReceiptDrawer();
-    }
+    maybeReturnToRecordAndCloseReceipt();
 }
 
 // 手机上自动缩放小票以适应屏幕宽度（保持 400px 内部排版不变）
@@ -4686,6 +4703,44 @@ function getScheduleItemsForDate(selectedDate) {
         if (!start || !end) return false;
         return target >= start && target <= end;
     });
+}
+
+// 有排单时间的全部（startTime 或 deadline 至少一个）
+function getScheduleItemsAll() {
+    return history.filter(h => {
+        ensureProductDoneStates(h);
+        return !!(h.startTime || h.deadline);
+    });
+}
+
+// 待排单：未设置排单时间（无 startTime 且无 deadline）
+function getScheduleItemsPending() {
+    return history.filter(h => {
+        ensureProductDoneStates(h);
+        return !h.startTime && !h.deadline;
+    });
+}
+
+window.scheduleTodoFilter = 'today';
+function setScheduleTodoFilter(f) {
+    window.scheduleTodoFilter = f;
+    document.querySelectorAll('.schedule-todo-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', (btn.dataset.filter || '') === f);
+    });
+    renderScheduleTodoSection();
+}
+
+function getScheduleItemsByFilter() {
+    const f = window.scheduleTodoFilter || 'today';
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    if (f === 'all') return getScheduleItemsAll();
+    if (f === 'month') return getScheduleItemsForMonth(y, m);
+    if (f === 'pending') return getScheduleItemsPending();
+    const today = y + '-' + String(m).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    if (!window.scheduleSelectedDate) window.scheduleSelectedDate = today;
+    return getScheduleItemsForDate(window.scheduleSelectedDate);
 }
 
 // 默认 todo：返回当前月内（与该月有交集）的所有排单
@@ -4963,7 +5018,8 @@ function renderScheduleCalendar() {
                     const color = SCHEDULE_BAR_COLORS[Math.abs(b.id) % SCHEDULE_BAR_COLORS.length];
                     const label = (b.clientId || '—') + '  ' + b.productCount + '制品';
                     var textColor = SCHEDULE_BAR_TEXT_COLORS[Math.abs(b.id) % SCHEDULE_BAR_TEXT_COLORS.length];
-                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '">' + label + '</div>';
+                    var singleDay = s.startCol === s.endCol ? ' data-single-day="1"' : '';
+                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '"' + singleDay + '>' + label + '</div>';
                 });
             });
             html += '</div>';
@@ -5027,21 +5083,23 @@ function scheduleCalendarNextMonth() {
     renderScheduleTodoSection();
 }
 
-// 渲染当前批次制品 todo 区（按选中日期显示所有排单的制品）
+// 渲染当前批次制品 todo 区（按快捷筛选或选中日期显示排单制品）
 function renderScheduleTodoSection() {
     const titleEl = document.getElementById('scheduleTodoTitle');
     const modulesEl = document.getElementById('scheduleTodoModules');
     if (!titleEl || !modulesEl) return;
-    // 默认选中当天，todo 显示当日排单
-    if (!window.scheduleSelectedDate) {
+    const f = window.scheduleTodoFilter || 'today';
+    if (f === 'today' && !window.scheduleSelectedDate) {
         const now = new Date();
         const y0 = now.getFullYear();
         const m0 = String(now.getMonth() + 1).padStart(2, '0');
         const d0 = String(now.getDate()).padStart(2, '0');
         window.scheduleSelectedDate = y0 + '-' + m0 + '-' + d0;
     }
-    const items = getScheduleItemsForDate(window.scheduleSelectedDate);
-    titleEl.textContent = '选中日期：' + formatYmdCn(window.scheduleSelectedDate);
+    const items = getScheduleItemsByFilter();
+    const titles = { all: '所有', month: '当月', pending: '待排', today: '今日' };
+    const sub = f === 'today' && window.scheduleSelectedDate ? '：' + formatYmdCn(window.scheduleSelectedDate) : '';
+    titleEl.textContent = (titles[f] || '今日') + sub;
     if (items.length === 0) {
         modulesEl.innerHTML = '<p class="schedule-todo-empty">该日期暂无排单</p>';
         return;

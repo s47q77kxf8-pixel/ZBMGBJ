@@ -4285,7 +4285,6 @@ input:checked + .toggle-slider:before {
     border-radius: 12px;
     padding: 1rem;
     margin-bottom: 1rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 .schedule-calendar-inner {
     min-width: 0;
@@ -4505,12 +4504,41 @@ input:checked + .toggle-slider:before {
 .schedule-bar-strip:hover {
     filter: brightness(0.92);
 }
+.schedule-bar-strip[data-single-day="1"] {
+    min-width: 24px;
+}
 .schedule-todo-section {
     background: transparent;
     border: none;
     border-radius: 0;
     padding: 0.25rem 0;
     box-shadow: none;
+}
+.schedule-todo-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+.schedule-todo-filter-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+.schedule-todo-filter-btn:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+.schedule-todo-filter-btn.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
 }
 .schedule-todo-title {
     display: none;
@@ -4578,6 +4606,8 @@ input:checked + .toggle-slider:before {
     overflow-x: auto;
     overflow-y: hidden;
     padding-bottom: 0.15rem;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
 }
 .schedule-todo-row {
     display: flex;
@@ -4771,6 +4801,28 @@ input:checked + .toggle-slider:before {
     color: #065f46;
     background: #ecfdf5;
     border-color: #6ee7b7;
+}
+
+.record-item-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+.record-badge {
+    font-size: 0.6rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+.record-badge-pending {
+    color: #6b7280;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+}
+.record-badge-overdue {
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
 }
 
 @media (max-width: 768px) {
