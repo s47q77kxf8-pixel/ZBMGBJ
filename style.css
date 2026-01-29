@@ -3383,22 +3383,26 @@ input:checked + .toggle-slider:before {
     right: 2rem;
     top: 50%;
     transform: translateY(-50%);
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.5rem;
+    height: 1.5rem;
     border: none;
     background: #94a3b8;
     color: white;
     border-radius: 50%;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     cursor: pointer;
     display: none;
     align-items: center;
     justify-content: center;
     line-height: 1;
+    transition: all 0.2s ease;
+    opacity: 0.85;
 }
 
 .searchable-select-clear:hover {
     background: #64748b;
+    opacity: 1;
+    transform: translateY(-50%) scale(1.1);
 }
 
 .searchable-select.has-value .searchable-select-clear {
