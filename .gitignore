@@ -48,3 +48,10 @@ git-backup.ps1
 代码分析与优化报告.md
 网页功能分析与优化报告.md
 
+# 预览和选项文件（保留本地，不提交到git）
+delete-icons-preview.html
+filter-buttons-options.html
+font-preview.html
+schedule-chip-options.html
+schedule-todo-ui-options.html
+image-processor-worker.js

@@ -527,6 +527,14 @@ input, select {
     font-size: 0.9rem;
     transition: all 0.2s;
     background-color: #fff;
+    /* 统一文字颜色，避免移动端下拉默认蓝色 */
+    color: #111;
+}
+
+/* 统一下拉框文本颜色（含选项），兼容部分移动端浏览器 */
+select,
+select option {
+    color: #111;
 }
 
 input:focus, select:focus {
@@ -2940,6 +2948,8 @@ input:checked + .toggle-slider:before {
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     animation: fadeIn 0.3s ease-out;
+    /* 允许底部小票区域继续滚动预览，小票页滚动不被遮罩拦截 */
+    pointer-events: none;
 }
 
 .receipt-customization-content {
@@ -4576,6 +4586,7 @@ input:checked + .toggle-slider:before {
     background: #fff;
     width: 100%;
     box-sizing: border-box;
+    position: relative;
 }
 .schedule-todo-card-date {
     flex: 0 0 42px;
