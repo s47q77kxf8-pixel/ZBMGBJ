@@ -5718,6 +5718,40 @@ function renderScheduleTodoSection() {
             + '  </div>'
             + '</div>';
     });
+    // #region agent log
+    setTimeout(function() {
+        var w = window.innerWidth;
+        var first = modulesEl.querySelector('.schedule-todo-card-main');
+        var data = { viewportW: w, hasMain: !!first, itemsCount: sortedItems.length };
+        if (first) {
+            var cs = getComputedStyle(first);
+            data.mainDisplay = cs.display;
+            data.mainGridCols = cs.gridTemplateColumns;
+            data.mainGridRows = cs.gridTemplateRows;
+            data.mainGap = cs.gap;
+            data.mainAlignItems = cs.alignItems;
+            var month = first.querySelector('.schedule-todo-card-month');
+            var day = first.querySelector('.schedule-todo-card-day');
+            var head = first.querySelector('.schedule-todo-card-head');
+            var products = first.querySelector('.schedule-todo-card-products');
+            var sep = first.querySelector('.schedule-todo-card-sep');
+            data.monthGridCol = month ? getComputedStyle(month).gridColumn : null;
+            data.monthGridRow = month ? getComputedStyle(month).gridRow : null;
+            data.dayGridCol = day ? getComputedStyle(day).gridColumn : null;
+            data.dayGridRow = day ? getComputedStyle(day).gridRow : null;
+            data.headGridCol = head ? getComputedStyle(head).gridColumn : null;
+            data.headGridRow = head ? getComputedStyle(head).gridRow : null;
+            data.productsGridCol = products ? getComputedStyle(products).gridColumn : null;
+            data.productsGridRow = products ? getComputedStyle(products).gridRow : null;
+            data.childOrder = [].slice.call(first.children).map(function(c) { return c.className || c.tagName; });
+            if (sep) data.col1Width = sep.offsetLeft;
+            if (head) { data.headH = head.offsetHeight; data.headScrollH = head.scrollHeight; data.headWraps = head.scrollHeight > head.offsetHeight; }
+            if (month) data.monthRect = { w: month.offsetWidth, h: month.offsetHeight };
+            if (day) data.dayRect = { w: day.offsetWidth, h: day.offsetHeight };
+        }
+        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:renderScheduleTodoSection',message:'todo layout debug',data:data,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-H5',runId:'post-fix'})}).catch(function(){});
+    }, 50);
+    // #endregion
 }
 
 function toggleScheduleTodoDone(checkbox) {
