@@ -50,8 +50,8 @@ function createSearchableSelect(inputId, options, placeholder, onChange, initial
                    placeholder="${placeholder || '请选择或输入'}"
                    value="${selectedOption ? selectedOption.label : ''}"
                    autocomplete="off">
-            <button type="button" class="searchable-select-clear btn-icon btn--icon" aria-label="清空" title="清空">
-                <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
+            <button type="button" class="searchable-select-clear" aria-label="清空" title="清空">
+                <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
                 <span class="sr-only">清空</span>
             </button>
             <span class="searchable-select-arrow">▼</span>
