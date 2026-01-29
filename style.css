@@ -436,6 +436,55 @@ body {
     pointer-events: none;
 }
 
+/* 移动端小票设置打开时：上小票可滚动，下设置可滚动，且都能看到全部内容 */
+@media (max-width: 768px) {
+    .receipt-drawer.customization-open {
+        align-items: flex-start;
+        z-index: 100000;
+    }
+    /* 遮罩只占上半屏且 pointer-events:none，触摸透到小票面板 */
+    .receipt-drawer.customization-open .receipt-drawer-overlay {
+        flex: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 40vh;
+        bottom: auto;
+    }
+    .receipt-drawer.customization-open .receipt-drawer-panel {
+        height: 40vh;
+        max-height: 40vh;
+        min-height: 0; /* flex 子项可收缩，overflow 才能生效 */
+        border-radius: 16px 0 0 16px;
+        border-top: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .receipt-drawer.customization-open.open .receipt-drawer-panel {
+        transform: translateY(0);
+    }
+    .receipt-drawer.customization-open .receipt-drawer-body {
+        min-height: 0;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+    }
+    .receipt-customization-modal:not(.d-none) {
+        z-index: 100001;
+        /* 上半屏不拦截触摸，让触摸透传到小票抽屉 */
+        pointer-events: none;
+    }
+    /* 设置内容区需要接收触摸，所以恢复 pointer-events */
+    .receipt-customization-modal:not(.d-none) .receipt-customization-content {
+        max-height: 60vh;
+        pointer-events: auto;
+    }
+    .receipt-customization-modal:not(.d-none) .receipt-customization-body {
+        min-height: 0; /* flex 子项可收缩，overflow-y 才能滚动 */
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+    }
+}
+
 .page {
     display: none;
     animation: fadeIn 0.3s ease-out;
@@ -3188,19 +3237,19 @@ input:checked + .toggle-slider:before {
     }
 }
 
-/* 手机端：上半屏小票预览可滚动 + 下半屏设置；overlay 不拦截触摸，便于上下滚动预览小票 */
+/* 手机端：上 40vh 小票预览可滚动 + 下 60vh 设置可滚动；overlay 不拦截触摸 */
 @media (max-width: 768px) {
     .receipt-customization-overlay {
         top: 0;
         left: 0;
         right: 0;
         bottom: auto;
-        height: 50vh;
+        height: 40vh;
         background: rgba(0, 0, 0, 0.35);
         pointer-events: none;
     }
     .receipt-customization-content {
-        max-height: 50vh;
+        max-height: 60vh;
         border-radius: 12px 12px 0 0;
         padding-top: 0.75rem;
     }
@@ -4592,76 +4641,117 @@ input:checked + .toggle-slider:before {
     /* 取消内部滚动，由整个页面滚动承载 */
     padding-right: 2px;
 }
+/* 方案3 紧凑单行：每 todo 一卡片，首行 日期 | 范围 | 客户 · 进度，次行制品 */
 .schedule-todo-card {
     display: flex;
-    gap: 0.5rem;
-    padding: 0.25rem 0.45rem;
-    border-radius: 8px;
+    padding: 0.5rem 0.6rem;
+    border-radius: 10px;
     border: 1px solid var(--border-color);
     background: #fff;
     width: 100%;
     box-sizing: border-box;
     position: relative;
+    cursor: pointer;
 }
-.schedule-todo-card-date {
-    flex: 0 0 42px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    justify-content: center;
-    border-right: 1px solid rgba(0, 0, 0, 0.08);
-    padding-right: 0.5rem;
+.schedule-todo-card-main {
+    display: grid;
+    grid-template-columns: auto 1px 1fr;
+    grid-template-rows: auto auto;
+    gap: 0.1rem 0.4rem;
+    width: 100%;
+    min-width: 0;
+    align-items: stretch;
 }
 .schedule-todo-card-month {
+    grid-column: 1;
+    grid-row: 1;
     font-size: 0.65rem;
     color: var(--text-light);
     line-height: 1.1;
+    text-align: right;
+    align-self: center;
 }
 .schedule-todo-card-day {
-    font-size: 1.2rem;
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 1.1rem;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
     color: var(--text-color);
+    line-height: 1.1;
     text-align: right;
-    width: 100%;
+    align-self: center;
 }
-.schedule-todo-card-body {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
+.schedule-todo-card-sep {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.12);
+    justify-self: center;
+}
+.schedule-todo-card-head {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
     display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-.schedule-todo-card-line1 {
-    font-size: 0.6rem;
-    color: var(--text-light);
-    line-height: 1.2;
-    margin-bottom: 0.12rem;
-}
-.schedule-todo-card-line2 {
-    font-size: 0.9rem;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.4rem;
     min-width: 0;
+}
+.schedule-todo-card-sep-inline {
+    width: 1px;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.12);
+    flex-shrink: 0;
+}
+.schedule-todo-card-range {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    font-variant-numeric: tabular-nums;
+}
+.schedule-todo-card-client {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-color);
+    flex-shrink: 0;
+}
+.schedule-todo-card-progress {
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+.schedule-todo-card-status {
+    margin-left: auto;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    font-weight: 600;
+    flex-shrink: 0;
 }
 .schedule-todo-card-products {
+    grid-column: 3;
+    grid-row: 2;
+    align-self: center;
     display: flex;
     flex-wrap: nowrap;
-    gap: 0.25rem;
+    gap: 0.15rem 0.35rem;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-bottom: 0.15rem;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
+    padding-bottom: 0.02rem;
+    min-width: 0;
 }
 .schedule-todo-row {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    font-size: 1rem;
-    min-width: 0;
-    line-height: 1.2;
+    gap: 0.22rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    line-height: 1.15;
 }
 .schedule-todo-chip {
-    padding: 0.15rem 0.35rem;
+    padding: 0.04rem 0.24rem;
     border-radius: 999px;
 }
 .schedule-todo-row.schedule-todo-done .schedule-todo-label {
@@ -4669,12 +4759,11 @@ input:checked + .toggle-slider:before {
     color: var(--text-light);
 }
 .schedule-todo-checkbox {
-    width: 12px;
-    height: 12px;
+    width: 9px;
+    height: 9px;
     cursor: pointer;
     flex-shrink: 0;
     margin: 0;
-    /* 待办勾选框也统一成黑色系 */
     accent-color: #111111;
 }
 .schedule-todo-label {
@@ -4683,8 +4772,8 @@ input:checked + .toggle-slider:before {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 1rem;
-    line-height: 1.2;
+    font-size: 0.8rem;
+    line-height: 1.15;
 }
 .schedule-todo-empty {
     color: var(--text-light);
@@ -4960,55 +5049,49 @@ input:checked + .toggle-slider:before {
     .schedule-todo-card {
         width: 100%;
         box-sizing: border-box;
-        padding: 0.2rem 0.35rem;
-        border-radius: 6px;
-        overflow: hidden;
+        padding: 0.35rem 0.45rem;
+        border-radius: 8px;
     }
-    .schedule-todo-card-date {
-        flex: 0 0 26px;
+    .schedule-todo-card-main {
+        gap: 0.08rem 0.35rem;
+    }
+    .schedule-todo-card-head {
+        gap: 0.2rem 0.35rem;
     }
     .schedule-todo-card-month {
         font-size: 0.6rem;
     }
     .schedule-todo-card-day {
         font-size: 1rem;
-        text-align: right;
-        width: 100%;
     }
-    .schedule-todo-card-body {
-        gap: 0;
-        justify-content: flex-end;
-        min-width: 0;
-        overflow: hidden;
+    .schedule-todo-card-range {
+        font-size: 0.75rem;
     }
-    .schedule-todo-card-line1 {
-        font-size: 0.55rem;
-        margin-bottom: 0.1rem;
+    .schedule-todo-card-client {
+        font-size: 0.85rem;
     }
-    .schedule-todo-card-line2 {
-        font-size: 0.8rem;
-        min-width: 0;
-        overflow: hidden;
+    .schedule-todo-card-progress {
+        font-size: 0.7rem;
+    }
+    .schedule-todo-card-status {
+        font-size: 0.6rem;
+        padding: 0.08rem 0.32rem;
     }
     .schedule-todo-card-products {
-        gap: 0.2rem;
-        overflow-x: auto;
-        overflow-y: hidden;
-        min-width: 0;
+        gap: 0.12rem 0.3rem;
     }
     .schedule-todo-row {
-        font-size: 0.9rem;
+        font-size: 0.75rem;
     }
     .schedule-todo-chip {
-        padding: 0.1rem 0.28rem;
+        padding: 0.03rem 0.2rem;
     }
     .schedule-todo-checkbox {
-        width: 11px;
-        height: 11px;
+        width: 9px;
+        height: 9px;
     }
-    /* 修复单主行与月份行对齐 */
-    .schedule-todo-card-line2 {
-        align-self: flex-start;
+    .schedule-todo-label {
+        font-size: 0.75rem;
     }
 }
 

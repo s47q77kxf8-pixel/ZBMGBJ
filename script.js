@@ -483,35 +483,6 @@ function init() {
         
         // 初始化小票设置功能
         initReceiptCustomization();
-
-        // #region agent log
-        try {
-            const receiptBody = document.querySelector('.receipt-drawer-body');
-            if (receiptBody) {
-                receiptBody.addEventListener('scroll', () => {
-                    try {
-                        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                sessionId: 'debug-session',
-                                runId: 'pre-fix',
-                                hypothesisId: 'H3',
-                                location: 'script.js:486-scroll',
-                                message: 'receipt drawer body scrolled',
-                                data: {
-                                    scrollTop: receiptBody.scrollTop,
-                                    scrollHeight: receiptBody.scrollHeight,
-                                    clientHeight: receiptBody.clientHeight
-                                },
-                                timestamp: Date.now()
-                            })
-                        }).catch(() => {});
-                    } catch (e) {}
-                }, { passive: true });
-            }
-        } catch (e) {}
-        // #endregion
         
         // 标题区日期选择器绑定事件
         const scheduleTitleDateInput = document.getElementById('scheduleTitleDateInput');
@@ -744,6 +715,7 @@ function updateReceiptCustomization(field, value) {
             reader.onload = function(e) {
                 defaultSettings.receiptCustomization[field] = e.target.result;
                 saveData();
+                debouncedRefreshReceipt(); // 实时预览
             };
             reader.readAsDataURL(value);
         }
@@ -751,6 +723,7 @@ function updateReceiptCustomization(field, value) {
         // 如果是文本内容，直接更新
         defaultSettings.receiptCustomization[field] = value;
         saveData();
+        debouncedRefreshReceipt(); // 实时预览（标题、尾部文本等）
     }
 }
 
@@ -790,33 +763,6 @@ function toggleReceiptCustomizationPanel() {
                 quoteEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
-
-        // #region agent log
-        try {
-            const receiptBody = document.querySelector('.receipt-drawer-body');
-            const receiptBodyStyle = receiptBody ? window.getComputedStyle(receiptBody) : null;
-            fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sessionId: 'debug-session',
-                    runId: 'pre-fix',
-                    hypothesisId: 'H1',
-                    location: 'script.js:758',
-                    message: 'open receipt customization',
-                    data: {
-                        innerWidth: window.innerWidth,
-                        bodyOverflow: document.body.style.overflow || null,
-                        receiptBodyPresent: !!receiptBody,
-                        receiptBodyOverflow: receiptBodyStyle ? receiptBodyStyle.overflow : null,
-                        receiptBodyScrollHeight: receiptBody ? receiptBody.scrollHeight : null,
-                        receiptBodyClientHeight: receiptBody ? receiptBody.clientHeight : null
-                    },
-                    timestamp: Date.now()
-                })
-            }).catch(() => {});
-        } catch (e) {}
-        // #endregion
 
         modal.classList.remove('d-none');
         if (drawer) drawer.classList.add('customization-open');
@@ -926,9 +872,10 @@ function saveCustomTheme() {
     alert('自定义主题已保存！');
 }
 
-// 更新颜色值显示（统一 #000000 格式）
+// 更新颜色值显示（统一 #000000 格式），若当前使用自定义主题则实时预览
 function updateCustomThemePreview() {
     const colorInputs = ['customThemeBg', 'customThemeText', 'customThemeAccent', 'customThemeTitle', 'customThemeDivider'];
+    const fieldMap = { customThemeBg: 'bg', customThemeText: 'text', customThemeAccent: 'accent', customThemeTitle: 'title', customThemeDivider: 'divider' };
     colorInputs.forEach(inputId => {
         const input = document.getElementById(inputId);
         const valueSpan = document.getElementById(inputId + 'Value');
@@ -936,7 +883,22 @@ function updateCustomThemePreview() {
             valueSpan.textContent = toHex6(input.value).toUpperCase();
         }
     });
-    
+
+    const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
+    if (currentTheme.startsWith('custom_') && defaultSettings.customThemes && defaultSettings.customThemes[currentTheme]) {
+        const theme = defaultSettings.customThemes[currentTheme];
+        colorInputs.forEach(inputId => {
+            const input = document.getElementById(inputId);
+            const field = fieldMap[inputId];
+            if (input && field) theme[field] = toHex6(input.value);
+        });
+        const radiusInput = document.getElementById('customThemeBorderRadius');
+        if (radiusInput) theme.borderRadius = parseInt(radiusInput.value) || 0;
+        saveData();
+        applyCustomThemeStyles(currentTheme);
+        debouncedRefreshReceipt(); // 实时预览
+    }
+
     const borderColorInput = document.getElementById('customThemeBorderColor');
     const borderColorValue = document.getElementById('customThemeBorderColorValue');
     if (borderColorInput && borderColorValue) {
@@ -1961,6 +1923,7 @@ function handleReceiptImageUpload(field, file) {
                     
                     // 更新预览（包含尺寸信息）
                     updateImagePreview(field, originalImageData, img.width, img.height, file.size);
+                    debouncedRefreshReceipt(); // 实时预览
                 }
             };
             img.src = originalImageData;
@@ -1998,7 +1961,8 @@ function deleteReceiptImage(field) {
         delete defaultSettings.receiptCustomization[field];
         delete defaultSettings.receiptCustomization[field + 'Original'];
         saveData();
-        
+        debouncedRefreshReceipt(); // 实时预览
+
         // 清空预览
         const previewId = field === 'headerImage' ? 'headerImagePreview' : 'footerImagePreview';
         const previewElement = document.getElementById(previewId);
@@ -2050,7 +2014,8 @@ function updateReceiptInfo(field, value) {
     
     defaultSettings.receiptCustomization.receiptInfo[field] = value;
     saveData();
-    
+    debouncedRefreshReceipt(); // 实时预览（通知文本、开关等）
+
     // 如果是跟随系统主题颜色设置，重新处理图片
     if (field === 'followSystemTheme') {
         if (value) {
@@ -4564,6 +4529,12 @@ function maybeReturnToRecordAndCloseReceipt() {
 
 // 处理小票抽屉关闭（遮罩点击或关闭按钮）
 function handleReceiptDrawerClose() {
+    // 小票设置打开时：只关设置面板，不关小票抽屉，避免点击下半屏设置时误关小票
+    const modal = document.getElementById('receiptCustomizationModal');
+    if (modal && !modal.classList.contains('d-none')) {
+        closeReceiptCustomizationPanel();
+        return;
+    }
     maybeReturnToRecordAndCloseReceipt();
 }
 
@@ -5044,16 +5015,20 @@ function getScheduleBarsForCalendar(year, month) {
     return bars;
 }
 
-// 排单日历条带色板（浅色透明，苹果风格）
+// 排单日历条带色板（与彩条颜色预览.html 一致）
 var SCHEDULE_BAR_COLORS = [
-    'rgba(147, 197, 253, 0.24)',
-    'rgba(134, 239, 172, 0.24)',
-    'rgba(253, 211, 77, 0.26)',
-    'rgba(249, 168, 212, 0.24)',
-    'rgba(165, 180, 252, 0.24)',
-    'rgba(103, 232, 249, 0.24)'
+    'rgba(173, 198, 235, 0.32)',
+    'rgba(158, 208, 218, 0.32)',
+    'rgba(235, 218, 178, 0.32)',
+    'rgba(235, 188, 208, 0.32)',
+    'rgba(198, 188, 228, 0.32)',
+    'rgba(168, 218, 228, 0.32)',
+    'rgba(228, 178, 178, 0.32)',
+    'rgba(208, 188, 235, 0.32)',
+    'rgba(228, 198, 168, 0.32)',
+    'rgba(178, 228, 208, 0.32)'
 ];
-var SCHEDULE_BAR_TEXT_COLORS = ['#1e3a5f', '#14532d', '#713f12', '#831843', '#312e81', '#134e4a'];
+var SCHEDULE_BAR_TEXT_COLORS = ['#3d5a7a', '#3d6b6b', '#6b5c38', '#6b4058', '#4d3d6b', '#3d6b78', '#6b4040', '#5a4d78', '#6b5438', '#3d7860'];
 
 // 按星期视图：同周内条带轨道分配，最多 3 条（一行一天最多显示 3 个）
 function assignWeekBarsToTracks(segments) {
@@ -5260,6 +5235,11 @@ function renderScheduleTodoSection() {
         const bDone = bTotal > 0 && (b.productDoneStates || []).filter(Boolean).length === bTotal;
         return Number(aDone) - Number(bDone);
     });
+    var toMd = function(str) {
+        if (!str) return '—';
+        var d = new Date(str);
+        return isNaN(d.getTime()) ? '—' : (d.getMonth() + 1) + '.' + d.getDate();
+    };
     modulesEl.innerHTML = '';
     sortedItems.forEach(item => {
         ensureProductDoneStates(item);
@@ -5271,11 +5251,16 @@ function renderScheduleTodoSection() {
         for (let i = 0; i < doneStates.length; i++) { if (doneStates[i]) doneCount++; }
         const dateStr = item.deadline || item.startTime || item.timestamp;
         const d = dateStr ? new Date(dateStr) : null;
-        const monthText = d && !isNaN(d.getTime()) ? (d.getMonth() + 1) + '月' : '';
-        const dayText = d && !isNaN(d.getTime()) ? String(d.getDate()).padStart(2, '0') : '';
+        const hasDate = d && !isNaN(d.getTime());
+        const monthText = hasDate ? (d.getMonth() + 1) + '月' : '—';
+        const dayText = hasDate ? String(d.getDate()).padStart(2, '0') : '—';
+        let rangeText = '—';
+        if (item.startTime && item.deadline) rangeText = toMd(item.startTime) + ' → ' + toMd(item.deadline);
+        else if (item.deadline) rangeText = '截稿 ' + toMd(item.deadline);
+        else if (item.startTime) rangeText = '开始 ' + toMd(item.startTime);
         const client = item.clientId || '单主';
+        const progress = doneCount + '/' + total;
         const status = getRecordProgressStatus(item);
-        // 合并制品与赠品为带全局下标的列表（制品在前，赠品在后）
         const productItems = products.map((p, i) => ({ label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: i, done: !!doneStates[i] }));
         const giftItems = gifts.map((p, i) => ({ label: '[赠品] ' + (p.product || '赠品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: products.length + i, done: !!doneStates[products.length + i] }));
         const allItems = productItems.concat(giftItems).sort((a, b) => Number(a.done) - Number(b.done));
@@ -5286,19 +5271,18 @@ function renderScheduleTodoSection() {
         ).join('');
         modulesEl.innerHTML += ''
             + '<div class="schedule-todo-card" onclick="handleScheduleTodoCardClick(' + item.id + ', event)">'
-            + '  <span class="record-status ' + status.className + '" style="position:absolute;top:4px;right:6px;font-size:0.6rem;padding:0.08rem 0.35rem;">' + status.text + '</span>'
-            // 左侧日期块：稍微加宽，并让「月」和「日」一起右对齐
-            + '  <div class="schedule-todo-card-date" style="flex:0 0 30px;display:flex;flex-direction:column;align-items:flex-end;">'
-            + '    <div class="schedule-todo-card-month" style="width:100%;text-align:right;">' + monthText + '</div>'
-            + '    <div class="schedule-todo-card-day" style="width:100%;text-align:right;">' + dayText + '</div>'
-            + '  </div>'
-            + '  <div class="schedule-todo-card-body">'
-            + '    <div class="schedule-todo-card-line1">' + client + '  ' + doneCount + '/' + total + '已完成</div>'
-            + '    <div class="schedule-todo-card-line2">'
-            + '      <div class="schedule-todo-card-products">'
-            +           chipHtml
-            + '      </div>'
+            + '  <div class="schedule-todo-card-main">'
+            + '    <span class="schedule-todo-card-month">' + monthText + '</span>'
+            + '    <span class="schedule-todo-card-day">' + dayText + '</span>'
+            + '    <span class="schedule-todo-card-sep"></span>'
+            + '    <div class="schedule-todo-card-head">'
+            + '      <span class="schedule-todo-card-range">' + rangeText + '</span>'
+            + '      <span class="schedule-todo-card-sep-inline"></span>'
+            + '      <span class="schedule-todo-card-client">' + client + '</span>'
+            + '      <span class="schedule-todo-card-progress">' + progress + '</span>'
+            + '      <span class="record-status ' + status.className + ' schedule-todo-card-status">' + status.text + '</span>'
             + '    </div>'
+            + '    <div class="schedule-todo-card-products">' + chipHtml + '</div>'
             + '  </div>'
             + '</div>';
     });
