@@ -1081,22 +1081,28 @@ input:focus, select:focus {
 
 /* 排单标题统计（蓝/橙/黑） */
 .schedule-title-stats {
-    font-weight: 600;
-    font-size: 0.9em;
-    margin-left: 0.25rem;
+    font-weight: 500;
+    font-size: 0.85em;
+    margin-left: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 .schedule-title-stats .schedule-stat {
-    display: inline-block;
-    /* 三个数字靠近些 */
-    min-width: 1.1em;
-    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
 }
-.schedule-title-stats .schedule-stat + .schedule-stat {
-    margin-left: 0.1em;
+.schedule-stat-done { 
+    color: #2563eb; 
 }
-.schedule-stat-done { color: #2563eb; }
-.schedule-stat-undone { color: #f97316; } /* 橙 */
-.schedule-stat-total { color: #111827; }  /* 黑 */
+.schedule-stat-undone { 
+    color: #f97316; 
+}
+.schedule-stat-total { 
+    color: #6b7280; 
+    font-weight: 500;
+}
 
 /* 设置选项标题行、模版填表下拉、保存模板行 */
 .section-title-row { margin-bottom: 0.25rem; }
@@ -4522,30 +4528,34 @@ input:checked + .toggle-slider:before {
     box-shadow: none;
 }
 .schedule-todo-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
+    display: inline-flex;
+    background: white;
+    border-radius: 10px;
+    padding: 3px;
+    gap: 0;
     margin-bottom: 0.5rem;
+    border: 1px solid var(--border-color);
 }
 .schedule-todo-filter-btn {
     flex: 1;
     min-width: 0;
-    padding: 0.35rem 0.5rem;
-    font-size: 0.8rem;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--card-bg);
-    color: var(--text-color);
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    border: none;
+    background: transparent;
+    color: #666;
     cursor: pointer;
-    transition: background 0.2s, border-color 0.2s;
+    border-radius: 8px;
+    transition: all 0.2s;
+    white-space: nowrap;
 }
 .schedule-todo-filter-btn:hover {
     background: rgba(0, 0, 0, 0.04);
 }
 .schedule-todo-filter-btn.active {
-    background: var(--primary-color);
-    border-color: var(--primary-color);
-    color: #fff;
+    background: #f3f4f6;
+    color: #111;
+    font-weight: 600;
 }
 .schedule-todo-title {
     display: none;
@@ -4907,6 +4917,15 @@ input:checked + .toggle-slider:before {
         padding: 0.25rem 0;
         width: 100%;
         box-sizing: border-box;
+    }
+    .schedule-todo-filters {
+        padding: 2px;
+        border-radius: 8px;
+    }
+    .schedule-todo-filter-btn {
+        padding: 0.35rem 0.65rem;
+        font-size: 0.75rem;
+        border-radius: 6px;
     }
     .schedule-todo-title {
         font-size: 0.88rem;

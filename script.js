@@ -1008,8 +1008,8 @@ function loadCustomThemesList() {
                 <button class="btn small" onclick="applyCustomTheme('${id}')">应用</button>
                 <button class="btn small secondary" onclick="editCustomTheme('${id}')">编辑</button>
                 <button class="icon-action-btn delete" onclick="deleteCustomTheme('${id}')" aria-label="删除主题" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         </div>
@@ -1803,8 +1803,8 @@ function loadImportedFontsList() {
                 <div class="imported-font-actions">
                     <button class="btn small" onclick="useImportedFont('${fontInfo.family}')">使用</button>
                     <button class="icon-action-btn delete" onclick="deleteImportedFont('${fontId}')" aria-label="删除字体" title="删除">
-                        <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                        <span class="sr-only">删除</span>
+                        <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                     </button>
                 </div>
             </div>
@@ -2876,7 +2876,7 @@ function applyRecordFilters() {
                         <span class="sr-only">改</span>
                     </button>
                     <button class="icon-action-btn delete" onclick="deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
-                        <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
+                        <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                         <span class="sr-only">删</span>
                     </button>
                 </div>
@@ -3071,8 +3071,8 @@ function renderGift(gift) {
         <div class="product-item-header">
             <div class="product-item-title">赠品 ${gift.id}</div>
             <button class="icon-action-btn delete" onclick="removeGift(${gift.id})" aria-label="删除赠品" title="删除">
-                <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                <span class="sr-only">删除</span>
+                <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
             </button>
         </div>
         <div class="form-row">
@@ -3164,8 +3164,8 @@ function renderProduct(product) {
         <div class="product-item-header">
             <div class="product-item-title">制品 ${product.id}</div>
             <button class="icon-action-btn delete" onclick="removeProduct(${product.id})" aria-label="删除制品" title="删除">
-                <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                <span class="sr-only">删除</span>
+                <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
             </button>
         </div>
         <div class="form-row">
@@ -4812,11 +4812,11 @@ function computeMonthProductStats(items) {
 }
 
 function renderScheduleMonthTitleStats(year, month) {
-    // 标题区月份
+    // 标题区月份（简洁格式：2025.1）
     const monthEl = document.querySelector('.schedule-title-month');
-    if (monthEl) monthEl.textContent = month + '月';
+    if (monthEl) monthEl.textContent = year + '.' + month;
 
-    // 标题区统计（只统计当前月）
+    // 标题区统计（只统计当前月）：(数字 数字 数字)
     const statsEl = document.querySelector('.schedule-title-row .schedule-title-stats');
     if (statsEl) {
         const items = getScheduleItemsForMonth(year, month);
@@ -5173,7 +5173,7 @@ function renderScheduleTodoSection() {
             + '    <div class="schedule-todo-card-day" style="width:100%;text-align:right;">' + dayText + '</div>'
             + '  </div>'
             + '  <div class="schedule-todo-card-body">'
-            + '    <div class="schedule-todo-card-line1">单主ID：' + client + ' 已完成' + doneCount + '个 未完成' + (total - doneCount) + '个</div>'
+            + '    <div class="schedule-todo-card-line1">' + client + '  ' + doneCount + '/' + total + '已完成</div>'
             + '    <div class="schedule-todo-card-line2">'
             + '      <div class="schedule-todo-card-products">'
             +           chipHtml
@@ -5389,8 +5389,8 @@ function generateHistoryItemHTML(item) {
                     <span class="sr-only">编辑</span>
                 </button>
                 <button class="icon-action-btn delete" onclick="deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
-                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         </div>
@@ -6705,8 +6705,8 @@ function renderOtherFees() {
                     <input type="text" value="${fee.name}" onchange="updateOtherFee('${key}', 'name', this.value)" class="other-fee-name-input" placeholder="费用名称">
                     <input type="number" value="${fee.amount}" onchange="updateOtherFee('${key}', 'amount', this.value)" min="0" step="1" class="other-fee-amount-input" placeholder="金额">
                     <button class="icon-action-btn delete other-fee-delete-btn" onclick="deleteOtherFee('${key}')" aria-label="删除费用类别" title="删除">
-                        <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                        <span class="sr-only">删除</span>
+                        <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                     </button>
                 </div>
             `;
@@ -6869,8 +6869,8 @@ function renderDynamicOtherFees() {
                 <span style="flex: 2 !important; text-align: left !important; min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;">${fee.name}</span>
                 <span style="width: 80px !important; text-align: right !important; flex-shrink: 0 !important;">¥${fee.amount}</span>
                 <button class="icon-action-btn delete" onclick="removeDynamicOtherFee(${fee.id})" aria-label="删除其他费用" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
@@ -6940,8 +6940,8 @@ function renderAdditionalConfigs() {
                        onchange="updateAdditionalConfig(${config.id}, 'unit', this.value)" 
                        class="w-80 p-2">
                 <button type="button" class="icon-action-btn delete" onclick="removeAdditionalConfig(${config.id})" aria-label="删除配置项" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
@@ -7203,8 +7203,8 @@ function renderProductSettings() {
                         <div class="product-item-title">${setting.name}</div>
                         <div class="product-item-actions">
                             <button class="icon-action-btn delete" onclick="deleteProductSetting(${setting.id})" aria-label="删除制品设置" title="删除">
-                                <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                                <span class="sr-only">删除</span>
+                                <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                             </button>
                         </div>
                     </div>
@@ -7275,8 +7275,8 @@ function renderProductSettings() {
                                                    onchange="updateProductAdditionalConfigSetting(${setting.id}, ${index}, 'unit', this.value)" 
                                                    class="w-80 p-2">
                                             <button type="button" class="icon-action-btn delete" onclick="removeProductAdditionalConfigSetting(${setting.id}, ${index})" aria-label="删除配置项" title="删除">
-                                                <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                                                <span class="sr-only">删除</span>
+                                                <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                                             </button>
                                         </div>
                                     `).join('')}
@@ -7348,7 +7348,7 @@ function addCoefficientItem() {
     if (!container) return;
     const div = document.createElement('div');
     div.className = 'coefficient-item-row d-flex gap-2 mb-2 items-center';
-    div.innerHTML = '<input type="text" placeholder="名称" class="flex-1" value="无"><input type="number" placeholder="系数值" class="w-80" value="1" min="0" step="0.1"><button type="button" class="icon-action-btn delete" onclick="removeCoefficientItem(this)" aria-label="删除" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg><span class="sr-only">删除</span></button>';
+    div.innerHTML = '<input type="text" placeholder="名称" class="flex-1" value="无"><input type="number" placeholder="系数值" class="w-80" value="1" min="0" step="0.1"><button type="button" class="icon-action-btn delete" onclick="removeCoefficientItem(this)" aria-label="删除" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button>';
     container.appendChild(div);
 }
 
@@ -7503,7 +7503,7 @@ function renderExtraPricingUp() {
     let html = '';
     for (const e of list) {
         // 只对非默认系数（ID不是1）显示删除按钮
-        const deleteBtnHtml = e.id !== 1 ? `<button type="button" class="icon-action-btn delete" onclick="event.stopPropagation();deleteExtraCoefficient(${e.id},'up')" aria-label="删除系数" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg><span class="sr-only">删除</span></button>` : '';
+        const deleteBtnHtml = e.id !== 1 ? `<button type="button" class="icon-action-btn delete" onclick="event.stopPropagation();deleteExtraCoefficient(${e.id},'up')" aria-label="删除系数" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button>` : '';
         html += `<div class="category-container"><div class="category-header" onclick="toggleCategory('extraUp-${e.id}')"><span class="category-title">${e.name || '未命名'}</span><div style="display: flex; align-items: center; gap: 0.5rem;">${deleteBtnHtml}<div class="category-toggle">▼</div></div></div>`;
         html += '<div class="category-content d-none" id="extraUp-' + e.id + '-content"><div class="coefficient-settings">';
         // 按系数值升序排序后渲染
@@ -7517,7 +7517,7 @@ function renderExtraPricingUp() {
             const nm = (o && o.name) || k;
             const escapedName = nm.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
             const escapedKey = k.replace(/'/g, "\\'");
-            html += '<div class="mb-2 d-flex items-center gap-2"><input type="text" value="' + escapedName + '" class="flex-1" onchange="updateExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\',\'name\',this.value)" placeholder="名称"><input type="number" value="' + v + '" min="0" step="0.1" class="w-80" onchange="updateExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\',\'value\',this.value)"><button class="icon-action-btn delete" onclick="deleteExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\')" aria-label="删除选项" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg><span class="sr-only">删除</span></button></div>';
+            html += '<div class="mb-2 d-flex items-center gap-2"><input type="text" value="' + escapedName + '" class="flex-1" onchange="updateExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\',\'name\',this.value)" placeholder="名称"><input type="number" value="' + v + '" min="0" step="0.1" class="w-80" onchange="updateExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\',\'value\',this.value)"><button class="icon-action-btn delete" onclick="deleteExtraPricingOption(' + e.id + ',\'up\',\'' + escapedKey + '\')" aria-label="删除选项" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button></div>';
         }
         html += '</div></div></div>';
     }
@@ -7531,7 +7531,7 @@ function renderExtraPricingDown() {
     const list = defaultSettings.extraPricingDown || [];
     let html = '';
     for (const e of list) {
-        html += '<div class="category-container"><div class="category-header" onclick="toggleCategory(\'extraDown-' + e.id + '\')"><span class="category-title">' + (e.name || '未命名') + '</span><div style="display: flex; align-items: center; gap: 0.5rem;"><button type="button" class="icon-action-btn delete" onclick="event.stopPropagation();deleteExtraCoefficient(' + e.id + ',\'down\')" aria-label="删除系数" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg><span class="sr-only">删除</span></button><div class="category-toggle">▼</div></div></div>';
+        html += '<div class="category-container"><div class="category-header" onclick="toggleCategory(\'extraDown-' + e.id + '\')"><span class="category-title">' + (e.name || '未命名') + '</span><div style="display: flex; align-items: center; gap: 0.5rem;"><button type="button" class="icon-action-btn delete" onclick="event.stopPropagation();deleteExtraCoefficient(' + e.id + ',\'down\')" aria-label="删除系数" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button><div class="category-toggle">▼</div></div></div>';
         html += '<div class="category-content d-none" id="extraDown-' + e.id + '-content"><div class="coefficient-settings">';
         // 按系数值降序排序后渲染（折扣类降序）
         const sortedEntries = Object.entries(e.options || {}).sort((a, b) => {
@@ -7544,7 +7544,7 @@ function renderExtraPricingDown() {
             const nm = (o && o.name) || k;
             const escapedName = nm.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
             const escapedKey = k.replace(/'/g, "\\'");
-            html += '<div class="mb-2 d-flex items-center gap-2"><input type="text" value="' + escapedName + '" class="flex-1" onchange="updateExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\',\'name\',this.value)" placeholder="名称"><input type="number" value="' + v + '" min="0" step="0.1" class="w-80" onchange="updateExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\',\'value\',this.value)"><button class="icon-action-btn delete" onclick="deleteExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\')" aria-label="删除选项" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg><span class="sr-only">删除</span></button></div>';
+            html += '<div class="mb-2 d-flex items-center gap-2"><input type="text" value="' + escapedName + '" class="flex-1" onchange="updateExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\',\'name\',this.value)" placeholder="名称"><input type="number" value="' + v + '" min="0" step="0.1" class="w-80" onchange="updateExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\',\'value\',this.value)"><button class="icon-action-btn delete" onclick="deleteExtraPricingOption(' + e.id + ',\'down\',\'' + escapedKey + '\')" aria-label="删除选项" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button></div>';
         }
         html += '</div></div></div>';
     }
@@ -7804,8 +7804,8 @@ function renderUsageCoefficients() {
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateUsageCoefficient('${key}', this.value)">
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('usage', '${key}')" aria-label="删除" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
@@ -7844,8 +7844,8 @@ function renderUrgentCoefficients() {
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateUrgentCoefficient('${key}', this.value)">
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('urgent', '${key}')" aria-label="删除" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
@@ -7871,8 +7871,8 @@ function renderSameModelCoefficients() {
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateSameModelCoefficient('${key}', this.value)">
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('sameModel', '${key}')" aria-label="删除" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
@@ -7911,8 +7911,8 @@ function renderDiscountCoefficients() {
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateDiscountCoefficient('${key}', this.value)">
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('discount', '${key}')" aria-label="删除" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
@@ -7956,8 +7956,8 @@ function renderUrgentDiscountPairRow() {
                 <input type="number" value="${lastVal}" min="0" step="0.1" class="w-80" 
                        onchange="updateUrgentCoefficient('${lastKey}', this.value)">
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('urgent', '${lastKey}')" aria-label="删除" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         </div>
@@ -7968,8 +7968,8 @@ function renderUrgentDiscountPairRow() {
                 <input type="number" value="${firstVal}" min="0" step="0.1" class="w-80" 
                        onchange="updateDiscountCoefficient('${firstKey}', this.value)">
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('discount', '${firstKey}')" aria-label="删除" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         </div>
@@ -8001,8 +8001,8 @@ function renderPlatformFees() {
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updatePlatformFee('${key}', this.value)">
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('platform', '${key}')" aria-label="删除" title="删除">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                    <span class="sr-only">删除</span>
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
@@ -8177,8 +8177,8 @@ function renderProcessSettings() {
                         <input type="number" class="process-item-input process-item-price" value="${price}" onchange="updateProcessSetting(${setting.id}, 'price', parseFloat(this.value))" placeholder="价格" min="0" step="1">
                     </div>
                     <button class="icon-action-btn delete process-item-delete" onclick="deleteProcessSetting(${setting.id})" aria-label="删除工艺" title="删除">
-                        <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                        <span class="sr-only">删除</span>
+                        <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
                     </button>
                 </div>
             </div>
