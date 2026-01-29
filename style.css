@@ -3378,13 +3378,17 @@ input:checked + .toggle-slider:before {
     box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
 }
 
-.searchable-select-clear {
+/* 清除按钮：覆盖 btn--icon 等通用样式，保持灰色圆形 */
+.searchable-select .searchable-select-clear {
     position: absolute;
     right: 2rem;
     top: 50%;
     transform: translateY(-50%);
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    min-width: 1.5rem !important;
+    min-height: 1.5rem !important;
+    padding: 0 !important;
     border: none;
     background: #94a3b8;
     color: white;
@@ -3397,9 +3401,15 @@ input:checked + .toggle-slider:before {
     line-height: 1;
     transition: all 0.2s ease;
     opacity: 0.85;
+    box-sizing: border-box;
 }
 
-.searchable-select-clear:hover {
+.searchable-select .searchable-select-clear .icon {
+    width: 0.85rem;
+    height: 0.85rem;
+}
+
+.searchable-select .searchable-select-clear:hover {
     background: #64748b;
     opacity: 1;
     transform: translateY(-50%) scale(1.1);
