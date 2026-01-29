@@ -3405,8 +3405,9 @@ input:checked + .toggle-slider:before {
 }
 
 .searchable-select .searchable-select-clear .icon {
-    width: 0.85rem;
-    height: 0.85rem;
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
 }
 
 .searchable-select .searchable-select-clear:hover {
