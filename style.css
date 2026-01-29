@@ -4655,12 +4655,12 @@ input:checked + .toggle-slider:before {
 }
 .schedule-todo-card-main {
     display: grid;
-    grid-template-columns: auto 1px 1fr;
+    grid-template-columns: minmax(2.9rem, auto) 1px 1fr;
     grid-template-rows: auto auto;
-    gap: 0.1rem 0.4rem;
+    gap: 0.05rem 0.4rem;
     width: 100%;
     min-width: 0;
-    align-items: stretch;
+    align-items: start;
 }
 .schedule-todo-card-month {
     grid-column: 1;
@@ -4669,7 +4669,7 @@ input:checked + .toggle-slider:before {
     color: var(--text-light);
     line-height: 1.1;
     text-align: right;
-    align-self: center;
+    padding-right: 0.1rem;
 }
 .schedule-todo-card-day {
     grid-column: 1;
@@ -4680,7 +4680,7 @@ input:checked + .toggle-slider:before {
     color: var(--text-color);
     line-height: 1.1;
     text-align: right;
-    align-self: center;
+    padding-right: 0.1rem;
 }
 .schedule-todo-card-sep {
     grid-column: 2;
@@ -4688,11 +4688,11 @@ input:checked + .toggle-slider:before {
     width: 1px;
     background: rgba(0, 0, 0, 0.12);
     justify-self: center;
+    align-self: stretch;
 }
 .schedule-todo-card-head {
     grid-column: 3;
     grid-row: 1;
-    align-self: center;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -4731,7 +4731,6 @@ input:checked + .toggle-slider:before {
 .schedule-todo-card-products {
     grid-column: 3;
     grid-row: 2;
-    align-self: center;
     display: flex;
     flex-wrap: nowrap;
     gap: 0.15rem 0.35rem;
@@ -4739,7 +4738,6 @@ input:checked + .toggle-slider:before {
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
-    padding-bottom: 0.02rem;
     min-width: 0;
 }
 .schedule-todo-row {
@@ -4969,6 +4967,321 @@ input:checked + .toggle-slider:before {
     border: 1px solid #fecaca;
 }
 
+/* ========== 统计页（手机 App 风格：简约现代） ========== */
+#stats.page {
+    padding: 0;
+    max-width: 100%;
+}
+.stats-page {
+    padding: 0 1rem 1.5rem;
+    min-height: 100%;
+}
+.stats-header {
+    padding: 0.75rem 0 1rem;
+    margin-bottom: 0;
+    border-bottom: none;
+    gap: 0.5rem;
+}
+.stats-back {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.stats-title {
+    flex: 1;
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-color);
+    text-align: center;
+    min-width: 0;
+}
+.stats-actions {
+    flex-shrink: 0;
+    gap: 0.35rem;
+}
+.stats-actions .btn--icon {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.stats-actions .btn {
+    min-height: 36px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+}
+.stats-quick-row {
+    margin-bottom: 1rem;
+    padding: 0.5rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    align-items: center;
+}
+.stats-quick-row::-webkit-scrollbar {
+    display: none;
+}
+.stats-quick-label {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    flex-shrink: 0;
+    margin-right: 0.15rem;
+}
+.stats-quick-btn {
+    flex-shrink: 0;
+    padding: 0.4rem 0.75rem !important;
+    min-height: 32px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-color);
+    transition: background 0.2s, color 0.2s;
+}
+.stats-quick-btn.active,
+.stats-quick-btn:focus-visible {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+}
+.stats-quick-custom {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.stats-quick-sep {
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+.stats-quick-custom .filter-input {
+    width: 7rem;
+    padding: 0.35rem 0.4rem;
+    font-size: 0.8rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+}
+.stats-note {
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--text-light);
+    margin-bottom: 1rem;
+    padding: 0 0.1rem;
+}
+.stats-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+.kpi-card {
+    background: var(--card-bg);
+    border-radius: 14px;
+    padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    border: none;
+    transition: box-shadow 0.2s;
+}
+.kpi-card:active {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.kpi-label {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    margin-bottom: 0.35rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+.kpi-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-color);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+.stats-order-done-rate {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    margin-bottom: 1.25rem;
+    padding: 0 0.1rem;
+}
+.stats-block-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-light);
+    margin-bottom: 0.6rem;
+    padding: 0 0.1rem;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.stats-trends {
+    margin-bottom: 1.5rem;
+}
+.stats-trends .stats-block-title {
+    margin-bottom: 0.75rem;
+}
+.stats-trends .text-gray {
+    font-size: 0.85rem;
+    padding: 1rem 0.5rem;
+    text-align: center;
+    color: var(--text-light);
+}
+.stats-mini-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.stats-bar-row {
+    display: grid;
+    grid-template-columns: 88px 1fr 52px 1fr 42px 1fr 48px;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    min-height: 28px;
+}
+.stats-bar-label {
+    color: var(--text-color);
+    font-variant-numeric: tabular-nums;
+}
+.stats-bar-wrap {
+    height: 8px;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 4px;
+    overflow: hidden;
+    min-width: 0;
+}
+.stats-bar {
+    height: 100%;
+    border-radius: 4px;
+    min-width: 2px;
+    transition: width 0.25s ease;
+}
+.stats-bar-rev {
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+}
+.stats-bar-ord {
+    background: linear-gradient(90deg, #059669, #34d399);
+}
+.stats-bar-rate {
+    background: linear-gradient(90deg, #7c3aed, #a78bfa);
+}
+.stats-bar-legend {
+    color: var(--text-light);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+}
+.stats-top-lists {
+    margin-bottom: 1rem;
+}
+.stats-top-lists .stats-block-title {
+    margin-top: 0.5rem;
+}
+.stats-top-lists .stats-block-title:first-child {
+    margin-top: 0;
+}
+.stats-top-tabs {
+    display: flex;
+    gap: 0.35rem;
+    margin-bottom: 0.6rem;
+}
+.stats-top-tabs .btn {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.78rem;
+    border-radius: 8px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-color);
+}
+.stats-top-tabs .btn.active {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+}
+.stats-top-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.stats-top-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.65rem;
+    background: var(--card-bg);
+    border-radius: 10px;
+    font-size: 0.88rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    border: none;
+}
+.stats-top-rank {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.06);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-light);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.stats-top-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+    color: var(--text-color);
+}
+.stats-top-val {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text-color);
+    flex-shrink: 0;
+}
+#statsFilterDrawer .filter-drawer-content {
+    border-radius: 16px 16px 0 0;
+}
+@media (max-width: 480px) {
+    .stats-kpi-grid {
+        gap: 0.6rem;
+        margin-bottom: 1.25rem;
+    }
+    .kpi-card {
+        padding: 0.85rem;
+        border-radius: 12px;
+    }
+    .kpi-value {
+        font-size: 1.1rem;
+    }
+    .stats-bar-row {
+        grid-template-columns: 70px 1fr 42px 1fr 34px 1fr 38px;
+        font-size: 0.72rem;
+    }
+    .stats-bar-wrap {
+        height: 6px;
+    }
+}
+
 @media (max-width: 768px) {
     .history-record-modal {
         align-items: flex-end;
@@ -5049,20 +5362,41 @@ input:checked + .toggle-slider:before {
     .schedule-todo-card {
         width: 100%;
         box-sizing: border-box;
-        padding: 0.35rem 0.45rem;
+        padding: 0.4rem 0.5rem;
         border-radius: 8px;
+        overflow: visible;
     }
     .schedule-todo-card-main {
-        gap: 0.08rem 0.35rem;
-    }
-    .schedule-todo-card-head {
-        gap: 0.2rem 0.35rem;
+        display: grid;
+        grid-template-columns: minmax(2.5rem, auto) 1px 1fr;
+        grid-template-rows: auto auto;
+        gap: 0.05rem 0.35rem;
+        align-items: start;
     }
     .schedule-todo-card-month {
+        grid-column: 1;
+        grid-row: 1;
         font-size: 0.6rem;
     }
     .schedule-todo-card-day {
+        grid-column: 1;
+        grid-row: 2;
         font-size: 1rem;
+    }
+    .schedule-todo-card-sep {
+        grid-column: 2;
+        grid-row: 1 / -1;
+    }
+    .schedule-todo-card-head {
+        grid-column: 3;
+        grid-row: 1;
+        gap: 0.2rem 0.35rem;
+        flex-wrap: wrap;
+    }
+    .schedule-todo-card-products {
+        grid-column: 3;
+        grid-row: 2;
+        gap: 0.12rem 0.3rem;
     }
     .schedule-todo-card-range {
         font-size: 0.75rem;
@@ -5077,9 +5411,6 @@ input:checked + .toggle-slider:before {
         font-size: 0.6rem;
         padding: 0.08rem 0.32rem;
     }
-    .schedule-todo-card-products {
-        gap: 0.12rem 0.3rem;
-    }
     .schedule-todo-row {
         font-size: 0.75rem;
     }
@@ -5087,11 +5418,53 @@ input:checked + .toggle-slider:before {
         padding: 0.03rem 0.2rem;
     }
     .schedule-todo-checkbox {
-        width: 9px;
-        height: 9px;
+        width: 10px;
+        height: 10px;
     }
     .schedule-todo-label {
         font-size: 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .schedule-todo-card {
+        padding: 0.35rem 0.4rem;
+    }
+    .schedule-todo-card-main {
+        grid-template-columns: minmax(2.2rem, auto) 1px 1fr;
+        gap: 0.04rem 0.3rem;
+    }
+    .schedule-todo-card-month {
+        font-size: 0.58rem;
+    }
+    .schedule-todo-card-day {
+        font-size: 0.95rem;
+    }
+    .schedule-todo-card-range {
+        font-size: 0.7rem;
+    }
+    .schedule-todo-card-client {
+        font-size: 0.8rem;
+    }
+    .schedule-todo-card-progress {
+        font-size: 0.65rem;
+    }
+    .schedule-todo-card-status {
+        font-size: 0.55rem;
+        padding: 0.06rem 0.28rem;
+    }
+    .schedule-todo-row {
+        font-size: 0.72rem;
+    }
+    .schedule-todo-chip {
+        padding: 0.02rem 0.18rem;
+    }
+    .schedule-todo-checkbox {
+        width: 10px;
+        height: 10px;
+    }
+    .schedule-todo-label {
+        font-size: 0.72rem;
     }
 }
 

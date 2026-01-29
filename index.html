@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>美工报价生成器</title>
-    <link rel="stylesheet" href="style.css?v=20250129-clear-btn-v2">
+    <link rel="stylesheet" href="style.css?v=20250130-todo-mobile">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -429,6 +429,7 @@
                         <div class="d-flex gap-2">
                             <button type="button" class="btn secondary schedule-title-today-pill d-none" onclick="scheduleTodoBackToToday()">Today</button>
                             <button type="button" class="btn secondary" id="openHistoryRecordBtn" onclick="openRecordPage()">记录</button>
+                            <button type="button" class="btn secondary" id="openStatsBtn" onclick="openStatsPage()">统计</button>
                         </div>
                     </div>
                     <div id="scheduleCalendar" class="schedule-calendar">
@@ -1146,6 +1147,109 @@
                 </div>
             </div>
 
+            <!-- 统计页（手机 App 风格） -->
+            <div id="stats" class="page">
+                <div class="schedule-section stats-page">
+                    <header class="stats-header d-flex justify-between items-center">
+                        <button type="button" class="btn secondary btn--icon stats-back" onclick="showPage('quote')" aria-label="返回" title="返回">
+                            <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
+                            <span class="sr-only">返回</span>
+                        </button>
+                        <h1 class="stats-title">统计</h1>
+                        <div class="stats-actions d-flex gap-2 items-center">
+                            <button type="button" class="btn secondary btn--icon" id="statsFilterBtn" onclick="toggleStatsFilterDrawer()" aria-label="筛选" title="筛选">
+                                <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
+                                <span id="statsFilterBadge" class="filter-badge d-none">0</span>
+                            </button>
+                            <button type="button" class="btn secondary btn--icon" onclick="exportStatsToExcel()" aria-label="导出" title="导出Excel">
+                                <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
+                                <span class="sr-only">导出Excel</span>
+                            </button>
+                        </div>
+                    </header>
+                    <div class="stats-quick-row d-flex items-center">
+                        <span class="stats-quick-label">时间</span>
+                        <button type="button" class="btn secondary small stats-quick-btn" data-range="today" onclick="setStatsQuickRange('today')">今天</button>
+                        <button type="button" class="btn secondary small stats-quick-btn" data-range="week" onclick="setStatsQuickRange('week')">7天</button>
+                        <button type="button" class="btn secondary small stats-quick-btn" data-range="month" onclick="setStatsQuickRange('month')">30天</button>
+                        <button type="button" class="btn secondary small stats-quick-btn" data-range="thisMonth" onclick="setStatsQuickRange('thisMonth')">本月</button>
+                        <button type="button" class="btn secondary small stats-quick-btn" data-range="lastMonth" onclick="setStatsQuickRange('lastMonth')">上月</button>
+                        <span class="stats-quick-custom">
+                            <input type="date" id="statsStartDate" class="filter-input" aria-label="开始日期">
+                            <span class="stats-quick-sep">至</span>
+                            <input type="date" id="statsEndDate" class="filter-input" aria-label="结束日期">
+                        </span>
+                    </div>
+                    <div id="statsFilterDrawer" class="history-filter-drawer">
+                        <div class="filter-drawer-overlay" onclick="closeStatsFilterDrawer()"></div>
+                        <div class="filter-drawer-content">
+                            <div class="filter-drawer-header">
+                                <h3>筛选与口径</h3>
+                                <button type="button" class="btn-icon btn--icon" onclick="closeStatsFilterDrawer()" aria-label="关闭"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg></button>
+                            </div>
+                            <div class="filter-drawer-body">
+                                <div class="filter-section">
+                                    <label class="filter-label">时间范围</label>
+                                    <select id="statsTimeFilter" class="filter-select" onchange="onStatsFilterChange()">
+                                        <option value="today">今天</option>
+                                        <option value="week">7天</option>
+                                        <option value="month">30天</option>
+                                        <option value="thisMonth">本月</option>
+                                        <option value="lastMonth">上月</option>
+                                        <option value="custom">自定义</option>
+                                    </select>
+                                    <div id="statsCustomDateRange" class="d-none mt-2">
+                                        <input type="date" id="statsCustomStart" class="filter-input" onchange="onStatsFilterChange()">
+                                        <span class="mx-2">至</span>
+                                        <input type="date" id="statsCustomEnd" class="filter-input" onchange="onStatsFilterChange()">
+                                    </div>
+                                </div>
+                                <div class="filter-section">
+                                    <label class="filter-label">金额口径（订单）</label>
+                                    <select id="statsAmountBasis" class="filter-select" onchange="onStatsFilterChange()">
+                                        <option value="finalTotal">实付 (finalTotal)</option>
+                                        <option value="totalProductsPrice">制品价 (totalProductsPrice)</option>
+                                    </select>
+                                </div>
+                                <div class="filter-section">
+                                    <label class="filter-label">赠品计入方式</label>
+                                    <select id="statsGiftMode" class="filter-select" onchange="onStatsFilterChange()">
+                                        <option value="exclude">不计入</option>
+                                        <option value="zero">按0元计入</option>
+                                        <option value="original">按原价计入</option>
+                                    </select>
+                                    <small class="text-gray">按0元：计入件数/完成率，金额为0；按原价：计入金额贡献（工作量）</small>
+                                </div>
+                                <div class="filter-section">
+                                    <label class="filter-label">订单状态</label>
+                                    <select id="statsStatusFilter" class="filter-select" onchange="onStatsFilterChange()">
+                                        <option value="all">全部</option>
+                                        <option value="notStarted">未开始</option>
+                                        <option value="inProgress">进行中</option>
+                                        <option value="completed">已完成</option>
+                                        <option value="overdue">逾期</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="filter-drawer-footer">
+                                <button type="button" class="btn secondary flex-1" onclick="resetStatsFilters()">重置</button>
+                                <button type="button" class="btn flex-1" onclick="applyStatsFilters(); closeStatsFilterDrawer();">应用</button>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="stats-note text-gray">说明：统计按下单时间（timestamp）。赠品「按0元/按原价」仅影响制品项与金额贡献，不代表实收。</p>
+                    <div id="statsKpiGrid" class="stats-kpi-grid">
+                        <!-- KPI 卡片由 JS 渲染 -->
+                    </div>
+                    <div id="statsTrends" class="stats-trends">
+                        <!-- 趋势由 JS 渲染 -->
+                    </div>
+                    <div id="statsTopLists" class="stats-top-lists">
+                        <!-- Top 榜由 JS 渲染 -->
+                    </div>
+                </div>
+            </div>
+
             <!-- 设置页 -->
             <div id="settings" class="page">
                 <!-- 美工信息 -->
@@ -1518,6 +1622,6 @@
     <!-- 全局轻提示（toast），用于非阻塞提示“排单已更新”等信息 -->
     <div id="globalToast" class="global-toast d-none"></div>
 
-    <script src="script.js?v=20250127-fix-preview-update-v18"></script>
+    <script src="script.js?v=20250130-todo-grid"></script>
 </body>
 </html>

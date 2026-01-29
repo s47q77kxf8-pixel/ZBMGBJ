@@ -2573,7 +2573,7 @@ function showPage(pageId) {
         btn.classList.remove('active');
     });
 
-    if (pageId === 'quote' || pageId === 'record') {
+    if (pageId === 'quote' || pageId === 'record' || pageId === 'stats') {
         activeTab = 'quote';
         const quoteBtn = document.querySelector('.nav-btn-quote');
         if (quoteBtn) quoteBtn.classList.add('active');
@@ -2596,6 +2596,11 @@ function showPage(pageId) {
     // 记录页：只渲染简洁记录列表（单主ID/金额/完成状态）
     if (pageId === 'record') {
         renderRecordPage();
+    }
+
+    // 统计页：渲染 KPI / 趋势 / Top 榜
+    if (pageId === 'stats') {
+        renderStatsPage();
     }
     
     // 切换到报价页时，初始化筛选徽章
@@ -3031,6 +3036,433 @@ function exportRecordToExcel() {
     if (hSort) hSort.value = sortBy;
 
     exportHistoryToExcel();
+}
+
+// ========== 统计页 ==========
+function openStatsPage() {
+    showPage('stats');
+}
+
+function getStatsOrderStatus(item) {
+    if (!item) return 'notStarted';
+    ensureProductDoneStates(item);
+    const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
+    const total = states.length;
+    if (total === 0) return 'notStarted';
+    let doneCount = 0;
+    for (let i = 0; i < total; i++) if (states[i]) doneCount++;
+    if (doneCount === 0) return 'notStarted';
+    if (doneCount === total) return 'completed';
+    return 'inProgress';
+}
+
+function isStatsOrderOverdue(item) {
+    if (!item || !item.deadline) return false;
+    const status = getStatsOrderStatus(item);
+    if (status === 'completed') return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(item.deadline);
+    d.setHours(0, 0, 0, 0);
+    return d < today;
+}
+
+function getStatsFiltersFromUI() {
+    const timeEl = document.getElementById('statsTimeFilter');
+    const customStart = document.getElementById('statsCustomStart');
+    const customEnd = document.getElementById('statsCustomEnd');
+    const amountBasis = document.getElementById('statsAmountBasis');
+    const giftMode = document.getElementById('statsGiftMode');
+    const statusFilter = document.getElementById('statsStatusFilter');
+    const quickStart = document.getElementById('statsStartDate');
+    const quickEnd = document.getElementById('statsEndDate');
+    return {
+        timeRange: timeEl ? timeEl.value : 'month',
+        startDate: (customStart && customStart.value) || (quickStart && quickStart.value) || '',
+        endDate: (customEnd && customEnd.value) || (quickEnd && quickEnd.value) || '',
+        amountBasis: amountBasis ? amountBasis.value : 'finalTotal',
+        giftMode: giftMode ? giftMode.value : 'exclude',
+        statusFilter: statusFilter ? statusFilter.value : 'all'
+    };
+}
+
+function getStatsDateRange(filters) {
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    let start = new Date(now);
+    let end = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    switch (filters.timeRange) {
+        case 'today':
+            break;
+        case 'week':
+            start.setDate(start.getDate() - 6);
+            break;
+        case 'month':
+            start.setDate(start.getDate() - 29);
+            break;
+        case 'thisMonth':
+            start.setDate(1);
+            break;
+        case 'lastMonth':
+            start.setMonth(start.getMonth() - 1);
+            start.setDate(1);
+            end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+            end.setHours(23, 59, 59, 999);
+            break;
+        case 'custom':
+            if (filters.startDate) start = new Date(filters.startDate);
+            if (filters.endDate) end = new Date(filters.endDate);
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
+            break;
+        default:
+            start.setDate(start.getDate() - 29);
+    }
+    if (filters.timeRange !== 'lastMonth' && filters.timeRange !== 'custom') {
+        end.setHours(23, 59, 59, 999);
+    }
+    return { start, end };
+}
+
+function getStatsDataset(historySource, filters) {
+    if (!Array.isArray(historySource) || historySource.length === 0) {
+        return {
+            filteredRecords: [],
+            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0 },
+            dailyAgg: [],
+            byClient: [],
+            byProduct: []
+        };
+    }
+    const { start, end } = getStatsDateRange(filters);
+    let list = historySource.filter(item => {
+        const t = item.timestamp ? new Date(item.timestamp) : null;
+        if (!t || isNaN(t.getTime())) return false;
+        return t >= start && t <= end;
+    });
+    if (filters.statusFilter !== 'all') {
+        list = list.filter(item => {
+            const status = getStatsOrderStatus(item);
+            if (filters.statusFilter === 'overdue') return isStatsOrderOverdue(item);
+            return status === filters.statusFilter;
+        });
+    }
+    const amountKey = filters.amountBasis === 'totalProductsPrice' ? 'totalProductsPrice' : 'finalTotal';
+    const includeGifts = filters.giftMode !== 'exclude';
+    const giftRevenueAsZero = filters.giftMode === 'zero';
+
+    let revenueTotal = 0;
+    let itemTotal = 0;
+    let itemDone = 0;
+    let orderDoneCount = 0;
+    let overdueOrderCount = 0;
+    const dailyMap = {};
+    const clientMap = {};
+    const productMap = {};
+
+    list.forEach(item => {
+        ensureProductDoneStates(item);
+        const revenue = Number(item[amountKey]) || 0;
+        revenueTotal += revenue;
+        const products = Array.isArray(item.productPrices) ? item.productPrices : [];
+        const gifts = includeGifts && Array.isArray(item.giftPrices) ? item.giftPrices : [];
+        const states = item.productDoneStates || [];
+        let nItems = products.length + gifts.length;
+        let nDone = 0;
+        for (let i = 0; i < nItems && i < states.length; i++) if (states[i]) nDone++;
+        itemTotal += nItems;
+        itemDone += nDone;
+        const orderStatus = getStatsOrderStatus(item);
+        if (orderStatus === 'completed') orderDoneCount++;
+        if (isStatsOrderOverdue(item)) overdueOrderCount++;
+
+        const dateStr = item.timestamp ? new Date(item.timestamp).toISOString().slice(0, 10) : '';
+        if (dateStr) {
+            if (!dailyMap[dateStr]) dailyMap[dateStr] = { date: dateStr, revenue: 0, orders: 0, itemTotal: 0, itemDone: 0 };
+            dailyMap[dateStr].revenue += revenue;
+            dailyMap[dateStr].orders += 1;
+            dailyMap[dateStr].itemTotal += nItems;
+            dailyMap[dateStr].itemDone += nDone;
+        }
+
+        const cid = item.clientId || '—';
+        if (!clientMap[cid]) clientMap[cid] = { clientId: cid, orderCount: 0, revenueTotal: 0 };
+        clientMap[cid].orderCount += 1;
+        clientMap[cid].revenueTotal += revenue;
+
+        products.forEach(p => {
+            const name = p.product || '制品';
+            if (!productMap[name]) productMap[name] = { productName: name, count: 0, revenueTotal: 0 };
+            productMap[name].count += 1;
+            productMap[name].revenueTotal += (Number(p.productTotal) || 0);
+        });
+        if (includeGifts) {
+            gifts.forEach(p => {
+                const name = '[赠品] ' + (p.product || '赠品');
+                if (!productMap[name]) productMap[name] = { productName: name, count: 0, revenueTotal: 0 };
+                productMap[name].count += 1;
+                productMap[name].revenueTotal += giftRevenueAsZero ? 0 : (Number(p.productTotal) || 0);
+            });
+        }
+    });
+
+    const orderCount = list.length;
+    const aov = orderCount > 0 ? revenueTotal / orderCount : 0;
+    const itemDoneRate = itemTotal > 0 ? (itemDone / itemTotal) * 100 : 0;
+    const orderDoneRate = orderCount > 0 ? (orderDoneCount / orderCount) * 100 : 0;
+
+    const dailyAgg = Object.keys(dailyMap).sort().map(k => dailyMap[k]);
+    const byClient = Object.values(clientMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
+    const byProduct = Object.values(productMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
+
+    return {
+        filteredRecords: list,
+        totals: {
+            orderCount,
+            revenueTotal,
+            aov,
+            itemTotal,
+            itemDone,
+            itemDoneRate,
+            orderDoneCount,
+            orderDoneRate,
+            overdueOrderCount
+        },
+        dailyAgg,
+        byClient,
+        byProduct
+    };
+}
+
+function renderStatsKpis(totals) {
+    const grid = document.getElementById('statsKpiGrid');
+    if (!grid) return;
+    const fmt = (v, isMoney) => {
+        if (typeof v !== 'number' || !isFinite(v)) return '—';
+        if (isMoney) return '¥' + v.toFixed(2);
+        if (v === Math.floor(v)) return String(v);
+        return v.toFixed(1);
+    };
+    grid.innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">订单数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div></div>
+        <div class="kpi-card"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">制品项总数</div><div class="kpi-value" id="kpiItemTotal">${totals.itemTotal}</div></div>
+        <div class="kpi-card"><div class="kpi-label">制品项完成率</div><div class="kpi-value" id="kpiItemDoneRate">${fmt(totals.itemDoneRate)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">逾期订单数</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div></div>
+    `;
+    let orderRateEl = document.getElementById('kpiOrderDoneRate');
+    if (!orderRateEl) {
+        orderRateEl = document.createElement('div');
+        orderRateEl.className = 'stats-order-done-rate text-gray';
+        orderRateEl.id = 'kpiOrderDoneRate';
+        grid.parentNode.insertBefore(orderRateEl, grid.nextSibling);
+    }
+    orderRateEl.textContent = '订单完成率：' + fmt(totals.orderDoneRate) + '%（已完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）';
+}
+
+function renderStatsTrends(dailyAgg) {
+    const container = document.getElementById('statsTrends');
+    if (!container) return;
+    if (!dailyAgg || dailyAgg.length === 0) {
+        container.innerHTML = '<p class="text-gray">暂无趋势数据</p>';
+        return;
+    }
+    const maxRev = Math.max(1, ...dailyAgg.map(d => d.revenue));
+    const maxOrd = Math.max(1, ...dailyAgg.map(d => d.orders));
+    const maxRate = 100;
+    let html = '<h3 class="stats-block-title">趋势（按日）</h3>';
+    html += '<div class="stats-mini-bars">';
+    dailyAgg.forEach(d => {
+        const rate = d.itemTotal > 0 ? (d.itemDone / d.itemTotal) * 100 : 0;
+        html += '<div class="stats-bar-row">';
+        html += '<span class="stats-bar-label">' + d.date + '</span>';
+        html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-rev" style="width:' + (d.revenue / maxRev * 100) + '%"></div></div><span class="stats-bar-legend">¥' + (d.revenue || 0).toFixed(0) + '</span>';
+        html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-ord" style="width:' + (d.orders / maxOrd * 100) + '%"></div></div><span class="stats-bar-legend">' + d.orders + '单</span>';
+        html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-rate" style="width:' + (rate / maxRate * 100) + '%"></div></div><span class="stats-bar-legend">' + rate.toFixed(0) + '%</span>';
+        html += '</div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderStatsTopLists(byClient, byProduct) {
+    const container = document.getElementById('statsTopLists');
+    if (!container) return;
+    const topN = 10;
+    let html = '<h3 class="stats-block-title">Top 单主</h3>';
+    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small active" data-tab="clientOrders">按订单数</button><button type="button" class="btn secondary small" data-tab="clientRevenue">按金额</button></div>';
+    const clientByOrders = [...byClient].sort((a, b) => b.orderCount - a.orderCount).slice(0, topN);
+    const clientByRevenue = byClient.slice(0, topN);
+    html += '<div id="statsTopClientOrders" class="stats-top-list">';
+    clientByOrders.forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">' + c.orderCount + ' 单</span></div>'; });
+    html += '</div>';
+    html += '<div id="statsTopClientRevenue" class="stats-top-list d-none">';
+    clientByRevenue.forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span></div>'; });
+    html += '</div>';
+
+    html += '<h3 class="stats-block-title">Top 制品</h3>';
+    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small active" data-tab="productCount">按次数</button><button type="button" class="btn secondary small" data-tab="productRevenue">按金额</button></div>';
+    const productByCount = [...byProduct].sort((a, b) => b.count - a.count).slice(0, topN);
+    const productByRevenue = byProduct.slice(0, topN);
+    html += '<div id="statsTopProductCount" class="stats-top-list">';
+    productByCount.forEach((p, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (p.productName || '—') + '</span><span class="stats-top-val">' + p.count + ' 次</span></div>'; });
+    html += '</div>';
+    html += '<div id="statsTopProductRevenue" class="stats-top-list d-none">';
+    productByRevenue.forEach((p, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (p.productName || '—') + '</span><span class="stats-top-val">¥' + (p.revenueTotal || 0).toFixed(2) + '</span></div>'; });
+    html += '</div>';
+
+    container.innerHTML = html;
+    container.querySelectorAll('.stats-top-tabs button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tab = this.dataset.tab;
+            container.querySelectorAll('.stats-top-tabs button').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            if (tab === 'clientOrders') { document.getElementById('statsTopClientOrders').classList.remove('d-none'); document.getElementById('statsTopClientRevenue').classList.add('d-none'); }
+            else if (tab === 'clientRevenue') { document.getElementById('statsTopClientOrders').classList.add('d-none'); document.getElementById('statsTopClientRevenue').classList.remove('d-none'); }
+            else if (tab === 'productCount') { document.getElementById('statsTopProductCount').classList.remove('d-none'); document.getElementById('statsTopProductRevenue').classList.add('d-none'); }
+            else if (tab === 'productRevenue') { document.getElementById('statsTopProductCount').classList.add('d-none'); document.getElementById('statsTopProductRevenue').classList.remove('d-none'); }
+        });
+    });
+}
+
+function updateStatsFilterBadge() {
+    const badge = document.getElementById('statsFilterBadge');
+    if (!badge) return;
+    const f = getStatsFiltersFromUI();
+    let n = 0;
+    if (f.timeRange !== 'month') n++;
+    if (f.amountBasis !== 'finalTotal') n++;
+    if (f.giftMode !== 'exclude') n++;
+    if (f.statusFilter !== 'all') n++;
+    if (f.startDate || f.endDate) n++;
+    if (n > 0) { badge.textContent = n; badge.classList.remove('d-none'); } else { badge.classList.add('d-none'); }
+}
+
+function toggleStatsFilterDrawer() {
+    const drawer = document.getElementById('statsFilterDrawer');
+    if (drawer) {
+        drawer.classList.toggle('active');
+        if (drawer.classList.contains('active')) {
+            document.body.style.overflow = 'hidden';
+            updateStatsFilterBadge();
+        } else document.body.style.overflow = '';
+    }
+}
+
+function closeStatsFilterDrawer() {
+    const drawer = document.getElementById('statsFilterDrawer');
+    if (drawer) { drawer.classList.remove('active'); document.body.style.overflow = ''; }
+}
+
+function onStatsFilterChange() {
+    const timeEl = document.getElementById('statsTimeFilter');
+    const customRange = document.getElementById('statsCustomDateRange');
+    if (timeEl && timeEl.value === 'custom' && customRange) customRange.classList.remove('d-none');
+    else if (customRange) customRange.classList.add('d-none');
+    updateStatsFilterBadge();
+}
+
+function resetStatsFilters() {
+    const timeEl = document.getElementById('statsTimeFilter');
+    const amountEl = document.getElementById('statsAmountBasis');
+    const giftEl = document.getElementById('statsGiftMode');
+    const statusEl = document.getElementById('statsStatusFilter');
+    const customStart = document.getElementById('statsCustomStart');
+    const customEnd = document.getElementById('statsCustomEnd');
+    const quickStart = document.getElementById('statsStartDate');
+    const quickEnd = document.getElementById('statsEndDate');
+    if (timeEl) timeEl.value = 'month';
+    if (amountEl) amountEl.value = 'finalTotal';
+    if (giftEl) giftEl.value = 'exclude';
+    if (statusEl) statusEl.value = 'all';
+    if (customStart) customStart.value = '';
+    if (customEnd) customEnd.value = '';
+    if (quickStart) quickStart.value = '';
+    if (quickEnd) quickEnd.value = '';
+    document.getElementById('statsCustomDateRange').classList.add('d-none');
+    updateStatsFilterBadge();
+    applyStatsFilters();
+}
+
+function setStatsQuickRange(range) {
+    const now = new Date();
+    let start = new Date(now);
+    let end = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    if (range === 'today') { }
+    else if (range === 'week') { start.setDate(start.getDate() - 6); }
+    else if (range === 'month') { start.setDate(start.getDate() - 29); }
+    else if (range === 'thisMonth') { start.setDate(1); }
+    else if (range === 'lastMonth') { start.setMonth(start.getMonth() - 1); start.setDate(1); end = new Date(start.getFullYear(), start.getMonth() + 1, 0); end.setHours(23, 59, 59, 999); }
+    const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    document.getElementById('statsStartDate').value = ymd(start);
+    document.getElementById('statsEndDate').value = ymd(end);
+    const timeEl = document.getElementById('statsTimeFilter');
+    if (timeEl) timeEl.value = range === 'today' ? 'today' : range === 'week' ? 'week' : range === 'month' ? 'month' : range === 'thisMonth' ? 'thisMonth' : range === 'lastMonth' ? 'lastMonth' : 'custom';
+    onStatsFilterChange();
+    applyStatsFilters();
+}
+
+function applyStatsFilters() {
+    const f = getStatsFiltersFromUI();
+    if (f.timeRange === 'custom' && f.startDate) {
+        const customStart = document.getElementById('statsCustomStart');
+        const customEnd = document.getElementById('statsCustomEnd');
+        if (customStart) customStart.value = f.startDate;
+        if (customEnd) customEnd.value = f.endDate;
+    }
+    document.querySelectorAll('.stats-quick-btn').forEach(function (btn) {
+        btn.classList.toggle('active', btn.dataset.range === f.timeRange);
+    });
+    const dataset = getStatsDataset(history, f);
+    renderStatsKpis(dataset.totals);
+    renderStatsTrends(dataset.dailyAgg);
+    renderStatsTopLists(dataset.byClient, dataset.byProduct);
+}
+
+function renderStatsPage() {
+    updateStatsFilterBadge();
+    applyStatsFilters();
+}
+
+function exportStatsToExcel() {
+    const f = getStatsFiltersFromUI();
+    const dataset = getStatsDataset(history, f);
+    if (dataset.filteredRecords.length === 0) {
+        alert('当前筛选下暂无数据可导出');
+        return;
+    }
+    try {
+        const XLSX = window.XLSX;
+        if (!XLSX) { alert('请确保已加载 xlsx 库'); return; }
+        const wb = XLSX.utils.book_new();
+        const summary = [
+            ['统计汇总'],
+            ['订单数', dataset.totals.orderCount],
+            ['总收入', dataset.totals.revenueTotal],
+            ['客单价', dataset.totals.aov],
+            ['制品项总数', dataset.totals.itemTotal],
+            ['制品项完成率(%)', dataset.totals.itemDoneRate],
+            ['订单完成数', dataset.totals.orderDoneCount],
+            ['订单完成率(%)', dataset.totals.orderDoneRate],
+            ['逾期订单数', dataset.totals.overdueOrderCount]
+        ];
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), '汇总');
+        const clientData = [['单主ID', '订单数', '总金额']];
+        dataset.byClient.forEach(c => { clientData.push([c.clientId, c.orderCount, c.revenueTotal]); });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clientData), 'Top单主');
+        const productData = [['制品名', '次数', '金额贡献']];
+        dataset.byProduct.forEach(p => { productData.push([p.productName, p.count, p.revenueTotal]); });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(productData), 'Top制品');
+        const date = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, '统计_' + date + '.xlsx');
+    } catch (e) {
+        console.error(e);
+        alert('导出失败：' + (e.message || e));
+    }
 }
 
 // 打开计算抽屉
@@ -5015,20 +5447,20 @@ function getScheduleBarsForCalendar(year, month) {
     return bars;
 }
 
-// 排单日历条带色板（与彩条颜色预览.html 一致）
+// 排单日历条带色板（与彩条颜色预览.html 一致，整体偏亮）
 var SCHEDULE_BAR_COLORS = [
-    'rgba(173, 198, 235, 0.32)',
-    'rgba(158, 208, 218, 0.32)',
-    'rgba(235, 218, 178, 0.32)',
-    'rgba(235, 188, 208, 0.32)',
-    'rgba(198, 188, 228, 0.32)',
-    'rgba(168, 218, 228, 0.32)',
-    'rgba(228, 178, 178, 0.32)',
-    'rgba(208, 188, 235, 0.32)',
-    'rgba(228, 198, 168, 0.32)',
-    'rgba(178, 228, 208, 0.32)'
+    'rgba(190, 215, 250, 0.38)',
+    'rgba(175, 225, 240, 0.38)',
+    'rgba(248, 232, 195, 0.38)',
+    'rgba(250, 200, 220, 0.38)',
+    'rgba(218, 200, 245, 0.38)',
+    'rgba(185, 235, 248, 0.38)',
+    'rgba(245, 195, 195, 0.38)',
+    'rgba(225, 200, 250, 0.38)',
+    'rgba(245, 215, 185, 0.38)',
+    'rgba(195, 245, 225, 0.38)'
 ];
-var SCHEDULE_BAR_TEXT_COLORS = ['#3d5a7a', '#3d6b6b', '#6b5c38', '#6b4058', '#4d3d6b', '#3d6b78', '#6b4040', '#5a4d78', '#6b5438', '#3d7860'];
+var SCHEDULE_BAR_TEXT_COLORS = ['#2d4a6b', '#2d5c5c', '#5c4d28', '#5c3048', '#3d2d5c', '#2d5c68', '#5c2828', '#4a3d68', '#5c4430', '#2d6850'];
 
 // 按星期视图：同周内条带轨道分配，最多 3 条（一行一天最多显示 3 个）
 function assignWeekBarsToTracks(segments) {
