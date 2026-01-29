@@ -432,6 +432,10 @@ body {
     }
 }
 
+.receipt-drawer.customization-open .receipt-drawer-overlay {
+    pointer-events: none;
+}
+
 .page {
     display: none;
     animation: fadeIn 0.3s ease-out;
@@ -620,14 +624,13 @@ input:focus, select:focus {
 .icon-action-btn.view { color: var(--primary-color); }   /* 主题色：查看 */
 .icon-action-btn.edit { color: var(--primary-color); }   /* 主题色：编辑 */
 .icon-action-btn.delete {
-    color: #dc2626;            /* 深红 X */
-    background: #fee2e2;       /* 浅红底 */
-    border-radius: 999px;      /* 圆形 */
-    width: 22px;
-    height: 22px;
+    color: #ef4444;            /* 红色图标，无底框 */
+    background: transparent;
+    width: 28px;
+    height: 28px;
 }
-.icon-action-btn.delete:hover { background: #fecaca; }
-.icon-action-btn.delete:active { background: #fca5a5; }
+.icon-action-btn.delete:hover { opacity: 0.85; }
+.icon-action-btn.delete:active { opacity: 0.75; }
 
 /* 按钮样式 - 高度、宽度由字体决定 */
 .btn {
@@ -3169,19 +3172,19 @@ input:checked + .toggle-slider:before {
     }
 }
 
-/* 手机端：上半屏小票预览 + 下半屏设置，弹窗不挡全屏；overlay 不拦截触摸，便于上下滚动预览小票 */
+/* 手机端：上半屏小票预览可滚动 + 下半屏设置；overlay 不拦截触摸，便于上下滚动预览小票 */
 @media (max-width: 768px) {
     .receipt-customization-overlay {
         top: 0;
         left: 0;
         right: 0;
         bottom: auto;
-        height: 40vh;
+        height: 50vh;
         background: rgba(0, 0, 0, 0.35);
         pointer-events: none;
     }
     .receipt-customization-content {
-        max-height: 60vh;
+        max-height: 50vh;
         border-radius: 12px 12px 0 0;
         padding-top: 0.75rem;
     }
@@ -4795,6 +4798,12 @@ input:checked + .toggle-slider:before {
     border-color: #e5e7eb;
 }
 
+.record-status--pending {
+    color: #6b7280;
+    background: #f3f4f6;
+    border-color: #e5e7eb;
+}
+
 .record-status--in-progress {
     color: #92400e;
     background: #fffbeb;
@@ -4805,6 +4814,12 @@ input:checked + .toggle-slider:before {
     color: #065f46;
     background: #ecfdf5;
     border-color: #6ee7b7;
+}
+
+.record-status--overdue {
+    color: #b91c1c;
+    background: #fef2f2;
+    border-color: #fecaca;
 }
 
 .record-item-badges {

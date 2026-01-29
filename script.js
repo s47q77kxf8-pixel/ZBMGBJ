@@ -751,6 +751,7 @@ function previewImage(inputId, previewId) {
 // 切换小票自定义设置面板
 function toggleReceiptCustomizationPanel() {
     const modal = document.getElementById('receiptCustomizationModal');
+    const drawer = document.getElementById('receiptDrawer');
     
     if (modal.classList.contains('d-none')) {
         // 手机端：先把小票滚到视口上方，方便上半屏预览
@@ -760,19 +761,21 @@ function toggleReceiptCustomizationPanel() {
                 quoteEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
-        // 显示面板
         modal.classList.remove('d-none');
-        // 加载当前的自定义设置到表单中
+        if (drawer) drawer.classList.add('customization-open');
         loadReceiptCustomizationToForm();
     } else {
-        // 隐藏面板
         modal.classList.add('d-none');
+        if (drawer) drawer.classList.remove('customization-open');
     }
 }
 
 // 关闭小票自定义设置面板
 function closeReceiptCustomizationPanel() {
-    document.getElementById('receiptCustomizationModal').classList.add('d-none');
+    const modal = document.getElementById('receiptCustomizationModal');
+    const drawer = document.getElementById('receiptDrawer');
+    if (modal) modal.classList.add('d-none');
+    if (drawer) drawer.classList.remove('customization-open');
 }
 
 // 切换小票设置标签页
@@ -2619,10 +2622,38 @@ function getRecordProgressStatus(item) {
     const pending = !item.startTime && !item.deadline;
     const now = new Date();
     now.setHours(23, 59, 59, 999);
-    const overdue = !!(item.deadline && new Date(item.deadline).getTime() < now.getTime() && total > 0 && doneCount < total);
-    if (total === 0) return { text: '未开始', className: 'record-status--not-started', pending, overdue };
-    if (doneCount === 0) return { text: '未开始', className: 'record-status--not-started', pending, overdue };
-    if (doneCount === total) return { text: '已完成', className: 'record-status--completed', pending, overdue };
+    
+    // 1. 待排单：未设置排单时间
+    if (pending) {
+        const overdue = false;
+        return { text: '待排单', className: 'record-status--pending', pending, overdue };
+    }
+    
+    // 判断时间
+    const startTime = item.startTime ? new Date(item.startTime).getTime() : null;
+    const deadline = item.deadline ? new Date(item.deadline).getTime() : null;
+    const nowTime = now.getTime();
+    
+    // 2. 已完成：所有制品已完成
+    if (total > 0 && doneCount === total) {
+        const overdue = false;
+        return { text: '已完成', className: 'record-status--completed', pending, overdue };
+    }
+    
+    // 3. 未开始：排单时间未到
+    if (startTime && nowTime < startTime) {
+        const overdue = false;
+        return { text: '未开始', className: 'record-status--not-started', pending, overdue };
+    }
+    
+    // 4. 已逾期：结束时间已到未完成
+    if (deadline && nowTime >= deadline && (total === 0 || doneCount < total)) {
+        const overdue = true;
+        return { text: '已逾期', className: 'record-status--overdue', pending, overdue };
+    }
+    
+    // 5. 进行中：排单时间已到，结束时间未到
+    const overdue = false;
     return { text: '进行中', className: 'record-status--in-progress', pending, overdue };
 }
 
@@ -2829,10 +2860,6 @@ function applyRecordFilters() {
         const amount = formatMoney(item && item.finalTotal);
         const status = getRecordProgressStatus(item);
         const isSelected = selectedHistoryIds.has(item.id);
-        const badges = [];
-        if (status.pending) badges.push('<span class="record-badge record-badge-pending">待排单</span>');
-        if (status.overdue) badges.push('<span class="record-badge record-badge-overdue">已逾期</span>');
-        const badgesHtml = badges.length ? '<span class="record-item-badges">' + badges.join('') + '</span>' : '';
         return `
             <div class="record-item history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
                 <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
@@ -2840,7 +2867,6 @@ function applyRecordFilters() {
                 <div class="record-item-right">
                     <span class="record-item-amount">${amount}</span>
                     <span class="record-status ${status.className}">${status.text}</span>
-                    ${badgesHtml}
                     <button class="icon-action-btn view" onclick="setReceiptFromRecord(); loadQuoteFromHistory(${item.id})" aria-label="查看小票" title="小票">
                         <svg class="icon sm" aria-hidden="true"><use href="#i-receipt"></use></svg>
                         <span class="sr-only">小票</span>
