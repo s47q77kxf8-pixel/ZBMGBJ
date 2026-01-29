@@ -1170,10 +1170,12 @@ function applyCustomThemeStyles(themeId) {
             color: ${theme.title};
         }
         ${textureStyle ? `
-        .receipt-theme-${themeId} .receipt {
+        .receipt-theme-${themeId}.receipt,
+        .receipt.receipt-theme-${themeId} {
             position: relative;
         }
-        .receipt-theme-${themeId} .receipt::before {
+        .receipt-theme-${themeId}.receipt::before,
+        .receipt.receipt-theme-${themeId}::before {
             content: '';
             position: absolute;
             top: 0;

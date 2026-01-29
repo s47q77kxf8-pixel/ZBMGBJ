@@ -914,6 +914,9 @@ input:focus, select:focus {
         min-height: 44px;
         padding: 0.6rem 0.5rem;
     }
+    select, select option {
+        color: #111;
+    }
     
     .form-group label {
         margin-bottom: 0.2rem;
@@ -3166,7 +3169,7 @@ input:checked + .toggle-slider:before {
     }
 }
 
-/* 手机端：上半屏小票预览 + 下半屏设置，弹窗不挡全屏 */
+/* 手机端：上半屏小票预览 + 下半屏设置，弹窗不挡全屏；overlay 不拦截触摸，便于上下滚动预览小票 */
 @media (max-width: 768px) {
     .receipt-customization-overlay {
         top: 0;
@@ -3175,6 +3178,7 @@ input:checked + .toggle-slider:before {
         bottom: auto;
         height: 40vh;
         background: rgba(0, 0, 0, 0.35);
+        pointer-events: none;
     }
     .receipt-customization-content {
         max-height: 60vh;
