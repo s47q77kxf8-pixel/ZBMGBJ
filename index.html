@@ -451,11 +451,11 @@
                         </div>
                         <div class="schedule-title-actions d-flex items-center">
                             <button type="button" class="btn secondary schedule-title-today-pill d-none" onclick="scheduleTodoBackToToday()">Today</button>
-                            <button type="button" class="btn secondary schedule-title-icon-btn" id="openHistoryRecordBtn" onclick="openRecordPage()" aria-label="记录" title="记录">
-                                <svg class="icon" aria-hidden="true"><use href="#i-record-c"></use></svg>
-                            </button>
-                            <button type="button" class="btn secondary schedule-title-icon-btn schedule-title-icon-btn--stats" id="openStatsBtn" onclick="openStatsPage()" aria-label="统计" title="统计">
+                            <button type="button" class="btn secondary btn--icon schedule-title-icon-btn schedule-title-icon-btn--stats" id="openStatsBtn" onclick="openStatsPage()" aria-label="统计" title="统计">
                                 <svg class="icon" aria-hidden="true"><use href="#i-stats-e"></use></svg>
+                            </button>
+                            <button type="button" class="btn secondary btn--icon schedule-title-icon-btn" id="openHistoryRecordBtn" onclick="openRecordPage()" aria-label="记录" title="记录">
+                                <svg class="icon" aria-hidden="true"><use href="#i-record-c"></use></svg>
                             </button>
                         </div>
                     </div>
@@ -601,12 +601,15 @@
                     <div class="receipt-drawer-overlay" onclick="handleReceiptDrawerClose()"></div>
                     <div class="receipt-drawer-panel">
                         <div class="receipt-drawer-header">
-                            <button type="button" class="btn-icon btn--icon btn-close-flat receipt-drawer-close" onclick="handleReceiptDrawerClose()" aria-label="关闭小票页" title="关闭">
+                            <button type="button" class="btn secondary btn--icon receipt-drawer-action-icon" onclick="handleReceiptSchedule()" aria-label="排单" title="排单">
+                                <svg class="icon" aria-hidden="true"><use href="#i-calendar-blank"></use></svg>
+                                <span class="sr-only">排单</span>
+                            </button>
+                            <h2 class="receipt-drawer-title">报价小票</h2>
+                            <button type="button" class="btn secondary btn--icon receipt-drawer-close" onclick="handleReceiptDrawerClose()" aria-label="关闭小票页" title="关闭">
                                 <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
                                 <span class="sr-only">关闭</span>
                             </button>
-                            <h2 class="receipt-drawer-title">报价小票</h2>
-                            <button type="button" class="btn receipt-drawer-action" onclick="handleReceiptSchedule()">排单</button>
                         </div>
                         <div class="receipt-drawer-body">
                             <div class="receipt-drawer-toolbar d-flex justify-between items-center">
@@ -1183,9 +1186,13 @@
             <!-- 记录页（简洁列表：单主ID / 金额 / 完成状态） -->
             <div id="record" class="page">
                 <div class="schedule-section">
-                    <div class="schedule-toolbar d-flex justify-between items-center">
-                        <h2 class="schedule-title">记录</h2>
-                        <div class="d-flex gap-2 items-center">
+                    <div class="record-page-header d-flex items-center">
+                        <button type="button" class="btn record-back-flat" onclick="showPage('quote')" aria-label="返回" title="返回">
+                            <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
+                            <span class="sr-only">返回</span>
+                        </button>
+                        <h2 class="record-page-title">记录</h2>
+                        <div class="record-page-actions d-flex gap-2 items-center">
                             <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
                             <button type="button" class="btn secondary btn--icon" onclick="document.getElementById('recordSyncImportInput').click()" aria-label="导入数据" title="导入数据（从另一端导出的 JSON 同步）">
                                 <svg class="icon" aria-hidden="true"><use href="#i-import"></use></svg>
@@ -1201,39 +1208,34 @@
                                     <button type="button" class="record-export-opt" onclick="exportRecordToExcel(); closeRecordExportPopover();">导出 Excel</button>
                                 </div>
                             </div>
-                            <button type="button" class="btn btn-back-flat" onclick="showPage('quote')" aria-label="返回" title="返回">
-                                <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
-                                <span class="sr-only">返回</span>
-                            </button>
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group w-full">
-                            <div class="d-flex gap-2">
-                                <div class="record-search-wrap flex-1" id="recordSearchWrap">
-                                    <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="record-search-input" oninput="applyRecordFilters(); toggleRecordSearchClear();">
-                                    <button type="button" class="record-search-clear" id="recordSearchClearBtn" onclick="clearRecordSearch()" aria-label="清空搜索" title="清空">
-                                        <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
-                                        <span class="sr-only">清空</span>
-                                    </button>
-                                </div>
-                                <button class="btn secondary btn--icon" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
-                                    <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
-                                    <span class="sr-only" id="recordFilterBtnText">筛选</span>
-                                    <span id="recordFilterBadge" class="filter-badge d-none">0</span>
-                                </button>
-                            </div>
+                    <div class="record-search-row d-flex items-center">
+                        <div class="record-search-wrap flex-1" id="recordSearchWrap">
+                            <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="record-search-input" oninput="applyRecordFilters(); toggleRecordSearchClear();">
+                            <button type="button" class="record-search-clear" id="recordSearchClearBtn" onclick="clearRecordSearch()" aria-label="清空搜索" title="清空">
+                                <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                                <span class="sr-only">清空</span>
+                            </button>
                         </div>
+                        <button class="btn secondary btn--icon record-filter-btn" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
+                            <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
+                            <span class="sr-only" id="recordFilterBtnText">筛选</span>
+                            <span id="recordFilterBadge" class="filter-badge d-none">0</span>
+                        </button>
                     </div>
                     <div id="recordFilterDrawer" class="history-filter-drawer">
                         <div class="filter-drawer-overlay" onclick="closeRecordFilterDrawer()"></div>
                         <div class="filter-drawer-content">
                             <div class="filter-drawer-header">
                                 <h3>筛选与排序</h3>
-                                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeRecordFilterDrawer()" aria-label="关闭" title="关闭">
-                                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
-                                    <span class="sr-only">关闭</span>
-                                </button>
+                                <div class="filter-drawer-header-actions d-flex items-center gap-2">
+                                    <button type="button" class="btn secondary small" onclick="resetRecordFilters(); closeRecordFilterDrawer();">清除筛选</button>
+                                    <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeRecordFilterDrawer()" aria-label="关闭" title="关闭">
+                                        <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                                        <span class="sr-only">关闭</span>
+                                    </button>
+                                </div>
                             </div>
                             <div class="filter-drawer-body">
                                 <div class="filter-section">
@@ -1307,13 +1309,13 @@
                         </button>
                         <h1 class="stats-title">统计</h1>
                         <div class="stats-actions d-flex gap-2 items-center">
-                            <button type="button" class="btn secondary btn--icon" id="statsFilterBtn" onclick="toggleStatsFilterDrawer()" aria-label="筛选" title="筛选">
-                                <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
-                                <span id="statsFilterBadge" class="filter-badge d-none">0</span>
-                            </button>
                             <button type="button" class="btn secondary btn--icon" onclick="exportStatsToExcel()" aria-label="导出" title="导出Excel">
                                 <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
                                 <span class="sr-only">导出Excel</span>
+                            </button>
+                            <button type="button" class="btn secondary btn--icon" id="statsFilterBtn" onclick="toggleStatsFilterDrawer()" aria-label="筛选" title="筛选">
+                                <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
+                                <span id="statsFilterBadge" class="filter-badge d-none">0</span>
                             </button>
                         </div>
                     </header>

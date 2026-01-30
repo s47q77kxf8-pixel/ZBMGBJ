@@ -2683,7 +2683,7 @@ function toggleRecordSearchClear() {
 function getRecordProgressStatus(item) {
     if (!item) return { text: '未开始', className: 'record-status--not-started', pending: false, overdue: false };
     // 已接单/结算：优先显示结算状态
-    if (item.settlement && item.settlement.type === 'full_refund') {
+    if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
         return { text: '已撤单', className: 'record-status--cancelled', pending: false, overdue: false };
     }
     if (item.settlement && (item.settlement.type === 'normal' || item.settlement.type === 'waste_fee')) {
@@ -3676,6 +3676,41 @@ function openCalculatorDrawer() {
 
     drawer.classList.add('open');
     isCalculatorOpen = true;
+
+    // #region agent log
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            var runId = (window.__debugTimeRowRunId = (window.__debugTimeRowRunId || 0) + 1);
+            var vw = window.innerWidth;
+            var timeRowByHas = document.querySelector('#calculator .section:first-of-type .form-row:has(#orderTimeInput)');
+            var timeRowByIndex = document.querySelector('#calculator .section:first-of-type .form-row:nth-child(3)');
+            var rowEl = timeRowByHas || timeRowByIndex;
+            var hasSupport = !!timeRowByHas;
+            fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'script.js:openCalculatorDrawer', message: 'time row layout', data: { runId: runId, viewportWidth: vw, hasSelectorWorks: hasSupport, timeRowFound: !!rowEl }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1' }) }).catch(function () {});
+            if (rowEl) {
+                var cs = getComputedStyle(rowEl);
+                var gap = cs.gap || cs.columnGap;
+                fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'script.js:openCalculatorDrawer', message: 'time row computed', data: { runId: runId, gap: gap, flexDirection: cs.flexDirection, flexWrap: cs.flexWrap, rowWidth: rowEl.getBoundingClientRect().width }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H2,H3' }) }).catch(function () {});
+                var groups = rowEl.querySelectorAll('.form-group');
+                var widths = []; var flexBases = []; var i;
+                for (i = 0; i < groups.length; i++) {
+                    var gcs = getComputedStyle(groups[i]);
+                    widths.push(groups[i].getBoundingClientRect().width);
+                    flexBases.push(gcs.flexBasis);
+                }
+                var sumWidths = widths.reduce(function (a, b) { return a + b; }, 0);
+                fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'script.js:openCalculatorDrawer', message: 'form-group widths', data: { runId: runId, groupCount: groups.length, widths: widths, flexBases: flexBases, sumWidths: sumWidths, rowWidth: rowEl.getBoundingClientRect().width, overflow: sumWidths > rowEl.getBoundingClientRect().width }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H4' }) }).catch(function () {});
+                if (groups[0]) {
+                    var inp = groups[0].querySelector('input[type="date"]');
+                    if (inp) {
+                        var ics = getComputedStyle(inp);
+                        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'script.js:openCalculatorDrawer', message: 'date input computed', data: { runId: runId, minWidth: ics.minWidth, width: ics.width, boxSizing: ics.boxSizing }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H5' }) }).catch(function () {});
+                    }
+                }
+            }
+        });
+    });
+    // #endregion
 }
 
 // 关闭计算抽屉
@@ -6106,6 +6141,49 @@ function settlementStepBack() {
     document.getElementById('settlementBtnConfirm').classList.add('d-none');
 }
 
+function settlementFillCancelFeeDefaults() {
+    var rules = defaultSettings.settlementRules && defaultSettings.settlementRules.cancelFee ? defaultSettings.settlementRules.cancelFee : {};
+    var ruleEl = document.getElementById('settlementCancelFeeRule');
+    var rateEl = document.getElementById('settlementCancelFeeRate');
+    var fixedEl = document.getElementById('settlementCancelFeeFixed');
+    if (ruleEl) ruleEl.value = rules.defaultRule || 'percent';
+    if (rateEl) rateEl.value = (rules.defaultRate != null ? rules.defaultRate * 100 : 10);
+    if (fixedEl) fixedEl.value = rules.defaultFixedAmount != null ? rules.defaultFixedAmount : 50;
+    settlementToggleCancelFeeFields();
+}
+
+function settlementToggleCancelFeeFields() {
+    var rule = document.getElementById('settlementCancelFeeRule');
+    var rateWrap = document.querySelector('.settlement-cancel-fee-params label:first-of-type');
+    var fixedWrap = document.querySelector('.settlement-cancel-fee-params label:last-of-type');
+    if (!rule) return;
+    var isPercent = rule.value === 'percent';
+    if (rateWrap) rateWrap.style.display = isPercent ? '' : 'none';
+    if (fixedWrap) fixedWrap.style.display = isPercent ? 'none' : '';
+}
+
+function computeCancelFeeAmount(item, rule, ratePercent, fixedAmount) {
+    if (rule === 'percent') {
+        var base = item.finalTotal != null ? item.finalTotal : 0;
+        return base * (parseFloat(ratePercent) || 0) / 100;
+    }
+    return parseFloat(fixedAmount) || 0;
+}
+
+function settlementUpdateCancelFeePreview() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var ruleEl = document.getElementById('settlementCancelFeeRule');
+    var rateEl = document.getElementById('settlementCancelFeeRate');
+    var fixedEl = document.getElementById('settlementCancelFeeFixed');
+    var rule = ruleEl ? ruleEl.value : 'percent';
+    var rate = rateEl ? rateEl.value : '0';
+    var fixed = fixedEl ? fixedEl.value : '0';
+    var amount = computeCancelFeeAmount(item, rule, rate, fixed);
+    var previewEl = document.getElementById('settlementCancelFeePreview');
+    if (previewEl) previewEl.textContent = '跑单费预览：¥' + Math.max(0, amount).toFixed(2);
+}
+
 function settlementRenderWasteFeeForm() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
@@ -6248,6 +6326,23 @@ function settlementConfirm() {
 
     if (type === 'full_refund') {
         item.settlement = { type: 'full_refund', amount: 0, memo: (document.getElementById('settlementMemoRefund').value || '').trim(), at: at };
+    } else if (type === 'cancel_with_fee') {
+        var ruleEl = document.getElementById('settlementCancelFeeRule');
+        var rateEl = document.getElementById('settlementCancelFeeRate');
+        var fixedEl = document.getElementById('settlementCancelFeeFixed');
+        var memoEl = document.getElementById('settlementMemoCancelFee');
+        var rule = ruleEl ? ruleEl.value : 'percent';
+        var rate = parseFloat(rateEl ? rateEl.value : 0) / 100;
+        var fixedAmount = parseFloat(fixedEl ? fixedEl.value : 0) || 0;
+        var amount = rule === 'percent' ? (item.finalTotal || 0) * rate : fixedAmount;
+        amount = Math.max(0, amount);
+        item.settlement = {
+            type: 'cancel_with_fee',
+            amount: amount,
+            memo: memoEl ? (memoEl.value || '').trim() : '',
+            at: at,
+            cancelFee: { rule: rule, rate: rate, fixedAmount: fixedAmount }
+        };
     } else if (type === 'waste_fee') {
         var rule = document.getElementById('settlementWasteRule').value;
         var rate = parseFloat(document.getElementById('settlementWasteRate').value) || 0;
