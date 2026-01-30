@@ -5064,9 +5064,14 @@ function generateQuote() {
         html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
     }
     
-    // 实付金额（只有在有平台费时才显示）
-    if (quoteData.platformFeeAmount > 0) {
+    // 实付金额（有平台费时显示；无平台费时若需付定金也显示）
+    if (quoteData.platformFeeAmount > 0 || (quoteData.needDeposit && defaultSettings.depositRate > 0)) {
         html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${quoteData.finalTotal.toFixed(2)}</div></div>`;
+    }
+    // 需付定金：仅当勾选付定金且设置了定金比例时显示
+    if (quoteData.needDeposit && defaultSettings.depositRate > 0 && quoteData.finalTotal != null) {
+        var depositAmount = quoteData.finalTotal * defaultSettings.depositRate;
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">需付定金</div><div class="receipt-summary-value">¥${depositAmount.toFixed(2)}</div></div>`;
     }
             
             // 添加底部内容
@@ -5453,14 +5458,20 @@ function ensureProductDoneStates(item) {
     return item;
 }
 
-// 更新某条排单的制品完成状态并持久化
+// 更新某条排单的制品完成状态并持久化（方案 A：全部完成时自动写入正常结单）
 function setScheduleProductDone(scheduleId, productIndex, done) {
     const item = history.find(h => h.id === scheduleId);
     if (!item) return;
     ensureProductDoneStates(item);
     if (!Array.isArray(item.productDoneStates) || productIndex < 0 || productIndex >= item.productDoneStates.length) return;
     item.productDoneStates[productIndex] = !!done;
+    var allDone = item.productDoneStates.every(Boolean);
+    if (allDone && !item.settlement) {
+        item.settlement = { type: 'normal', amount: item.finalTotal != null ? item.finalTotal : 0, at: new Date().toISOString() };
+    }
     saveData();
+    if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
+    if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
 }
 
 // 按选中日期获取所有排单：返回该日期在时间范围内的所有排单
@@ -8088,6 +8099,35 @@ function loadSettings() {
     document.getElementById('artistContact').value = defaultSettings.artistInfo.contact;
     document.getElementById('defaultDuration').value = defaultSettings.artistInfo.defaultDuration;
     renderOtherFees();
+    var sr = defaultSettings.settlementRules || {};
+    var cf = sr.cancelFee || {};
+    var wf = sr.wasteFee || {};
+    var cancelFeeRule = document.getElementById('cancelFeeRule');
+    var cancelFeeRate = document.getElementById('cancelFeeRate');
+    var cancelFeeFixed = document.getElementById('cancelFeeFixed');
+    if (cancelFeeRule) cancelFeeRule.value = cf.defaultRule || 'percent';
+    if (cancelFeeRate) cancelFeeRate.value = (cf.defaultRate != null ? cf.defaultRate * 100 : 10);
+    if (cancelFeeFixed) cancelFeeFixed.value = cf.defaultFixedAmount != null ? cf.defaultFixedAmount : 50;
+    var wasteFeeRule = document.getElementById('wasteFeeRule');
+    var wasteFeeRate = document.getElementById('wasteFeeRate');
+    var wasteFeeFixedPerItem = document.getElementById('wasteFeeFixedPerItem');
+    if (wasteFeeRule) wasteFeeRule.value = wf.defaultRule || 'percent_total';
+    if (wasteFeeRate) wasteFeeRate.value = (wf.defaultRate != null ? wf.defaultRate * 100 : 30);
+    if (wasteFeeFixedPerItem) wasteFeeFixedPerItem.value = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
+    var depositEl = document.getElementById('depositRate');
+    if (depositEl) depositEl.value = (defaultSettings.depositRate != null ? defaultSettings.depositRate * 100 : 30);
+}
+function updateSettlementRule(category, field, value) {
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
+    if (!defaultSettings.settlementRules[category]) defaultSettings.settlementRules[category] = {};
+    var num = parseFloat(value);
+    defaultSettings.settlementRules[category][field] = (field === 'defaultRate' || field === 'defaultFixedAmount' || field === 'defaultFixedPerItem') ? (isNaN(num) ? value : num) : value;
+    saveData();
+}
+function updateDepositRate(value) {
+    var num = parseFloat(value);
+    defaultSettings.depositRate = isNaN(num) ? 0.3 : (num / 100);
+    saveData();
 }
 
 // 保存设置

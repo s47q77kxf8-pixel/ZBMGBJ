@@ -404,6 +404,9 @@
                                 <!-- 动态添加的其他费用将显示在这里 -->
                             </div>
                             <button class="btn small self-start" onclick="addDynamicOtherFee()">+ 其他费用</button>
+                            <label class="calc-deposit-checkbox mt-2">
+                                <input type="checkbox" id="needDeposit" name="needDeposit"> 是否付定金（选是时小票显示需付定金 = 实付×定金比例）
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -601,21 +604,16 @@
                     <div class="receipt-drawer-overlay" onclick="handleReceiptDrawerClose()"></div>
                     <div class="receipt-drawer-panel">
                         <div class="receipt-drawer-header">
-                            <button type="button" class="btn secondary btn--icon receipt-drawer-action-icon" onclick="handleReceiptSchedule()" aria-label="排单" title="排单">
-                                <svg class="icon" aria-hidden="true"><use href="#i-calendar-blank"></use></svg>
-                                <span class="sr-only">排单</span>
-                            </button>
-                            <h2 class="receipt-drawer-title">报价小票</h2>
-                            <button type="button" class="btn secondary btn--icon receipt-drawer-close" onclick="handleReceiptDrawerClose()" aria-label="关闭小票页" title="关闭">
+                            <button type="button" class="btn-icon btn--icon btn-close-flat receipt-drawer-close" onclick="handleReceiptDrawerClose()" aria-label="关闭小票页" title="关闭">
                                 <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
                                 <span class="sr-only">关闭</span>
                             </button>
+                            <h2 class="receipt-drawer-title">报价小票</h2>
+                            <button type="button" class="btn receipt-drawer-action" onclick="handleReceiptSchedule()" aria-label="排单" title="排单">排单</button>
                         </div>
                         <div class="receipt-drawer-body">
                             <div class="receipt-drawer-toolbar d-flex justify-between items-center">
-                                <div class="receipt-drawer-toolbar-left">
-                                    <span class="receipt-drawer-subtitle">小票</span>
-                                </div>
+                                <span class="receipt-drawer-subtitle">小票</span>
                                 <div class="receipt-drawer-toolbar-actions d-flex gap-2 items-center">
                                     <select id="themeSelector" onchange="applyReceiptTheme(this.value)" class="form-control mr-2">
                                         <option value="classic">经典</option>
@@ -1668,6 +1666,58 @@
                             <!-- 其他费用列表 -->
                             <div id="otherFeesList" class="other-fees-list mt-4 ml-4">
                                 <!-- 其他费用列表将通过JavaScript动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 结算规则配置 -->
+                    <div class="category-container">
+                        <div class="category-header" onclick="toggleCategory('settlementRules')">
+                            <div class="category-title">结算规则配置</div>
+                            <div class="category-toggle">▼</div>
+                        </div>
+                        <div class="category-content d-none" id="settlementRules-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>撤单跑单费默认规则</label>
+                                    <select id="cancelFeeRule" onchange="updateSettlementRule('cancelFee','defaultRule',this.value)">
+                                        <option value="percent">按比例</option>
+                                        <option value="fixed">固定金额</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>默认比例（%）</label>
+                                    <input type="number" id="cancelFeeRate" min="0" max="100" step="0.1" onchange="updateSettlementRule('cancelFee','defaultRate',this.value/100)">
+                                </div>
+                                <div class="form-group">
+                                    <label>默认固定金额（元）</label>
+                                    <input type="number" id="cancelFeeFixed" min="0" step="1" onchange="updateSettlementRule('cancelFee','defaultFixedAmount',this.value)">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>废稿费默认规则</label>
+                                    <select id="wasteFeeRule" onchange="updateSettlementRule('wasteFee','defaultRule',this.value)">
+                                        <option value="percent_total">按总额比例</option>
+                                        <option value="percent_charged_only">仅计费项比例</option>
+                                        <option value="fixed_per_item">按件固定</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>默认比例（%）</label>
+                                    <input type="number" id="wasteFeeRate" min="0" max="100" step="0.1" onchange="updateSettlementRule('wasteFee','defaultRate',this.value/100)">
+                                </div>
+                                <div class="form-group">
+                                    <label>默认每件金额（元）</label>
+                                    <input type="number" id="wasteFeeFixedPerItem" min="0" step="1" onchange="updateSettlementRule('wasteFee','defaultFixedPerItem',this.value)">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="depositRate">定金比例（%）</label>
+                                    <input type="number" id="depositRate" min="0" max="100" step="1" placeholder="如 30" onchange="updateDepositRate(this.value)">
+                                    <small class="text-gray">无平台费接单渠道需付定金时，小票可显示「需付定金」= 实付金额×比例</small>
+                                </div>
                             </div>
                         </div>
                     </div>
