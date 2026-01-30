@@ -264,6 +264,7 @@ const defaultSettings = {
         contact: '',      // 联系方式
         defaultDuration: 10               // 默认工期（天）
     },
+    orderRemark: '',      // 订单备注（设置页增加备注弹窗内容）
     // 用途系数（存储格式：{value: 数值, name: 显示名称}）
     usageCoefficients: {
         personal: { value: 1, name: '自用/无盈利/同人商用' },
@@ -298,7 +299,7 @@ const defaultSettings = {
     otherFees: {
         // 其他费用类别，可动态添加
     },
-    // 结算规则配置（接单/撤单/废稿默认值）
+    // 结算规则配置（撤单/废稿默认值）
     settlementRules: {
         cancelFee: {
             defaultRule: 'percent',
@@ -318,7 +319,7 @@ const defaultSettings = {
         }
     },
     // 定金比例（0~1，如 0.5 = 50%）
-    depositRate: 0.5,
+    depositRate: 0.3,
     // 可扩展的加价类系数（用途、加急为内置；此处为后期添加的，如 VIP系数）
     extraPricingUp: [
         {
@@ -373,8 +374,115 @@ const defaultSettings = {
 // 默认制品分类（单一定义，避免多处硬编码）
 const DEFAULT_CATEGORIES = ['吧唧类', '纸片类', '亚克力类'];
 
+// ========== 昼夜模式（黑夜模式） ==========
+const THEME_STORAGE_KEY = 'appTheme'; // 'light' | 'dark' | 'system'，默认跟随系统
+
+function getStoredTheme() {
+    try {
+        const v = localStorage.getItem(THEME_STORAGE_KEY);
+        return (v === 'light' || v === 'dark' || v === 'system') ? v : 'system';
+    } catch (e) {
+        return 'system';
+    }
+}
+
+function setStoredTheme(theme) {
+    try {
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (e) {}
+}
+
+function getSystemPrefersDark() {
+    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function getEffectiveTheme() {
+    const stored = getStoredTheme();
+    if (stored === 'system') return getSystemPrefersDark() ? 'dark' : 'light';
+    return stored;
+}
+
+function applyTheme() {
+    const effective = getEffectiveTheme();
+    const root = document.documentElement;
+    if (effective === 'dark') {
+        root.classList.add('theme-dark');
+    } else {
+        root.classList.remove('theme-dark');
+    }
+    updateThemeToggleIcon();
+    // 切换主题后重新渲染排单日历和 todo，使彩条/圆点使用对应配色
+    if (typeof renderScheduleCalendar === 'function' && document.getElementById('scheduleCalendar')) {
+        renderScheduleCalendar();
+    }
+    if (typeof renderScheduleTodoSection === 'function' && document.getElementById('scheduleTodoModules')) {
+        renderScheduleTodoSection();
+    }
+}
+
+function updateThemeToggleIcon() {
+    const effective = getEffectiveTheme();
+    const sunEl = document.querySelector('#themeToggleBtn .theme-icon-sun');
+    const moonEl = document.querySelector('#themeToggleBtn .theme-icon-moon');
+    if (sunEl && moonEl) {
+        sunEl.classList.toggle('d-none', effective !== 'dark');
+        moonEl.classList.toggle('d-none', effective !== 'light');
+    }
+}
+
+function toggleThemeOnClick() {
+    const stored = getStoredTheme();
+    const effective = getEffectiveTheme();
+    if (stored === 'system') {
+        setStoredTheme(effective === 'dark' ? 'light' : 'dark');
+    } else {
+        setStoredTheme(stored === 'dark' ? 'light' : 'dark');
+    }
+    applyTheme();
+}
+
+function toggleThemeLongPress(event) {
+    event.preventDefault();
+    setStoredTheme('system');
+    applyTheme();
+    if (typeof showGlobalToast === 'function') {
+        showGlobalToast('已切换为跟随系统');
+    } else {
+        try { alert('已切换为跟随系统'); } catch (e) {}
+    }
+}
+
 // 初始化应用
 function init() {
+    // 昼夜模式：先应用主题，再监听系统偏好
+    applyTheme();
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+            if (getStoredTheme() === 'system') applyTheme();
+        });
+    }
+    // 主题按钮长按（触摸）：500ms 后视为长按，切换为跟随系统
+    (function () {
+        var themeBtn = document.getElementById('themeToggleBtn');
+        if (!themeBtn) return;
+        var timer = null;
+        function clearTimer() {
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+        }
+        themeBtn.addEventListener('touchstart', function (e) {
+            clearTimer();
+            timer = setTimeout(function () {
+                timer = null;
+                toggleThemeLongPress(e);
+            }, 500);
+        }, { passive: true });
+        themeBtn.addEventListener('touchend', clearTimer, { passive: true });
+        themeBtn.addEventListener('touchcancel', clearTimer, { passive: true });
+    })();
+
     // 加载本地存储的数据
     loadData();
     
@@ -433,7 +541,7 @@ function init() {
         };
     }
     if (defaultSettings.depositRate == null || defaultSettings.depositRate === undefined) {
-        defaultSettings.depositRate = 0.5;
+        defaultSettings.depositRate = 0.3;
     }
     
     // 应用当前主题样式（如果是自定义主题）
@@ -2678,11 +2786,11 @@ function toggleRecordSearchClear() {
     if (input.value.trim()) wrap.classList.add('has-value'); else wrap.classList.remove('has-value');
 }
 
-// 接单/结算信息（可选）：settlement 无或未设置视为未接单
-// settlement: { type: 'full_refund'|'waste_fee'|'normal', amount, memo, at, wasteFee?, discount?, waivedPlatformFee?, waivedOtherFees? }
+// 结算信息（可选）：settlement 无或未设置视为未结算
+// settlement: { type: 'full_refund'|'waste_fee'|'normal', amount, memo, at, wasteFee?, discount?, discountReason? }
 function getRecordProgressStatus(item) {
     if (!item) return { text: '未开始', className: 'record-status--not-started', pending: false, overdue: false };
-    // 已接单/结算：优先显示结算状态
+    // 已结算：优先显示结算状态
     if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
         return { text: '已撤单', className: 'record-status--cancelled', pending: false, overdue: false };
     }
@@ -3676,41 +3784,6 @@ function openCalculatorDrawer() {
 
     drawer.classList.add('open');
     isCalculatorOpen = true;
-
-    // #region agent log
-    requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-            var runId = (window.__debugTimeRowRunId = (window.__debugTimeRowRunId || 0) + 1);
-            var vw = window.innerWidth;
-            var timeRowByHas = document.querySelector('#calculator .section:first-of-type .form-row:has(#orderTimeInput)');
-            var timeRowByIndex = document.querySelector('#calculator .section:first-of-type .form-row:nth-child(3)');
-            var rowEl = timeRowByHas || timeRowByIndex;
-            var hasSupport = !!timeRowByHas;
-            fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'script.js:openCalculatorDrawer', message: 'time row layout', data: { runId: runId, viewportWidth: vw, hasSelectorWorks: hasSupport, timeRowFound: !!rowEl }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1' }) }).catch(function () {});
-            if (rowEl) {
-                var cs = getComputedStyle(rowEl);
-                var gap = cs.gap || cs.columnGap;
-                fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'script.js:openCalculatorDrawer', message: 'time row computed', data: { runId: runId, gap: gap, flexDirection: cs.flexDirection, flexWrap: cs.flexWrap, rowWidth: rowEl.getBoundingClientRect().width }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H2,H3' }) }).catch(function () {});
-                var groups = rowEl.querySelectorAll('.form-group');
-                var widths = []; var flexBases = []; var i;
-                for (i = 0; i < groups.length; i++) {
-                    var gcs = getComputedStyle(groups[i]);
-                    widths.push(groups[i].getBoundingClientRect().width);
-                    flexBases.push(gcs.flexBasis);
-                }
-                var sumWidths = widths.reduce(function (a, b) { return a + b; }, 0);
-                fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'script.js:openCalculatorDrawer', message: 'form-group widths', data: { runId: runId, groupCount: groups.length, widths: widths, flexBases: flexBases, sumWidths: sumWidths, rowWidth: rowEl.getBoundingClientRect().width, overflow: sumWidths > rowEl.getBoundingClientRect().width }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H4' }) }).catch(function () {});
-                if (groups[0]) {
-                    var inp = groups[0].querySelector('input[type="date"]');
-                    if (inp) {
-                        var ics = getComputedStyle(inp);
-                        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'script.js:openCalculatorDrawer', message: 'date input computed', data: { runId: runId, minWidth: ics.minWidth, width: ics.width, boxSizing: ics.boxSizing }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H5' }) }).catch(function () {});
-                    }
-                }
-            }
-        });
-    });
-    // #endregion
 }
 
 // 关闭计算抽屉
@@ -5064,14 +5137,9 @@ function generateQuote() {
         html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
     }
     
-    // 实付金额（有平台费时显示；无平台费时若需付定金也显示）
-    if (quoteData.platformFeeAmount > 0 || (quoteData.needDeposit && defaultSettings.depositRate > 0)) {
+    // 实付金额（只有在有平台费时才显示）
+    if (quoteData.platformFeeAmount > 0) {
         html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${quoteData.finalTotal.toFixed(2)}</div></div>`;
-    }
-    // 需付定金：仅当勾选付定金且设置了定金比例时显示
-    if (quoteData.needDeposit && defaultSettings.depositRate > 0 && quoteData.finalTotal != null) {
-        var depositAmount = quoteData.finalTotal * defaultSettings.depositRate;
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">需付定金</div><div class="receipt-summary-value">¥${depositAmount.toFixed(2)}</div></div>`;
     }
             
             // 添加底部内容
@@ -5458,20 +5526,14 @@ function ensureProductDoneStates(item) {
     return item;
 }
 
-// 更新某条排单的制品完成状态并持久化（方案 A：全部完成时自动写入正常结单）
+// 更新某条排单的制品完成状态并持久化
 function setScheduleProductDone(scheduleId, productIndex, done) {
     const item = history.find(h => h.id === scheduleId);
     if (!item) return;
     ensureProductDoneStates(item);
     if (!Array.isArray(item.productDoneStates) || productIndex < 0 || productIndex >= item.productDoneStates.length) return;
     item.productDoneStates[productIndex] = !!done;
-    var allDone = item.productDoneStates.every(Boolean);
-    if (allDone && !item.settlement) {
-        item.settlement = { type: 'normal', amount: item.finalTotal != null ? item.finalTotal : 0, at: new Date().toISOString() };
-    }
     saveData();
-    if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
-    if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
 }
 
 // 按选中日期获取所有排单：返回该日期在时间范围内的所有排单
@@ -5718,6 +5780,35 @@ var SCHEDULE_BAR_TEXT_COLORS = ['#2d4a6b', '#2d5c5c', '#5c4d28', '#5c3048', '#3d
 // 小圆点：比彩条深、比字色浅，偏浅亮
 var SCHEDULE_BAR_DOT_COLORS = ['#7eb0e8', '#6dc4c4', '#c9b56a', '#c2849a', '#9d7ec9', '#6ab4c4', '#c47a7a', '#9d8ec9', '#c9a07a', '#6dc49a'];
 
+// 黑夜模式彩条色板（与白天一一对应：0蓝 1青 2黄 3粉 4紫 5青2 6红 7紫2 8橙 9绿）
+var SCHEDULE_BAR_COLORS_DARK = [
+    'rgba(96, 165, 250, 0.5)',   // 蓝
+    'rgba(103, 232, 249, 0.5)',  // 青
+    'rgba(251, 191, 36, 0.5)',   // 黄
+    'rgba(244, 114, 182, 0.5)',  // 粉
+    'rgba(192, 132, 252, 0.5)',  // 紫
+    'rgba(34, 211, 238, 0.5)',   // 青2
+    'rgba(248, 113, 113, 0.5)',  // 红
+    'rgba(216, 180, 254, 0.5)',  // 紫2
+    'rgba(251, 146, 60, 0.5)',   // 橙
+    'rgba(74, 222, 128, 0.5)'    // 绿
+];
+// 黑夜模式彩条文字：全部用同色系浅字，保证可读
+var SCHEDULE_BAR_TEXT_COLORS_DARK = [
+    '#93c5fd',   // 0 蓝
+    '#67e8f9',   // 1 青
+    '#fde047',   // 2 黄
+    '#f9a8d4',   // 3 粉
+    '#c4b5fd',   // 4 紫
+    '#67e8f9',   // 5 青2
+    '#fca5a5',   // 6 红
+    '#e9d5ff',   // 7 紫2
+    '#fdba74',   // 8 橙
+    '#86efac'    // 9 绿
+];
+// 黑夜模式圆点：同色系实色（与彩条一一对应）
+var SCHEDULE_BAR_DOT_COLORS_DARK = ['#60a5fa', '#67e8f9', '#fbbf24', '#f472b6', '#c084fc', '#22d3ee', '#f87171', '#d8b4fe', '#fb923c', '#4ade80'];
+
 // 按星期视图：同周内条带轨道分配，最多 3 条（一行一天最多显示 3 个）
 function assignWeekBarsToTracks(segments) {
     var tracks = [];
@@ -5820,13 +5911,17 @@ function renderScheduleCalendar() {
         });
         const weekTracks = assignWeekBarsToTracks(segments);
         if (weekTracks.length > 0) {
+            var isDark = document.documentElement.classList.contains('theme-dark');
+            var barColors = isDark && SCHEDULE_BAR_COLORS_DARK ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+            var barTextColors = isDark && SCHEDULE_BAR_TEXT_COLORS_DARK ? SCHEDULE_BAR_TEXT_COLORS_DARK : SCHEDULE_BAR_TEXT_COLORS;
             html += '<div class="schedule-week-bars">';
             weekTracks.forEach(function (track, ti) {
                 track.forEach(function (s) {
                     const b = s.bar;
-                    const color = SCHEDULE_BAR_COLORS[Math.abs(b.id) % SCHEDULE_BAR_COLORS.length];
+                    const idx = Math.abs(b.id) % barColors.length;
+                    const color = barColors[idx];
                     const label = (b.clientId || '—') + '  ' + b.productCount + '制品';
-                    var textColor = SCHEDULE_BAR_TEXT_COLORS[Math.abs(b.id) % SCHEDULE_BAR_TEXT_COLORS.length];
+                    var textColor = barTextColors[idx];
                     var singleDay = s.startCol === s.endCol ? ' data-single-day="1"' : '';
                     html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '"' + singleDay + '>' + label + '</div>';
                 });
@@ -5966,7 +6061,8 @@ function renderScheduleTodoSection() {
         const giftItems = gifts.map((p, i) => ({ label: '[赠品] ' + (p.product || '赠品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: products.length + i, done: !!doneStates[products.length + i] }));
         const allItems = productItems.concat(giftItems).sort((a, b) => Number(a.done) - Number(b.done));
         var barIdx = Math.abs(item.id) % SCHEDULE_BAR_COLORS.length;
-        var dotColor = (typeof SCHEDULE_BAR_DOT_COLORS !== 'undefined' && SCHEDULE_BAR_DOT_COLORS.length) ? SCHEDULE_BAR_DOT_COLORS[barIdx] : SCHEDULE_BAR_TEXT_COLORS[barIdx];
+        var dotColors = document.documentElement.classList.contains('theme-dark') && SCHEDULE_BAR_DOT_COLORS_DARK ? SCHEDULE_BAR_DOT_COLORS_DARK : SCHEDULE_BAR_DOT_COLORS;
+        var dotColor = (typeof dotColors !== 'undefined' && dotColors.length) ? dotColors[barIdx] : SCHEDULE_BAR_TEXT_COLORS[barIdx];
         const chipHtml = allItems.map(({ label, idx, done }) =>
             '<div class="schedule-todo-row schedule-todo-chip' + (done ? ' schedule-todo-done' : '') + '">' +
             '<input type="checkbox" class="schedule-todo-checkbox" ' + (done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + idx + '" onchange="toggleScheduleTodoDone(this)">' +
@@ -6038,58 +6134,101 @@ function scheduleTodoCardAction(action) {
     if (id == null) return;
     if (action === 'edit') editHistoryItem(id);
     else if (action === 'receipt') loadQuoteFromHistory(id);
-    else if (action === 'accept') acceptOrder(id);
-    else if (action === 'close') closeOrder(id);
-}
-// 结单：点击后打开结算弹窗（接单流程），由弹窗内完成撤单/废稿/正常结单
-function closeOrder(recordId) {
-    openSettlementModal(recordId);
+    else if (action === 'cancel' || action === 'waste_fee' || action === 'normal') {
+        openSettlementModal(id, action);
+    }
 }
 function needDepositChecked() {
     var el = document.getElementById('needDeposit');
     return el ? el.checked : false;
 }
-function openSettlementModal(recordId) {
+function openSettlementModal(recordId, preSelectedType) {
     var item = history.find(function (h) { return h.id === recordId; });
     if (!item) {
         showGlobalToast('未找到该排单');
         return;
     }
     settlementModalRecordId = recordId;
-    settlementCurrentStep = 1;
-    document.querySelectorAll('input[name="settlementType"]').forEach(function (r) { r.checked = false; });
-    document.getElementById('settlementStep1').classList.remove('d-none');
-    document.getElementById('settlementStep2').classList.add('d-none');
-    document.getElementById('settlementBtnBack').classList.add('d-none');
-    document.getElementById('settlementBtnNext').classList.remove('d-none');
-    document.getElementById('settlementBtnConfirm').classList.add('d-none');
+    var step1 = document.getElementById('settlementStep1');
+    var step2 = document.getElementById('settlementStep2');
+    var btnBack = document.getElementById('settlementBtnBack');
+    var btnNext = document.getElementById('settlementBtnNext');
+    var btnConfirm = document.getElementById('settlementBtnConfirm');
+    document.querySelectorAll('input[name="settlementType"]').forEach(function (r) { r.checked = (r.value === preSelectedType); });
+    if (preSelectedType) {
+        settlementCurrentStep = 2;
+        if (step1) step1.classList.add('d-none');
+        if (step2) step2.classList.remove('d-none');
+        if (btnBack) btnBack.classList.add('d-none');
+        if (btnNext) btnNext.classList.add('d-none');
+        if (btnConfirm) btnConfirm.classList.remove('d-none');
+        showSettlementForm(preSelectedType);
+    } else {
+        settlementCurrentStep = 1;
+        if (step1) step1.classList.remove('d-none');
+        if (step2) step2.classList.add('d-none');
+        if (btnBack) btnBack.classList.add('d-none');
+        if (btnNext) btnNext.classList.remove('d-none');
+        if (btnConfirm) btnConfirm.classList.add('d-none');
+        preSelectedType = null;
+    }
+    var titleEl = document.getElementById('settlementModalTitle');
+    if (titleEl) titleEl.textContent = preSelectedType ? ({ cancel: '撤单', waste_fee: '废稿', normal: '结算' }[preSelectedType] || '结算') : '结算';
     document.getElementById('settlementModal').classList.remove('d-none');
 }
+var settlementCurrentFormType = null;
+function showSettlementForm(type) {
+    document.getElementById('settlementFormCancel').classList.add('d-none');
+    document.getElementById('settlementFormWasteFee').classList.add('d-none');
+    document.getElementById('settlementFormNormal').classList.add('d-none');
+    if (type === 'cancel') {
+        settlementCurrentFormType = 'cancel';
+        var form = document.getElementById('settlementFormCancel');
+        form.classList.remove('d-none');
+        document.getElementById('settlementFullRefundPanel').classList.remove('d-none');
+        document.getElementById('settlementCancelWithFee').classList.add('d-none');
+        document.getElementById('settlementMemoRefund').value = '';
+        document.querySelector('input[name="cancelSubType"][value="full_refund"]').checked = true;
+        document.querySelectorAll('input[name="cancelSubType"]').forEach(function (r) {
+            r.onclick = function () {
+                var isFee = document.querySelector('input[name="cancelSubType"]:checked').value === 'cancel_with_fee';
+                document.getElementById('settlementFullRefundPanel').classList.toggle('d-none', isFee);
+                document.getElementById('settlementCancelWithFee').classList.toggle('d-none', !isFee);
+                if (isFee) {
+                    settlementFillCancelFeeDefaults();
+                    settlementUpdateCancelFeePreview();
+                    var ruleEl = document.getElementById('settlementCancelFeeRule');
+                    var rateEl = document.getElementById('settlementCancelFeeRate');
+                    var fixedEl = document.getElementById('settlementCancelFeeFixed');
+                    if (ruleEl) ruleEl.addEventListener('change', function () { settlementUpdateCancelFeePreview(); settlementToggleCancelFeeFields(); });
+                    if (rateEl) rateEl.addEventListener('input', settlementUpdateCancelFeePreview);
+                    if (fixedEl) fixedEl.addEventListener('input', settlementUpdateCancelFeePreview);
+                }
+            };
+        });
+    } else if (type === 'waste_fee') {
+        settlementCurrentFormType = 'waste_fee';
+        document.getElementById('settlementFormWasteFee').classList.remove('d-none');
+        settlementRenderWasteFeeForm();
+        settlementUpdateWastePreview();
+    } else if (type === 'normal') {
+        settlementCurrentFormType = 'normal';
+        document.getElementById('settlementFormNormal').classList.remove('d-none');
+        settlementRenderNormalForm();
+        settlementUpdateNormalPreview();
+    }
+}
+function getEffectiveSettlementType() {
+    if (settlementCurrentFormType === 'cancel') {
+        var r = document.querySelector('input[name="cancelSubType"]:checked');
+        return r ? r.value : 'full_refund';
+    }
+    return settlementCurrentFormType;
+}
 
-// ---------- 接单/结算弹窗 ----------
+// ---------- 结算弹窗 ----------
 var settlementModalRecordId = null;
 var settlementCurrentStep = 1;
-
-function acceptOrder(recordId) {
-    var item = history.find(function (h) { return h.id === recordId; });
-    if (!item) {
-        showGlobalToast('未找到该排单');
-        return;
-    }
-    if (item.settlement && (item.settlement.type === 'normal' || item.settlement.type === 'waste_fee')) {
-        showGlobalToast('该订单已接单结算');
-        return;
-    }
-    settlementModalRecordId = recordId;
-    settlementCurrentStep = 1;
-    document.querySelectorAll('input[name="settlementType"]').forEach(function (r) { r.checked = false; });
-    document.getElementById('settlementStep1').classList.remove('d-none');
-    document.getElementById('settlementStep2').classList.add('d-none');
-    document.getElementById('settlementBtnBack').classList.add('d-none');
-    document.getElementById('settlementBtnNext').classList.remove('d-none');
-    document.getElementById('settlementBtnConfirm').classList.add('d-none');
-    document.getElementById('settlementModal').classList.remove('d-none');
-}
 
 function closeSettlementModal() {
     settlementModalRecordId = null;
@@ -6113,33 +6252,23 @@ function settlementStepNext() {
     document.getElementById('settlementBtnBack').classList.remove('d-none');
     document.getElementById('settlementBtnNext').classList.add('d-none');
     document.getElementById('settlementBtnConfirm').classList.remove('d-none');
-
-    document.getElementById('settlementFormFullRefund').classList.add('d-none');
-    var cancelFeeForm = document.getElementById('settlementFormCancelWithFee');
-    if (cancelFeeForm) cancelFeeForm.classList.add('d-none');
-    document.getElementById('settlementFormWasteFee').classList.add('d-none');
-    document.getElementById('settlementFormNormal').classList.add('d-none');
-    if (type === 'full_refund') {
-        document.getElementById('settlementFormFullRefund').classList.remove('d-none');
-        document.getElementById('settlementMemoRefund').value = '';
-    } else if (type === 'cancel_with_fee') {
-        if (cancelFeeForm) cancelFeeForm.classList.remove('d-none');
+    var origType = type;
+    if (type === 'full_refund' || type === 'cancel_with_fee') type = 'cancel';
+    showSettlementForm(type);
+    if (type === 'cancel' && origType === 'cancel_with_fee') {
+        document.querySelector('input[name="cancelSubType"][value="cancel_with_fee"]').checked = true;
+        document.getElementById('settlementFullRefundPanel').classList.add('d-none');
+        document.getElementById('settlementCancelWithFee').classList.remove('d-none');
         settlementFillCancelFeeDefaults();
         settlementUpdateCancelFeePreview();
+    }
+    if (type === 'cancel') {
         var ruleEl = document.getElementById('settlementCancelFeeRule');
         var rateEl = document.getElementById('settlementCancelFeeRate');
         var fixedEl = document.getElementById('settlementCancelFeeFixed');
         if (ruleEl) ruleEl.addEventListener('change', function () { settlementUpdateCancelFeePreview(); settlementToggleCancelFeeFields(); });
         if (rateEl) rateEl.addEventListener('input', settlementUpdateCancelFeePreview);
         if (fixedEl) fixedEl.addEventListener('input', settlementUpdateCancelFeePreview);
-    } else if (type === 'waste_fee') {
-        document.getElementById('settlementFormWasteFee').classList.remove('d-none');
-        settlementRenderWasteFeeForm();
-        settlementUpdateWastePreview();
-    } else {
-        document.getElementById('settlementFormNormal').classList.remove('d-none');
-        settlementRenderNormalForm();
-        settlementUpdateNormalPreview();
     }
 }
 
@@ -6292,25 +6421,9 @@ function settlementUpdateWastePreview() {
 function settlementRenderNormalForm() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
-    var otherFees = item.otherFees || [];
-    var wrap = document.getElementById('settlementWaivedOtherFeesWrap');
-    var listEl = document.getElementById('settlementWaivedOtherFeesList');
-    if (otherFees.length === 0) {
-        wrap.classList.add('d-none');
-    } else {
-        wrap.classList.remove('d-none');
-        listEl.innerHTML = otherFees.map(function (f, i) {
-            var name = (f && f.name) ? f.name : ('费用' + (i + 1));
-            return '<label class="settlement-checkbox"><input type="checkbox" class="settlement-waived-other" data-key="' + i + '" data-name="' + (name.replace(/"/g, '&quot;')) + '"> ' + name + '</label>';
-        }).join('');
-        listEl.querySelectorAll('input').forEach(function (cb) {
-            cb.addEventListener('change', function () { settlementUpdateNormalPreview(); });
-        });
-    }
     document.getElementById('settlementDiscountAmount').value = '0';
-    document.getElementById('settlementWaivedPlatformFee').checked = false;
+    document.getElementById('settlementDiscountReason').value = '';
     document.getElementById('settlementDiscountAmount').addEventListener('input', settlementUpdateNormalPreview);
-    document.getElementById('settlementWaivedPlatformFee').addEventListener('change', settlementUpdateNormalPreview);
 }
 
 function settlementUpdateNormalPreview() {
@@ -6318,13 +6431,6 @@ function settlementUpdateNormalPreview() {
     if (!item) return;
     var base = item.finalTotal != null ? item.finalTotal : 0;
     var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
-    var waivedPlatform = document.getElementById('settlementWaivedPlatformFee').checked;
-    if (waivedPlatform && (item.platformFeeAmount != null)) base -= item.platformFeeAmount;
-    var otherFees = item.otherFees || [];
-    document.querySelectorAll('.settlement-waived-other:checked').forEach(function (cb) {
-        var key = parseInt(cb.dataset.key, 10);
-        if (otherFees[key] && otherFees[key].amount != null) base -= Number(otherFees[key].amount) || 0;
-    });
     base -= discount;
     document.getElementById('settlementNormalPreview').textContent = '实收预览：¥' + Math.max(0, base).toFixed(2);
 }
@@ -6332,7 +6438,7 @@ function settlementUpdateNormalPreview() {
 function settlementConfirm() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) { closeSettlementModal(); return; }
-    var type = getSettlementType();
+    var type = getEffectiveSettlementType() || getSettlementType();
     var at = new Date().toISOString();
 
     if (type === 'full_refund') {
@@ -6382,23 +6488,14 @@ function settlementConfirm() {
     } else {
         var base = item.finalTotal != null ? item.finalTotal : 0;
         var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
-        var waivedPlatform = document.getElementById('settlementWaivedPlatformFee').checked;
-        var waivedOtherFees = [];
-        document.querySelectorAll('.settlement-waived-other:checked').forEach(function (cb) {
-            var name = cb.dataset.name;
-            if (name) waivedOtherFees.push(name);
-        });
-        if (waivedPlatform && (item.platformFeeAmount != null)) base -= item.platformFeeAmount;
-        (item.otherFees || []).forEach(function (f, i) {
-            if (f && f.name && waivedOtherFees.indexOf(f.name) !== -1 && f.amount != null) base -= Number(f.amount) || 0;
-        });
+        var reasonEl = document.getElementById('settlementDiscountReason');
+        var discountReason = reasonEl ? (reasonEl.value || '').trim() : '';
         base -= discount;
         item.settlement = {
             type: 'normal',
             amount: Math.max(0, base),
             discount: discount,
-            waivedPlatformFee: waivedPlatform,
-            waivedOtherFees: waivedOtherFees,
+            discountReason: discountReason,
             at: at
         };
     }
@@ -6407,7 +6504,7 @@ function settlementConfirm() {
     closeSettlementModal();
     if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
     if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
-    showGlobalToast('接单结算已保存');
+    showGlobalToast('结算已保存');
 }
 
 // 加载历史记录（增强版：支持筛选、排序、分组）
@@ -7003,8 +7100,6 @@ function editHistoryItem(id) {
                 if (platformSelect.onchange) platformSelect.onchange();
             }
         }
-        var needDepositEl = document.getElementById('needDeposit');
-        if (needDepositEl) needDepositEl.checked = !!quote.needDeposit;
         
         // 恢复其他加价类
         if (quote.extraUpSelections && Array.isArray(quote.extraUpSelections)) {
@@ -7940,6 +8035,23 @@ function updateArtistInfo(field, value) {
     }
 }
 
+// 更新定金比例（0~100 输入，内部存 0~1）
+function updateDepositRate(value) {
+    var n = parseFloat(value);
+    if (!isNaN(n) && n >= 0 && n <= 100) {
+        defaultSettings.depositRate = n / 100;
+        saveData();
+    }
+}
+
+function updateSettlementRule(category, field, value) {
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
+    if (!defaultSettings.settlementRules[category]) defaultSettings.settlementRules[category] = {};
+    var num = parseFloat(value);
+    defaultSettings.settlementRules[category][field] = (field === 'defaultRate' || field === 'defaultFixedAmount' || field === 'defaultFixedPerItem') ? (isNaN(num) ? value : num) : value;
+    saveData();
+}
+
 // 计算截稿时间
 function calculateDeadline() {
     const startTime = document.getElementById('startTime');
@@ -8100,36 +8212,177 @@ function loadSettings() {
     document.getElementById('artistId').value = defaultSettings.artistInfo.id;
     document.getElementById('artistContact').value = defaultSettings.artistInfo.contact;
     document.getElementById('defaultDuration').value = defaultSettings.artistInfo.defaultDuration;
-    renderOtherFees();
+    // 结算规则配置
     var sr = defaultSettings.settlementRules || {};
     var cf = sr.cancelFee || {};
     var wf = sr.wasteFee || {};
-    var cancelFeeRule = document.getElementById('cancelFeeRule');
-    var cancelFeeRate = document.getElementById('cancelFeeRate');
-    var cancelFeeFixed = document.getElementById('cancelFeeFixed');
-    if (cancelFeeRule) cancelFeeRule.value = cf.defaultRule || 'percent';
-    if (cancelFeeRate) cancelFeeRate.value = (cf.defaultRate != null ? cf.defaultRate * 100 : 10);
-    if (cancelFeeFixed) cancelFeeFixed.value = cf.defaultFixedAmount != null ? cf.defaultFixedAmount : 50;
-    var wasteFeeRule = document.getElementById('wasteFeeRule');
-    var wasteFeeRate = document.getElementById('wasteFeeRate');
-    var wasteFeeFixedPerItem = document.getElementById('wasteFeeFixedPerItem');
-    if (wasteFeeRule) wasteFeeRule.value = wf.defaultRule || 'percent_total';
-    if (wasteFeeRate) wasteFeeRate.value = (wf.defaultRate != null ? wf.defaultRate * 100 : 30);
-    if (wasteFeeFixedPerItem) wasteFeeFixedPerItem.value = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
+    var cancelFeeRuleEl = document.getElementById('cancelFeeRule');
+    var cancelFeeRateEl = document.getElementById('cancelFeeRate');
+    var cancelFeeFixedEl = document.getElementById('cancelFeeFixed');
+    if (cancelFeeRuleEl) cancelFeeRuleEl.value = cf.defaultRule || 'percent';
+    if (cancelFeeRateEl) cancelFeeRateEl.value = (cf.defaultRate != null ? cf.defaultRate * 100 : 10);
+    if (cancelFeeFixedEl) cancelFeeFixedEl.value = cf.defaultFixedAmount != null ? cf.defaultFixedAmount : 50;
+    var wasteFeeRuleEl = document.getElementById('wasteFeeRule');
+    var wasteFeeRateEl = document.getElementById('wasteFeeRate');
+    var wasteFeeFixedPerItemEl = document.getElementById('wasteFeeFixedPerItem');
+    if (wasteFeeRuleEl) wasteFeeRuleEl.value = wf.defaultRule || 'percent_total';
+    if (wasteFeeRateEl) wasteFeeRateEl.value = (wf.defaultRate != null ? wf.defaultRate * 100 : 30);
+    if (wasteFeeFixedPerItemEl) wasteFeeFixedPerItemEl.value = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
+    var dr = defaultSettings.depositRate;
     var depositEl = document.getElementById('depositRate');
-    if (depositEl) depositEl.value = (defaultSettings.depositRate != null ? defaultSettings.depositRate * 100 : 30);
+    if (depositEl) depositEl.value = (dr != null && !isNaN(dr)) ? Math.round(dr * 100) : 30;
+    if (defaultSettings.orderRemark !== undefined) {
+        var el = document.getElementById('orderRemarkText');
+        if (el) el.value = defaultSettings.orderRemark;
+    }
+    updateOrderRemarkPreview();
+    renderOtherFees();
 }
-function updateSettlementRule(category, field, value) {
-    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
-    if (!defaultSettings.settlementRules[category]) defaultSettings.settlementRules[category] = {};
-    var num = parseFloat(value);
-    defaultSettings.settlementRules[category][field] = (field === 'defaultRate' || field === 'defaultFixedAmount' || field === 'defaultFixedPerItem') ? (isNaN(num) ? value : num) : value;
+
+// 订单备注弹窗：打开
+function openOrderRemarkModal() {
+    var el = document.getElementById('orderRemarkText');
+    var modal = document.getElementById('orderRemarkModal');
+    if (el) el.value = (defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '';
+    if (modal) modal.classList.remove('d-none');
+}
+
+// 订单备注弹窗：关闭并保存
+function closeOrderRemarkModal() {
+    var el = document.getElementById('orderRemarkText');
+    var modal = document.getElementById('orderRemarkModal');
+    if (el) defaultSettings.orderRemark = el.value;
+    if (modal) modal.classList.add('d-none');
+    updateOrderRemarkPreview();
     saveData();
 }
-function updateDepositRate(value) {
-    var num = parseFloat(value);
-    defaultSettings.depositRate = isNaN(num) ? 0.3 : (num / 100);
-    saveData();
+
+// 更新订单备注预览
+function updateOrderRemarkPreview() {
+    var preview = document.getElementById('orderRemarkPreview');
+    if (!preview) return;
+    var remark = defaultSettings.orderRemark || '';
+    if (remark.trim()) {
+        // 显示前50个字符作为预览
+        var previewText = remark.length > 50 ? remark.substring(0, 50) + '...' : remark;
+        preview.value = previewText;
+    } else {
+        preview.value = '';
+        preview.placeholder = '点击上方标签添加备注';
+    }
+}
+
+// 智能解析订单备注
+function smartParseOrderRemark() {
+    var el = document.getElementById('orderRemarkText');
+    if (!el) return;
+    
+    var text = el.value.trim();
+    if (!text) {
+        showGlobalToast('请先输入备注');
+        return;
+    }
+    
+    // 清空现有制品和赠品容器
+    var productsContainer = document.getElementById('productsContainer');
+    var giftsContainer = document.getElementById('giftsContainer');
+    if (productsContainer) productsContainer.innerHTML = '';
+    if (giftsContainer) giftsContainer.innerHTML = '';
+    
+    // 清空数组
+    products = [];
+    gifts = [];
+    productIdCounter = 0;
+    giftIdCounter = 0;
+    
+    var lines = text.split('\n');
+    var isGiftSection = false;
+    var parsedCount = 0;
+    
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        
+        // 检测是否进入赠品区域
+        if (line.match(/^赠品[：:]/i)) {
+            isGiftSection = true;
+            line = line.replace(/^赠品[：:]/i, '').trim();
+            if (!line) continue;
+        }
+        
+        // 尝试解析制品/赠品信息
+        // 支持格式：立绘 单面 2个、Q版 双面 1个 带背景、头像 3个
+        var match = line.match(/^([^\s]+)\s*(单面|双面)?\s*(\d+)\s*(个|张)?\s*(带背景)?/i);
+        
+        if (match) {
+            var typeName = match[1];
+            var sides = match[2] ? (match[2] === '双面' ? 'double' : 'single') : 'single';
+            var quantity = parseInt(match[3]) || 1;
+            var hasBackground = !!match[5];
+            
+            // 查找匹配的制品类型
+            var matchedSetting = productSettings.find(function(s) {
+                return s.name === typeName || s.name.includes(typeName) || typeName.includes(s.name);
+            });
+            
+            if (matchedSetting) {
+                if (isGiftSection) {
+                    // 添加赠品
+                    giftIdCounter++;
+                    var gift = {
+                        id: giftIdCounter,
+                        type: matchedSetting.id.toString(),
+                        quantity: quantity
+                    };
+                    gifts.push(gift);
+                    renderGift(gift);
+                } else {
+                    // 添加制品
+                    productIdCounter++;
+                    var product = {
+                        id: productIdCounter,
+                        type: matchedSetting.id.toString(),
+                        sides: sides,
+                        quantity: quantity,
+                        sameModel: true,
+                        hasBackground: hasBackground,
+                        processes: {}
+                    };
+                    products.push(product);
+                    renderProduct(product);
+                }
+                parsedCount++;
+            }
+        }
+    }
+    
+    // 重新计算
+    calculate();
+    
+    if (parsedCount > 0) {
+        showGlobalToast('已识别 ' + parsedCount + ' 项');
+    } else {
+        showGlobalToast('未识别到有效内容');
+    }
+}
+
+// 订单备注：复制到剪贴板
+function copyOrderRemark() {
+    var el = document.getElementById('orderRemarkText');
+    var text = el ? el.value : '';
+    if (typeof navigator.clipboard !== 'undefined' && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+            if (typeof showGlobalToast === 'function') showGlobalToast('已复制到剪贴板');
+            else alert('已复制到剪贴板');
+        }).catch(function () { alert('复制失败'); });
+    } else {
+        try {
+            el.select();
+            document.execCommand('copy');
+            if (typeof showGlobalToast === 'function') showGlobalToast('已复制到剪贴板');
+            else alert('已复制到剪贴板');
+        } catch (e) { alert('复制失败'); }
+    }
 }
 
 // 保存设置
@@ -8542,6 +8795,20 @@ function renderProductSettings() {
     container.innerHTML = html;
 }
 
+// 切换系数大组折叠状态（加价类、折扣类、其他类）
+function toggleCategoryGroup(groupId) {
+    const content = document.getElementById(groupId + '-content');
+    const toggle = document.getElementById(groupId + '-toggle');
+    if (!content || !toggle) return;
+    if (content.classList.contains('d-none')) {
+        content.classList.remove('d-none');
+        toggle.textContent = '▲';
+    } else {
+        content.classList.add('d-none');
+        toggle.textContent = '▼';
+    }
+}
+
 // 切换类别折叠状态
 function toggleCategory(category) {
     const content = document.getElementById(`${category}-content`);
@@ -8570,22 +8837,6 @@ function toggleCategory(category) {
         
         // 移除粘性定位
         header.classList.remove('sticky-header');
-    }
-}
-
-// 切换系数大组折叠状态（加价类、折扣类、其他类）
-function toggleCategoryGroup(groupId) {
-    const content = document.getElementById(`${groupId}-content`);
-    const toggle = content.parentElement.querySelector('.category-group-toggle');
-    
-    if (content.classList.contains('d-none')) {
-        // 展开组
-        content.classList.remove('d-none');
-        toggle.textContent = '▲';
-    } else {
-        // 折叠组
-        content.classList.add('d-none');
-        toggle.textContent = '▼';
     }
 }
 

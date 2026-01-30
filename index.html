@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>美工报价生成器</title>
-    <link rel="stylesheet" href="style.css?v=20250130-todo-mobile">
+    <script>
+    (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
+    </script>
+    <link rel="stylesheet" href="style.css?v=20250131-process-input">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -65,6 +68,13 @@
         </symbol>
         <symbol id="i-back" viewBox="0 0 24 24">
             <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
         <symbol id="i-image" viewBox="0 0 24 24">
             <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -244,6 +254,10 @@
         <symbol id="i-plus" viewBox="0 0 24 24">
             <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
+        <symbol id="i-note" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M14 2v6h6M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
 
         <!-- 实心图标（主操作） -->
         <symbol id="i-plus-solid" viewBox="0 0 24 24">
@@ -301,8 +315,16 @@
                     <h2>单主信息</h2>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="clientId">单主ID</label>
-                            <input type="text" id="clientId" placeholder="请输入单主ID">
+                            <div class="label-row-with-remark">
+                                <label for="clientId">单主ID</label>
+                                <span class="label-remark-text">备注</span>
+                            </div>
+                            <div class="input-row-with-icon">
+                                <input type="text" id="clientId" placeholder="请输入单主ID">
+                                <button class="btn-icon-only" onclick="openOrderRemarkModal()" type="button" title="添加备注">
+                                    <svg class="icon sm" aria-hidden="true"><use href="#i-note"></use></svg>
+                                </button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="contact">联系方式</label>
@@ -377,15 +399,25 @@
                     <div id="extraPricingDownSelectsRow" class="form-row d-none">
                         <!-- 动态添加的其他折扣类选择器 -->
                     </div>
-                    <!-- 同模、平台费 -->
+                    <!-- 同模系数 -->
                     <div class="form-row">
                         <div class="form-group">
                             <label for="sameModel">同模系数</label>
                             <select id="sameModel"><option value="">--</option></select>
                         </div>
+                    </div>
+                    <!-- 平台费、是否付定金 -->
+                    <div class="form-row platform-deposit-row">
                         <div class="form-group">
                             <label for="platform">平台手续费</label>
-                            <select id="platform"><option value="">--</option></select>
+                            <select id="platform" onchange="onPlatformChangeForDeposit()"><option value="">--</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="needDeposit">是否付定金</label>
+                            <select id="needDeposit">
+                                <option value="no" selected>否</option>
+                                <option value="yes">是</option>
+                            </select>
                         </div>
                     </div>
                     <!-- 其他费用：单独一行 -->
@@ -404,9 +436,6 @@
                                 <!-- 动态添加的其他费用将显示在这里 -->
                             </div>
                             <button class="btn small self-start" onclick="addDynamicOtherFee()">+ 其他费用</button>
-                            <label class="calc-deposit-checkbox mt-2">
-                                <input type="checkbox" id="needDeposit" name="needDeposit"> 是否付定金（选是时小票显示需付定金 = 实付×定金比例）
-                            </label>
                         </div>
                     </div>
                 </div>
@@ -451,9 +480,13 @@
                             </button>
                             <input type="date" id="scheduleTitleDateInput" class="schedule-title-date-input" placeholder="yyyy/mm/dd">
                             <button type="button" class="btn secondary schedule-title-next" onclick="scheduleCalendarNextMonth()">›</button>
+                            <button type="button" class="btn secondary schedule-title-today-pill d-none" onclick="scheduleTodoBackToToday()">Today</button>
                         </div>
                         <div class="schedule-title-actions d-flex items-center">
-                            <button type="button" class="btn secondary schedule-title-today-pill d-none" onclick="scheduleTodoBackToToday()">Today</button>
+                            <button type="button" class="btn secondary btn--icon schedule-title-icon-btn" id="themeToggleBtn" onclick="toggleThemeOnClick()" oncontextmenu="toggleThemeLongPress(event); return false;" aria-label="切换昼夜模式" title="点击切换昼夜，长按跟随系统">
+                                <svg class="icon theme-icon-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
+                                <svg class="icon theme-icon-moon d-none" aria-hidden="true"><use href="#i-moon"></use></svg>
+                            </button>
                             <button type="button" class="btn secondary btn--icon schedule-title-icon-btn schedule-title-icon-btn--stats" id="openStatsBtn" onclick="openStatsPage()" aria-label="统计" title="统计">
                                 <svg class="icon" aria-hidden="true"><use href="#i-stats-e"></use></svg>
                             </button>
@@ -479,7 +512,7 @@
                     </div>
                 </div>
 
-                <!-- 排单卡片操作弹窗：横排 修改 / 小票 / 结单（图标与记录页一致） -->
+                <!-- 排单卡片操作弹窗：修改 / 小票 / 撤单 / 废稿 / 结算 -->
                 <div id="scheduleTodoCardModal" class="schedule-todo-card-modal d-none">
                     <div class="schedule-todo-card-modal-overlay" onclick="closeScheduleTodoCardModal()"></div>
                     <div class="schedule-todo-card-modal-content">
@@ -492,25 +525,29 @@
                                 <svg class="icon sm" aria-hidden="true"><use href="#i-receipt"></use></svg>
                                 <span>小票</span>
                             </button>
-                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('accept')">
-                                <svg class="icon sm" aria-hidden="true"><use href="#i-check-circle"></use></svg>
-                                <span>接单</span>
+                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('cancel')">
+                                <svg class="icon sm" aria-hidden="true"><use href="#i-prohibit"></use></svg>
+                                <span>撤单</span>
                             </button>
-                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('close')">
+                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('waste_fee')">
+                                <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                <span>废稿</span>
+                            </button>
+                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('normal')">
                                 <svg class="icon sm" aria-hidden="true"><use href="#i-check-circle"></use></svg>
-                                <span>结单</span>
+                                <span>结算</span>
                             </button>
                         </div>
                         <button type="button" class="schedule-todo-card-modal-close schedule-todo-card-modal-close-float" onclick="closeScheduleTodoCardModal()" aria-label="关闭">×</button>
                     </div>
                 </div>
 
-                <!-- 接单/结算弹窗 -->
+                <!-- 结算弹窗 -->
                 <div id="settlementModal" class="settlement-modal d-none">
                     <div class="settlement-modal-overlay" onclick="closeSettlementModal()"></div>
                     <div class="settlement-modal-content">
                         <div class="settlement-modal-header">
-                            <h3 id="settlementModalTitle">接单 / 结算</h3>
+                            <h3 id="settlementModalTitle">结算</h3>
                             <button type="button" class="settlement-modal-close" onclick="closeSettlementModal()" aria-label="关闭">×</button>
                         </div>
                         <div class="settlement-modal-body">
@@ -518,21 +555,25 @@
                             <div id="settlementStep1" class="settlement-step">
                                 <p class="settlement-step-label">选择结算类型</p>
                                 <div class="settlement-type-options">
-                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="full_refund"> 单主撤单退全款</label>
-                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="cancel_with_fee"> 单主撤单收跑单费</label>
+                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="cancel"> 撤单（退全款或收跑单费）</label>
                                     <label class="settlement-type-option"><input type="radio" name="settlementType" value="waste_fee"> 废稿（收废稿费）</label>
                                     <label class="settlement-type-option"><input type="radio" name="settlementType" value="normal"> 正常结单（按原价或折扣/免除）</label>
                                 </div>
                             </div>
                             <!-- 第二步：按类型展示表单项 -->
                             <div id="settlementStep2" class="settlement-step d-none">
-                                <!-- 撤单退全款 -->
-                                <div id="settlementFormFullRefund" class="settlement-form d-none">
-                                    <label>备注（可选）<input type="text" id="settlementMemoRefund" class="settlement-input" placeholder="如撤单原因"></label>
-                                </div>
-                                <!-- 撤单收跑单费 -->
-                                <div id="settlementFormCancelWithFee" class="settlement-form d-none">
-                                    <div class="settlement-cancel-fee-rule">
+                                <!-- 撤单（合并退全款与收跑单费） -->
+                                <div id="settlementFormCancel" class="settlement-form d-none">
+                                    <p class="settlement-step-label">撤单方式</p>
+                                    <div class="settlement-cancel-method-row">
+                                        <label class="settlement-cancel-method-opt"><input type="radio" name="cancelSubType" value="full_refund" checked> 退全款</label>
+                                        <label class="settlement-cancel-method-opt"><input type="radio" name="cancelSubType" value="cancel_with_fee"> 收跑单费</label>
+                                    </div>
+                                    <div id="settlementFullRefundPanel" class="settlement-cancel-panel">
+                                        <label>备注（可选）<input type="text" id="settlementMemoRefund" class="settlement-input" placeholder="如撤单原因"></label>
+                                    </div>
+                                    <div id="settlementCancelWithFee" class="settlement-cancel-panel d-none">
+                                        <div class="settlement-cancel-fee-rule">
                                         <p class="settlement-step-label">跑单费规则</p>
                                         <select id="settlementCancelFeeRule">
                                             <option value="percent">按原价比例</option>
@@ -544,7 +585,8 @@
                                         <label>固定金额（元）<input type="number" id="settlementCancelFeeFixed" min="0" step="1" placeholder="0"></label>
                                     </div>
                                     <label>备注（可选）<input type="text" id="settlementMemoCancelFee" class="settlement-input" placeholder="如撤单原因"></label>
-                                    <p id="settlementCancelFeePreview" class="settlement-preview"></p>
+                                        <p id="settlementCancelFeePreview" class="settlement-preview"></p>
+                                    </div>
                                 </div>
                                 <!-- 废稿 -->
                                 <div id="settlementFormWasteFee" class="settlement-form d-none">
@@ -574,12 +616,8 @@
                                 </div>
                                 <!-- 正常结单 -->
                                 <div id="settlementFormNormal" class="settlement-form d-none">
-                                    <label>结算折扣（元，从原价中减去）<input type="number" id="settlementDiscountAmount" min="0" step="0.01" value="0"></label>
-                                    <label class="settlement-checkbox"><input type="checkbox" id="settlementWaivedPlatformFee"> 免除平台费</label>
-                                    <div id="settlementWaivedOtherFeesWrap" class="d-none">
-                                        <p class="settlement-step-label">免除的其他费用</p>
-                                        <div id="settlementWaivedOtherFeesList"></div>
-                                    </div>
+                                    <label>结算优惠（元，从原价中减去）<input type="number" id="settlementDiscountAmount" min="0" step="0.01" value="0"></label>
+                                    <label>优惠原因（可选）<input type="text" id="settlementDiscountReason" class="settlement-input" placeholder="如活动、老客等"></label>
                                     <p id="settlementNormalPreview" class="settlement-preview"></p>
                                 </div>
                             </div>
@@ -609,11 +647,13 @@
                                 <span class="sr-only">关闭</span>
                             </button>
                             <h2 class="receipt-drawer-title">报价小票</h2>
-                            <button type="button" class="btn receipt-drawer-action" onclick="handleReceiptSchedule()" aria-label="排单" title="排单">排单</button>
+                            <button type="button" class="btn receipt-drawer-action" onclick="handleReceiptSchedule()">排单</button>
                         </div>
                         <div class="receipt-drawer-body">
                             <div class="receipt-drawer-toolbar d-flex justify-between items-center">
-                                <span class="receipt-drawer-subtitle">小票</span>
+                                <div class="receipt-drawer-toolbar-left">
+                                    <span class="receipt-drawer-subtitle">小票</span>
+                                </div>
                                 <div class="receipt-drawer-toolbar-actions d-flex gap-2 items-center">
                                     <select id="themeSelector" onchange="applyReceiptTheme(this.value)" class="form-control mr-2">
                                         <option value="classic">经典</option>
@@ -1184,13 +1224,13 @@
             <!-- 记录页（简洁列表：单主ID / 金额 / 完成状态） -->
             <div id="record" class="page">
                 <div class="schedule-section">
-                    <div class="record-page-header d-flex items-center">
+                    <div class="schedule-toolbar record-page-header d-flex justify-between items-center">
                         <button type="button" class="btn record-back-flat" onclick="showPage('quote')" aria-label="返回" title="返回">
                             <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
                             <span class="sr-only">返回</span>
                         </button>
-                        <h2 class="record-page-title">记录</h2>
-                        <div class="record-page-actions d-flex gap-2 items-center">
+                        <h2 class="schedule-title record-page-title">记录</h2>
+                        <div class="d-flex gap-2 items-center record-page-actions">
                             <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
                             <button type="button" class="btn secondary btn--icon" onclick="document.getElementById('recordSyncImportInput').click()" aria-label="导入数据" title="导入数据（从另一端导出的 JSON 同步）">
                                 <svg class="icon" aria-hidden="true"><use href="#i-import"></use></svg>
@@ -1208,32 +1248,33 @@
                             </div>
                         </div>
                     </div>
-                    <div class="record-search-row d-flex items-center">
-                        <div class="record-search-wrap flex-1" id="recordSearchWrap">
-                            <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="record-search-input" oninput="applyRecordFilters(); toggleRecordSearchClear();">
-                            <button type="button" class="record-search-clear" id="recordSearchClearBtn" onclick="clearRecordSearch()" aria-label="清空搜索" title="清空">
-                                <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
-                                <span class="sr-only">清空</span>
-                            </button>
+                    <div class="form-row">
+                        <div class="form-group w-full">
+                            <div class="d-flex gap-2">
+                                <div class="record-search-wrap flex-1" id="recordSearchWrap">
+                                    <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="record-search-input" oninput="applyRecordFilters(); toggleRecordSearchClear();">
+                                    <button type="button" class="record-search-clear" id="recordSearchClearBtn" onclick="clearRecordSearch()" aria-label="清空搜索" title="清空">
+                                        <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                                        <span class="sr-only">清空</span>
+                                    </button>
+                                </div>
+                                <button class="btn secondary btn--icon" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
+                                    <span class="sr-only" id="recordFilterBtnText">筛选</span>
+                                    <span id="recordFilterBadge" class="filter-badge d-none">0</span>
+                                </button>
+                            </div>
                         </div>
-                        <button class="btn secondary btn--icon record-filter-btn" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
-                            <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
-                            <span class="sr-only" id="recordFilterBtnText">筛选</span>
-                            <span id="recordFilterBadge" class="filter-badge d-none">0</span>
-                        </button>
                     </div>
                     <div id="recordFilterDrawer" class="history-filter-drawer">
                         <div class="filter-drawer-overlay" onclick="closeRecordFilterDrawer()"></div>
                         <div class="filter-drawer-content">
                             <div class="filter-drawer-header">
                                 <h3>筛选与排序</h3>
-                                <div class="filter-drawer-header-actions d-flex items-center gap-2">
-                                    <button type="button" class="btn secondary small" onclick="resetRecordFilters(); closeRecordFilterDrawer();">清除筛选</button>
-                                    <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeRecordFilterDrawer()" aria-label="关闭" title="关闭">
-                                        <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
-                                        <span class="sr-only">关闭</span>
-                                    </button>
-                                </div>
+                                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeRecordFilterDrawer()" aria-label="关闭" title="关闭">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                                    <span class="sr-only">关闭</span>
+                                </button>
                             </div>
                             <div class="filter-drawer-body">
                                 <div class="filter-section">
@@ -1423,7 +1464,7 @@
                         </div>
                         <div class="form-group">
                             <label for="depositRate">定金比例（%）</label>
-                            <input type="number" id="depositRate" min="0" max="100" step="1" placeholder="如 50" onchange="updateDepositRate(this.value)">
+                            <input type="number" id="depositRate" placeholder="如 50" min="0" max="100" step="1" onchange="updateDepositRate(this.value)">
                             <small class="text-gray">小票可显示「需付定金」= 实付×比例</small>
                         </div>
                     </div>
@@ -1536,13 +1577,13 @@
                         </div>
                     </div>
 
-                    <!-- 加价类：用途系数、加急系数，可添加其他 -->
+                    <!-- 加价类：用途系数、加急系数，可添加其他（可折叠大组） -->
                     <div class="category-group-container">
-                        <div class="category-group-header" onclick="toggleCategoryGroup('pricingUpGroup')">
-                            <h3 class="coefficient-class-title" style="margin:0">加价类</h3>
-                            <div class="category-group-toggle">▼</div>
+                        <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupPricingUp')">
+                            <span class="coefficient-class-title">加价类</span>
+                            <div class="category-group-toggle" id="categoryGroupPricingUp-toggle">▼</div>
                         </div>
-                        <div class="category-group-content d-none" id="pricingUpGroup-content">
+                        <div class="category-group-content d-none" id="categoryGroupPricingUp-content">
                             <!-- 用途系数 -->
                             <div class="category-container">
                                 <div class="category-header" onclick="toggleCategory('usageCoefficient')">
@@ -1559,7 +1600,6 @@
                                     </div>
                                 </div>
                             </div>
-                            
                             <!-- 加急系数 -->
                             <div class="category-container">
                                 <div class="category-header" onclick="toggleCategory('urgentCoefficient')">
@@ -1577,18 +1617,18 @@
                                 </div>
                             </div>
                             <div id="extraPricingUpContainer"></div>
+                            <!-- 加价类、折扣类均为单数时：加价类最后一项与折扣类第一项并排显示 -->
+                            <div id="urgentDiscountPairRow" class="coefficient-pair-row d-none"></div>
                         </div>
                     </div>
-                    <!-- 加价类、折扣类均为单数时：加价类最后一项与折扣类第一项并排显示 -->
-                    <div id="urgentDiscountPairRow" class="coefficient-pair-row d-none"></div>
                     
-                    <!-- 折扣类：折扣系数，可添加其他 -->
+                    <!-- 折扣类：折扣系数，可添加其他（可折叠大组） -->
                     <div class="category-group-container">
-                        <div class="category-group-header" onclick="toggleCategoryGroup('pricingDownGroup')">
-                            <h3 class="coefficient-class-title" style="margin:0">折扣类</h3>
-                            <div class="category-group-toggle">▼</div>
+                        <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupPricingDown')">
+                            <span class="coefficient-class-title">折扣类</span>
+                            <div class="category-group-toggle" id="categoryGroupPricingDown-toggle">▼</div>
                         </div>
-                        <div class="category-group-content d-none" id="pricingDownGroup-content">
+                        <div class="category-group-content d-none" id="categoryGroupPricingDown-content">
                             <!-- 折扣系数 -->
                             <div class="category-container">
                                 <div class="category-header" onclick="toggleCategory('discountCoefficient')">
@@ -1609,14 +1649,14 @@
                         </div>
                     </div>
                     
-                    <!-- 其他类：同模系数、平台手续费、其他费用 -->
+                    <!-- 其他类：同模系数、平台手续费、其他费用（可折叠大组） -->
                     <div class="category-group-container">
-                        <div class="category-group-header" onclick="toggleCategoryGroup('otherGroup')">
-                            <h3 class="coefficient-class-title" style="margin:0">其他类</h3>
-                            <div class="category-group-toggle">▼</div>
+                        <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupOther')">
+                            <span class="coefficient-class-title">其他类</span>
+                            <div class="category-group-toggle" id="categoryGroupOther-toggle">▼</div>
                         </div>
-                        <div class="category-group-content d-none" id="otherGroup-content">
-                    <!-- 同模系数 -->
+                        <div class="category-group-content d-none" id="categoryGroupOther-content">
+                            <!-- 同模系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('sameModelCoefficient')">
                             <div class="category-title">同模系数</div>
@@ -1698,24 +1738,24 @@
                     </div>
                         </div>
                     </div>
-
-                    <!-- 结算规则配置 -->
+                    
+                    <!-- 结算配置：与加价类、折扣类、其他类同级 -->
                     <div class="category-group-container">
-                        <div class="category-group-header" onclick="toggleCategoryGroup('settlementRulesGroup')">
-                            <h3 class="coefficient-class-title" style="margin:0">结算规则配置</h3>
-                            <div class="category-group-toggle">▼</div>
+                        <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupSettlement')">
+                            <span class="coefficient-class-title">结算配置</span>
+                            <div class="category-group-toggle" id="categoryGroupSettlement-toggle">▼</div>
                         </div>
-                        <div class="category-group-content d-none" id="settlementRulesGroup-content">
-                            <!-- 撤单相关 -->
-                            <div class="category-container">
+                        <div class="category-group-content d-none" id="categoryGroupSettlement-content">
+                            <!-- 跑单相关 -->
+                            <div class="category-container settlement-group">
                                 <div class="category-header" onclick="toggleCategory('cancelFeeRules')">
-                                    <div class="category-title">撤单相关</div>
+                                    <div class="category-title">跑单相关</div>
                                     <div class="category-toggle">▼</div>
                                 </div>
                                 <div class="category-content d-none" id="cancelFeeRules-content">
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label>跑单费默认规则</label>
+                                            <label>撤单跑单费默认规则</label>
                                             <select id="cancelFeeRule" onchange="updateSettlementRule('cancelFee','defaultRule',this.value)">
                                                 <option value="percent">按比例</option>
                                                 <option value="fixed">固定金额</option>
@@ -1733,7 +1773,7 @@
                                 </div>
                             </div>
                             <!-- 废稿相关 -->
-                            <div class="category-container">
+                            <div class="category-container settlement-group">
                                 <div class="category-header" onclick="toggleCategory('wasteFeeRules')">
                                     <div class="category-title">废稿相关</div>
                                     <div class="category-toggle">▼</div>
@@ -1761,16 +1801,15 @@
                             </div>
                         </div>
                     </div>
-
                 </div>
 
-                <!-- 工艺设置 -->
+                <!-- 工艺设置：与制品设置同级，可折叠 -->
                 <div class="section">
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('process')">
                             <div class="category-title">工艺设置</div>
                             <div class="category-actions">
-                                <button class="btn add-process-setting btn-compact" onclick="openAddProcessModal()">添加</button>
+                                <button class="btn add-process-setting btn-compact" onclick="event.stopPropagation();openAddProcessModal()">添加</button>
                                 <div class="category-toggle">▼</div>
                             </div>
                         </div>
@@ -1862,6 +1901,24 @@
     </div>
 
     <!-- 全局轻提示（toast），用于非阻塞提示“排单已更新”等信息 -->
+    <!-- 订单备注弹窗（全局） -->
+    <div id="orderRemarkModal" class="modal d-none">
+        <div class="modal-content modal-content-compact">
+            <div class="modal-header">
+                <h3>订单备注</h3>
+                <span class="close" onclick="closeOrderRemarkModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <textarea id="orderRemarkText" rows="10" placeholder="请输入订单备注内容...&#10;&#10;支持智能识别格式示例：&#10;立绘 单面 2个&#10;Q版 双面 1个 带背景&#10;赠品：头像 3个"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-compact secondary" onclick="smartParseOrderRemark()">智能读取</button>
+                <button class="btn btn-compact secondary" onclick="copyOrderRemark()">复制</button>
+                <button class="btn btn-compact" onclick="closeOrderRemarkModal()">确定</button>
+            </div>
+        </div>
+    </div>
+
     <div id="globalToast" class="global-toast d-none"></div>
 
     <script src="script.js?v=20250130-todo-grid"></script>
