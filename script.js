@@ -317,8 +317,8 @@ const defaultSettings = {
             defaultExcludeNoProcess: false
         }
     },
-    // 定金比例（0~1，如 0.3 = 30%）
-    depositRate: 0.3,
+    // 定金比例（0~1，如 0.5 = 50%）
+    depositRate: 0.5,
     // 可扩展的加价类系数（用途、加急为内置；此处为后期添加的，如 VIP系数）
     extraPricingUp: [
         {
@@ -433,7 +433,7 @@ function init() {
         };
     }
     if (defaultSettings.depositRate == null || defaultSettings.depositRate === undefined) {
-        defaultSettings.depositRate = 0.3;
+        defaultSettings.depositRate = 0.5;
     }
     
     // 应用当前主题样式（如果是自定义主题）
@@ -7003,6 +7003,8 @@ function editHistoryItem(id) {
                 if (platformSelect.onchange) platformSelect.onchange();
             }
         }
+        var needDepositEl = document.getElementById('needDeposit');
+        if (needDepositEl) needDepositEl.checked = !!quote.needDeposit;
         
         // 恢复其他加价类
         if (quote.extraUpSelections && Array.isArray(quote.extraUpSelections)) {
@@ -8568,6 +8570,22 @@ function toggleCategory(category) {
         
         // 移除粘性定位
         header.classList.remove('sticky-header');
+    }
+}
+
+// 切换系数大组折叠状态（加价类、折扣类、其他类）
+function toggleCategoryGroup(groupId) {
+    const content = document.getElementById(`${groupId}-content`);
+    const toggle = content.parentElement.querySelector('.category-group-toggle');
+    
+    if (content.classList.contains('d-none')) {
+        // 展开组
+        content.classList.remove('d-none');
+        toggle.textContent = '▲';
+    } else {
+        // 折叠组
+        content.classList.add('d-none');
+        toggle.textContent = '▼';
     }
 }
 

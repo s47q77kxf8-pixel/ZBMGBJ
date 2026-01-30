@@ -726,6 +726,42 @@ body {
     flex: 1;
 }
 
+/* 美工信息页：始终保持一行显示（覆盖移动端 .form-row 的 column 布局） */
+.artist-info-row-1,
+.artist-info-row-2 {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 0.75rem;
+}
+
+.artist-info-row-1 .form-group,
+.artist-info-row-2 .form-group {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+}
+
+@media (max-width: 768px) {
+    .artist-info-row-1,
+    .artist-info-row-2 {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .artist-info-row-1,
+    .artist-info-row-2 {
+        gap: 0.4rem;
+    }
+    .artist-info-row-1 input,
+    .artist-info-row-2 input {
+        font-size: 16px !important;
+        padding: 0.35rem 0.4rem;
+    }
+}
+
 .form-group label {
     display: block;
     font-size: 0.8rem;
@@ -1271,12 +1307,25 @@ input:focus, select:focus {
 .ml-4 { margin-left: 1rem; }
 .mb-2 { margin-bottom: 0.5rem; }
 .mb-4 { margin-bottom: 1rem; }
-.coefficient-class-title { font-size: 1rem; font-weight: 600; color: var(--text-light); margin: 1rem 0 0.5rem 0; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border-color); }
+.coefficient-class-title { font-size: 1rem; font-weight: 600; color: var(--text-color); margin: 1rem 0 0.5rem 0; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border-color); }
 .coefficient-class-title:first-of-type { margin-top: 0; }
 .self-start { align-self: flex-start; }
 .relative { position: relative; }
 .font-bold { font-weight: bold; }
-.text-gray { color: var(--text-light); }
+/* 备注/提示文字统一小字号 */
+.text-gray { 
+    color: var(--text-light); 
+    font-size: 0.6rem;
+}
+
+small.text-gray,
+.form-group small {
+    display: block;
+    font-size: 0.55rem;
+    color: var(--text-light);
+    margin-top: 0.15rem;
+    line-height: 1.25;
+}
 .btn.xs { padding: 0.35em 0.65em; font-size: 0.75rem; height: auto; }
 .btn-compact { padding: 0.4em 0.75em; font-size: 0.8rem; min-height: auto; height: auto; }
 .text-right { text-align: right; }
@@ -1904,6 +1953,49 @@ input[type="range"]#customThemeTextureOpacity {
     border-top: 1px solid #e2e8f0;
 }
 
+/* 系数设置大组折叠容器（加价类、折扣类、其他类） */
+.category-group-container {
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #fff;
+}
+
+.category-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background-color: #f1f5f9;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.category-group-header:hover {
+    background-color: #e2e8f0;
+}
+
+.category-group-toggle {
+    color: #64748b;
+    font-size: 0.85rem;
+    transition: transform 0.2s;
+}
+
+.category-group-content {
+    padding: 0.75rem;
+    border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
+.category-group-content .category-container {
+    margin-bottom: 0.5rem;
+}
+
+.category-group-content .category-container:last-child {
+    margin-bottom: 0;
+}
+
 /* 加价类/折扣类均为单数时：加价类最后一项与折扣类第一项并排显示 */
 .coefficient-pair-row {
     display: flex;
@@ -2372,8 +2464,8 @@ input:checked + .toggle-slider:before {
     
     /* 优化小字体提示 */
     .text-gray {
-        font-size: 0.75rem;
-        margin-top: 0.2rem;
+        font-size: 0.55rem;
+        margin-top: 0.1rem;
         display: block;
         color: var(--text-light);
         line-height: 1.3;
@@ -2538,8 +2630,8 @@ input:checked + .toggle-slider:before {
     
     /* 调整提示文本 */
     .text-gray {
-        font-size: 0.7rem;
-        margin-top: 0.2rem;
+        font-size: 0.5rem;
+        margin-top: 0.1rem;
     }
     
     /* 优化主题选择 - 减少占比 */
@@ -4981,7 +5073,7 @@ input:checked + .toggle-slider:before {
 }
 .schedule-todo-card-products {
     display: flex;
-    padding-left: 0.8rem;
+    padding-left: 0.7rem;
     flex-wrap: nowrap;
     gap: 0.15rem 0.35rem;
     overflow-x: auto;
@@ -5115,15 +5207,22 @@ input:checked + .toggle-slider:before {
     background: rgba(0, 0, 0, 0.06);
 }
 
-/* 接单/结算弹窗 */
+/* 接单/结算弹窗（贴近手机 App / 网站风格） */
 .settlement-modal {
     position: fixed;
     inset: 0;
     z-index: 99999;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
-    padding: 1rem;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+@media (min-width: 480px) {
+    .settlement-modal {
+        align-items: center;
+        padding: 1rem;
+    }
 }
 .settlement-modal:not(.d-none) {
     display: flex;
@@ -5131,51 +5230,72 @@ input:checked + .toggle-slider:before {
 .settlement-modal-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
 }
 .settlement-modal-content {
     position: relative;
     width: 100%;
     max-width: 420px;
-    max-height: 90vh;
+    max-height: 88vh;
     overflow: auto;
     background: var(--bg-color);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
     display: flex;
     flex-direction: column;
+    -webkit-overflow-scrolling: touch;
+}
+@media (min-width: 480px) {
+    .settlement-modal-content {
+        border-radius: 16px;
+        max-height: 90vh;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
 }
 .settlement-modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    padding-top: calc(1rem + env(safe-area-inset-top, 0));
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 .settlement-modal-header h3 {
     margin: 0;
-    font-size: 1.1rem;
+    font-size: 1.125rem;
+    font-weight: 600;
 }
 .settlement-modal-close {
     border: none;
     background: none;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 1.5rem;
     line-height: 1;
     cursor: pointer;
-    color: var(--text-color);
-    opacity: 0.7;
+    color: var(--text-light);
+    opacity: 0.8;
+    border-radius: 50%;
 }
 .settlement-modal-close:hover {
     opacity: 1;
+    background: rgba(0, 0, 0, 0.06);
 }
 .settlement-modal-body {
     padding: 1.25rem;
     flex: 1;
     overflow: auto;
+    -webkit-overflow-scrolling: touch;
 }
 .settlement-step-label {
     margin: 0 0 0.5rem 0;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
+    font-weight: 500;
     color: var(--text-color);
 }
 .settlement-type-options {
@@ -5186,14 +5306,38 @@ input:checked + .toggle-slider:before {
 .settlement-type-option {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.75rem;
     cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.03);
+    padding: 0.875rem 1rem;
+    border-radius: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    transition: background 0.2s, border-color 0.2s;
+    min-height: 48px;
 }
 .settlement-type-option:hover {
-    background: rgba(0, 0, 0, 0.06);
+    background: var(--primary-light);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+.settlement-type-option:has(input:checked) {
+    border-color: var(--primary-color);
+    background: rgba(17, 17, 17, 0.04);
+}
+.settlement-cancel-fee-rule,
+.settlement-cancel-fee-params {
+    margin-bottom: 0.75rem;
+}
+.settlement-cancel-fee-params label {
+    display: block;
+    margin-bottom: 0.5rem;
+}
+.settlement-cancel-fee-params input {
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    width: 100%;
+    font-size: 0.9rem;
 }
 .settlement-form label {
     display: block;
@@ -5250,9 +5394,21 @@ input:checked + .toggle-slider:before {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.5rem;
+    gap: 0.75rem;
     padding: 1rem 1.25rem;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0));
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.calc-deposit-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-color);
+}
+.calc-deposit-checkbox input {
+    margin: 0;
 }
 
 /* 记录页：头部 返回(左) | 记录(中) | 导入导出(右) */
@@ -5746,7 +5902,7 @@ input:checked + .toggle-slider:before {
     margin-bottom: 0.75rem;
 }
 .stats-trends .text-gray {
-    font-size: 0.85rem;
+    font-size: 0.65rem;
     padding: 1rem 0.5rem;
     text-align: center;
     color: var(--text-light);
@@ -5984,7 +6140,7 @@ input:checked + .toggle-slider:before {
     }
     .schedule-todo-card-products {
         gap: 0.12rem 0.3rem;
-        padding-left: 0.8rem;
+        padding-left: 0.7rem;
     }
     .schedule-todo-card-range {
         font-size: 0.75rem;
@@ -6028,7 +6184,7 @@ input:checked + .toggle-slider:before {
         height: 5px;
     }
     .schedule-todo-card-products {
-        padding-left: 0.8rem;
+        padding-left: 0.7rem;
     }
     .schedule-todo-card-range {
         font-size: 0.7rem;

@@ -1405,7 +1405,7 @@
                 <!-- 美工信息 -->
                 <div class="section">
                     <h2>美工信息</h2>
-                    <div class="form-row">
+                    <div class="form-row artist-info-row-1">
                         <div class="form-group">
                             <label for="artistId">美工ID</label>
                             <input type="text" id="artistId" placeholder="请输入美工ID" onchange="updateArtistInfo('id', this.value)">
@@ -1414,9 +1414,17 @@
                             <label for="artistContact">联系方式</label>
                             <input type="text" id="artistContact" placeholder="请输入联系方式" onchange="updateArtistInfo('contact', this.value)">
                         </div>
+                    </div>
+                    <div class="form-row artist-info-row-2">
                         <div class="form-group">
                             <label for="defaultDuration">默认工期（天）</label>
                             <input type="number" id="defaultDuration" placeholder="请输入默认工期" min="0" step="1" onchange="updateArtistInfo('defaultDuration', this.value)">
+                            <small class="text-gray">填写开始时间后自动计算截稿时间</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="depositRate">定金比例（%）</label>
+                            <input type="number" id="depositRate" min="0" max="100" step="1" placeholder="如 50" onchange="updateDepositRate(this.value)">
+                            <small class="text-gray">小票可显示「需付定金」= 实付×比例</small>
                         </div>
                     </div>
                 </div>
@@ -1529,66 +1537,85 @@
                     </div>
 
                     <!-- 加价类：用途系数、加急系数，可添加其他 -->
-                    <h3 class="coefficient-class-title">加价类</h3>
-                    <!-- 用途系数 -->
-                    <div class="category-container">
-                        <div class="category-header" onclick="toggleCategory('usageCoefficient')">
-                            <div class="category-title">用途系数</div>
-                            <div class="category-toggle">▼</div>
+                    <div class="category-group-container">
+                        <div class="category-group-header" onclick="toggleCategoryGroup('pricingUpGroup')">
+                            <h3 class="coefficient-class-title" style="margin:0">加价类</h3>
+                            <div class="category-group-toggle">▼</div>
                         </div>
-                        <div class="category-content d-none" id="usageCoefficient-content">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <div class="coefficient-settings" id="usageCoefficientSettings">
-                                        <!-- 用途系数将通过JavaScript动态生成 -->
+                        <div class="category-group-content d-none" id="pricingUpGroup-content">
+                            <!-- 用途系数 -->
+                            <div class="category-container">
+                                <div class="category-header" onclick="toggleCategory('usageCoefficient')">
+                                    <div class="category-title">用途系数</div>
+                                    <div class="category-toggle">▼</div>
+                                </div>
+                                <div class="category-content d-none" id="usageCoefficient-content">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <div class="coefficient-settings" id="usageCoefficientSettings">
+                                                <!-- 用途系数将通过JavaScript动态生成 -->
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 加急系数 -->
-                    <div class="category-container">
-                        <div class="category-header" onclick="toggleCategory('urgentCoefficient')">
-                            <div class="category-title">加急系数</div>
-                            <div class="category-toggle">▼</div>
-                        </div>
-                        <div class="category-content d-none" id="urgentCoefficient-content">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <div class="coefficient-settings">
-                                        <!-- 加急系数将通过JavaScript动态生成 -->
+                            
+                            <!-- 加急系数 -->
+                            <div class="category-container">
+                                <div class="category-header" onclick="toggleCategory('urgentCoefficient')">
+                                    <div class="category-title">加急系数</div>
+                                    <div class="category-toggle">▼</div>
+                                </div>
+                                <div class="category-content d-none" id="urgentCoefficient-content">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <div class="coefficient-settings">
+                                                <!-- 加急系数将通过JavaScript动态生成 -->
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                            <div id="extraPricingUpContainer"></div>
                         </div>
                     </div>
-                    <div id="extraPricingUpContainer"></div>
                     <!-- 加价类、折扣类均为单数时：加价类最后一项与折扣类第一项并排显示 -->
                     <div id="urgentDiscountPairRow" class="coefficient-pair-row d-none"></div>
                     
                     <!-- 折扣类：折扣系数，可添加其他 -->
-                    <h3 class="coefficient-class-title">折扣类</h3>
-                    <!-- 折扣系数 -->
-                    <div class="category-container">
-                        <div class="category-header" onclick="toggleCategory('discountCoefficient')">
-                            <div class="category-title">折扣系数</div>
-                            <div class="category-toggle">▼</div>
+                    <div class="category-group-container">
+                        <div class="category-group-header" onclick="toggleCategoryGroup('pricingDownGroup')">
+                            <h3 class="coefficient-class-title" style="margin:0">折扣类</h3>
+                            <div class="category-group-toggle">▼</div>
                         </div>
-                        <div class="category-content d-none" id="discountCoefficient-content">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <div class="coefficient-settings">
-                                        <!-- 折扣系数将通过JavaScript动态生成 -->
+                        <div class="category-group-content d-none" id="pricingDownGroup-content">
+                            <!-- 折扣系数 -->
+                            <div class="category-container">
+                                <div class="category-header" onclick="toggleCategory('discountCoefficient')">
+                                    <div class="category-title">折扣系数</div>
+                                    <div class="category-toggle">▼</div>
+                                </div>
+                                <div class="category-content d-none" id="discountCoefficient-content">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <div class="coefficient-settings">
+                                                <!-- 折扣系数将通过JavaScript动态生成 -->
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                            <div id="extraPricingDownContainer"></div>
                         </div>
                     </div>
-                    <div id="extraPricingDownContainer"></div>
                     
                     <!-- 其他类：同模系数、平台手续费、其他费用 -->
-                    <h3 class="coefficient-class-title">其他类</h3>
+                    <div class="category-group-container">
+                        <div class="category-group-header" onclick="toggleCategoryGroup('otherGroup')">
+                            <h3 class="coefficient-class-title" style="margin:0">其他类</h3>
+                            <div class="category-group-toggle">▼</div>
+                        </div>
+                        <div class="category-group-content d-none" id="otherGroup-content">
                     <!-- 同模系数 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('sameModelCoefficient')">
@@ -1669,54 +1696,67 @@
                             </div>
                         </div>
                     </div>
+                        </div>
+                    </div>
 
                     <!-- 结算规则配置 -->
-                    <div class="category-container">
-                        <div class="category-header" onclick="toggleCategory('settlementRules')">
-                            <div class="category-title">结算规则配置</div>
-                            <div class="category-toggle">▼</div>
+                    <div class="category-group-container">
+                        <div class="category-group-header" onclick="toggleCategoryGroup('settlementRulesGroup')">
+                            <h3 class="coefficient-class-title" style="margin:0">结算规则配置</h3>
+                            <div class="category-group-toggle">▼</div>
                         </div>
-                        <div class="category-content d-none" id="settlementRules-content">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>撤单跑单费默认规则</label>
-                                    <select id="cancelFeeRule" onchange="updateSettlementRule('cancelFee','defaultRule',this.value)">
-                                        <option value="percent">按比例</option>
-                                        <option value="fixed">固定金额</option>
-                                    </select>
+                        <div class="category-group-content d-none" id="settlementRulesGroup-content">
+                            <!-- 撤单相关 -->
+                            <div class="category-container">
+                                <div class="category-header" onclick="toggleCategory('cancelFeeRules')">
+                                    <div class="category-title">撤单相关</div>
+                                    <div class="category-toggle">▼</div>
                                 </div>
-                                <div class="form-group">
-                                    <label>默认比例（%）</label>
-                                    <input type="number" id="cancelFeeRate" min="0" max="100" step="0.1" onchange="updateSettlementRule('cancelFee','defaultRate',this.value/100)">
-                                </div>
-                                <div class="form-group">
-                                    <label>默认固定金额（元）</label>
-                                    <input type="number" id="cancelFeeFixed" min="0" step="1" onchange="updateSettlementRule('cancelFee','defaultFixedAmount',this.value)">
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>废稿费默认规则</label>
-                                    <select id="wasteFeeRule" onchange="updateSettlementRule('wasteFee','defaultRule',this.value)">
-                                        <option value="percent_total">按总额比例</option>
-                                        <option value="percent_charged_only">仅计费项比例</option>
-                                        <option value="fixed_per_item">按件固定</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>默认比例（%）</label>
-                                    <input type="number" id="wasteFeeRate" min="0" max="100" step="0.1" onchange="updateSettlementRule('wasteFee','defaultRate',this.value/100)">
-                                </div>
-                                <div class="form-group">
-                                    <label>默认每件金额（元）</label>
-                                    <input type="number" id="wasteFeeFixedPerItem" min="0" step="1" onchange="updateSettlementRule('wasteFee','defaultFixedPerItem',this.value)">
+                                <div class="category-content d-none" id="cancelFeeRules-content">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>跑单费默认规则</label>
+                                            <select id="cancelFeeRule" onchange="updateSettlementRule('cancelFee','defaultRule',this.value)">
+                                                <option value="percent">按比例</option>
+                                                <option value="fixed">固定金额</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>默认比例（%）</label>
+                                            <input type="number" id="cancelFeeRate" min="0" max="100" step="0.1" onchange="updateSettlementRule('cancelFee','defaultRate',this.value/100)">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>默认固定金额（元）</label>
+                                            <input type="number" id="cancelFeeFixed" min="0" step="1" onchange="updateSettlementRule('cancelFee','defaultFixedAmount',this.value)">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="depositRate">定金比例（%）</label>
-                                    <input type="number" id="depositRate" min="0" max="100" step="1" placeholder="如 30" onchange="updateDepositRate(this.value)">
-                                    <small class="text-gray">无平台费接单渠道需付定金时，小票可显示「需付定金」= 实付金额×比例</small>
+                            <!-- 废稿相关 -->
+                            <div class="category-container">
+                                <div class="category-header" onclick="toggleCategory('wasteFeeRules')">
+                                    <div class="category-title">废稿相关</div>
+                                    <div class="category-toggle">▼</div>
+                                </div>
+                                <div class="category-content d-none" id="wasteFeeRules-content">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>废稿费默认规则</label>
+                                            <select id="wasteFeeRule" onchange="updateSettlementRule('wasteFee','defaultRule',this.value)">
+                                                <option value="percent_total">按总额比例</option>
+                                                <option value="percent_charged_only">仅计费项比例</option>
+                                                <option value="fixed_per_item">按件固定</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>默认比例（%）</label>
+                                            <input type="number" id="wasteFeeRate" min="0" max="100" step="0.1" onchange="updateSettlementRule('wasteFee','defaultRate',this.value/100)">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>默认每件金额（元）</label>
+                                            <input type="number" id="wasteFeeFixedPerItem" min="0" step="1" onchange="updateSettlementRule('wasteFee','defaultFixedPerItem',this.value)">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
