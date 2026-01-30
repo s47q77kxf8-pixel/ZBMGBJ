@@ -298,6 +298,27 @@ const defaultSettings = {
     otherFees: {
         // 其他费用类别，可动态添加
     },
+    // 结算规则配置（接单/撤单/废稿默认值）
+    settlementRules: {
+        cancelFee: {
+            defaultRule: 'percent',
+            defaultRate: 0.1,
+            defaultFixedAmount: 50,
+            minAmount: 0,
+            maxAmount: null
+        },
+        wasteFee: {
+            defaultRule: 'percent_total',
+            defaultRate: 0.3,
+            defaultFixedPerItem: 20,
+            minAmount: 0,
+            maxAmount: null,
+            defaultPartialProducts: false,
+            defaultExcludeNoProcess: false
+        }
+    },
+    // 定金比例（0~1，如 0.3 = 30%）
+    depositRate: 0.3,
     // 可扩展的加价类系数（用途、加急为内置；此处为后期添加的，如 VIP系数）
     extraPricingUp: [
         {
@@ -403,6 +424,16 @@ function init() {
             summary: '',
             footer: ''
         };
+    }
+    // 确保结算规则与定金存在（旧数据兼容）
+    if (!defaultSettings.settlementRules) {
+        defaultSettings.settlementRules = {
+            cancelFee: { defaultRule: 'percent', defaultRate: 0.1, defaultFixedAmount: 50, minAmount: 0, maxAmount: null },
+            wasteFee: { defaultRule: 'percent_total', defaultRate: 0.3, defaultFixedPerItem: 20, minAmount: 0, maxAmount: null, defaultPartialProducts: false, defaultExcludeNoProcess: false }
+        };
+    }
+    if (defaultSettings.depositRate == null || defaultSettings.depositRate === undefined) {
+        defaultSettings.depositRate = 0.3;
     }
     
     // 应用当前主题样式（如果是自定义主题）
@@ -4393,7 +4424,8 @@ function calculatePrice() {
         totalWithCoefficients: totalWithCoefficients,
         totalBeforePlatformFee: totalBeforePlatformFee,
         finalTotal: finalTotal,
-        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; if (v) { var d = new Date(v + 'T00:00:00'); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(); } return new Date().toISOString(); })()
+        needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (document.getElementById('needDeposit') && document.getElementById('needDeposit').checked)),
+        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; if (v && def && v === def) return new Date().toISOString(); if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
     // 生成报价单（主小票区域）
@@ -5963,15 +5995,29 @@ function scheduleTodoCardAction(action) {
     else if (action === 'accept') acceptOrder(id);
     else if (action === 'close') closeOrder(id);
 }
-// 结单：方案 A — 仅标记订单为「已结单」，不涉及金额；接单负责完整结算
+// 结单：点击后打开结算弹窗（接单流程），由弹窗内完成撤单/废稿/正常结单
 function closeOrder(recordId) {
+    openSettlementModal(recordId);
+}
+function needDepositChecked() {
+    var el = document.getElementById('needDeposit');
+    return el ? el.checked : false;
+}
+function openSettlementModal(recordId) {
     var item = history.find(function (h) { return h.id === recordId; });
-    if (!item) return;
-    item.status = 'closed';
-    saveData();
-    if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
-    if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
-    showGlobalToast('已标记为结单');
+    if (!item) {
+        showGlobalToast('未找到该排单');
+        return;
+    }
+    settlementModalRecordId = recordId;
+    settlementCurrentStep = 1;
+    document.querySelectorAll('input[name="settlementType"]').forEach(function (r) { r.checked = false; });
+    document.getElementById('settlementStep1').classList.remove('d-none');
+    document.getElementById('settlementStep2').classList.add('d-none');
+    document.getElementById('settlementBtnBack').classList.add('d-none');
+    document.getElementById('settlementBtnNext').classList.remove('d-none');
+    document.getElementById('settlementBtnConfirm').classList.add('d-none');
+    document.getElementById('settlementModal').classList.remove('d-none');
 }
 
 // ---------- 接单/结算弹窗 ----------
@@ -6023,11 +6069,23 @@ function settlementStepNext() {
     document.getElementById('settlementBtnConfirm').classList.remove('d-none');
 
     document.getElementById('settlementFormFullRefund').classList.add('d-none');
+    var cancelFeeForm = document.getElementById('settlementFormCancelWithFee');
+    if (cancelFeeForm) cancelFeeForm.classList.add('d-none');
     document.getElementById('settlementFormWasteFee').classList.add('d-none');
     document.getElementById('settlementFormNormal').classList.add('d-none');
     if (type === 'full_refund') {
         document.getElementById('settlementFormFullRefund').classList.remove('d-none');
         document.getElementById('settlementMemoRefund').value = '';
+    } else if (type === 'cancel_with_fee') {
+        if (cancelFeeForm) cancelFeeForm.classList.remove('d-none');
+        settlementFillCancelFeeDefaults();
+        settlementUpdateCancelFeePreview();
+        var ruleEl = document.getElementById('settlementCancelFeeRule');
+        var rateEl = document.getElementById('settlementCancelFeeRate');
+        var fixedEl = document.getElementById('settlementCancelFeeFixed');
+        if (ruleEl) ruleEl.addEventListener('change', function () { settlementUpdateCancelFeePreview(); settlementToggleCancelFeeFields(); });
+        if (rateEl) rateEl.addEventListener('input', settlementUpdateCancelFeePreview);
+        if (fixedEl) fixedEl.addEventListener('input', settlementUpdateCancelFeePreview);
     } else if (type === 'waste_fee') {
         document.getElementById('settlementFormWasteFee').classList.remove('d-none');
         settlementRenderWasteFeeForm();

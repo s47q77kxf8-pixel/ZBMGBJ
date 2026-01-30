@@ -516,6 +516,7 @@
                                 <p class="settlement-step-label">选择结算类型</p>
                                 <div class="settlement-type-options">
                                     <label class="settlement-type-option"><input type="radio" name="settlementType" value="full_refund"> 单主撤单退全款</label>
+                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="cancel_with_fee"> 单主撤单收跑单费</label>
                                     <label class="settlement-type-option"><input type="radio" name="settlementType" value="waste_fee"> 废稿（收废稿费）</label>
                                     <label class="settlement-type-option"><input type="radio" name="settlementType" value="normal"> 正常结单（按原价或折扣/免除）</label>
                                 </div>
@@ -525,6 +526,22 @@
                                 <!-- 撤单退全款 -->
                                 <div id="settlementFormFullRefund" class="settlement-form d-none">
                                     <label>备注（可选）<input type="text" id="settlementMemoRefund" class="settlement-input" placeholder="如撤单原因"></label>
+                                </div>
+                                <!-- 撤单收跑单费 -->
+                                <div id="settlementFormCancelWithFee" class="settlement-form d-none">
+                                    <div class="settlement-cancel-fee-rule">
+                                        <p class="settlement-step-label">跑单费规则</p>
+                                        <select id="settlementCancelFeeRule">
+                                            <option value="percent">按原价比例</option>
+                                            <option value="fixed">固定金额</option>
+                                        </select>
+                                    </div>
+                                    <div class="settlement-cancel-fee-params">
+                                        <label>比例（%，如 10 表示 10%）<input type="number" id="settlementCancelFeeRate" min="0" max="100" step="0.1" placeholder="10"></label>
+                                        <label>固定金额（元）<input type="number" id="settlementCancelFeeFixed" min="0" step="1" placeholder="0"></label>
+                                    </div>
+                                    <label>备注（可选）<input type="text" id="settlementMemoCancelFee" class="settlement-input" placeholder="如撤单原因"></label>
+                                    <p id="settlementCancelFeePreview" class="settlement-preview"></p>
                                 </div>
                                 <!-- 废稿 -->
                                 <div id="settlementFormWasteFee" class="settlement-form d-none">
