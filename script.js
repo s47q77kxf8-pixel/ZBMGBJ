@@ -2636,7 +2636,15 @@ function openRecordPage() {
 function clearRecordSearch() {
     const input = document.getElementById('recordSearchInput');
     if (input) input.value = '';
+    toggleRecordSearchClear();
     applyRecordFilters();
+}
+
+function toggleRecordSearchClear() {
+    const wrap = document.getElementById('recordSearchWrap');
+    const input = document.getElementById('recordSearchInput');
+    if (!wrap || !input) return;
+    if (input.value.trim()) wrap.classList.add('has-value'); else wrap.classList.remove('has-value');
 }
 
 function getRecordProgressStatus(item) {
@@ -2872,6 +2880,7 @@ function getFilteredHistoryForRecord() {
 }
 
 function applyRecordFilters() {
+    toggleRecordSearchClear();
     const container = document.getElementById('recordContainer');
     if (!container) return;
 
@@ -2935,6 +2944,114 @@ function applyRecordFilters() {
 
     updateBatchDeleteButton();
     restoreCheckboxStates();
+}
+
+// ===== 记录页：同步数据导出/导入（跨端手动同步） =====
+function exportSyncData() {
+    try {
+        const exportPayload = {
+            quoteHistory: history,
+            calculatorSettings: defaultSettings,
+            productSettings: productSettings,
+            processSettings: processSettings,
+            templates: templates,
+            exportDate: new Date().toISOString()
+        };
+        const json = JSON.stringify(exportPayload, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'sync-data-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        alert('数据已导出，可在另一端使用「导入」同步。');
+    } catch (e) {
+        console.error('导出同步数据失败:', e);
+        alert('导出失败，请重试');
+    }
+}
+
+function toggleRecordExportPopover() {
+    const pop = document.getElementById('recordExportPopover');
+    const btn = document.getElementById('recordExportBtn');
+    if (!pop || !btn) return;
+    const isHidden = pop.classList.contains('d-none');
+    pop.classList.toggle('d-none', !isHidden);
+    pop.setAttribute('aria-hidden', isHidden ? 'false' : 'true');
+    btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+    if (isHidden) {
+        setTimeout(function () {
+            document.addEventListener('click', function closeRecordExport(e) {
+                if (!pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                    closeRecordExportPopover();
+                    document.removeEventListener('click', closeRecordExport);
+                }
+            });
+        }, 0);
+    }
+}
+
+function closeRecordExportPopover() {
+    const pop = document.getElementById('recordExportPopover');
+    const btn = document.getElementById('recordExportBtn');
+    if (pop) {
+        pop.classList.add('d-none');
+        pop.setAttribute('aria-hidden', 'true');
+    }
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function handleRecordSyncImport(event) {
+    const input = event && event.target;
+    if (!input || !input.files || !input.files[0]) return;
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = function () {
+        try {
+            const data = JSON.parse(reader.result);
+            if (!data || typeof data !== 'object') {
+                alert('无效的 JSON 文件');
+                input.value = '';
+                return;
+            }
+            const hasHistory = Array.isArray(data.quoteHistory);
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null;
+            if (!hasHistory && !hasSettings) {
+                alert('文件中未包含可导入的数据（需要 quoteHistory 或设置项）');
+                input.value = '';
+                return;
+            }
+            if (!confirm('将用导入的数据覆盖本机对应数据，是否继续？')) {
+                input.value = '';
+                return;
+            }
+            if (hasHistory) {
+                history = data.quoteHistory;
+                history.forEach(function (item) { ensureProductDoneStates(item); });
+            }
+            if (data.calculatorSettings != null) {
+                normalizeCoefficients(data.calculatorSettings);
+                Object.keys(data.calculatorSettings).forEach(function (key) {
+                    if (data.calculatorSettings[key] != null && typeof data.calculatorSettings[key] === 'object' && Object.keys(data.calculatorSettings[key]).length === 0) return;
+                    defaultSettings[key] = data.calculatorSettings[key];
+                });
+            }
+            if (data.productSettings != null) productSettings = data.productSettings;
+            if (data.processSettings != null) processSettings = data.processSettings;
+            if (data.templates != null) templates = data.templates;
+            saveData();
+            applyRecordFilters();
+            alert('导入成功，数据已同步到本机。');
+        } catch (e) {
+            console.error('导入失败:', e);
+            alert('导入失败：' + (e.message || '文件格式错误'));
+        }
+        input.value = '';
+    };
+    reader.readAsText(file, 'UTF-8');
 }
 
 function exportRecordToExcel() {
@@ -3076,8 +3193,9 @@ function getStatsFiltersFromUI() {
     const statusFilter = document.getElementById('statsStatusFilter');
     const quickStart = document.getElementById('statsStartDate');
     const quickEnd = document.getElementById('statsEndDate');
+    const timeRange = (timeEl && timeEl.value) ? timeEl.value : 'month';
     return {
-        timeRange: timeEl ? timeEl.value : 'month',
+        timeRange: timeRange,
         startDate: (customStart && customStart.value) || (quickStart && quickStart.value) || '',
         endDate: (customEnd && customEnd.value) || (quickEnd && quickEnd.value) || '',
         amountBasis: amountBasis ? amountBasis.value : 'finalTotal',
@@ -3383,6 +3501,36 @@ function resetStatsFilters() {
     if (quickEnd) quickEnd.value = '';
     document.getElementById('statsCustomDateRange').classList.add('d-none');
     updateStatsFilterBadge();
+    applyStatsFilters();
+}
+
+function toggleStatsCustomDate() {
+    const wrap = document.getElementById('statsCustomDateWrap');
+    const toggleBtn = document.getElementById('statsCustomDateToggle');
+    if (!wrap || !toggleBtn) return;
+    const isHidden = wrap.classList.contains('d-none');
+    wrap.classList.toggle('d-none', !isHidden);
+    if (isHidden) {
+        const timeEl = document.getElementById('statsTimeFilter');
+        if (timeEl) timeEl.value = 'custom';
+        const quickStart = document.getElementById('statsStartDate');
+        const quickEnd = document.getElementById('statsEndDate');
+        if (quickStart && !quickStart.value) {
+            const end = new Date();
+            const start = new Date(end);
+            start.setDate(start.getDate() - 29);
+            quickStart.value = start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0') + '-' + String(start.getDate()).padStart(2, '0');
+            quickEnd.value = end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0');
+        }
+        onStatsFilterChange();
+        applyStatsFilters();
+    }
+}
+
+function onStatsQuickCustomChange() {
+    const timeEl = document.getElementById('statsTimeFilter');
+    if (timeEl) timeEl.value = 'custom';
+    onStatsFilterChange();
     applyStatsFilters();
 }
 
@@ -5348,10 +5496,14 @@ function renderScheduleMonthTitleStats(year, month) {
     const dateInput = document.getElementById('scheduleTitleDateInput');
     if (dateInput) dateInput.value = window.scheduleSelectedDate || todayYmd;
 
-    // Today 按钮：只在选中日期不是今天时显示
+    // Today 按钮：当显示的月份不是本月，或选中日期不是今天时显示
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const isCurrentMonth = window.scheduleCalendarYear === currentYear && window.scheduleCalendarMonth === currentMonth;
     const isOtherDay = !!window.scheduleSelectedDate && window.scheduleSelectedDate !== todayYmd;
+    const shouldShowToday = !isCurrentMonth || isOtherDay;
     const todayBtn = document.querySelector('.schedule-title-today-pill');
-    if (todayBtn) todayBtn.classList.toggle('d-none', !isOtherDay);
+    if (todayBtn) todayBtn.classList.toggle('d-none', !shouldShowToday);
 }
 
 // 点击标题月份弹出日期选择
@@ -5389,6 +5541,7 @@ function scheduleTodoBackToToday() {
     window.scheduleCalendarMonth = now.getMonth() + 1;
     renderScheduleCalendar();
     renderScheduleTodoSection();
+    updateScheduleTitle();
 }
 
 // 当前批次：返回「最近截稿日」或「选中日所在截稿日」的那批排单。返回 { deadline: 'YYYY-MM-DD', items: schedule[] }
@@ -5623,6 +5776,7 @@ function scheduleCalendarPrevMonth() {
     }
     renderScheduleCalendar();
     renderScheduleTodoSection();
+    updateScheduleTitleTodayButton();
 }
 
 function scheduleCalendarNextMonth() {
@@ -5634,6 +5788,18 @@ function scheduleCalendarNextMonth() {
     }
     renderScheduleCalendar();
     renderScheduleTodoSection();
+    updateScheduleTitleTodayButton();
+}
+
+function updateScheduleTitleTodayButton() {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const isCurrentMonth = window.scheduleCalendarYear === currentYear && window.scheduleCalendarMonth === currentMonth;
+    const todayBtn = document.querySelector('.schedule-title-today-pill');
+    if (todayBtn) {
+        todayBtn.classList.toggle('d-none', isCurrentMonth);
+    }
 }
 
 // 渲染当前批次制品 todo 区（按快捷筛选或选中日期显示排单制品）
@@ -5684,8 +5850,6 @@ function renderScheduleTodoSection() {
         const dateStr = item.deadline || item.startTime || item.timestamp;
         const d = dateStr ? new Date(dateStr) : null;
         const hasDate = d && !isNaN(d.getTime());
-        const monthText = hasDate ? (d.getMonth() + 1) + '月' : '—';
-        const dayText = hasDate ? String(d.getDate()).padStart(2, '0') : '—';
         let rangeText = '—';
         if (item.startTime && item.deadline) rangeText = toMd(item.startTime) + ' → ' + toMd(item.deadline);
         else if (item.deadline) rangeText = '截稿 ' + toMd(item.deadline);
@@ -5696,6 +5860,8 @@ function renderScheduleTodoSection() {
         const productItems = products.map((p, i) => ({ label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: i, done: !!doneStates[i] }));
         const giftItems = gifts.map((p, i) => ({ label: '[赠品] ' + (p.product || '赠品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: products.length + i, done: !!doneStates[products.length + i] }));
         const allItems = productItems.concat(giftItems).sort((a, b) => Number(a.done) - Number(b.done));
+        var dotColor = SCHEDULE_BAR_TEXT_COLORS[Math.abs(item.id) % SCHEDULE_BAR_TEXT_COLORS.length];
+        var dateText = hasDate ? (String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0')) : '\u2014';
         const chipHtml = allItems.map(({ label, idx, done }) =>
             '<div class="schedule-todo-row schedule-todo-chip' + (done ? ' schedule-todo-done' : '') + '">' +
             '<input type="checkbox" class="schedule-todo-checkbox" ' + (done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + idx + '" onchange="toggleScheduleTodoDone(this)">' +
@@ -5704,13 +5870,14 @@ function renderScheduleTodoSection() {
         modulesEl.innerHTML += ''
             + '<div class="schedule-todo-card" onclick="handleScheduleTodoCardClick(' + item.id + ', event)">'
             + '  <div class="schedule-todo-card-main">'
-            + '    <span class="schedule-todo-card-month">' + monthText + '</span>'
-            + '    <span class="schedule-todo-card-day">' + dayText + '</span>'
-            + '    <span class="schedule-todo-card-sep"></span>'
             + '    <div class="schedule-todo-card-head">'
+            + '      <span class="schedule-todo-card-dot" style="background-color:' + dotColor + '; opacity:0.6"></span>'
+            + '      <span class="schedule-todo-card-date">' + dateText + '</span>'
+            + '      <span class="schedule-todo-card-sep"></span>'
             + '      <span class="schedule-todo-card-range">' + rangeText + '</span>'
             + '      <span class="schedule-todo-card-sep-inline"></span>'
             + '      <span class="schedule-todo-card-client">' + client + '</span>'
+            + '      <span class="schedule-todo-card-sep-dot">\u00B7</span>'
             + '      <span class="schedule-todo-card-progress">' + progress + '</span>'
             + '      <span class="record-status ' + status.className + ' schedule-todo-card-status">' + status.text + '</span>'
             + '    </div>'
@@ -5718,40 +5885,6 @@ function renderScheduleTodoSection() {
             + '  </div>'
             + '</div>';
     });
-    // #region agent log
-    setTimeout(function() {
-        var w = window.innerWidth;
-        var first = modulesEl.querySelector('.schedule-todo-card-main');
-        var data = { viewportW: w, hasMain: !!first, itemsCount: sortedItems.length };
-        if (first) {
-            var cs = getComputedStyle(first);
-            data.mainDisplay = cs.display;
-            data.mainGridCols = cs.gridTemplateColumns;
-            data.mainGridRows = cs.gridTemplateRows;
-            data.mainGap = cs.gap;
-            data.mainAlignItems = cs.alignItems;
-            var month = first.querySelector('.schedule-todo-card-month');
-            var day = first.querySelector('.schedule-todo-card-day');
-            var head = first.querySelector('.schedule-todo-card-head');
-            var products = first.querySelector('.schedule-todo-card-products');
-            var sep = first.querySelector('.schedule-todo-card-sep');
-            data.monthGridCol = month ? getComputedStyle(month).gridColumn : null;
-            data.monthGridRow = month ? getComputedStyle(month).gridRow : null;
-            data.dayGridCol = day ? getComputedStyle(day).gridColumn : null;
-            data.dayGridRow = day ? getComputedStyle(day).gridRow : null;
-            data.headGridCol = head ? getComputedStyle(head).gridColumn : null;
-            data.headGridRow = head ? getComputedStyle(head).gridRow : null;
-            data.productsGridCol = products ? getComputedStyle(products).gridColumn : null;
-            data.productsGridRow = products ? getComputedStyle(products).gridRow : null;
-            data.childOrder = [].slice.call(first.children).map(function(c) { return c.className || c.tagName; });
-            if (sep) data.col1Width = sep.offsetLeft;
-            if (head) { data.headH = head.offsetHeight; data.headScrollH = head.scrollHeight; data.headWraps = head.scrollHeight > head.offsetHeight; }
-            if (month) data.monthRect = { w: month.offsetWidth, h: month.offsetHeight };
-            if (day) data.dayRect = { w: day.offsetWidth, h: day.offsetHeight };
-        }
-        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:renderScheduleTodoSection',message:'todo layout debug',data:data,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-H5',runId:'post-fix'})}).catch(function(){});
-    }, 50);
-    // #endregion
 }
 
 function toggleScheduleTodoDone(checkbox) {
@@ -5776,15 +5909,36 @@ function toggleScheduleTodoDone(checkbox) {
     }
 }
 
-// 点击 todo 卡片：跳转到计算页编辑对应记录（避免点击复选框时误触）
+// 点击 todo 卡片：弹出操作菜单；仅点击制品行（芯片）时不弹窗，点击卡片或制品区空白处均弹窗
 function handleScheduleTodoCardClick(id, event) {
-    if (event) {
-        const target = event.target;
-        if (target && (target.closest('.schedule-todo-checkbox') || target.tagName === 'INPUT')) {
-            return;
-        }
-    }
-    editHistoryItem(id);
+    if (event && event.target.closest('.schedule-todo-row')) return;
+    openScheduleTodoCardModal(id);
+}
+
+// 排单卡片操作弹窗
+var scheduleTodoCardModalRecordId = null;
+function openScheduleTodoCardModal(recordId) {
+    scheduleTodoCardModalRecordId = recordId;
+    var el = document.getElementById('scheduleTodoCardModal');
+    if (el) el.classList.remove('d-none');
+}
+function closeScheduleTodoCardModal() {
+    scheduleTodoCardModalRecordId = null;
+    var el = document.getElementById('scheduleTodoCardModal');
+    if (el) el.classList.add('d-none');
+}
+function scheduleTodoCardAction(action) {
+    var id = scheduleTodoCardModalRecordId;
+    closeScheduleTodoCardModal();
+    if (id == null) return;
+    if (action === 'edit') editHistoryItem(id);
+    else if (action === 'receipt') loadQuoteFromHistory(id);
+    else if (action === 'close') closeOrder(id);
+}
+// 结单：预留实现（如标记订单完成、归档等），目前仅占位无实际逻辑
+function closeOrder(recordId) {
+    // TODO: 结单业务逻辑
+    if (typeof console !== 'undefined') console.log('结单', recordId);
 }
 
 // 加载历史记录（增强版：支持筛选、排序、分组）

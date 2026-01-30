@@ -48,10 +48,20 @@
             <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" fill="none" stroke="currentColor" stroke-width="2"/>
             <path d="M9 9l6 6M15 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
+        <!-- 结单/完成：圆圈对勾（推荐用于结单） -->
+        <symbol id="i-check-circle" viewBox="0 0 24 24">
+            <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 12l3 3 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
         <symbol id="i-export" viewBox="0 0 24 24">
             <path d="M12 3v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             <path d="M8 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-import" viewBox="0 0 24 24">
+            <path d="M12 21v-12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M8 17l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M5 10V5h14v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
         </symbol>
         <symbol id="i-back" viewBox="0 0 24 24">
             <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -242,6 +252,15 @@
         <symbol id="i-calc-solid" viewBox="0 0 24 24">
             <path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 4h6a1 1 0 0 1 0 2H9a1 1 0 0 1 0-2Zm0 5h1a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Zm5 0h1a1 1 0 1 1 0 2h-1a1 1 0 1 1 0-2Zm-5 4h1a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Zm5 0h1a1 1 0 1 1 0 2h-1a1 1 0 1 1 0-2Z" fill="currentColor"/>
         </symbol>
+
+        <!-- 排单区「记录」「统计」线性图标（固定：方案 C + 方案 E） -->
+        <symbol id="i-record-c" viewBox="0 0 24 24">
+            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-stats-e" viewBox="0 0 24 24">
+            <path d="M3 3v18h18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 14l4-4 4 2 6-6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
     </svg>
 
     <div class="app-container">
@@ -268,7 +287,7 @@
             <div id="calculatorDrawer" class="calculator-drawer">
                 <div class="calculator-drawer-panel">
                     <div class="calculator-drawer-header">
-                        <button type="button" class="btn-icon btn--icon calculator-drawer-close" onclick="closeCalculatorDrawer()" aria-label="关闭计算面板" title="关闭">
+                        <button type="button" class="btn-icon btn--icon btn-close-flat calculator-drawer-close" onclick="closeCalculatorDrawer()" aria-label="关闭计算面板" title="关闭">
                             <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
                             <span class="sr-only">关闭</span>
                         </button>
@@ -300,6 +319,10 @@
                         </div>
                     </div>
                     <div class="form-row">
+                        <div class="form-group">
+                            <label>下单时间</label>
+                            <span id="orderTimeDisplay" class="order-time-display" aria-live="polite">—</span>
+                        </div>
                         <div class="form-group">
                             <label for="startTime">开始时间</label>
                             <input type="date" id="startTime" onchange="calculateDeadline()">
@@ -385,7 +408,7 @@
                     </div>
                 </div>
 
-                <div class="section">
+                <div class="section section-products">
                     <h2>制品信息</h2>
                     <div id="productsContainer">
                         <!-- 制品信息将通过JavaScript动态添加 -->
@@ -426,10 +449,14 @@
                             <input type="date" id="scheduleTitleDateInput" class="schedule-title-date-input">
                             <button type="button" class="btn secondary schedule-title-next" onclick="scheduleCalendarNextMonth()">›</button>
                         </div>
-                        <div class="d-flex gap-2">
+                        <div class="schedule-title-actions d-flex items-center">
                             <button type="button" class="btn secondary schedule-title-today-pill d-none" onclick="scheduleTodoBackToToday()">Today</button>
-                            <button type="button" class="btn secondary" id="openHistoryRecordBtn" onclick="openRecordPage()">记录</button>
-                            <button type="button" class="btn secondary" id="openStatsBtn" onclick="openStatsPage()">统计</button>
+                            <button type="button" class="btn secondary schedule-title-icon-btn" id="openHistoryRecordBtn" onclick="openRecordPage()" aria-label="记录" title="记录">
+                                <svg class="icon" aria-hidden="true"><use href="#i-record-c"></use></svg>
+                            </button>
+                            <button type="button" class="btn secondary schedule-title-icon-btn schedule-title-icon-btn--stats" id="openStatsBtn" onclick="openStatsPage()" aria-label="统计" title="统计">
+                                <svg class="icon" aria-hidden="true"><use href="#i-stats-e"></use></svg>
+                            </button>
                         </div>
                     </div>
                     <div id="scheduleCalendar" class="schedule-calendar">
@@ -449,6 +476,28 @@
                     </div>
                 </div>
 
+                <!-- 排单卡片操作弹窗：横排 修改 / 小票 / 结单（图标与记录页一致） -->
+                <div id="scheduleTodoCardModal" class="schedule-todo-card-modal d-none">
+                    <div class="schedule-todo-card-modal-overlay" onclick="closeScheduleTodoCardModal()"></div>
+                    <div class="schedule-todo-card-modal-content">
+                        <div class="schedule-todo-card-modal-body">
+                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('edit')">
+                                <svg class="icon sm" aria-hidden="true"><use href="#i-edit"></use></svg>
+                                <span>修改</span>
+                            </button>
+                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('receipt')">
+                                <svg class="icon sm" aria-hidden="true"><use href="#i-receipt"></use></svg>
+                                <span>小票</span>
+                            </button>
+                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('close')">
+                                <svg class="icon sm" aria-hidden="true"><use href="#i-check-circle"></use></svg>
+                                <span>结单</span>
+                            </button>
+                        </div>
+                        <button type="button" class="schedule-todo-card-modal-close schedule-todo-card-modal-close-float" onclick="closeScheduleTodoCardModal()" aria-label="关闭">×</button>
+                    </div>
+                </div>
+
                 <!-- 隐藏的主小票真源区域（仅用于渲染与截图，不在排单主视图中展示） -->
                 <div class="section quote-main-receipt-section">
                     <div id="quoteContent" class="quote-content">
@@ -461,7 +510,7 @@
                     <div class="receipt-drawer-overlay" onclick="handleReceiptDrawerClose()"></div>
                     <div class="receipt-drawer-panel">
                         <div class="receipt-drawer-header">
-                            <button type="button" class="btn-icon btn--icon receipt-drawer-close" onclick="handleReceiptDrawerClose()" aria-label="关闭小票页" title="关闭">
+                            <button type="button" class="btn-icon btn--icon btn-close-flat receipt-drawer-close" onclick="handleReceiptDrawerClose()" aria-label="关闭小票页" title="关闭">
                                 <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
                                 <span class="sr-only">关闭</span>
                             </button>
@@ -941,7 +990,7 @@
                     <div class="history-record-content">
                         <div class="history-record-header">
                             <h2>记录</h2>
-                            <button type="button" class="btn-icon btn--icon" onclick="closeHistoryRecordModal()" aria-label="关闭" title="关闭">
+                            <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeHistoryRecordModal()" aria-label="关闭" title="关闭">
                                 <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
                                 <span class="sr-only">关闭</span>
                             </button>
@@ -968,7 +1017,7 @@
                                 <div class="filter-drawer-content">
                                     <div class="filter-drawer-header">
                                         <h3>筛选与排序</h3>
-                                        <button class="btn-icon btn--icon" onclick="closeHistoryFilterDrawer()" aria-label="关闭" title="关闭">
+                                        <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeHistoryFilterDrawer()" aria-label="关闭" title="关闭">
                                             <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
                                             <span class="sr-only">关闭</span>
                                         </button>
@@ -1045,12 +1094,23 @@
                 <div class="schedule-section">
                     <div class="schedule-toolbar d-flex justify-between items-center">
                         <h2 class="schedule-title">记录</h2>
-                        <div class="d-flex gap-2">
-                            <button type="button" class="btn secondary btn--icon" onclick="exportRecordToExcel()" aria-label="导出Excel" title="导出Excel">
-                                <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
-                                <span class="sr-only">导出Excel</span>
+                        <div class="d-flex gap-2 items-center">
+                            <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
+                            <button type="button" class="btn secondary btn--icon" onclick="document.getElementById('recordSyncImportInput').click()" aria-label="导入数据" title="导入数据（从另一端导出的 JSON 同步）">
+                                <svg class="icon" aria-hidden="true"><use href="#i-import"></use></svg>
+                                <span class="sr-only">导入</span>
                             </button>
-                            <button type="button" class="btn secondary btn--icon" onclick="showPage('quote')" aria-label="返回" title="返回">
+                            <div class="record-export-wrap" style="position:relative">
+                                <button type="button" class="btn secondary btn--icon" id="recordExportBtn" onclick="toggleRecordExportPopover()" aria-label="导出" title="导出" aria-expanded="false" aria-haspopup="true">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
+                                    <span class="sr-only">导出</span>
+                                </button>
+                                <div id="recordExportPopover" class="record-export-popover d-none" aria-hidden="true">
+                                    <button type="button" class="record-export-opt" onclick="exportSyncData(); closeRecordExportPopover();">导出 JSON（同步）</button>
+                                    <button type="button" class="record-export-opt" onclick="exportRecordToExcel(); closeRecordExportPopover();">导出 Excel</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-back-flat" onclick="showPage('quote')" aria-label="返回" title="返回">
                                 <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
                                 <span class="sr-only">返回</span>
                             </button>
@@ -1059,11 +1119,13 @@
                     <div class="form-row">
                         <div class="form-group w-full">
                             <div class="d-flex gap-2">
-                                <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="flex-1" oninput="applyRecordFilters()">
-                                <button class="btn secondary btn--icon" onclick="clearRecordSearch()" aria-label="清空搜索" title="清空">
-                                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
-                                    <span class="sr-only">清空</span>
-                                </button>
+                                <div class="record-search-wrap flex-1" id="recordSearchWrap">
+                                    <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="record-search-input" oninput="applyRecordFilters(); toggleRecordSearchClear();">
+                                    <button type="button" class="record-search-clear" id="recordSearchClearBtn" onclick="clearRecordSearch()" aria-label="清空搜索" title="清空">
+                                        <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                                        <span class="sr-only">清空</span>
+                                    </button>
+                                </div>
                                 <button class="btn secondary btn--icon" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
                                     <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
                                     <span class="sr-only" id="recordFilterBtnText">筛选</span>
@@ -1077,7 +1139,7 @@
                         <div class="filter-drawer-content">
                             <div class="filter-drawer-header">
                                 <h3>筛选与排序</h3>
-                                <button class="btn-icon btn--icon" onclick="closeRecordFilterDrawer()" aria-label="关闭" title="关闭">
+                                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeRecordFilterDrawer()" aria-label="关闭" title="关闭">
                                     <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
                                     <span class="sr-only">关闭</span>
                                 </button>
@@ -1131,9 +1193,6 @@
                                         <button class="btn danger flex-1" id="recordBatchDeleteBtn" onclick="batchDeleteHistory()" disabled>批量删除</button>
                                     </div>
                                 </div>
-                                <div class="filter-section">
-                                    <button class="btn w-full" onclick="exportRecordToExcel(); closeRecordFilterDrawer();">导出Excel</button>
-                                </div>
                             </div>
                             <div class="filter-drawer-footer">
                                 <button class="btn secondary flex-1" onclick="resetRecordFilters()">重置</button>
@@ -1151,7 +1210,7 @@
             <div id="stats" class="page">
                 <div class="schedule-section stats-page">
                     <header class="stats-header d-flex justify-between items-center">
-                        <button type="button" class="btn secondary btn--icon stats-back" onclick="showPage('quote')" aria-label="返回" title="返回">
+                        <button type="button" class="btn btn-back-flat stats-back" onclick="showPage('quote')" aria-label="返回" title="返回">
                             <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
                             <span class="sr-only">返回</span>
                         </button>
@@ -1168,24 +1227,24 @@
                         </div>
                     </header>
                     <div class="stats-quick-row d-flex items-center">
-                        <span class="stats-quick-label">时间</span>
                         <button type="button" class="btn secondary small stats-quick-btn" data-range="today" onclick="setStatsQuickRange('today')">今天</button>
                         <button type="button" class="btn secondary small stats-quick-btn" data-range="week" onclick="setStatsQuickRange('week')">7天</button>
                         <button type="button" class="btn secondary small stats-quick-btn" data-range="month" onclick="setStatsQuickRange('month')">30天</button>
                         <button type="button" class="btn secondary small stats-quick-btn" data-range="thisMonth" onclick="setStatsQuickRange('thisMonth')">本月</button>
                         <button type="button" class="btn secondary small stats-quick-btn" data-range="lastMonth" onclick="setStatsQuickRange('lastMonth')">上月</button>
-                        <span class="stats-quick-custom">
-                            <input type="date" id="statsStartDate" class="filter-input" aria-label="开始日期">
-                            <span class="stats-quick-sep">至</span>
-                            <input type="date" id="statsEndDate" class="filter-input" aria-label="结束日期">
-                        </span>
+                        <button type="button" class="btn secondary small stats-quick-btn" id="statsCustomDateToggle" onclick="toggleStatsCustomDate()">自定义</button>
+                    </div>
+                    <div id="statsCustomDateWrap" class="stats-quick-custom-wrap d-none">
+                        <input type="date" id="statsStartDate" class="filter-input" aria-label="开始日期" onchange="onStatsQuickCustomChange()">
+                        <span class="stats-quick-sep">至</span>
+                        <input type="date" id="statsEndDate" class="filter-input" aria-label="结束日期" onchange="onStatsQuickCustomChange()">
                     </div>
                     <div id="statsFilterDrawer" class="history-filter-drawer">
                         <div class="filter-drawer-overlay" onclick="closeStatsFilterDrawer()"></div>
                         <div class="filter-drawer-content">
                             <div class="filter-drawer-header">
                                 <h3>筛选与口径</h3>
-                                <button type="button" class="btn-icon btn--icon" onclick="closeStatsFilterDrawer()" aria-label="关闭"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg></button>
+                                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeStatsFilterDrawer()" aria-label="关闭" title="关闭"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg><span class="sr-only">关闭</span></button>
                             </div>
                             <div class="filter-drawer-body">
                                 <div class="filter-section">

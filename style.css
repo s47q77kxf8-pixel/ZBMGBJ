@@ -3469,6 +3469,64 @@ input:checked + .toggle-slider:before {
     display: flex;
 }
 
+/* 记录页搜索框：内嵌清空（与制品选择清空图标一致） */
+.record-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+.record-search-input {
+    width: 100%;
+    padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    background: var(--card-bg);
+    color: var(--text-color);
+}
+.record-search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+}
+.record-search-wrap .record-search-clear {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    min-width: 1.5rem !important;
+    min-height: 1.5rem !important;
+    padding: 0 !important;
+    border: none;
+    background: #94a3b8;
+    color: white;
+    border-radius: 50%;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: all 0.2s ease;
+    opacity: 0.85;
+    box-sizing: border-box;
+}
+.record-search-wrap .record-search-clear .icon {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+}
+.record-search-wrap .record-search-clear:hover {
+    background: #64748b;
+    opacity: 1;
+    transform: translateY(-50%) scale(1.1);
+}
+.record-search-wrap.has-value .record-search-clear {
+    display: flex;
+}
+
 .searchable-select-arrow {
     position: absolute;
     right: 0.75rem;
@@ -4325,6 +4383,41 @@ input:checked + .toggle-slider:before {
 .schedule-title-next:active {
     background: rgba(0, 0, 0, 0.08);
 }
+
+/* 排单栏右侧：记录/统计图标·扁平无框、紧凑 */
+.schedule-title-actions {
+    gap: 0.2rem;
+}
+.schedule-title-actions .schedule-title-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    min-width: 0;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 6px;
+    color: var(--text-color);
+}
+.schedule-title-actions .schedule-title-icon-btn .icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+.schedule-title-actions .schedule-title-icon-btn--stats .icon {
+    width: 14px;
+    height: 14px;
+}
+.schedule-title-actions .schedule-title-icon-btn:hover {
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+.schedule-title-actions .schedule-title-icon-btn:active {
+    background: rgba(0, 0, 0, 0.08) !important;
+}
+
 .schedule-title-btn {
     appearance: none;
     border: none;
@@ -4361,10 +4454,20 @@ input:checked + .toggle-slider:before {
     height: 1px;
 }
 .schedule-title-today-pill {
-    border-radius: 999px;
-    padding: 0.35rem 0.75rem;
-    font-size: 0.78rem;
+    border-radius: 6px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.62rem;
     line-height: 1;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--text-color);
+}
+.schedule-title-actions .schedule-title-today-pill:hover {
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+.schedule-title-actions .schedule-title-today-pill:active {
+    background: rgba(0, 0, 0, 0.08) !important;
 }
 .schedule-calendar {
     background: var(--card-bg);
@@ -4641,7 +4744,7 @@ input:checked + .toggle-slider:before {
     /* 取消内部滚动，由整个页面滚动承载 */
     padding-right: 2px;
 }
-/* 方案3 紧凑单行：每 todo 一卡片，首行 日期 | 范围 | 客户 · 进度，次行制品 */
+/* 方案3 紧凑：首行 圆点 日期 | 时间范围 | 客户 · 进度，次行制品；圆点颜色跟随彩条 */
 .schedule-todo-card {
     display: flex;
     padding: 0.36rem 0.6rem;
@@ -4654,56 +4757,35 @@ input:checked + .toggle-slider:before {
     cursor: pointer;
 }
 .schedule-todo-card-main {
-    display: grid;
-    grid-template-columns: minmax(2.9rem, auto) 1px 1fr;
-    grid-template-rows: auto auto;
-    gap: 0 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem 0;
     width: 100%;
     min-width: 0;
-    align-items: stretch;
-}
-.schedule-todo-card-month {
-    grid-column: 1;
-    grid-row: 1;
-    align-self: center;
-    font-size: 0.65rem;
-    color: var(--text-light);
-    line-height: 1.1;
-    text-align: right;
-    padding-right: 0.1rem;
-}
-.schedule-todo-card-day {
-    grid-column: 1;
-    grid-row: 2;
-    align-self: center;
-    margin-top: -0.28rem;
-    font-size: 1.6rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-color);
-    line-height: 1.1;
-    text-align: right;
-    padding-right: 0.1rem;
-}
-.schedule-todo-card-sep {
-    grid-column: 2;
-    grid-row: 1 / -1;
-    width: 1px;
-    background: rgba(0, 0, 0, 0.12);
-    justify-self: center;
-    align-self: stretch;
 }
 .schedule-todo-card-head {
-    grid-column: 3;
-    grid-row: 1;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.2rem 0.35rem;
     min-width: 0;
-    line-height: 1.1;
+    line-height: 1.2;
 }
-.schedule-todo-card-sep-inline {
+.schedule-todo-card-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-right: 0.15rem;
+}
+.schedule-todo-card-date {
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-color);
+    flex-shrink: 0;
+}
+.schedule-todo-card-sep {
     width: 1px;
     height: 10px;
     background: rgba(0, 0, 0, 0.12);
@@ -4714,10 +4796,21 @@ input:checked + .toggle-slider:before {
     color: var(--text-light);
     font-variant-numeric: tabular-nums;
 }
+.schedule-todo-card-sep-inline {
+    width: 1px;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.12);
+    flex-shrink: 0;
+}
 .schedule-todo-card-client {
     font-size: 0.9rem;
     font-weight: 500;
     color: var(--text-color);
+    flex-shrink: 0;
+}
+.schedule-todo-card-sep-dot {
+    font-size: 0.75rem;
+    color: var(--text-light);
     flex-shrink: 0;
 }
 .schedule-todo-card-progress {
@@ -4733,17 +4826,15 @@ input:checked + .toggle-slider:before {
     flex-shrink: 0;
 }
 .schedule-todo-card-products {
-    grid-column: 3;
-    grid-row: 2;
     display: flex;
     flex-wrap: nowrap;
     gap: 0.15rem 0.35rem;
-    margin-top: -0.1rem;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
     min-width: 0;
+    padding-left: 1.35rem;
 }
 .schedule-todo-row {
     display: flex;
@@ -4756,6 +4847,7 @@ input:checked + .toggle-slider:before {
 .schedule-todo-chip {
     padding: 0.04rem 0.24rem;
     border-radius: 999px;
+    cursor: pointer;
 }
 .schedule-todo-row.schedule-todo-done .schedule-todo-label {
     text-decoration: line-through;
@@ -4783,6 +4875,125 @@ input:checked + .toggle-slider:before {
     font-size: 0.9rem;
     margin: 0;
     padding: 0.5rem 0;
+}
+
+/* 排单卡片操作弹窗 */
+.schedule-todo-card-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none;
+}
+.schedule-todo-card-modal:not(.d-none) {
+    pointer-events: auto;
+}
+.schedule-todo-card-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+}
+.schedule-todo-card-modal-content {
+    position: relative;
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 0.75rem 1rem;
+    overflow: visible;
+    animation: scheduleTodoCardModalIn 0.2s ease-out;
+}
+@keyframes scheduleTodoCardModalIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+}
+.schedule-todo-card-modal-close {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 1.25rem;
+    color: var(--text-light);
+    cursor: pointer;
+    line-height: 1;
+    border-radius: 6px;
+}
+.schedule-todo-card-modal-close:hover {
+    color: var(--text-color);
+    background: rgba(0, 0, 0, 0.06);
+}
+.schedule-todo-card-modal-close-float {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+}
+.schedule-todo-card-modal-body {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 0.75rem 1rem;
+}
+.schedule-todo-card-modal-btn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.6rem;
+    min-width: 3rem;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: background 0.15s;
+}
+.schedule-todo-card-modal-btn .icon {
+    width: 1.35rem;
+    height: 1.35rem;
+}
+.schedule-todo-card-modal-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+/* 记录页：导出下拉（JSON 同步 / Excel） */
+.record-export-wrap {
+    position: relative;
+}
+.record-export-popover {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.25rem;
+    min-width: 140px;
+    padding: 0.35rem;
+    background: var(--bg-color);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.record-export-opt {
+    display: block;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    font-size: 0.8rem;
+    color: var(--text-color);
+    text-align: left;
+    cursor: pointer;
+}
+.record-export-opt:hover {
+    background: rgba(0, 0, 0, 0.05);
 }
 
 /* 价格历史记录弹窗 */
@@ -5059,9 +5270,9 @@ input:checked + .toggle-slider:before {
 }
 .stats-quick-btn.active,
 .stats-quick-btn:focus-visible {
-    background: var(--primary-color);
-    color: #fff;
-    border-color: var(--primary-color);
+    background: var(--primary-color) !important;
+    color: #fff !important;
+    border-color: var(--primary-color) !important;
 }
 .stats-quick-custom {
     flex-shrink: 0;
@@ -5372,39 +5583,15 @@ input:checked + .toggle-slider:before {
         overflow: visible;
     }
     .schedule-todo-card-main {
-        display: grid;
-        grid-template-columns: minmax(2.5rem, auto) 1px 1fr;
-        grid-template-rows: auto auto;
-        gap: 0 0.35rem;
-        align-items: stretch;
-    }
-    .schedule-todo-card-month {
-        grid-column: 1;
-        grid-row: 1;
-        align-self: center;
-        font-size: 0.6rem;
-    }
-    .schedule-todo-card-day {
-        grid-column: 1;
-        grid-row: 2;
-        align-self: center;
-        font-size: 1.45rem;
-    }
-    .schedule-todo-card-sep {
-        grid-column: 2;
-        grid-row: 1 / -1;
+        gap: 0.2rem 0;
     }
     .schedule-todo-card-head {
-        grid-column: 3;
-        grid-row: 1;
         gap: 0.16rem 0.3rem;
         flex-wrap: wrap;
     }
     .schedule-todo-card-products {
-        grid-column: 3;
-        grid-row: 2;
         gap: 0.12rem 0.3rem;
-        margin-top: -0.1rem;
+        padding-left: 1.2rem;
     }
     .schedule-todo-card-range {
         font-size: 0.75rem;
@@ -5441,16 +5628,14 @@ input:checked + .toggle-slider:before {
         padding: 0.24rem 0.4rem;
     }
     .schedule-todo-card-main {
-        grid-template-columns: minmax(2.2rem, auto) 1px 1fr;
-        gap: 0 0.3rem;
+        gap: 0.18rem 0;
     }
-    .schedule-todo-card-month {
-        align-self: center;
-        font-size: 0.58rem;
+    .schedule-todo-card-dot {
+        width: 5px;
+        height: 5px;
     }
-    .schedule-todo-card-day {
-        align-self: center;
-        font-size: 1.35rem;
+    .schedule-todo-card-products {
+        padding-left: 1.1rem;
     }
     .schedule-todo-card-range {
         font-size: 0.7rem;
