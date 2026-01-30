@@ -3630,11 +3630,13 @@ function openCalculatorDrawer() {
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
 
-    // 下单时间：默认当天（仅日期，可编辑）
+    // 下单时间：默认当天（仅日期，可编辑）；未改时提交/保存用实时时间
     var orderTimeInput = document.getElementById('orderTimeInput');
     if (orderTimeInput) {
         var today = new Date();
-        orderTimeInput.value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        var todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        orderTimeInput.value = todayStr;
+        window.calculatorOrderTimeDefault = todayStr;
     }
 
     // 每次打开时刷新计算页的选择器与系数
