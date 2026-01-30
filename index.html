@@ -320,16 +320,16 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>下单时间</label>
-                            <span id="orderTimeDisplay" class="order-time-display" aria-live="polite">—</span>
+                            <label for="orderTimeInput">下单时间</label>
+                            <input type="date" id="orderTimeInput" class="order-time-input" aria-label="下单时间" placeholder="yyyy/mm/dd">
                         </div>
                         <div class="form-group">
                             <label for="startTime">开始时间</label>
-                            <input type="date" id="startTime" onchange="calculateDeadline()">
+                            <input type="date" id="startTime" onchange="calculateDeadline()" placeholder="yyyy/mm/dd">
                         </div>
                         <div class="form-group">
                             <label for="deadline">截稿时间</label>
-                            <input type="date" id="deadline">
+                            <input type="date" id="deadline" placeholder="yyyy/mm/dd">
                         </div>
                     </div>
                 </div>
@@ -446,7 +446,7 @@
                                 <span class="schedule-title-month"></span>
                                 <span class="schedule-title-stats"></span>
                             </button>
-                            <input type="date" id="scheduleTitleDateInput" class="schedule-title-date-input">
+                            <input type="date" id="scheduleTitleDateInput" class="schedule-title-date-input" placeholder="yyyy/mm/dd">
                             <button type="button" class="btn secondary schedule-title-next" onclick="scheduleCalendarNextMonth()">›</button>
                         </div>
                         <div class="schedule-title-actions d-flex items-center">
@@ -489,12 +489,86 @@
                                 <svg class="icon sm" aria-hidden="true"><use href="#i-receipt"></use></svg>
                                 <span>小票</span>
                             </button>
+                            <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('accept')">
+                                <svg class="icon sm" aria-hidden="true"><use href="#i-check-circle"></use></svg>
+                                <span>接单</span>
+                            </button>
                             <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('close')">
                                 <svg class="icon sm" aria-hidden="true"><use href="#i-check-circle"></use></svg>
                                 <span>结单</span>
                             </button>
                         </div>
                         <button type="button" class="schedule-todo-card-modal-close schedule-todo-card-modal-close-float" onclick="closeScheduleTodoCardModal()" aria-label="关闭">×</button>
+                    </div>
+                </div>
+
+                <!-- 接单/结算弹窗 -->
+                <div id="settlementModal" class="settlement-modal d-none">
+                    <div class="settlement-modal-overlay" onclick="closeSettlementModal()"></div>
+                    <div class="settlement-modal-content">
+                        <div class="settlement-modal-header">
+                            <h3 id="settlementModalTitle">接单 / 结算</h3>
+                            <button type="button" class="settlement-modal-close" onclick="closeSettlementModal()" aria-label="关闭">×</button>
+                        </div>
+                        <div class="settlement-modal-body">
+                            <!-- 第一步：选择结算类型 -->
+                            <div id="settlementStep1" class="settlement-step">
+                                <p class="settlement-step-label">选择结算类型</p>
+                                <div class="settlement-type-options">
+                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="full_refund"> 单主撤单退全款</label>
+                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="waste_fee"> 废稿（收废稿费）</label>
+                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="normal"> 正常结单（按原价或折扣/免除）</label>
+                                </div>
+                            </div>
+                            <!-- 第二步：按类型展示表单项 -->
+                            <div id="settlementStep2" class="settlement-step d-none">
+                                <!-- 撤单退全款 -->
+                                <div id="settlementFormFullRefund" class="settlement-form d-none">
+                                    <label>备注（可选）<input type="text" id="settlementMemoRefund" class="settlement-input" placeholder="如撤单原因"></label>
+                                </div>
+                                <!-- 废稿 -->
+                                <div id="settlementFormWasteFee" class="settlement-form d-none">
+                                    <div class="settlement-waste-rule">
+                                        <p class="settlement-step-label">废稿费规则</p>
+                                        <select id="settlementWasteRule">
+                                            <option value="percent_total">按原总额比例</option>
+                                            <option value="percent_charged_only">仅参与计费且已做工艺的金额比例</option>
+                                            <option value="fixed_per_item">按件固定</option>
+                                        </select>
+                                    </div>
+                                    <div class="settlement-waste-params">
+                                        <label>比例（0~1，如 0.3=30%）<input type="number" id="settlementWasteRate" min="0" max="1" step="0.01" value="0.3"></label>
+                                        <label>按件金额（元）<input type="number" id="settlementFixedPerItem" min="0" step="0.01" value="0"></label>
+                                        <label>保底（元，可选）<input type="number" id="settlementWasteMin" min="0" step="0.01" placeholder="0"></label>
+                                        <label>封顶（元，可选）<input type="number" id="settlementWasteMax" min="0" step="0.01" placeholder="不封顶"></label>
+                                    </div>
+                                    <div id="settlementChargedIndices" class="settlement-charged-indices d-none">
+                                        <p class="settlement-step-label">参与计费的制品（不勾选则不收该件废稿费）</p>
+                                        <div id="settlementChargedList"></div>
+                                    </div>
+                                    <div id="settlementProcessDoneFlags" class="settlement-process-done d-none">
+                                        <p class="settlement-step-label">已做工艺（未做工艺不收取时勾选已做的）</p>
+                                        <div id="settlementProcessDoneList"></div>
+                                    </div>
+                                    <p id="settlementWastePreview" class="settlement-preview"></p>
+                                </div>
+                                <!-- 正常结单 -->
+                                <div id="settlementFormNormal" class="settlement-form d-none">
+                                    <label>结算折扣（元，从原价中减去）<input type="number" id="settlementDiscountAmount" min="0" step="0.01" value="0"></label>
+                                    <label class="settlement-checkbox"><input type="checkbox" id="settlementWaivedPlatformFee"> 免除平台费</label>
+                                    <div id="settlementWaivedOtherFeesWrap" class="d-none">
+                                        <p class="settlement-step-label">免除的其他费用</p>
+                                        <div id="settlementWaivedOtherFeesList"></div>
+                                    </div>
+                                    <p id="settlementNormalPreview" class="settlement-preview"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settlement-modal-footer">
+                            <button type="button" id="settlementBtnBack" class="btn secondary d-none" onclick="settlementStepBack()">上一步</button>
+                            <button type="button" id="settlementBtnNext" class="btn primary" onclick="settlementStepNext()">下一步</button>
+                            <button type="button" id="settlementBtnConfirm" class="btn primary d-none" onclick="settlementConfirm()">确认</button>
+                        </div>
                     </div>
                 </div>
 
@@ -1033,9 +1107,9 @@
                                                 <option value="custom">自定义</option>
                                             </select>
                                             <div id="historyCustomDateRange" class="d-none mt-2">
-                                                <input type="date" id="historyStartDate" class="filter-input" onchange="onHistoryFilterChange()" placeholder="开始日期">
+                                                <input type="date" id="historyStartDate" class="filter-input" onchange="onHistoryFilterChange()" placeholder="yyyy/mm/dd">
                                                 <span class="mx-2">至</span>
-                                                <input type="date" id="historyEndDate" class="filter-input" onchange="onHistoryFilterChange()" placeholder="结束日期">
+                                                <input type="date" id="historyEndDate" class="filter-input" onchange="onHistoryFilterChange()" placeholder="yyyy/mm/dd">
                                             </div>
                                         </div>
                                         <div class="filter-section">
@@ -1155,9 +1229,9 @@
                                         <option value="custom">自定义</option>
                                     </select>
                                     <div id="recordCustomDateRange" class="d-none mt-2">
-                                        <input type="date" id="recordStartDate" class="filter-input" onchange="onRecordFilterChange()" placeholder="开始日期">
+                                        <input type="date" id="recordStartDate" class="filter-input" onchange="onRecordFilterChange()" placeholder="yyyy/mm/dd">
                                         <span class="mx-2">至</span>
-                                        <input type="date" id="recordEndDate" class="filter-input" onchange="onRecordFilterChange()" placeholder="结束日期">
+                                        <input type="date" id="recordEndDate" class="filter-input" onchange="onRecordFilterChange()" placeholder="yyyy/mm/dd">
                                     </div>
                                 </div>
                                 <div class="filter-section">
@@ -1235,9 +1309,9 @@
                         <button type="button" class="btn secondary small stats-quick-btn" id="statsCustomDateToggle" onclick="toggleStatsCustomDate()">自定义</button>
                     </div>
                     <div id="statsCustomDateWrap" class="stats-quick-custom-wrap d-none">
-                        <input type="date" id="statsStartDate" class="filter-input" aria-label="开始日期" onchange="onStatsQuickCustomChange()">
+                        <input type="date" id="statsStartDate" class="filter-input" aria-label="开始日期" onchange="onStatsQuickCustomChange()" placeholder="yyyy/mm/dd">
                         <span class="stats-quick-sep">至</span>
-                        <input type="date" id="statsEndDate" class="filter-input" aria-label="结束日期" onchange="onStatsQuickCustomChange()">
+                        <input type="date" id="statsEndDate" class="filter-input" aria-label="结束日期" onchange="onStatsQuickCustomChange()" placeholder="yyyy/mm/dd">
                     </div>
                     <div id="statsFilterDrawer" class="history-filter-drawer">
                         <div class="filter-drawer-overlay" onclick="closeStatsFilterDrawer()"></div>
@@ -1258,9 +1332,9 @@
                                         <option value="custom">自定义</option>
                                     </select>
                                     <div id="statsCustomDateRange" class="d-none mt-2">
-                                        <input type="date" id="statsCustomStart" class="filter-input" onchange="onStatsFilterChange()">
+                                        <input type="date" id="statsCustomStart" class="filter-input" onchange="onStatsFilterChange()" placeholder="yyyy/mm/dd">
                                         <span class="mx-2">至</span>
-                                        <input type="date" id="statsCustomEnd" class="filter-input" onchange="onStatsFilterChange()">
+                                        <input type="date" id="statsCustomEnd" class="filter-input" onchange="onStatsFilterChange()" placeholder="yyyy/mm/dd">
                                     </div>
                                 </div>
                                 <div class="filter-section">

@@ -280,6 +280,33 @@ body {
     margin-bottom: 1rem;
 }
 
+.calculator-content .order-time-display,
+.calculator-content .order-time-input {
+    display: inline-block;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    font-variant-numeric: tabular-nums;
+}
+.calculator-content .order-time-input {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-color);
+    min-width: 10rem;
+}
+.calculator-content .order-time-input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+.calculator-content .section-products {
+    padding-left: 0.5rem;
+}
+
+.calculator-content .section-products .product-item {
+    padding-left: 0.5rem !important;
+}
+
 /* 抽屉打开状态 */
 .calculator-drawer.open {
     pointer-events: auto;
@@ -4960,6 +4987,146 @@ input:checked + .toggle-slider:before {
     background: rgba(0, 0, 0, 0.06);
 }
 
+/* 接单/结算弹窗 */
+.settlement-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.settlement-modal:not(.d-none) {
+    display: flex;
+}
+.settlement-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+}
+.settlement-modal-content {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow: auto;
+    background: var(--bg-color);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+}
+.settlement-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.settlement-modal-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+.settlement-modal-close {
+    border: none;
+    background: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-color);
+    opacity: 0.7;
+}
+.settlement-modal-close:hover {
+    opacity: 1;
+}
+.settlement-modal-body {
+    padding: 1.25rem;
+    flex: 1;
+    overflow: auto;
+}
+.settlement-step-label {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+    color: var(--text-color);
+}
+.settlement-type-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.settlement-type-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.03);
+}
+.settlement-type-option:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+.settlement-form label {
+    display: block;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+}
+.settlement-form label.settlement-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.settlement-input {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+.settlement-waste-rule select,
+.settlement-waste-params input {
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+.settlement-waste-params label,
+.settlement-waste-rule {
+    display: block;
+    margin-bottom: 0.75rem;
+}
+.settlement-charged-indices,
+.settlement-process-done {
+    margin-top: 0.75rem;
+}
+.settlement-charged-indices label,
+.settlement-process-done label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+}
+.settlement-preview {
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background: #ecfdf5;
+    border-radius: 6px;
+    font-weight: 500;
+    color: #065f46;
+}
+.settlement-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
 /* 记录页：导出下拉（JSON 同步 / Excel） */
 .record-export-wrap {
     position: relative;
@@ -5159,6 +5326,18 @@ input:checked + .toggle-slider:before {
     color: #b91c1c;
     background: #fef2f2;
     border-color: #fecaca;
+}
+
+.record-status--cancelled {
+    color: #6b7280;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.record-status--settled {
+    color: #065f46;
+    background: #ecfdf5;
+    border-color: #6ee7b7;
 }
 
 .record-item-badges {

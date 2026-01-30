@@ -2647,8 +2647,20 @@ function toggleRecordSearchClear() {
     if (input.value.trim()) wrap.classList.add('has-value'); else wrap.classList.remove('has-value');
 }
 
+// 接单/结算信息（可选）：settlement 无或未设置视为未接单
+// settlement: { type: 'full_refund'|'waste_fee'|'normal', amount, memo, at, wasteFee?, discount?, waivedPlatformFee?, waivedOtherFees? }
 function getRecordProgressStatus(item) {
     if (!item) return { text: '未开始', className: 'record-status--not-started', pending: false, overdue: false };
+    // 已接单/结算：优先显示结算状态
+    if (item.settlement && item.settlement.type === 'full_refund') {
+        return { text: '已撤单', className: 'record-status--cancelled', pending: false, overdue: false };
+    }
+    if (item.settlement && (item.settlement.type === 'normal' || item.settlement.type === 'waste_fee')) {
+        return { text: '已结单', className: 'record-status--settled', pending: false, overdue: false };
+    }
+    if (item.status === 'closed') {
+        return { text: '已结单', className: 'record-status--settled', pending: false, overdue: false };
+    }
     ensureProductDoneStates(item);
     const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
     const total = states.length;
@@ -3618,6 +3630,13 @@ function openCalculatorDrawer() {
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
 
+    // 下单时间：默认当天（仅日期，可编辑）
+    var orderTimeInput = document.getElementById('orderTimeInput');
+    if (orderTimeInput) {
+        var today = new Date();
+        orderTimeInput.value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    }
+
     // 每次打开时刷新计算页的选择器与系数
     updateCalculatorBuiltinSelects();
     updateCalculatorCoefficientSelects();
@@ -4372,7 +4391,7 @@ function calculatePrice() {
         totalWithCoefficients: totalWithCoefficients,
         totalBeforePlatformFee: totalBeforePlatformFee,
         finalTotal: finalTotal,
-        timestamp: new Date().toISOString()
+        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; if (v) { var d = new Date(v + 'T00:00:00'); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(); } return new Date().toISOString(); })()
     };
     
     // 生成报价单（主小票区域）
@@ -5299,7 +5318,9 @@ function saveToHistory() {
                 ...quoteData,
                 id: window.editingHistoryId,
                 timestamp: existing.timestamp,
-                productDoneStates: doneStates
+                productDoneStates: doneStates,
+                settlement: existing.settlement,
+                status: existing.status
             };
             showGlobalToast('排单已更新！');
         } else {
@@ -5614,6 +5635,8 @@ var SCHEDULE_BAR_COLORS = [
     'rgba(195, 245, 225, 0.38)'
 ];
 var SCHEDULE_BAR_TEXT_COLORS = ['#2d4a6b', '#2d5c5c', '#5c4d28', '#5c3048', '#3d2d5c', '#2d5c68', '#5c2828', '#4a3d68', '#5c4430', '#2d6850'];
+// 小圆点：比彩条深、比字色浅，偏浅亮
+var SCHEDULE_BAR_DOT_COLORS = ['#7eb0e8', '#6dc4c4', '#c9b56a', '#c2849a', '#9d7ec9', '#6ab4c4', '#c47a7a', '#9d8ec9', '#c9a07a', '#6dc49a'];
 
 // 按星期视图：同周内条带轨道分配，最多 3 条（一行一天最多显示 3 个）
 function assignWeekBarsToTracks(segments) {
@@ -5847,9 +5870,11 @@ function renderScheduleTodoSection() {
         const total = products.length + gifts.length;
         let doneCount = 0;
         for (let i = 0; i < doneStates.length; i++) { if (doneStates[i]) doneCount++; }
-        const dateStr = item.deadline || item.startTime || item.timestamp;
-        const d = dateStr ? new Date(dateStr) : null;
-        const hasDate = d && !isNaN(d.getTime());
+        // todo 时间显示为下单时间（timestamp）
+        const orderDateStr = item.timestamp;
+        const orderDate = orderDateStr ? new Date(orderDateStr) : null;
+        const hasOrderDate = orderDate && !isNaN(orderDate.getTime());
+        var dateText = hasOrderDate ? (String(orderDate.getMonth() + 1).padStart(2, '0') + '.' + String(orderDate.getDate()).padStart(2, '0')) : '\u2014';
         let rangeText = '—';
         if (item.startTime && item.deadline) rangeText = toMd(item.startTime) + ' → ' + toMd(item.deadline);
         else if (item.deadline) rangeText = '截稿 ' + toMd(item.deadline);
@@ -5860,8 +5885,8 @@ function renderScheduleTodoSection() {
         const productItems = products.map((p, i) => ({ label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: i, done: !!doneStates[i] }));
         const giftItems = gifts.map((p, i) => ({ label: '[赠品] ' + (p.product || '赠品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: products.length + i, done: !!doneStates[products.length + i] }));
         const allItems = productItems.concat(giftItems).sort((a, b) => Number(a.done) - Number(b.done));
-        var dotColor = SCHEDULE_BAR_TEXT_COLORS[Math.abs(item.id) % SCHEDULE_BAR_TEXT_COLORS.length];
-        var dateText = hasDate ? (String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0')) : '\u2014';
+        var barIdx = Math.abs(item.id) % SCHEDULE_BAR_COLORS.length;
+        var dotColor = (typeof SCHEDULE_BAR_DOT_COLORS !== 'undefined' && SCHEDULE_BAR_DOT_COLORS.length) ? SCHEDULE_BAR_DOT_COLORS[barIdx] : SCHEDULE_BAR_TEXT_COLORS[barIdx];
         const chipHtml = allItems.map(({ label, idx, done }) =>
             '<div class="schedule-todo-row schedule-todo-chip' + (done ? ' schedule-todo-done' : '') + '">' +
             '<input type="checkbox" class="schedule-todo-checkbox" ' + (done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + idx + '" onchange="toggleScheduleTodoDone(this)">' +
@@ -5871,7 +5896,7 @@ function renderScheduleTodoSection() {
             + '<div class="schedule-todo-card" onclick="handleScheduleTodoCardClick(' + item.id + ', event)">'
             + '  <div class="schedule-todo-card-main">'
             + '    <div class="schedule-todo-card-head">'
-            + '      <span class="schedule-todo-card-dot" style="background-color:' + dotColor + '; opacity:0.6"></span>'
+            + '      <span class="schedule-todo-card-dot" style="background-color:' + dotColor + '"></span>'
             + '      <span class="schedule-todo-card-date">' + dateText + '</span>'
             + '      <span class="schedule-todo-card-sep"></span>'
             + '      <span class="schedule-todo-card-range">' + rangeText + '</span>'
@@ -5933,12 +5958,290 @@ function scheduleTodoCardAction(action) {
     if (id == null) return;
     if (action === 'edit') editHistoryItem(id);
     else if (action === 'receipt') loadQuoteFromHistory(id);
+    else if (action === 'accept') acceptOrder(id);
     else if (action === 'close') closeOrder(id);
 }
-// 结单：预留实现（如标记订单完成、归档等），目前仅占位无实际逻辑
+// 结单：方案 A — 仅标记订单为「已结单」，不涉及金额；接单负责完整结算
 function closeOrder(recordId) {
-    // TODO: 结单业务逻辑
-    if (typeof console !== 'undefined') console.log('结单', recordId);
+    var item = history.find(function (h) { return h.id === recordId; });
+    if (!item) return;
+    item.status = 'closed';
+    saveData();
+    if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
+    if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+    showGlobalToast('已标记为结单');
+}
+
+// ---------- 接单/结算弹窗 ----------
+var settlementModalRecordId = null;
+var settlementCurrentStep = 1;
+
+function acceptOrder(recordId) {
+    var item = history.find(function (h) { return h.id === recordId; });
+    if (!item) {
+        showGlobalToast('未找到该排单');
+        return;
+    }
+    if (item.settlement && (item.settlement.type === 'normal' || item.settlement.type === 'waste_fee')) {
+        showGlobalToast('该订单已接单结算');
+        return;
+    }
+    settlementModalRecordId = recordId;
+    settlementCurrentStep = 1;
+    document.querySelectorAll('input[name="settlementType"]').forEach(function (r) { r.checked = false; });
+    document.getElementById('settlementStep1').classList.remove('d-none');
+    document.getElementById('settlementStep2').classList.add('d-none');
+    document.getElementById('settlementBtnBack').classList.add('d-none');
+    document.getElementById('settlementBtnNext').classList.remove('d-none');
+    document.getElementById('settlementBtnConfirm').classList.add('d-none');
+    document.getElementById('settlementModal').classList.remove('d-none');
+}
+
+function closeSettlementModal() {
+    settlementModalRecordId = null;
+    document.getElementById('settlementModal').classList.add('d-none');
+}
+
+function getSettlementType() {
+    var r = document.querySelector('input[name="settlementType"]:checked');
+    return r ? r.value : null;
+}
+
+function settlementStepNext() {
+    var type = getSettlementType();
+    if (!type) {
+        showGlobalToast('请选择结算类型');
+        return;
+    }
+    settlementCurrentStep = 2;
+    document.getElementById('settlementStep1').classList.add('d-none');
+    document.getElementById('settlementStep2').classList.remove('d-none');
+    document.getElementById('settlementBtnBack').classList.remove('d-none');
+    document.getElementById('settlementBtnNext').classList.add('d-none');
+    document.getElementById('settlementBtnConfirm').classList.remove('d-none');
+
+    document.getElementById('settlementFormFullRefund').classList.add('d-none');
+    document.getElementById('settlementFormWasteFee').classList.add('d-none');
+    document.getElementById('settlementFormNormal').classList.add('d-none');
+    if (type === 'full_refund') {
+        document.getElementById('settlementFormFullRefund').classList.remove('d-none');
+        document.getElementById('settlementMemoRefund').value = '';
+    } else if (type === 'waste_fee') {
+        document.getElementById('settlementFormWasteFee').classList.remove('d-none');
+        settlementRenderWasteFeeForm();
+        settlementUpdateWastePreview();
+    } else {
+        document.getElementById('settlementFormNormal').classList.remove('d-none');
+        settlementRenderNormalForm();
+        settlementUpdateNormalPreview();
+    }
+}
+
+function settlementStepBack() {
+    settlementCurrentStep = 1;
+    document.getElementById('settlementStep2').classList.add('d-none');
+    document.getElementById('settlementStep1').classList.remove('d-none');
+    document.getElementById('settlementBtnBack').classList.add('d-none');
+    document.getElementById('settlementBtnNext').classList.remove('d-none');
+    document.getElementById('settlementBtnConfirm').classList.add('d-none');
+}
+
+function settlementRenderWasteFeeForm() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    ensureProductDoneStates(item);
+    var products = item.productPrices || [];
+    var gifts = item.giftPrices || [];
+    var allItems = products.map(function (p, i) { return { label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: i }; });
+    gifts.forEach(function (g, i) { allItems.push({ label: '[赠品] ' + (g.product || '赠品') + (g.quantity > 1 ? ' x ' + g.quantity : ''), idx: products.length + i }); });
+    var listEl = document.getElementById('settlementChargedList');
+    listEl.innerHTML = allItems.map(function (it) {
+        return '<label><input type="checkbox" class="settlement-charged-item" data-idx="' + it.idx + '" checked> ' + it.label + '</label>';
+    }).join('');
+    var doneStates = item.productDoneStates || [];
+    var processListEl = document.getElementById('settlementProcessDoneList');
+    var rule = document.getElementById('settlementWasteRule').value;
+    var showProcessDone = rule === 'percent_charged_only' || rule === 'fixed_per_item';
+    document.getElementById('settlementProcessDoneFlags').classList.toggle('d-none', !showProcessDone);
+    if (showProcessDone) {
+        processListEl.innerHTML = allItems.map(function (it, i) {
+            var done = !!doneStates[it.idx];
+            return '<label><input type="checkbox" class="settlement-process-done-item" data-idx="' + it.idx + '" ' + (done ? 'checked' : '') + '> ' + it.label + '</label>';
+        }).join('');
+    }
+    var showCharged = true;
+    document.getElementById('settlementChargedIndices').classList.toggle('d-none', !showCharged);
+    listEl.querySelectorAll('input').forEach(function (cb) {
+        cb.addEventListener('change', function () { settlementUpdateWastePreview(); });
+    });
+    processListEl.querySelectorAll('input').forEach(function (cb) {
+        cb.addEventListener('change', function () { settlementUpdateWastePreview(); });
+    });
+    document.getElementById('settlementWasteRule').addEventListener('change', function () { settlementRenderWasteFeeForm(); });
+    document.getElementById('settlementWasteRate').addEventListener('input', settlementUpdateWastePreview);
+    document.getElementById('settlementFixedPerItem').addEventListener('input', settlementUpdateWastePreview);
+    document.getElementById('settlementWasteMin').addEventListener('input', settlementUpdateWastePreview);
+    document.getElementById('settlementWasteMax').addEventListener('input', settlementUpdateWastePreview);
+}
+
+function computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, chargedIndices, processDoneFlags) {
+    var products = item.productPrices || [];
+    var gifts = item.giftPrices || [];
+    var allItems = products.concat(gifts);
+    ensureProductDoneStates(item);
+    var doneFlags = processDoneFlags || (item.productDoneStates || []).slice(0, allItems.length);
+    if (chargedIndices.length === 0) chargedIndices = allItems.map(function (_, i) { return i; });
+    var base = 0;
+    var count = 0;
+    if (rule === 'percent_total') {
+        var total = item.finalTotal != null ? item.finalTotal : (item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : 0);
+        if (chargedIndices.length < allItems.length) {
+            total = 0;
+            chargedIndices.forEach(function (i) {
+                if (allItems[i] && (allItems[i].productTotal != null)) total += Number(allItems[i].productTotal) || 0;
+            });
+        }
+        base = total * (parseFloat(rate) || 0);
+    } else if (rule === 'percent_charged_only') {
+        chargedIndices.forEach(function (i) {
+            if (doneFlags[i] && allItems[i] && (allItems[i].productTotal != null)) base += Number(allItems[i].productTotal) || 0;
+        });
+        base = base * (parseFloat(rate) || 0);
+    } else {
+        chargedIndices.forEach(function (i) {
+            if (doneFlags[i]) count++;
+        });
+        base = count * (parseFloat(fixedPerItem) || 0);
+    }
+    if (minAmount != null && minAmount !== '' && !isNaN(parseFloat(minAmount))) base = Math.max(base, parseFloat(minAmount));
+    if (maxAmount != null && maxAmount !== '' && !isNaN(parseFloat(maxAmount))) base = Math.min(base, parseFloat(maxAmount));
+    return Math.max(0, base);
+}
+
+function settlementUpdateWastePreview() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var rule = document.getElementById('settlementWasteRule').value;
+    var rate = document.getElementById('settlementWasteRate').value;
+    var fixedPerItem = document.getElementById('settlementFixedPerItem').value;
+    var minAmount = document.getElementById('settlementWasteMin').value;
+    var maxAmount = document.getElementById('settlementWasteMax').value;
+    var charged = [];
+    document.querySelectorAll('.settlement-charged-item:checked').forEach(function (cb) { charged.push(parseInt(cb.dataset.idx, 10)); });
+    var processDone = [];
+    var list = document.querySelectorAll('.settlement-process-done-item');
+    if (list.length) {
+        list.forEach(function (cb) { processDone[parseInt(cb.dataset.idx, 10)] = cb.checked; });
+    } else {
+        var doneStates = item.productDoneStates || [];
+        (item.productPrices || []).concat(item.giftPrices || []).forEach(function (_, i) { processDone[i] = !!doneStates[i]; });
+    }
+    var amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
+    document.getElementById('settlementWastePreview').textContent = '废稿费预览：¥' + amount.toFixed(2);
+}
+
+function settlementRenderNormalForm() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var otherFees = item.otherFees || [];
+    var wrap = document.getElementById('settlementWaivedOtherFeesWrap');
+    var listEl = document.getElementById('settlementWaivedOtherFeesList');
+    if (otherFees.length === 0) {
+        wrap.classList.add('d-none');
+    } else {
+        wrap.classList.remove('d-none');
+        listEl.innerHTML = otherFees.map(function (f, i) {
+            var name = (f && f.name) ? f.name : ('费用' + (i + 1));
+            return '<label class="settlement-checkbox"><input type="checkbox" class="settlement-waived-other" data-key="' + i + '" data-name="' + (name.replace(/"/g, '&quot;')) + '"> ' + name + '</label>';
+        }).join('');
+        listEl.querySelectorAll('input').forEach(function (cb) {
+            cb.addEventListener('change', function () { settlementUpdateNormalPreview(); });
+        });
+    }
+    document.getElementById('settlementDiscountAmount').value = '0';
+    document.getElementById('settlementWaivedPlatformFee').checked = false;
+    document.getElementById('settlementDiscountAmount').addEventListener('input', settlementUpdateNormalPreview);
+    document.getElementById('settlementWaivedPlatformFee').addEventListener('change', settlementUpdateNormalPreview);
+}
+
+function settlementUpdateNormalPreview() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var base = item.finalTotal != null ? item.finalTotal : 0;
+    var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
+    var waivedPlatform = document.getElementById('settlementWaivedPlatformFee').checked;
+    if (waivedPlatform && (item.platformFeeAmount != null)) base -= item.platformFeeAmount;
+    var otherFees = item.otherFees || [];
+    document.querySelectorAll('.settlement-waived-other:checked').forEach(function (cb) {
+        var key = parseInt(cb.dataset.key, 10);
+        if (otherFees[key] && otherFees[key].amount != null) base -= Number(otherFees[key].amount) || 0;
+    });
+    base -= discount;
+    document.getElementById('settlementNormalPreview').textContent = '实收预览：¥' + Math.max(0, base).toFixed(2);
+}
+
+function settlementConfirm() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) { closeSettlementModal(); return; }
+    var type = getSettlementType();
+    var at = new Date().toISOString();
+
+    if (type === 'full_refund') {
+        item.settlement = { type: 'full_refund', amount: 0, memo: (document.getElementById('settlementMemoRefund').value || '').trim(), at: at };
+    } else if (type === 'waste_fee') {
+        var rule = document.getElementById('settlementWasteRule').value;
+        var rate = parseFloat(document.getElementById('settlementWasteRate').value) || 0;
+        var fixedPerItem = parseFloat(document.getElementById('settlementFixedPerItem').value) || 0;
+        var minAmount = document.getElementById('settlementWasteMin').value;
+        var maxAmount = document.getElementById('settlementWasteMax').value;
+        var charged = [];
+        document.querySelectorAll('.settlement-charged-item:checked').forEach(function (cb) { charged.push(parseInt(cb.dataset.idx, 10)); });
+        var processDone = [];
+        document.querySelectorAll('.settlement-process-done-item').forEach(function (cb) { processDone[parseInt(cb.dataset.idx, 10)] = cb.checked; });
+        var amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
+        item.settlement = {
+            type: 'waste_fee',
+            amount: amount,
+            at: at,
+            wasteFee: {
+                rule: rule,
+                rate: rate,
+                chargedIndices: charged,
+                processDoneFlags: processDone,
+                fixedPerItem: fixedPerItem,
+                minAmount: minAmount === '' ? undefined : parseFloat(minAmount),
+                maxAmount: maxAmount === '' ? null : (maxAmount === '' ? null : parseFloat(maxAmount))
+            }
+        };
+    } else {
+        var base = item.finalTotal != null ? item.finalTotal : 0;
+        var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
+        var waivedPlatform = document.getElementById('settlementWaivedPlatformFee').checked;
+        var waivedOtherFees = [];
+        document.querySelectorAll('.settlement-waived-other:checked').forEach(function (cb) {
+            var name = cb.dataset.name;
+            if (name) waivedOtherFees.push(name);
+        });
+        if (waivedPlatform && (item.platformFeeAmount != null)) base -= item.platformFeeAmount;
+        (item.otherFees || []).forEach(function (f, i) {
+            if (f && f.name && waivedOtherFees.indexOf(f.name) !== -1 && f.amount != null) base -= Number(f.amount) || 0;
+        });
+        base -= discount;
+        item.settlement = {
+            type: 'normal',
+            amount: Math.max(0, base),
+            discount: discount,
+            waivedPlatformFee: waivedPlatform,
+            waivedOtherFees: waivedOtherFees,
+            at: at
+        };
+    }
+
+    saveData();
+    closeSettlementModal();
+    if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
+    if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+    showGlobalToast('接单结算已保存');
 }
 
 // 加载历史记录（增强版：支持筛选、排序、分组）
@@ -6472,6 +6775,13 @@ function editHistoryItem(id) {
             document.getElementById('contact').value = contactValue;
         } else {
             document.getElementById('contact').value = quote.contact;
+        }
+    }
+    if (quote.timestamp) {
+        var d = new Date(quote.timestamp);
+        var orderTimeInput = document.getElementById('orderTimeInput');
+        if (orderTimeInput && !isNaN(d.getTime())) {
+            orderTimeInput.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         }
     }
     if (quote.startTime) {
