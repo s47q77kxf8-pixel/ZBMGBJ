@@ -4523,6 +4523,9 @@ input:checked + .toggle-slider:before {
 }
 
 /* 历史记录项卡片（紧凑） */
+.history-item.history-item-clickable {
+    cursor: pointer;
+}
 .history-item {
     position: relative;
     padding: 0.5rem 0.6rem 0.5rem 2rem;
@@ -5181,7 +5184,7 @@ input:checked + .toggle-slider:before {
     padding: 0;
     border: 1px solid var(--border-color);
     background: var(--bg-color);
-    border-radius: 10px;
+    border-radius: 6px;
     color: var(--text-color);
     transition: background 0.2s, border-color 0.2s;
 }
@@ -5729,10 +5732,14 @@ input:checked + .toggle-slider:before {
 }
 .schedule-todo-card-modal-body {
     display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-direction: column;
+    gap: 0.5rem;
     align-items: center;
+}
+.schedule-todo-card-modal-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
     gap: 0.5rem 0.75rem;
 }
 .schedule-todo-card-modal-btn {
@@ -5886,18 +5893,22 @@ input:checked + .toggle-slider:before {
     gap: 0.5rem 1rem;
 }
 
-/* 撤单方式：简洁并排单选 */
+/* 撤单方式：选择框与文字同一行 */
 .settlement-cancel-method-row {
     display: flex;
+    flex-direction: row;
+    align-items: center;
     gap: 1rem;
+    flex-wrap: wrap;
 }
-.settlement-cancel-method-opt {
+.settlement-form .settlement-cancel-method-opt {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
     gap: 0.5rem;
     cursor: pointer;
     font-size: 0.95rem;
+    margin-bottom: 0;
 }
 .settlement-cancel-method-opt input {
     flex-shrink: 0;
@@ -5929,6 +5940,11 @@ input:checked + .toggle-slider:before {
     display: block;
     margin-bottom: 0.875rem;
     font-size: 0.9rem;
+}
+.settlement-hint {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin: -0.5rem 0 0.75rem;
 }
 .settlement-form label.settlement-checkbox {
     display: flex;
@@ -6111,6 +6127,9 @@ input:checked + .toggle-slider:before {
     padding: 0.5rem 0;
 }
 
+.record-item.record-item-clickable {
+    cursor: pointer;
+}
 .record-item {
     display: flex;
     align-items: center;

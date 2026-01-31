@@ -3048,24 +3048,12 @@ function applyRecordFilters() {
         const status = getRecordProgressStatus(item);
         const isSelected = selectedHistoryIds.has(item.id);
         return `
-            <div class="record-item history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
-                <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
+            <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}" onclick="openScheduleTodoCardModal(${item.id})">
+                <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id}); event.stopPropagation()" onclick="event.stopPropagation()">
                 <span class="record-item-client">${clientId}</span>
                 <div class="record-item-right">
                     <span class="record-item-amount">${amount}</span>
                     <span class="record-status ${status.className}">${status.text}</span>
-                    <button class="icon-action-btn view" onclick="setReceiptFromRecord(); loadQuoteFromHistory(${item.id})" aria-label="查看小票" title="小票">
-                        <svg class="icon sm" aria-hidden="true"><use href="#i-receipt"></use></svg>
-                        <span class="sr-only">小票</span>
-                    </button>
-                    <button class="icon-action-btn edit" onclick="editHistoryItem(${item.id})" aria-label="编辑" title="编辑">
-                        <svg class="icon sm" aria-hidden="true"><use href="#i-edit"></use></svg>
-                        <span class="sr-only">改</span>
-                    </button>
-                    <button class="icon-action-btn delete" onclick="deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
-                        <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
-                        <span class="sr-only">删</span>
-                    </button>
                 </div>
             </div>
         `;
@@ -5763,51 +5751,33 @@ function getScheduleBarsForCalendar(year, month) {
     return bars;
 }
 
-// 排单日历条带色板（与彩条颜色预览.html 一致，整体偏亮）
+// 排单日历条带色板（顺序：青、红、蓝、橙、绿、紫、黄、品红）
 var SCHEDULE_BAR_COLORS = [
-    'rgba(190, 215, 250, 0.38)',
-    'rgba(175, 225, 240, 0.38)',
-    'rgba(248, 232, 195, 0.38)',
-    'rgba(250, 200, 220, 0.38)',
-    'rgba(218, 200, 245, 0.38)',
-    'rgba(185, 235, 248, 0.38)',
-    'rgba(245, 195, 195, 0.38)',
-    'rgba(225, 200, 250, 0.38)',
-    'rgba(245, 215, 185, 0.38)',
-    'rgba(195, 245, 225, 0.38)'
+    'rgba(135, 205, 250, 0.38)',   // 0 青
+    'rgba(245, 195, 195, 0.38)',   // 1 红
+    'rgba(190, 215, 250, 0.38)',   // 2 蓝
+    'rgba(255, 150, 100, 0.38)',   // 3 橙
+    'rgba(195, 245, 225, 0.38)',   // 4 绿
+    'rgba(218, 200, 245, 0.38)',   // 5 紫
+    'rgba(255, 235, 100, 0.38)',   // 6 黄
+    'rgba(240, 140, 210, 0.38)'    // 7 品红
 ];
-var SCHEDULE_BAR_TEXT_COLORS = ['#2d4a6b', '#2d5c5c', '#5c4d28', '#5c3048', '#3d2d5c', '#2d5c68', '#5c2828', '#4a3d68', '#5c4430', '#2d6850'];
-// 小圆点：比彩条深、比字色浅，偏浅亮
-var SCHEDULE_BAR_DOT_COLORS = ['#7eb0e8', '#6dc4c4', '#c9b56a', '#c2849a', '#9d7ec9', '#6ab4c4', '#c47a7a', '#9d8ec9', '#c9a07a', '#6dc49a'];
+var SCHEDULE_BAR_TEXT_COLORS = ['#1e5a7a', '#5c2828', '#2d4a6b', '#5c2810', '#2d6850', '#3d2d5c', '#5c4d10', '#6b2d5c'];
+var SCHEDULE_BAR_DOT_COLORS = ['#5eb8e8', '#c47a7a', '#7eb0e8', '#e88a5c', '#6dc49a', '#9d7ec9', '#e6c83d', '#d97eb8'];
 
-// 黑夜模式彩条色板（与白天一一对应：0蓝 1青 2黄 3粉 4紫 5青2 6红 7紫2 8橙 9绿）
+// 黑夜模式彩条色板（与白天一一对应：0青 1红 2蓝 3橙 4绿 5紫 6黄 7品红）
 var SCHEDULE_BAR_COLORS_DARK = [
-    'rgba(96, 165, 250, 0.5)',   // 蓝
-    'rgba(103, 232, 249, 0.5)',  // 青
-    'rgba(251, 191, 36, 0.5)',   // 黄
-    'rgba(244, 114, 182, 0.5)',  // 粉
-    'rgba(192, 132, 252, 0.5)',  // 紫
-    'rgba(34, 211, 238, 0.5)',   // 青2
-    'rgba(248, 113, 113, 0.5)',  // 红
-    'rgba(216, 180, 254, 0.5)',  // 紫2
-    'rgba(251, 146, 60, 0.5)',   // 橙
-    'rgba(74, 222, 128, 0.5)'    // 绿
+    'rgba(56, 189, 248, 0.5)',    // 0 青
+    'rgba(248, 113, 113, 0.5)',   // 1 红
+    'rgba(96, 165, 250, 0.5)',    // 2 蓝
+    'rgba(251, 106, 54, 0.5)',    // 3 橙
+    'rgba(74, 222, 128, 0.5)',    // 4 绿
+    'rgba(192, 132, 252, 0.5)',   // 5 紫
+    'rgba(254, 230, 50, 0.5)',    // 6 黄
+    'rgba(236, 72, 153, 0.5)'     // 7 品红
 ];
-// 黑夜模式彩条文字：全部用同色系浅字，保证可读
-var SCHEDULE_BAR_TEXT_COLORS_DARK = [
-    '#93c5fd',   // 0 蓝
-    '#67e8f9',   // 1 青
-    '#fde047',   // 2 黄
-    '#f9a8d4',   // 3 粉
-    '#c4b5fd',   // 4 紫
-    '#67e8f9',   // 5 青2
-    '#fca5a5',   // 6 红
-    '#e9d5ff',   // 7 紫2
-    '#fdba74',   // 8 橙
-    '#86efac'    // 9 绿
-];
-// 黑夜模式圆点：同色系实色（与彩条一一对应）
-var SCHEDULE_BAR_DOT_COLORS_DARK = ['#60a5fa', '#67e8f9', '#fbbf24', '#f472b6', '#c084fc', '#22d3ee', '#f87171', '#d8b4fe', '#fb923c', '#4ade80'];
+var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#fca5a5', '#93c5fd', '#fd8a5c', '#86efac', '#c4b5fd', '#fde047', '#f472b6'];
+var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#f87171', '#60a5fa', '#f97316', '#4ade80', '#c084fc', '#facc15', '#ec4899'];
 
 // 按星期视图：同周内条带轨道分配，最多 3 条（一行一天最多显示 3 个）
 function assignWeekBarsToTracks(segments) {
@@ -6133,7 +6103,8 @@ function scheduleTodoCardAction(action) {
     closeScheduleTodoCardModal();
     if (id == null) return;
     if (action === 'edit') editHistoryItem(id);
-    else if (action === 'receipt') loadQuoteFromHistory(id);
+    else if (action === 'receipt') { setReceiptFromRecord(); loadQuoteFromHistory(id); }
+    else if (action === 'delete') deleteHistoryItem(id);
     else if (action === 'cancel' || action === 'waste_fee' || action === 'normal') {
         openSettlementModal(id, action);
     }
@@ -6188,6 +6159,8 @@ function showSettlementForm(type) {
         document.getElementById('settlementFullRefundPanel').classList.remove('d-none');
         document.getElementById('settlementCancelWithFee').classList.add('d-none');
         document.getElementById('settlementMemoRefund').value = '';
+        var fullRefundAmountEl = document.getElementById('settlementFullRefundAmount');
+        if (fullRefundAmountEl) fullRefundAmountEl.value = '0';
         document.querySelector('input[name="cancelSubType"][value="full_refund"]').checked = true;
         document.querySelectorAll('input[name="cancelSubType"]').forEach(function (r) {
             r.onclick = function () {
@@ -6320,8 +6293,8 @@ function settlementUpdateCancelFeePreview() {
     var rate = rateEl ? rateEl.value : '0';
     var fixed = fixedEl ? fixedEl.value : '0';
     var amount = computeCancelFeeAmount(item, rule, rate, fixed);
-    var previewEl = document.getElementById('settlementCancelFeePreview');
-    if (previewEl) previewEl.textContent = '跑单费预览：¥' + Math.max(0, amount).toFixed(2);
+    var amountEl = document.getElementById('settlementCancelFeeAmount');
+    if (amountEl) amountEl.value = Math.max(0, amount).toFixed(2);
 }
 
 function settlementRenderWasteFeeForm() {
@@ -6421,18 +6394,71 @@ function settlementUpdateWastePreview() {
 function settlementRenderNormalForm() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
+    var amountWrap = document.getElementById('settlementDiscountAmountWrap');
+    var rateWrap = document.getElementById('settlementDiscountRateWrap');
     document.getElementById('settlementDiscountAmount').value = '0';
+    document.getElementById('settlementDiscountRate').value = '0.99';
     document.getElementById('settlementDiscountReason').value = '';
+    document.querySelectorAll('input[name="settlementDiscountType"]').forEach(function (r) {
+        r.addEventListener('change', function () {
+            var isAmount = document.querySelector('input[name="settlementDiscountType"]:checked').value === 'amount';
+            amountWrap.classList.toggle('d-none', !isAmount);
+            rateWrap.classList.toggle('d-none', isAmount);
+            settlementUpdateNormalPreview();
+        });
+    });
+    amountWrap.classList.remove('d-none');
+    rateWrap.classList.add('d-none');
     document.getElementById('settlementDiscountAmount').addEventListener('input', settlementUpdateNormalPreview);
+    document.getElementById('settlementDiscountRate').addEventListener('input', settlementUpdateNormalPreview);
+    var normalAmountEl = document.getElementById('settlementNormalAmount');
+    if (normalAmountEl) normalAmountEl.addEventListener('input', function () {
+        var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+        if (!item || (document.querySelector('input[name="settlementDiscountType"]:checked') || {}).value !== 'rate') return;
+        var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
+        if (!hasPlatformFee) return;
+        var receipt = parseFloat(normalAmountEl.value) || 0;
+        var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
+        var newPlatformFee = Math.round(receipt * platformFeePct);
+        var newPlatformEl = document.getElementById('settlementNewPlatformFeeText');
+        if (newPlatformEl) { newPlatformEl.textContent = '新平台费：¥' + newPlatformFee.toFixed(2); newPlatformEl.classList.remove('d-none'); }
+    });
+    settlementUpdateNormalPreview();
 }
 
 function settlementUpdateNormalPreview() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
-    var base = item.finalTotal != null ? item.finalTotal : 0;
-    var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
-    base -= discount;
-    document.getElementById('settlementNormalPreview').textContent = '实收预览：¥' + Math.max(0, base).toFixed(2);
+    var amountEl = document.getElementById('settlementNormalAmount');
+    var newPlatformEl = document.getElementById('settlementNewPlatformFeeText');
+    var discountType = (document.querySelector('input[name="settlementDiscountType"]:checked') || {}).value || 'amount';
+    var totalBeforePlatformFee = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
+    var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
+    var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
+
+    if (discountType === 'amount') {
+        var base = item.finalTotal != null ? item.finalTotal : 0;
+        var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
+        var receipt = Math.max(0, base - discount);
+        if (amountEl) amountEl.value = receipt.toFixed(2);
+        if (newPlatformEl) { newPlatformEl.classList.add('d-none'); newPlatformEl.textContent = ''; }
+    } else {
+        var rate = parseFloat(document.getElementById('settlementDiscountRate').value);
+        if (isNaN(rate) || rate <= 0) rate = 0.99;
+        if (rate > 0.99) rate = 0.99;
+        var receipt = Math.max(0, totalBeforePlatformFee * rate);
+        var newPlatformFee = hasPlatformFee ? Math.round(receipt * platformFeePct) : 0;
+        if (amountEl) amountEl.value = receipt.toFixed(2);
+        if (newPlatformEl) {
+            if (hasPlatformFee) {
+                newPlatformEl.textContent = '新平台费：¥' + newPlatformFee.toFixed(2);
+                newPlatformEl.classList.remove('d-none');
+            } else {
+                newPlatformEl.classList.add('d-none');
+                newPlatformEl.textContent = '';
+            }
+        }
+    }
 }
 
 function settlementConfirm() {
@@ -6442,16 +6468,20 @@ function settlementConfirm() {
     var at = new Date().toISOString();
 
     if (type === 'full_refund') {
-        item.settlement = { type: 'full_refund', amount: 0, memo: (document.getElementById('settlementMemoRefund').value || '').trim(), at: at };
+        var fullRefundAmountEl = document.getElementById('settlementFullRefundAmount');
+        var amount = fullRefundAmountEl ? (parseFloat(fullRefundAmountEl.value) || 0) : 0;
+        amount = Math.max(0, amount);
+        item.settlement = { type: 'full_refund', amount: amount, memo: (document.getElementById('settlementMemoRefund').value || '').trim(), at: at };
     } else if (type === 'cancel_with_fee') {
         var ruleEl = document.getElementById('settlementCancelFeeRule');
         var rateEl = document.getElementById('settlementCancelFeeRate');
         var fixedEl = document.getElementById('settlementCancelFeeFixed');
         var memoEl = document.getElementById('settlementMemoCancelFee');
+        var amountEl = document.getElementById('settlementCancelFeeAmount');
         var rule = ruleEl ? ruleEl.value : 'percent';
         var rate = parseFloat(rateEl ? rateEl.value : 0) / 100;
         var fixedAmount = parseFloat(fixedEl ? fixedEl.value : 0) || 0;
-        var amount = rule === 'percent' ? (item.finalTotal || 0) * rate : fixedAmount;
+        var amount = amountEl ? (parseFloat(amountEl.value) || 0) : 0;
         amount = Math.max(0, amount);
         item.settlement = {
             type: 'cancel_with_fee',
@@ -6486,15 +6516,37 @@ function settlementConfirm() {
             }
         };
     } else {
-        var base = item.finalTotal != null ? item.finalTotal : 0;
-        var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
         var reasonEl = document.getElementById('settlementDiscountReason');
         var discountReason = reasonEl ? (reasonEl.value || '').trim() : '';
-        base -= discount;
+        var discountTypeEl = document.querySelector('input[name="settlementDiscountType"]:checked');
+        var discountType = discountTypeEl ? discountTypeEl.value : 'amount';
+        var totalBeforePlatformFee = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
+        var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
+        var receipt, discount, discountRate, newPlatformFee;
+        if (discountType === 'amount') {
+            var base = item.finalTotal != null ? item.finalTotal : 0;
+            discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
+            receipt = Math.max(0, base - discount);
+            discountRate = undefined;
+            newPlatformFee = undefined;
+        } else {
+            var rate = parseFloat(document.getElementById('settlementDiscountRate').value);
+            if (isNaN(rate) || rate <= 0) rate = 0.99;
+            if (rate > 0.99) rate = 0.99;
+            receipt = Math.max(0, totalBeforePlatformFee * rate);
+            newPlatformFee = (item.platformFeeAmount || 0) > 0 ? Math.round(receipt * platformFeePct) : undefined;
+            discount = undefined;
+            discountRate = rate;
+        }
+        var amountEl = document.getElementById('settlementNormalAmount');
+        receipt = amountEl ? (parseFloat(amountEl.value) || 0) : receipt;
+        receipt = Math.max(0, receipt);
         item.settlement = {
             type: 'normal',
-            amount: Math.max(0, base),
+            amount: receipt,
             discount: discount,
+            discountRate: discountRate,
+            newPlatformFee: newPlatformFee,
             discountReason: discountReason,
             at: at
         };
@@ -6666,12 +6718,12 @@ function renderGroupedHistory(filteredHistory) {
     restoreCheckboxStates();
 }
 
-// 生成历史记录项HTML
+// 生成历史记录项HTML（点击打开操作弹窗：修改/小票/删除/撤单/废稿/结算）
 function generateHistoryItemHTML(item) {
     const isSelected = selectedHistoryIds.has(item.id);
     return `
-        <div class="history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
-            <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
+        <div class="history-item history-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}" onclick="openScheduleTodoCardModal(${item.id})">
+            <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id}); event.stopPropagation()" onclick="event.stopPropagation()">
             <div class="history-item-header">
                 <div class="history-item-title">报价单 - ${item.clientId}</div>
                 <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
@@ -6680,20 +6732,6 @@ function generateHistoryItemHTML(item) {
                 联系方式: ${item.contact}\n
                 截稿日: ${item.deadline}\n
                 最终总价: ¥${item.finalTotal.toFixed(2)}
-            </div>
-            <div class="history-item-actions">
-                <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
-                    <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
-                    <span class="sr-only">查看详情</span>
-                </button>
-                <button class="icon-action-btn edit" onclick="editHistoryItem(${item.id})" aria-label="编辑" title="编辑">
-                    <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
-                    <span class="sr-only">编辑</span>
-                </button>
-                <button class="icon-action-btn delete" onclick="deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
-                    <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
-                                        <span class="sr-only">删除</span>
-                </button>
             </div>
         </div>
     `;
