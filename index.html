@@ -74,7 +74,7 @@
             <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
         <symbol id="i-moon" viewBox="0 0 24 24">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
         <symbol id="i-image" viewBox="0 0 24 24">
             <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -486,7 +486,6 @@
                             </button>
                             <input type="date" id="scheduleTitleDateInput" class="schedule-title-date-input" placeholder="yyyy/mm/dd">
                             <button type="button" class="btn secondary schedule-title-next" onclick="scheduleCalendarNextMonth()">›</button>
-                            <button type="button" class="btn secondary schedule-title-today-pill d-none" onclick="scheduleTodoBackToToday()">Today</button>
                         </div>
                         <div class="schedule-title-actions d-flex items-center">
                             <button type="button" class="btn secondary btn--icon schedule-title-icon-btn" id="themeToggleBtn" onclick="toggleThemeOnClick()" oncontextmenu="toggleThemeLongPress(event); return false;" aria-label="切换昼夜模式" title="点击切换昼夜，长按跟随系统">
@@ -505,15 +504,119 @@
                         <!-- 月历与跨日彩条由 JS 渲染 -->
                     </div>
                     <div id="scheduleTodoSection" class="schedule-todo-section">
-                        <div class="schedule-todo-filters">
-                            <button type="button" class="schedule-todo-filter-btn" data-filter="all" onclick="setScheduleTodoFilter('all')">所有</button>
-                            <button type="button" class="schedule-todo-filter-btn" data-filter="month" onclick="setScheduleTodoFilter('month')">当月</button>
-                            <button type="button" class="schedule-todo-filter-btn" data-filter="pending" onclick="setScheduleTodoFilter('pending')">待排</button>
-                            <button type="button" class="schedule-todo-filter-btn active" data-filter="today" onclick="setScheduleTodoFilter('today')">当日</button>
+                        <div class="schedule-todo-filters-wrap d-flex justify-between items-center">
+                            <div class="schedule-todo-filters">
+                                <button type="button" class="schedule-todo-filter-btn" data-filter="all" onclick="setScheduleTodoFilter('all')">所有</button>
+                                <button type="button" class="schedule-todo-filter-btn" data-filter="month" onclick="setScheduleTodoFilter('month')">当月</button>
+                                <button type="button" class="schedule-todo-filter-btn" data-filter="pending" onclick="setScheduleTodoFilter('pending')">待排</button>
+                                <button type="button" class="schedule-todo-filter-btn active" data-filter="today" onclick="setScheduleTodoFilter('today')">当日</button>
+                            </div>
+                            <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()">Today</button>
                         </div>
                         <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
                         <div id="scheduleTodoModules" class="schedule-todo-modules">
                             <!-- 按排单分模块的制品 todo 由 JS 渲染 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 结算弹窗 -->
+                <div id="settlementModal" class="settlement-modal d-none">
+                    <div class="settlement-modal-overlay" onclick="closeSettlementModal()"></div>
+                    <div class="settlement-modal-content">
+                        <div class="settlement-modal-header">
+                            <h3 id="settlementModalTitle">结算</h3>
+                            <button type="button" class="settlement-modal-close" onclick="closeSettlementModal()" aria-label="关闭">×</button>
+                        </div>
+                        <div class="settlement-modal-body">
+                            <!-- 第一步：选择结算类型 -->
+                            <div id="settlementStep1" class="settlement-step">
+                                <p class="settlement-step-label">选择结算类型</p>
+                                <div class="settlement-type-options">
+                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="cancel"> 撤单（退全款或收跑单费）</label>
+                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="waste_fee"> 废稿（收废稿费）</label>
+                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="normal"> 正常结单（按原价或折扣/免除）</label>
+                                </div>
+                            </div>
+                            <!-- 第二步：按类型展示表单项 -->
+                            <div id="settlementStep2" class="settlement-step d-none">
+                                <!-- 撤单（合并退全款与收跑单费） -->
+                                <div id="settlementFormCancel" class="settlement-form d-none">
+                                    <p class="settlement-step-label">撤单方式</p>
+                                    <div class="settlement-cancel-method-row">
+                                        <label class="settlement-cancel-method-opt"><input type="radio" name="cancelSubType" value="full_refund" checked> 退全款</label>
+                                        <label class="settlement-cancel-method-opt"><input type="radio" name="cancelSubType" value="cancel_with_fee"> 收跑单费</label>
+                                    </div>
+                                    <div id="settlementFullRefundPanel" class="settlement-cancel-panel">
+                                        <label>实收金额（元，可修改）<input type="number" id="settlementFullRefundAmount" min="0" step="0.01" value="0"></label>
+                                        <label>备注（可选）<input type="text" id="settlementMemoRefund" class="settlement-input" placeholder="如撤单原因"></label>
+                                    </div>
+                                    <div id="settlementCancelWithFee" class="settlement-cancel-panel d-none">
+                                        <div class="settlement-cancel-fee-rule">
+                                        <p class="settlement-step-label">跑单费规则</p>
+                                        <select id="settlementCancelFeeRule">
+                                            <option value="percent">按原价比例</option>
+                                            <option value="fixed">固定金额</option>
+                                        </select>
+                                    </div>
+                                    <div class="settlement-cancel-fee-params">
+                                        <label>比例（%，如 10 表示 10%）<input type="number" id="settlementCancelFeeRate" min="0" max="100" step="0.1" placeholder="10"></label>
+                                        <label>固定金额（元）<input type="number" id="settlementCancelFeeFixed" min="0" step="1" placeholder="0"></label>
+                                    </div>
+                                    <label>备注（可选）<input type="text" id="settlementMemoCancelFee" class="settlement-input" placeholder="如撤单原因"></label>
+                                        <label>实收金额（元，可修改）<input type="number" id="settlementCancelFeeAmount" min="0" step="0.01" value="0"></label>
+                                    </div>
+                                </div>
+                                <!-- 废稿 -->
+                                <div id="settlementFormWasteFee" class="settlement-form d-none">
+                                    <div class="settlement-waste-rule">
+                                        <p class="settlement-step-label">废稿费规则</p>
+                                        <select id="settlementWasteRule">
+                                            <option value="percent_total">按原总额比例</option>
+                                            <option value="percent_charged_only">仅参与计费且已做工艺的金额比例</option>
+                                            <option value="fixed_per_item">按件固定</option>
+                                        </select>
+                                    </div>
+                                    <div class="settlement-waste-params">
+                                        <label>比例（0~1，如 0.3=30%）<input type="number" id="settlementWasteRate" min="0" max="1" step="0.01" value="0.3"></label>
+                                        <label>按件金额（元）<input type="number" id="settlementFixedPerItem" min="0" step="0.01" value="0"></label>
+                                        <label>保底（元，可选）<input type="number" id="settlementWasteMin" min="0" step="0.01" placeholder="0"></label>
+                                        <label>封顶（元，可选）<input type="number" id="settlementWasteMax" min="0" step="0.01" placeholder="不封顶"></label>
+                                    </div>
+                                    <div id="settlementChargedIndices" class="settlement-charged-indices d-none">
+                                        <p class="settlement-step-label">参与计费的制品（不勾选则不收该件废稿费）</p>
+                                        <div id="settlementChargedList"></div>
+                                    </div>
+                                    <div id="settlementProcessDoneFlags" class="settlement-process-done d-none">
+                                        <p class="settlement-step-label">已做工艺（未做工艺不收取时勾选已做的）</p>
+                                        <div id="settlementProcessDoneList"></div>
+                                    </div>
+                                    <p id="settlementWastePreview" class="settlement-preview"></p>
+                                </div>
+                                <!-- 正常结单 -->
+                                <div id="settlementFormNormal" class="settlement-form d-none">
+                                    <p class="settlement-step-label">结算优惠</p>
+                                    <div class="settlement-cancel-method-row">
+                                        <label class="settlement-cancel-method-opt"><input type="radio" name="settlementDiscountType" value="amount" checked> 减去金额</label>
+                                        <label class="settlement-cancel-method-opt"><input type="radio" name="settlementDiscountType" value="rate"> 结算优惠折扣</label>
+                                    </div>
+                                    <div id="settlementDiscountAmountWrap">
+                                        <label>减去金额（元）<input type="number" id="settlementDiscountAmount" min="0" step="0.01" value="0"></label>
+                                    </div>
+                                    <div id="settlementDiscountRateWrap" class="d-none">
+                                        <label>优惠系数（0~0.99，如 0.9 表示 9 折）<input type="number" id="settlementDiscountRate" min="0" max="0.99" step="0.01" value="0.99" placeholder="0.99"></label>
+                                        <p class="settlement-hint">实收 = (实付 - 平台费) × 系数，平台费按新实收重新计算</p>
+                                    </div>
+                                    <label>优惠原因（可选）<input type="text" id="settlementDiscountReason" class="settlement-input" placeholder="如活动、老客等"></label>
+                                    <label>实收金额（元，可修改）<input type="number" id="settlementNormalAmount" min="0" step="0.01" value="0"></label>
+                                    <p id="settlementNewPlatformFeeText" class="settlement-hint d-none"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settlement-modal-footer">
+                            <button type="button" id="settlementBtnBack" class="btn secondary d-none" onclick="settlementStepBack()">上一步</button>
+                            <button type="button" id="settlementBtnNext" class="btn primary" onclick="settlementStepNext()">下一步</button>
+                            <button type="button" id="settlementBtnConfirm" class="btn primary d-none" onclick="settlementConfirm()">确认</button>
                         </div>
                     </div>
                 </div>
@@ -1785,145 +1888,61 @@
             </div>
             
 
-        </main>
-
-        <!-- 排单/记录操作弹窗（全局）：第一行 修改/小票/删除，第二行 撤单/废稿/结算 -->
+        <!-- 排单卡片操作弹窗（全局：排单页/记录页点击弹出） -->
         <div id="scheduleTodoCardModal" class="schedule-todo-card-modal d-none">
             <div class="schedule-todo-card-modal-overlay" onclick="closeScheduleTodoCardModal()"></div>
             <div class="schedule-todo-card-modal-content">
+                <button type="button" class="schedule-todo-card-modal-close schedule-todo-card-modal-close-float" onclick="closeScheduleTodoCardModal()" aria-label="关闭">×</button>
                 <div class="schedule-todo-card-modal-body">
                     <div class="schedule-todo-card-modal-row">
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('edit')">
-                            <svg class="icon sm" aria-hidden="true"><use href="#i-edit"></use></svg>
-                            <span>修改</span>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('edit')" title="编辑">
+                            <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
+                            <span>编辑</span>
                         </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('receipt')">
-                            <svg class="icon sm" aria-hidden="true"><use href="#i-receipt"></use></svg>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('receipt')" title="小票">
+                            <svg class="icon" aria-hidden="true"><use href="#i-image-line-c"></use></svg>
                             <span>小票</span>
                         </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('delete')">
-                            <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
-                            <span>删除</span>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('remark')" title="备注">
+                            <svg class="icon" aria-hidden="true"><use href="#i-note"></use></svg>
+                            <span>备注</span>
                         </button>
                     </div>
                     <div class="schedule-todo-card-modal-row">
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('cancel')">
-                            <svg class="icon sm" aria-hidden="true"><use href="#i-prohibit"></use></svg>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('cancel')" title="撤单">
+                            <svg class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>
                             <span>撤单</span>
                         </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('waste_fee')">
-                            <svg class="icon sm" aria-hidden="true"><use href="#i-file-x"></use></svg>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('waste_fee')" title="废稿">
+                            <svg class="icon" aria-hidden="true"><use href="#i-minus-circle"></use></svg>
                             <span>废稿</span>
                         </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('normal')">
-                            <svg class="icon sm" aria-hidden="true"><use href="#i-check-circle"></use></svg>
-                            <span>结算</span>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('normal')" title="结单">
+                            <svg class="icon" aria-hidden="true"><use href="#i-check-circle"></use></svg>
+                            <span>结单</span>
                         </button>
                     </div>
                 </div>
-                <button type="button" class="schedule-todo-card-modal-close schedule-todo-card-modal-close-float" onclick="closeScheduleTodoCardModal()" aria-label="关闭">×</button>
             </div>
         </div>
 
-        <!-- 结算弹窗（全局） -->
-        <div id="settlementModal" class="settlement-modal d-none">
-            <div class="settlement-modal-overlay" onclick="closeSettlementModal()"></div>
-            <div class="settlement-modal-content">
-                <div class="settlement-modal-header">
-                    <h3 id="settlementModalTitle">结算</h3>
-                    <button type="button" class="settlement-modal-close" onclick="closeSettlementModal()" aria-label="关闭">×</button>
-                </div>
-                <div class="settlement-modal-body">
-                    <div id="settlementStep1" class="settlement-step">
-                        <p class="settlement-step-label">选择结算类型</p>
-                        <div class="settlement-type-options">
-                            <label class="settlement-type-option"><input type="radio" name="settlementType" value="cancel"> 撤单（退全款或收跑单费）</label>
-                            <label class="settlement-type-option"><input type="radio" name="settlementType" value="waste_fee"> 废稿（收废稿费）</label>
-                            <label class="settlement-type-option"><input type="radio" name="settlementType" value="normal"> 正常结单（按原价或折扣/免除）</label>
-                        </div>
-                    </div>
-                    <div id="settlementStep2" class="settlement-step d-none">
-                        <div id="settlementFormCancel" class="settlement-form d-none">
-                            <p class="settlement-step-label">撤单方式</p>
-                            <div class="settlement-cancel-method-row">
-                                <label class="settlement-cancel-method-opt"><input type="radio" name="cancelSubType" value="full_refund" checked> 退全款</label>
-                                <label class="settlement-cancel-method-opt"><input type="radio" name="cancelSubType" value="cancel_with_fee"> 收跑单费</label>
-                            </div>
-                            <div id="settlementFullRefundPanel" class="settlement-cancel-panel">
-                                <label>实收金额（元，可修改）<input type="number" id="settlementFullRefundAmount" min="0" step="0.01" value="0"></label>
-                                <label>备注（可选）<input type="text" id="settlementMemoRefund" class="settlement-input" placeholder="如撤单原因"></label>
-                            </div>
-                            <div id="settlementCancelWithFee" class="settlement-cancel-panel d-none">
-                                <div class="settlement-cancel-fee-rule">
-                                    <p class="settlement-step-label">跑单费规则</p>
-                                    <select id="settlementCancelFeeRule">
-                                        <option value="percent">按原价比例</option>
-                                        <option value="fixed">固定金额</option>
-                                    </select>
-                                </div>
-                                <div class="settlement-cancel-fee-params">
-                                    <label>比例（%，如 10 表示 10%）<input type="number" id="settlementCancelFeeRate" min="0" max="100" step="0.1" placeholder="10"></label>
-                                    <label>固定金额（元）<input type="number" id="settlementCancelFeeFixed" min="0" step="1" placeholder="0"></label>
-                                </div>
-                                <label>备注（可选）<input type="text" id="settlementMemoCancelFee" class="settlement-input" placeholder="如撤单原因"></label>
-                                <label>实收金额（元，可修改）<input type="number" id="settlementCancelFeeAmount" min="0" step="0.01" value="0"></label>
-                            </div>
-                        </div>
-                        <div id="settlementFormWasteFee" class="settlement-form d-none">
-                            <div class="settlement-waste-rule">
-                                <p class="settlement-step-label">废稿费规则</p>
-                                <select id="settlementWasteRule">
-                                    <option value="percent_total">按原总额比例</option>
-                                    <option value="percent_charged_only">仅参与计费且已做工艺的金额比例</option>
-                                    <option value="fixed_per_item">按件固定</option>
-                                </select>
-                            </div>
-                            <div class="settlement-waste-params">
-                                <label>比例（0~1，如 0.3=30%）<input type="number" id="settlementWasteRate" min="0" max="1" step="0.01" value="0.3"></label>
-                                <label>按件金额（元）<input type="number" id="settlementFixedPerItem" min="0" step="0.01" value="0"></label>
-                                <label>保底（元，可选）<input type="number" id="settlementWasteMin" min="0" step="0.01" placeholder="0"></label>
-                                <label>封顶（元，可选）<input type="number" id="settlementWasteMax" min="0" step="0.01" placeholder="不封顶"></label>
-                            </div>
-                            <div id="settlementChargedIndices" class="settlement-charged-indices d-none">
-                                <p class="settlement-step-label">参与计费的制品（不勾选则不收该件废稿费）</p>
-                                <div id="settlementChargedList"></div>
-                            </div>
-                            <div id="settlementProcessDoneFlags" class="settlement-process-done d-none">
-                                <p class="settlement-step-label">已做工艺（未做工艺不收取时勾选已做的）</p>
-                                <div id="settlementProcessDoneList"></div>
-                            </div>
-                            <p id="settlementWastePreview" class="settlement-preview"></p>
-                        </div>
-                        <div id="settlementFormNormal" class="settlement-form d-none">
-                            <p class="settlement-step-label">结算优惠</p>
-                            <div class="settlement-cancel-method-row">
-                                <label class="settlement-cancel-method-opt"><input type="radio" name="settlementDiscountType" value="amount" checked> 减去金额</label>
-                                <label class="settlement-cancel-method-opt"><input type="radio" name="settlementDiscountType" value="rate"> 结算优惠折扣</label>
-                            </div>
-                            <div id="settlementDiscountAmountWrap">
-                                <label>减去金额（元）<input type="number" id="settlementDiscountAmount" min="0" step="0.01" value="0"></label>
-                            </div>
-                            <div id="settlementDiscountRateWrap" class="d-none">
-                                <label>优惠系数（0~0.99，如 0.9 表示 9 折）<input type="number" id="settlementDiscountRate" min="0" max="0.99" step="0.01" value="0.99" placeholder="0.99"></label>
-                                <p class="settlement-hint">实收 = (实付 - 平台费) × 系数，平台费按新实收重新计算</p>
-                            </div>
-                            <label>优惠原因（可选）<input type="text" id="settlementDiscountReason" class="settlement-input" placeholder="如活动、老客等"></label>
-                            <label>实收金额（元，可修改）<input type="number" id="settlementNormalAmount" min="0" step="0.01" value="0"></label>
-                            <p id="settlementNewPlatformFeeText" class="settlement-hint d-none"></p>
-                        </div>
-                    </div>
-                </div>
-                <div class="settlement-modal-footer">
-                    <button type="button" id="settlementBtnBack" class="btn secondary d-none" onclick="settlementStepBack()">上一步</button>
-                    <button type="button" id="settlementBtnNext" class="btn primary" onclick="settlementStepNext()">下一步</button>
-                    <button type="button" id="settlementBtnConfirm" class="btn primary d-none" onclick="settlementConfirm()">确认</button>
-                </div>
-            </div>
-        </div>
+        </main>
     </div>
 
     <!-- 全局轻提示（toast），用于非阻塞提示“排单已更新”等信息 -->
-    <!-- 订单备注弹窗（全局） -->
+    <!-- 订单备注查看弹窗（只读） -->
+    <div id="orderRemarkViewModal" class="modal d-none">
+        <div class="modal-content modal-content-compact">
+            <div class="modal-header">
+                <h3>订单备注</h3>
+                <span class="close" onclick="closeOrderRemarkViewModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="orderRemarkViewContent" class="order-remark-view-content"></div>
+            </div>
+        </div>
+    </div>
+    <!-- 订单备注弹窗（全局，编辑用） -->
     <div id="orderRemarkModal" class="modal d-none">
         <div class="modal-content modal-content-compact">
             <div class="modal-header">

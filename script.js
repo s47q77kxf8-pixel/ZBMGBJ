@@ -3049,11 +3049,15 @@ function applyRecordFilters() {
         const isSelected = selectedHistoryIds.has(item.id);
         return `
             <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}" onclick="openScheduleTodoCardModal(${item.id})">
-                <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id}); event.stopPropagation()" onclick="event.stopPropagation()">
+                <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})" onclick="event.stopPropagation()">
                 <span class="record-item-client">${clientId}</span>
                 <div class="record-item-right">
                     <span class="record-item-amount">${amount}</span>
                     <span class="record-status ${status.className}">${status.text}</span>
+                    <button type="button" class="icon-action-btn delete record-item-delete" onclick="event.stopPropagation(); if(confirm('确定删除该记录？')) deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
+                        <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                        <span class="sr-only">删除</span>
+                    </button>
                 </div>
             </div>
         `;
@@ -4521,6 +4525,7 @@ function calculatePrice() {
         totalBeforePlatformFee: totalBeforePlatformFee,
         finalTotal: finalTotal,
         needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (document.getElementById('needDeposit') && document.getElementById('needDeposit').checked)),
+        orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; if (v && def && v === def) return new Date().toISOString(); if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
@@ -5200,30 +5205,44 @@ function openReceiptDrawer() {
     }
 
     // #region agent log
-    try {
-        const receiptBody = document.querySelector('.receipt-drawer-body');
-        const receiptBodyStyle = receiptBody ? window.getComputedStyle(receiptBody) : null;
-        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sessionId: 'debug-session',
-                runId: 'pre-fix',
-                hypothesisId: 'H2',
-                location: 'script.js:4422',
-                message: 'open receipt drawer',
-                data: {
-                    innerWidth: window.innerWidth,
-                    bodyOverflow: document.body.style.overflow || null,
-                    receiptBodyPresent: !!receiptBody,
-                    receiptBodyOverflow: receiptBodyStyle ? receiptBodyStyle.overflow : null,
-                    receiptBodyScrollHeight: receiptBody ? receiptBody.scrollHeight : null,
-                    receiptBodyClientHeight: receiptBody ? receiptBody.clientHeight : null
-                },
-                timestamp: Date.now()
-            })
-        }).catch(() => {});
-    } catch (e) {}
+    requestAnimationFrame(function () {
+        try {
+            var drawer = document.getElementById('receiptDrawer');
+            var panel = drawer ? drawer.querySelector('.receipt-drawer-panel') : null;
+            var bodyEl = drawer ? drawer.querySelector('.receipt-drawer-body') : null;
+            var ds = drawer ? window.getComputedStyle(drawer) : {};
+            var ps = panel ? window.getComputedStyle(panel) : {};
+            var bs = bodyEl ? window.getComputedStyle(bodyEl) : {};
+            var rect = panel ? panel.getBoundingClientRect() : {};
+            fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: 'debug-session',
+                    runId: 'receipt-layout',
+                    hypothesisId: 'H1-H5',
+                    location: 'script.js:openReceiptDrawer',
+                    message: 'receipt drawer layout after open',
+                    data: {
+                        innerWidth: window.innerWidth,
+                        innerHeight: window.innerHeight,
+                        isMobileViewport: window.innerWidth <= 768,
+                        drawerJustifyContent: ds.justifyContent,
+                        drawerAlignItems: ds.alignItems,
+                        panelHeight: ps.height,
+                        panelMaxHeight: ps.maxHeight,
+                        panelTransform: ps.transform,
+                        panelTop: rect.top,
+                        panelHeightRect: rect.height,
+                        bodyOverflow: bs.overflow,
+                        bodyHeight: bs.height,
+                        bodyMaxHeight: bs.maxHeight
+                    },
+                    timestamp: Date.now()
+                })
+            }).catch(function () {});
+        } catch (e) {}
+    });
     // #endregion
 }
 
@@ -5623,9 +5642,9 @@ function computeMonthProductStats(items) {
 }
 
 function renderScheduleMonthTitleStats(year, month) {
-    // 标题区月份（简洁格式：2025.1）
+    // 标题区月份（简洁格式：25.1）
     const monthEl = document.querySelector('.schedule-title-month');
-    if (monthEl) monthEl.textContent = year + '.' + month;
+    if (monthEl) monthEl.textContent = String(year).slice(-2) + '.' + month;
 
     // 标题区统计（只统计当前月）：(数字 数字 数字)
     const statsEl = document.querySelector('.schedule-title-row .schedule-title-stats');
@@ -6104,7 +6123,7 @@ function scheduleTodoCardAction(action) {
     if (id == null) return;
     if (action === 'edit') editHistoryItem(id);
     else if (action === 'receipt') { setReceiptFromRecord(); loadQuoteFromHistory(id); }
-    else if (action === 'delete') deleteHistoryItem(id);
+    else if (action === 'remark') openOrderRemarkViewModal(id);
     else if (action === 'cancel' || action === 'waste_fee' || action === 'normal') {
         openSettlementModal(id, action);
     }
@@ -6718,12 +6737,12 @@ function renderGroupedHistory(filteredHistory) {
     restoreCheckboxStates();
 }
 
-// 生成历史记录项HTML（点击打开操作弹窗：修改/小票/删除/撤单/废稿/结算）
+// 生成历史记录项HTML
 function generateHistoryItemHTML(item) {
     const isSelected = selectedHistoryIds.has(item.id);
     return `
-        <div class="history-item history-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}" onclick="openScheduleTodoCardModal(${item.id})">
-            <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id}); event.stopPropagation()" onclick="event.stopPropagation()">
+        <div class="history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
+            <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
             <div class="history-item-header">
                 <div class="history-item-title">报价单 - ${item.clientId}</div>
                 <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
@@ -6732,6 +6751,20 @@ function generateHistoryItemHTML(item) {
                 联系方式: ${item.contact}\n
                 截稿日: ${item.deadline}\n
                 最终总价: ¥${item.finalTotal.toFixed(2)}
+            </div>
+            <div class="history-item-actions">
+                <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
+                    <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+                    <span class="sr-only">查看详情</span>
+                </button>
+                <button class="icon-action-btn edit" onclick="editHistoryItem(${item.id})" aria-label="编辑" title="编辑">
+                    <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
+                    <span class="sr-only">编辑</span>
+                </button>
+                <button class="icon-action-btn delete" onclick="deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
+                    <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除</span>
+                </button>
             </div>
         </div>
     `;
@@ -8293,6 +8326,24 @@ function closeOrderRemarkModal() {
     if (modal) modal.classList.add('d-none');
     updateOrderRemarkPreview();
     saveData();
+}
+
+// 订单备注查看弹窗：打开（只读，查看某条记录的备注）
+function openOrderRemarkViewModal(recordId) {
+    var item = history.find(function (h) { return h.id === recordId; });
+    var contentEl = document.getElementById('orderRemarkViewContent');
+    var modal = document.getElementById('orderRemarkViewModal');
+    if (!contentEl || !modal) return;
+    var remark = (item && item.orderRemark != null) ? String(item.orderRemark) : '';
+    contentEl.textContent = remark.trim() || '暂无备注';
+    contentEl.style.whiteSpace = 'pre-wrap';
+    modal.classList.remove('d-none');
+}
+
+// 订单备注查看弹窗：关闭
+function closeOrderRemarkViewModal() {
+    var modal = document.getElementById('orderRemarkViewModal');
+    if (modal) modal.classList.add('d-none');
 }
 
 // 更新订单备注预览

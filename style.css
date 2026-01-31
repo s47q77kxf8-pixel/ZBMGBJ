@@ -111,10 +111,17 @@ html.theme-dark .navbar {
     border-bottom-color: #3f3f46;
 }
 
-/* ① 排单页：主题切换及统计/记录图标在黑夜模式下确保可见 */
+/* ① 排单页：主题切换及统计/记录图标在黑夜模式下无底框、确保可见 */
 html.theme-dark .schedule-title-actions .schedule-title-icon-btn {
     color: #e5e5e5 !important;
-    border-color: #3f3f46;
+    background: transparent !important;
+    border: none !important;
+}
+html.theme-dark .schedule-title-actions .schedule-title-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+html.theme-dark .schedule-title-actions .schedule-title-icon-btn:active {
+    background: rgba(255, 255, 255, 0.12) !important;
 }
 html.theme-dark .schedule-title-actions .schedule-title-icon-btn svg,
 html.theme-dark .schedule-title-actions .schedule-title-icon-btn .icon {
@@ -1015,8 +1022,8 @@ body {
         bottom: auto;
     }
     .receipt-drawer.customization-open .receipt-drawer-panel {
-        height: 40vh;
-        max-height: 40vh;
+        height: 40vh !important;
+        max-height: 40vh !important;
         min-height: 0; /* flex 子项可收缩，overflow 才能生效 */
         border-radius: 16px 0 0 16px;
         border-top: none;
@@ -1032,10 +1039,11 @@ body {
     }
     .receipt-customization-modal:not(.d-none) {
         z-index: 100001;
-        /* 上半屏不拦截触摸，让触摸透传到小票抽屉 */
+        /* 弹窗可命中，上半屏由 overlay 透传，下半屏由 content 接收 */
+    }
+    .receipt-customization-modal:not(.d-none) .receipt-customization-overlay {
         pointer-events: none;
     }
-    /* 设置内容区需要接收触摸，所以恢复 pointer-events */
     .receipt-customization-modal:not(.d-none) .receipt-customization-content {
         max-height: 60vh;
         pointer-events: auto;
@@ -3722,6 +3730,8 @@ input:checked + .toggle-slider:before {
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    /* 弹窗容器不拦截点击，仅内容区可点击，便于小票区域同时可交互 */
+    pointer-events: none;
 }
 
 .receipt-customization-overlay {
@@ -3745,6 +3755,7 @@ input:checked + .toggle-slider:before {
     flex-direction: column;
     animation: slideInUp 0.3s ease-out;
     z-index: 1;
+    pointer-events: auto;
 }
 
 /* 桌面端：右侧抽屉，左侧小票保持可见便于预览 */
@@ -4523,9 +4534,6 @@ input:checked + .toggle-slider:before {
 }
 
 /* 历史记录项卡片（紧凑） */
-.history-item.history-item-clickable {
-    cursor: pointer;
-}
 .history-item {
     position: relative;
     padding: 0.5rem 0.6rem 0.5rem 2rem;
@@ -5125,7 +5133,7 @@ input:checked + .toggle-slider:before {
 .schedule-title-row {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.12rem;
     min-width: 0;
     flex: 1;
 }
@@ -5170,9 +5178,9 @@ input:checked + .toggle-slider:before {
     background: rgba(0, 0, 0, 0.08);
 }
 
-/* 排单栏右侧：记录/统计图标·与统计页导出等一致，正方形框（btn--icon） */
+/* 排单栏右侧：记录/统计图标·无边框、线条加粗、间距紧凑 */
 .schedule-title-actions {
-    gap: 0.35rem;
+    gap: 0.15rem;
 }
 .schedule-title-actions .schedule-title-icon-btn {
     display: inline-flex;
@@ -5182,16 +5190,20 @@ input:checked + .toggle-slider:before {
     height: 36px;
     min-width: 36px;
     padding: 0;
-    border: 1px solid var(--border-color);
-    background: var(--bg-color);
-    border-radius: 6px;
+    border: none;
+    background: transparent;
+    border-radius: 0;
     color: var(--text-color);
-    transition: background 0.2s, border-color 0.2s;
+    transition: background 0.2s;
 }
 .schedule-title-actions .schedule-title-icon-btn .icon {
     width: 18px;
     height: 18px;
     flex-shrink: 0;
+}
+.schedule-title-actions .schedule-title-icon-btn .icon path,
+.schedule-title-actions .schedule-title-icon-btn .icon circle {
+    stroke-width: 2.6;
 }
 .schedule-title-actions .schedule-title-icon-btn--stats .icon {
     width: 16px;
@@ -5199,7 +5211,6 @@ input:checked + .toggle-slider:before {
 }
 .schedule-title-actions .schedule-title-icon-btn:hover {
     background: rgba(0, 0, 0, 0.04) !important;
-    border-color: var(--border-color);
 }
 .schedule-title-actions .schedule-title-icon-btn:active {
     background: rgba(0, 0, 0, 0.08) !important;
@@ -5503,13 +5514,26 @@ input:checked + .toggle-slider:before {
     padding: 0.25rem 0;
     box-shadow: none;
 }
+.schedule-todo-filters-wrap {
+    margin-bottom: 0.5rem;
+    width: 100%;
+}
+.schedule-todo-filters-wrap .schedule-title-today-pill {
+    flex-shrink: 0;
+}
+.schedule-todo-filters-wrap .schedule-title-today-pill:hover {
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+.schedule-todo-filters-wrap .schedule-title-today-pill:active {
+    background: rgba(0, 0, 0, 0.08) !important;
+}
 .schedule-todo-filters {
     display: inline-flex;
     background: white;
     border-radius: 10px;
     padding: 3px;
     gap: 0;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0;
     border: 1px solid var(--border-color);
 }
 .schedule-todo-filter-btn {
@@ -5893,7 +5917,7 @@ input:checked + .toggle-slider:before {
     gap: 0.5rem 1rem;
 }
 
-/* 撤单方式：选择框与文字同一行 */
+/* 撤单方式 / 结算优惠：选择框与文字横排，按钮缩小 */
 .settlement-cancel-method-row {
     display: flex;
     flex-direction: row;
@@ -5905,13 +5929,18 @@ input:checked + .toggle-slider:before {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.4rem;
     cursor: pointer;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     margin-bottom: 0;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
 }
 .settlement-cancel-method-opt input {
     flex-shrink: 0;
+    margin: 0;
+    transform: scale(0.85);
+    accent-color: var(--primary-color);
 }
 .settlement-type-option {
     display: flex;
@@ -6178,6 +6207,10 @@ input:checked + .toggle-slider:before {
 .record-item-right .record-status {
     font-size: 0.65rem;
     padding: 0.15rem 0.35rem;
+}
+.record-item-delete {
+    flex-shrink: 0;
+    padding: 0.2rem;
 }
 
 .record-item-right .btn.xs {
@@ -6779,19 +6812,48 @@ input:checked + .toggle-slider:before {
     display: none;
 }
 
+/* 桌面端：与计算页一致，全高左侧面板，强制覆盖前面及移动端规则 */
+@media (min-width: 769px) {
+    .receipt-drawer {
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+    }
+    .receipt-drawer-panel {
+        width: 420px !important;
+        max-width: 90vw !important;
+        height: 100% !important;
+        max-height: none !important;
+        min-height: 100% !important;
+        transform: translateX(-100%) !important;
+        border-radius: 0 !important;
+        border-right: 1px solid var(--border-color) !important;
+        border-left: none !important;
+        top: 0 !important;
+        bottom: 0 !important;
+    }
+    .receipt-drawer.open .receipt-drawer-panel {
+        transform: translateX(0) !important;
+    }
+}
+
+/* 与计算页一致：无背景遮罩，仅面板滑出 */
 .receipt-drawer-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: transparent;
     opacity: 0;
-    transition: opacity 0.25s ease;
+    transition: opacity 0.3s ease-out;
     pointer-events: none;
+}
+
+.receipt-drawer.open .receipt-drawer-overlay {
+    opacity: 0;
 }
 
 .receipt-drawer-panel {
     position: relative;
     background: var(--card-bg);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
     width: 420px;
     max-width: 90vw;
     height: 100%;
@@ -6799,16 +6861,16 @@ input:checked + .toggle-slider:before {
     flex-direction: column;
     transform: translateX(-100%);
     opacity: 0;
-    transition: transform 0.25s ease, opacity 0.25s ease;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
     pointer-events: auto;
     border-right: 1px solid var(--border-color);
 }
 
 .receipt-drawer-header {
+    padding: 0.75rem 1rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -6832,10 +6894,30 @@ input:checked + .toggle-slider:before {
     min-width: 4.5rem;
 }
 
+.receipt-drawer-close {
+    border-radius: 999px;
+    background: transparent;
+    border: none;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.receipt-drawer-close:hover {
+    background-color: var(--primary-light);
+    transform: scale(1.05);
+}
+
 .receipt-drawer-body {
-    padding: 0.75rem 1rem;
-    overflow-y: auto;
     flex: 1;
+    overflow: auto;
+    padding: 0.75rem 1rem 1.5rem;
     min-height: 0;
 }
 
@@ -6933,4 +7015,32 @@ input:checked + .toggle-slider:before {
         background: var(--border-color);
         margin: 0.4rem auto 0;
     }
+}
+
+/* 中宽屏及以上（≥481px）：小票全高左侧，与计算页一致，覆盖 60vh */
+@media (min-width: 481px) {
+    .receipt-drawer .receipt-drawer-panel {
+        height: 100% !important;
+        max-height: none !important;
+        min-height: 100% !important;
+    }
+    .receipt-drawer {
+        align-items: stretch !important;
+        justify-content: flex-start !important;
+    }
+    .receipt-drawer-panel {
+        transform: translateX(-100%) !important;
+        border-radius: 0 !important;
+        border-right: 1px solid var(--border-color) !important;
+    }
+    .receipt-drawer.open .receipt-drawer-panel {
+        transform: translateX(0) !important;
+    }
+}
+
+/* 移动端也与计算页一致：小票全高（不再 60vh），覆盖各处的 height: 60vh */
+.receipt-drawer .receipt-drawer-panel {
+    height: 100% !important;
+    max-height: none !important;
+    min-height: 100% !important;
 }
