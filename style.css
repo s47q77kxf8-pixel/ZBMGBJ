@@ -176,15 +176,6 @@ html.theme-dark .schedule-todo-filter-btn.active {
     background: rgba(255, 255, 255, 0.12);
     color: var(--text-color);
 }
-html.theme-dark .schedule-todo-back-btn {
-    color: var(--text-color);
-}
-html.theme-dark .schedule-todo-back-btn:hover {
-    background: rgba(255, 255, 255, 0.08) !important;
-}
-html.theme-dark .schedule-todo-back-btn:active {
-    background: rgba(255, 255, 255, 0.12) !important;
-}
 html.theme-dark .schedule-todo-card {
     background: var(--card-bg);
     border-color: var(--border-color);
@@ -5536,26 +5527,15 @@ input:checked + .toggle-slider:before {
 .schedule-todo-filters-wrap .schedule-title-today-pill:active {
     background: rgba(0, 0, 0, 0.08) !important;
 }
-.schedule-todo-back-btn {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    padding: 0;
-    border: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    border-radius: 6px;
-    color: var(--text-color);
+.schedule-title-today-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
 }
-.schedule-todo-back-btn:hover {
-    background: rgba(0, 0, 0, 0.04) !important;
-}
-.schedule-todo-back-btn:active {
-    background: rgba(0, 0, 0, 0.08) !important;
-}
-.schedule-todo-back-btn .icon {
-    width: 18px;
-    height: 18px;
+.schedule-title-today-pill .schedule-today-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
 }
 .schedule-todo-filters {
     display: inline-flex;
@@ -5822,7 +5802,7 @@ input:checked + .toggle-slider:before {
     background: rgba(0, 0, 0, 0.06);
 }
 
-/* 结算弹窗（优化 UI） */
+/* 结算弹窗（手机 App 风格 · 现代简约） */
 .settlement-modal {
     position: fixed;
     inset: 0;
@@ -5841,7 +5821,7 @@ input:checked + .toggle-slider:before {
 }
 .settlement-modal:not(.d-none) {
     display: flex;
-    animation: settlement-modal-in 0.25s ease-out;
+    animation: settlement-modal-in 0.2s ease-out;
 }
 @keyframes settlement-modal-in {
     from { opacity: 0; }
@@ -5850,28 +5830,28 @@ input:checked + .toggle-slider:before {
 .settlement-modal-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 .settlement-modal-content {
     position: relative;
     width: 100%;
-    max-width: 420px;
-    max-height: 88vh;
+    max-width: 400px;
+    max-height: 90vh;
     overflow: hidden;
-    background: var(--bg-color);
-    border-radius: 20px 20px 0 0;
-    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.15);
+    background: var(--card-bg);
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
     display: flex;
     flex-direction: column;
-    animation: settlement-content-slide 0.3s ease-out;
+    animation: settlement-content-slide 0.35s cubic-bezier(0.32, 0.72, 0, 1);
 }
 @media (min-width: 480px) {
     .settlement-modal-content {
-        border-radius: 16px;
+        border-radius: 20px;
         max-height: 85vh;
-        box-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
     }
 }
 @keyframes settlement-content-slide {
@@ -5880,66 +5860,121 @@ input:checked + .toggle-slider:before {
 }
 @media (min-width: 480px) {
     @keyframes settlement-content-slide {
-        from { transform: scale(0.95); opacity: 0; }
+        from { transform: scale(0.96); opacity: 0; }
         to { transform: scale(1); opacity: 1; }
     }
+}
+/* 顶部拖拽条（iOS 风格） */
+.settlement-modal-handle {
+    flex-shrink: 0;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 8px;
+    cursor: pointer;
+}
+.settlement-modal-handle::before {
+    content: '';
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-color);
+    opacity: 0.8;
 }
 .settlement-modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
-    padding-top: calc(1rem + env(safe-area-inset-top, 0));
-    border-bottom: 1px solid var(--border-color);
+    padding: 0 1.25rem 1rem;
     flex-shrink: 0;
-    background: var(--bg-color);
 }
 .settlement-modal-header h3 {
     margin: 0;
-    font-size: 1.125rem;
+    font-size: 1.25rem;
     font-weight: 600;
     letter-spacing: -0.02em;
+    color: var(--text-color);
 }
 .settlement-modal-close {
     border: none;
     background: none;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     line-height: 1;
     cursor: pointer;
     color: var(--text-light);
-    opacity: 0.85;
     border-radius: 50%;
     transition: background 0.2s, color 0.2s;
 }
 .settlement-modal-close:hover {
-    opacity: 1;
     background: rgba(0, 0, 0, 0.06);
     color: var(--text-color);
 }
+html.theme-dark .settlement-modal-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
 .settlement-modal-body {
-    padding: 1.25rem 1.25rem 1rem;
+    padding: 0 1.25rem 1.25rem;
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
 }
 .settlement-step-label {
-    margin: 0 0 0.5rem 0;
-    font-size: 0.8125rem;
+    margin: 0 0 0.75rem 0;
+    font-size: 0.75rem;
     font-weight: 500;
     color: var(--text-light);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.03em;
 }
+/* 结算类型选择：卡片式 */
 .settlement-type-options {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+}
+.settlement-type-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    cursor: pointer;
+    padding: 1rem 1.125rem;
+    border-radius: 14px;
+    background: var(--bg-color);
+    border: 1.5px solid transparent;
+    transition: all 0.2s ease;
+}
+.settlement-type-option:hover {
+    background: var(--primary-light);
+}
+.settlement-type-option:has(input:checked) {
+    border-color: var(--primary-color);
+    background: var(--primary-light);
+    box-shadow: 0 0 0 1px var(--primary-color);
+}
+.settlement-type-option input {
+    flex-shrink: 0;
+    margin-top: 2px;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-color);
+}
+.settlement-type-title {
+    display: block;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+.settlement-type-desc {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-top: 2px;
 }
 .settlement-type-options.settlement-type-inline {
     flex-direction: row;
@@ -5947,141 +5982,158 @@ input:checked + .toggle-slider:before {
     gap: 0.5rem 1rem;
 }
 
-/* 撤单方式 / 结算优惠：选择框与文字横排，按钮缩小 */
+/* 撤单方式 / 结算优惠：行内选择 */
 .settlement-cancel-method-row {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 1rem;
+    gap: 1.25rem;
     flex-wrap: wrap;
 }
 .settlement-form .settlement-cancel-method-opt {
     display: inline-flex;
-    flex-direction: row;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
     cursor: pointer;
     font-size: 0.9rem;
     margin-bottom: 0;
-    white-space: nowrap;
-    writing-mode: horizontal-tb;
 }
 .settlement-cancel-method-opt input {
     flex-shrink: 0;
     margin: 0;
-    transform: scale(0.85);
+    width: 18px;
+    height: 18px;
     accent-color: var(--primary-color);
 }
-.settlement-type-option {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    cursor: pointer;
-    padding: 0.875rem 1rem;
-    border-radius: 12px;
-    background: var(--card-bg);
-    border: 1.5px solid var(--border-color);
-    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
-}
-.settlement-type-option:hover {
-    border-color: rgba(0, 0, 0, 0.2);
-    background: var(--primary-light);
-}
-.settlement-type-option:has(input:checked) {
-    border-color: var(--primary-color);
-    background: rgba(17, 17, 17, 0.04);
-    box-shadow: 0 0 0 1px var(--primary-color);
-}
+/* 表单项 */
 .settlement-form {
-    padding-top: 0.25rem;
+    padding-top: 0.5rem;
 }
 .settlement-form label {
     display: block;
-    margin-bottom: 0.875rem;
-    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    color: var(--text-color);
+}
+.settlement-form label:last-child {
+    margin-bottom: 0;
 }
 .settlement-hint {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--text-light);
-    margin: -0.5rem 0 0.75rem;
+    margin: 0.25rem 0 0;
+    line-height: 1.4;
 }
 .settlement-form label.settlement-checkbox {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.settlement-input {
+/* 输入框：现代简约 */
+.settlement-input,
+.settlement-form input:not([type="radio"]):not([type="checkbox"]) {
     display: block;
     width: 100%;
-    margin-top: 0.35rem;
-    padding: 0.6rem 0.75rem;
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-size: 0.9rem;
-    transition: border-color 0.2s;
+    border-radius: 12px;
+    font-size: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background: var(--bg-color);
 }
-.settlement-input:focus {
+.settlement-input:focus,
+.settlement-form input:focus,
+.settlement-form select:focus {
+    outline: none;
     border-color: var(--primary-color);
+}
+html.theme-dark .settlement-input,
+html.theme-dark .settlement-form input:not([type="radio"]):not([type="checkbox"]),
+html.theme-dark .settlement-form select {
+    background: var(--card-bg);
 }
 .settlement-waste-rule,
 .settlement-cancel-fee-rule {
-    margin-bottom: 0.875rem;
+    margin-bottom: 1rem;
 }
 .settlement-waste-rule select,
-.settlement-cancel-fee-rule select,
-.settlement-waste-params input,
-.settlement-cancel-fee-params input {
-    margin-top: 0.35rem;
-    padding: 0.6rem 0.75rem;
+.settlement-cancel-fee-rule select {
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-size: 0.9rem;
+    border-radius: 12px;
+    font-size: 1rem;
+    width: 100%;
 }
 .settlement-waste-params label,
 .settlement-cancel-fee-params label,
 .settlement-waste-rule,
 .settlement-cancel-fee-rule {
     display: block;
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+}
+.settlement-waste-params input,
+.settlement-cancel-fee-params input {
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    font-size: 1rem;
+    width: 100%;
 }
 .settlement-cancel-panel {
-    margin-top: 1rem;
+    margin-top: 1.25rem;
 }
 .settlement-charged-indices,
 .settlement-process-done {
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px dashed var(--border-color);
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
 }
 .settlement-charged-indices label,
 .settlement-process-done label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.5rem;
 }
 .settlement-preview {
-    margin-top: 1rem;
-    padding: 0.75rem 1rem;
-    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-    border-radius: 10px;
+    margin-top: 1.25rem;
+    padding: 1rem 1.25rem;
+    background: var(--primary-light);
+    border-radius: 14px;
     font-weight: 600;
     font-size: 1rem;
-    color: #065f46;
+    color: var(--primary-color);
 }
+html.theme-dark .settlement-preview {
+    background: rgba(255, 255, 255, 0.08);
+}
+/* 底部按钮区 */
 .settlement-modal-footer {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1rem 1.25rem;
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0));
-    border-top: 1px solid var(--border-color);
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0));
     flex-shrink: 0;
-    background: var(--bg-color);
+    background: var(--card-bg);
 }
 .settlement-modal-footer .btn {
-    min-width: 80px;
+    min-width: 88px;
+    padding: 0.75rem 1.25rem;
+    border-radius: 12px;
+    font-weight: 500;
+}
+.settlement-modal-footer .btn.secondary {
+    flex-shrink: 0;
+}
+.settlement-modal-footer .btn.primary {
+    flex: 1;
+    min-width: 120px;
 }
 
 /* 记录页：导出下拉（JSON 同步 / Excel） */

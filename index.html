@@ -74,6 +74,10 @@
         <symbol id="i-today-calendar-dot" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 2v4M8 2v4M3 10h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16" r="2" fill="currentColor"/></symbol>
         <symbol id="i-today-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></symbol>
         <symbol id="i-today-skip-start" viewBox="0 0 24 24"><path d="M5 5v14M5 12l10-4v8L5 12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+        <!-- 弯箭头风格但不似刷新：弧线指向一点 -->
+        <symbol id="i-today-arc-point" viewBox="0 0 24 24"><path d="M18 6A8 8 0 0 0 6 14v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 18l4-4-4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+        <symbol id="i-today-hook" viewBox="0 0 24 24"><path d="M18 8c-4-2-8 2-8 6v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 18l-4-4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+        <symbol id="i-today-corner" viewBox="0 0 24 24"><path d="M18 6v8a4 4 0 0 1-4 4H6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 18l4-4-4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
         <symbol id="i-sun" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
             <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -516,13 +520,11 @@
                                 <button type="button" class="schedule-todo-filter-btn" data-filter="pending" onclick="setScheduleTodoFilter('pending')">待排</button>
                                 <button type="button" class="schedule-todo-filter-btn active" data-filter="today" onclick="setScheduleTodoFilter('today')">当日</button>
                             </div>
-                            <div class="schedule-todo-filters-right d-flex items-center gap-2">
-                                <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()">Today</button>
-                                <button type="button" class="btn secondary btn--icon schedule-todo-back-btn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">
-                                    <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
-                                    <span class="sr-only">返回今日</span>
-                                </button>
-                            </div>
+                            <!-- 返回今日：Today+图标为一个按钮。图标可选 #i-today-curved(弯箭头) #i-today-calendar-dot(日历+圆点) #i-today-crosshair(十字靶心) #i-today-skip-start(跳至开头) -->
+                            <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">
+                                <span class="schedule-today-text">Today</span>
+                                <svg class="icon schedule-today-icon" aria-hidden="true"><use href="#i-today-hook"></use></svg>
+                            </button>
                         </div>
                         <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
                         <div id="scheduleTodoModules" class="schedule-todo-modules">
@@ -531,10 +533,11 @@
                     </div>
                 </div>
 
-                <!-- 结算弹窗 -->
+                <!-- 结算弹窗（手机 App 风格） -->
                 <div id="settlementModal" class="settlement-modal d-none">
                     <div class="settlement-modal-overlay" onclick="closeSettlementModal()"></div>
                     <div class="settlement-modal-content">
+                        <div class="settlement-modal-handle" onclick="closeSettlementModal()" aria-hidden="true"></div>
                         <div class="settlement-modal-header">
                             <h3 id="settlementModalTitle">结算</h3>
                             <button type="button" class="settlement-modal-close" onclick="closeSettlementModal()" aria-label="关闭">×</button>
@@ -544,9 +547,21 @@
                             <div id="settlementStep1" class="settlement-step">
                                 <p class="settlement-step-label">选择结算类型</p>
                                 <div class="settlement-type-options">
-                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="cancel"> 撤单（退全款或收跑单费）</label>
-                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="waste_fee"> 废稿（收废稿费）</label>
-                                    <label class="settlement-type-option"><input type="radio" name="settlementType" value="normal"> 正常结单（按原价或折扣/免除）</label>
+                                    <label class="settlement-type-option">
+                                        <input type="radio" name="settlementType" value="cancel">
+                                        <span class="settlement-type-title">撤单</span>
+                                        <span class="settlement-type-desc">退全款或收跑单费</span>
+                                    </label>
+                                    <label class="settlement-type-option">
+                                        <input type="radio" name="settlementType" value="waste_fee">
+                                        <span class="settlement-type-title">废稿</span>
+                                        <span class="settlement-type-desc">收废稿费</span>
+                                    </label>
+                                    <label class="settlement-type-option">
+                                        <input type="radio" name="settlementType" value="normal">
+                                        <span class="settlement-type-title">结单</span>
+                                        <span class="settlement-type-desc">按原价或折扣结算</span>
+                                    </label>
                                 </div>
                             </div>
                             <!-- 第二步：按类型展示表单项 -->
