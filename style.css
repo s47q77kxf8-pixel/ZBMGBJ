@@ -176,6 +176,15 @@ html.theme-dark .schedule-todo-filter-btn.active {
     background: rgba(255, 255, 255, 0.12);
     color: var(--text-color);
 }
+html.theme-dark .schedule-todo-back-btn {
+    color: var(--text-color);
+}
+html.theme-dark .schedule-todo-back-btn:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+html.theme-dark .schedule-todo-back-btn:active {
+    background: rgba(255, 255, 255, 0.12) !important;
+}
 html.theme-dark .schedule-todo-card {
     background: var(--card-bg);
     border-color: var(--border-color);
@@ -5180,7 +5189,7 @@ input:checked + .toggle-slider:before {
 
 /* 排单栏右侧：记录/统计图标·无边框、线条加粗、间距紧凑 */
 .schedule-title-actions {
-    gap: 0.15rem;
+    gap: 0.08rem;
 }
 .schedule-title-actions .schedule-title-icon-btn {
     display: inline-flex;
@@ -5203,7 +5212,7 @@ input:checked + .toggle-slider:before {
 }
 .schedule-title-actions .schedule-title-icon-btn .icon path,
 .schedule-title-actions .schedule-title-icon-btn .icon circle {
-    stroke-width: 2.6;
+    stroke-width: 2.85;
 }
 .schedule-title-actions .schedule-title-icon-btn--stats .icon {
     width: 16px;
@@ -5527,6 +5536,27 @@ input:checked + .toggle-slider:before {
 .schedule-todo-filters-wrap .schedule-title-today-pill:active {
     background: rgba(0, 0, 0, 0.08) !important;
 }
+.schedule-todo-back-btn {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 6px;
+    color: var(--text-color);
+}
+.schedule-todo-back-btn:hover {
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+.schedule-todo-back-btn:active {
+    background: rgba(0, 0, 0, 0.08) !important;
+}
+.schedule-todo-back-btn .icon {
+    width: 18px;
+    height: 18px;
+}
 .schedule-todo-filters {
     display: inline-flex;
     background: white;
@@ -5657,7 +5687,7 @@ input:checked + .toggle-slider:before {
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
     min-width: 0;
-    padding-left: 1.35rem;
+    padding-left: 0.7rem;
 }
 .schedule-todo-row {
     display: flex;
@@ -6721,7 +6751,7 @@ input:checked + .toggle-slider:before {
     }
     .schedule-todo-card-products {
         gap: 0.12rem 0.3rem;
-        padding-left: 1.2rem;
+        padding-left: 0.7rem;
     }
     .schedule-todo-card-range {
         font-size: 0.75rem;
@@ -6765,7 +6795,7 @@ input:checked + .toggle-slider:before {
         height: 5px;
     }
     .schedule-todo-card-products {
-        padding-left: 1.1rem;
+        padding-left: 0.7rem;
     }
     .schedule-todo-card-range {
         font-size: 0.7rem;
