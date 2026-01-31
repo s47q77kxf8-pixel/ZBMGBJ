@@ -309,11 +309,11 @@ const defaultSettings = {
             maxAmount: null
         },
         wasteFee: {
-            defaultRule: 'percent_total',
-            defaultRate: 0.3,
-            defaultFixedPerItem: 20,
-            minAmount: 0,
-            maxAmount: null,
+            mode: 'percent_total',  // 废稿费模式（设置页选定后废稿页只显示此模式）
+            defaultRate: 30,        // 默认比例（%，0~100）
+            defaultFixedPerItem: 20, // 默认按件金额（元）
+            minAmount: null,        // 保底金额（元，null 表示无保底）
+            maxAmount: null,        // 封顶金额（元，null 表示不封顶）
             defaultPartialProducts: false,
             defaultExcludeNoProcess: false
         }
@@ -537,8 +537,20 @@ function init() {
     if (!defaultSettings.settlementRules) {
         defaultSettings.settlementRules = {
             cancelFee: { defaultRule: 'percent', defaultRate: 0.1, defaultFixedAmount: 50, minAmount: 0, maxAmount: null },
-            wasteFee: { defaultRule: 'percent_total', defaultRate: 0.3, defaultFixedPerItem: 20, minAmount: 0, maxAmount: null, defaultPartialProducts: false, defaultExcludeNoProcess: false }
+            wasteFee: { mode: 'percent_total', defaultRate: 30, defaultFixedPerItem: 20, defaultFixedAmount: 50, minAmount: null, maxAmount: null, defaultPartialProducts: false, defaultExcludeNoProcess: false }
         };
+    }
+    // 旧数据迁移：wasteFee.defaultRule → mode，defaultRate 从 0~1 → 0~100
+    if (defaultSettings.settlementRules.wasteFee) {
+        var wf = defaultSettings.settlementRules.wasteFee;
+        if (wf.defaultRule && !wf.mode) {
+            wf.mode = wf.defaultRule;
+            delete wf.defaultRule;
+        }
+        if (wf.defaultRate != null && wf.defaultRate <= 1) {
+            wf.defaultRate = wf.defaultRate * 100; // 0.3 → 30
+        }
+        if (wf.minAmount === 0) wf.minAmount = null;
     }
     if (defaultSettings.depositRate == null || defaultSettings.depositRate === undefined) {
         defaultSettings.depositRate = 0.3;
@@ -2794,7 +2806,10 @@ function getRecordProgressStatus(item) {
     if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
         return { text: '已撤单', className: 'record-status--cancelled', pending: false, overdue: false };
     }
-    if (item.settlement && (item.settlement.type === 'normal' || item.settlement.type === 'waste_fee')) {
+    if (item.settlement && item.settlement.type === 'waste_fee') {
+        return { text: '有废稿', className: 'record-status--waste', pending: false, overdue: false };
+    }
+    if (item.settlement && item.settlement.type === 'normal') {
         return { text: '已结单', className: 'record-status--settled', pending: false, overdue: false };
     }
     if (item.status === 'closed') {
@@ -2966,6 +2981,7 @@ function getFilteredHistoryForRecord() {
                 (item.clientId && String(item.clientId).toLowerCase().includes(keywordLower)) ||
                 (item.contact && String(item.contact).toLowerCase().includes(keywordLower)) ||
                 (item.deadline && String(item.deadline).toLowerCase().includes(keywordLower)) ||
+                (item.agreedAmount != null && String(item.agreedAmount).includes(keywordLower)) ||
                 (item.finalTotal && String(item.finalTotal).includes(keywordLower)) ||
                 (item.totalProductsPrice && String(item.totalProductsPrice).includes(keywordLower))
             );
@@ -3048,7 +3064,7 @@ function applyRecordFilters() {
         const status = getRecordProgressStatus(item);
         const isSelected = selectedHistoryIds.has(item.id);
         return `
-            <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}" onclick="openScheduleTodoCardModal(${item.id})">
+            <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}">
                 <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})" onclick="event.stopPropagation()">
                 <span class="record-item-client">${clientId}</span>
                 <div class="record-item-right">
@@ -4530,7 +4546,7 @@ function calculatePrice() {
         totalBeforePlatformFee: totalBeforePlatformFee,
         finalTotal: finalTotal,
         agreedAmount: agreedAmount,
-        needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (document.getElementById('needDeposit') && document.getElementById('needDeposit').checked)),
+        needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (function(){ var el = document.getElementById('needDeposit'); return el && el.value === 'yes'; })()),
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; if (v && def && v === def) return new Date().toISOString(); if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
@@ -5131,11 +5147,13 @@ function generateQuote() {
     var showRounding = Math.abs((quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat) - totalBeforePlat) > 0.001;
     if (showRounding) {
         var roundingDiscount = totalBeforePlat - agreed;
-        if (roundingDiscount > 0) {
-            html += `<div class="receipt-summary-row receipt-rounding-row"><div class="receipt-summary-label">抹零优惠</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;"><span class="receipt-rounding-discount">-¥${roundingDiscount.toFixed(2)}</span></div></div>`;
-        }
         var valueHtml = `<span class="receipt-rounding-amount">¥${agreed.toFixed(2)}</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${totalBeforePlat.toFixed(2)}</span>`;
-        html += `<div class="receipt-summary-row receipt-agreed-row" style="font-weight: bold; align-items: flex-end;${roundingDiscount <= 0 ? ' margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;' : ''}"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+        if (roundingDiscount > 0) {
+            var leftLabel = `<span class="receipt-agreed-row-left"><span class="receipt-agreed-label-bold">应收金额</span><span class="receipt-rounding-discount">（-¥${roundingDiscount.toFixed(2)}）</span></span>`;
+            html += `<div class="receipt-summary-row receipt-agreed-row receipt-agreed-row-with-rounding" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">${leftLabel}</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+        } else {
+            html += `<div class="receipt-summary-row receipt-agreed-row" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+        }
     } else {
         html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap">¥${agreed.toFixed(2)}</div></div>`;
     }
@@ -5150,7 +5168,14 @@ function generateQuote() {
     } else {
         html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${agreed.toFixed(2)}</div></div>`;
     }
-            
+    // 定金选是时：小票显示需付定金 = 实付金额 × 定金比例
+    if (quoteData.needDeposit) {
+        var finalPays = quoteData.finalTotal != null ? quoteData.finalTotal : (quoteData.platformFeeAmount > 0 ? (agreed + quoteData.platformFeeAmount) : agreed);
+        var rate = (defaultSettings && defaultSettings.depositRate != null) ? Number(defaultSettings.depositRate) : 0.3;
+        var depositAmount = Math.round(finalPays * rate * 100) / 100;
+        html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label">需付定金</div><div class="receipt-summary-value">¥${depositAmount.toFixed(2)}</div></div>`;
+    }
+
             // 添加底部内容
             html += `<div class="receipt-footer">`;
                         
@@ -5207,6 +5232,7 @@ function roundAgreedAmount(mode) {
     else if (mode === 'ceil') val = Math.ceil(base);
     else if (mode === 'floor') val = Math.floor(base);
     else if (mode === 'ten') val = Math.round(base / 10) * 10;
+    else if (mode === 'hundred') val = Math.floor(base / 100) * 100;
     else return;
     quoteData.agreedAmount = Math.max(0, val);
     // 平台费 = 约定实收×费率，客户实付 = 约定实收+平台费
@@ -5267,47 +5293,6 @@ function openReceiptDrawer() {
     if (window.innerWidth <= 768) {
         document.body.style.overflow = 'hidden';
     }
-
-    // #region agent log
-    requestAnimationFrame(function () {
-        try {
-            var drawer = document.getElementById('receiptDrawer');
-            var panel = drawer ? drawer.querySelector('.receipt-drawer-panel') : null;
-            var bodyEl = drawer ? drawer.querySelector('.receipt-drawer-body') : null;
-            var ds = drawer ? window.getComputedStyle(drawer) : {};
-            var ps = panel ? window.getComputedStyle(panel) : {};
-            var bs = bodyEl ? window.getComputedStyle(bodyEl) : {};
-            var rect = panel ? panel.getBoundingClientRect() : {};
-            fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sessionId: 'debug-session',
-                    runId: 'receipt-layout',
-                    hypothesisId: 'H1-H5',
-                    location: 'script.js:openReceiptDrawer',
-                    message: 'receipt drawer layout after open',
-                    data: {
-                        innerWidth: window.innerWidth,
-                        innerHeight: window.innerHeight,
-                        isMobileViewport: window.innerWidth <= 768,
-                        drawerJustifyContent: ds.justifyContent,
-                        drawerAlignItems: ds.alignItems,
-                        panelHeight: ps.height,
-                        panelMaxHeight: ps.maxHeight,
-                        panelTransform: ps.transform,
-                        panelTop: rect.top,
-                        panelHeightRect: rect.height,
-                        bodyOverflow: bs.overflow,
-                        bodyHeight: bs.height,
-                        bodyMaxHeight: bs.maxHeight
-                    },
-                    timestamp: Date.now()
-                })
-            }).catch(function () {});
-        } catch (e) {}
-    });
-    // #endregion
 }
 
 // 关闭小票抽屉
@@ -5607,7 +5592,14 @@ function setScheduleProductDone(scheduleId, productIndex, done) {
     saveData();
 }
 
-// 按选中日期获取所有排单：返回该日期在时间范围内的所有排单
+// 订单是否已完结（撤稿/废稿/结单后归档，不再在 todo/日历中显示）
+function isOrderSettled(item) {
+    if (!item || !item.settlement) return false;
+    const t = item.settlement.type;
+    return t === 'full_refund' || t === 'cancel_with_fee' || t === 'waste_fee' || t === 'normal';
+}
+
+// 按选中日期获取所有排单：返回该日期在时间范围内的所有排单（排除已完结）
 function getScheduleItemsForDate(selectedDate) {
     if (!selectedDate) return [];
     const normalizeYmd = (d) => {
@@ -5619,6 +5611,7 @@ function getScheduleItemsForDate(selectedDate) {
     const target = normalizeYmd(selectedDate);
     if (!target) return [];
     return history.filter(h => {
+        if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         const start = h.startTime ? normalizeYmd(h.startTime) : normalizeYmd(h.timestamp);
         const end = h.deadline ? normalizeYmd(h.deadline) : start;
@@ -5627,17 +5620,19 @@ function getScheduleItemsForDate(selectedDate) {
     });
 }
 
-// 有排单时间的全部（startTime 或 deadline 至少一个）
+// 有排单时间的全部（startTime 或 deadline 至少一个，排除已完结）
 function getScheduleItemsAll() {
     return history.filter(h => {
+        if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         return !!(h.startTime || h.deadline);
     });
 }
 
-// 待排单：未设置排单时间（无 startTime 且无 deadline）
+// 待排单：未设置排单时间（无 startTime 且无 deadline，排除已完结）
 function getScheduleItemsPending() {
     return history.filter(h => {
+        if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         return !h.startTime && !h.deadline;
     });
@@ -5665,13 +5660,14 @@ function getScheduleItemsByFilter() {
     return getScheduleItemsForDate(window.scheduleSelectedDate);
 }
 
-// 默认 todo：返回当前月内（与该月有交集）的所有排单
+// 默认 todo：返回当前月内（与该月有交集）的所有排单（排除已完结）
 function getScheduleItemsForMonth(year, month) {
     const monthStart = new Date(year, month - 1, 1);
     monthStart.setHours(0, 0, 0, 0);
     const monthEnd = new Date(year, month, 0);
     monthEnd.setHours(23, 59, 59, 999);
     return history.filter(h => {
+        if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         const start = h.startTime ? new Date(h.startTime) : new Date(h.timestamp);
         const end = h.deadline ? new Date(h.deadline) : start;
@@ -5738,22 +5734,6 @@ function renderScheduleMonthTitleStats(year, month) {
     const shouldShowToday = !isCurrentMonth || isOtherDay;
     const todayBtn = document.querySelector('.schedule-title-today-pill');
     if (todayBtn) todayBtn.classList.toggle('d-none', !shouldShowToday);
-    // #region agent log
-    try {
-        const todayEl = document.querySelector('.schedule-title-today-pill');
-        const filterEl = document.querySelector('.schedule-todo-filter-btn');
-        const data = { viewportW: window.innerWidth };
-        if (todayEl) {
-            const t = getComputedStyle(todayEl);
-            data.today = { height: t.height, minHeight: t.minHeight, padding: t.padding, fontSize: t.fontSize, lineHeight: t.lineHeight, borderWidth: t.borderWidth, className: todayEl.className };
-        }
-        if (filterEl) {
-            const f = getComputedStyle(filterEl);
-            data.filter = { height: f.height, minHeight: f.minHeight, padding: f.padding, fontSize: f.fontSize, lineHeight: f.lineHeight, className: filterEl.className };
-        }
-        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:renderScheduleMonthTitleStats',message:'Today vs filter computed styles',data:data,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-    } catch (e) {}
-    // #endregion
 }
 
 // 点击标题月份弹出日期选择
@@ -5794,7 +5774,7 @@ function scheduleTodoBackToToday() {
     updateScheduleTitle();
 }
 
-// 当前批次：返回「最近截稿日」或「选中日所在截稿日」的那批排单。返回 { deadline: 'YYYY-MM-DD', items: schedule[] }
+// 当前批次：返回「最近截稿日」或「选中日所在截稿日」的那批排单。返回 { deadline: 'YYYY-MM-DD', items: schedule[] }（排除已完结）
 function getScheduleBatchForDisplay(selectedDate) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -5804,7 +5784,7 @@ function getScheduleBatchForDisplay(selectedDate) {
         if (isNaN(x.getTime())) return null;
         return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
     };
-    const items = history.filter(h => h.deadline).map(ensureProductDoneStates);
+    const items = history.filter(h => h.deadline && !isOrderSettled(h)).map(ensureProductDoneStates);
     if (items.length === 0) return { deadline: null, items: [] };
     if (selectedDate) {
         const target = normalizeYmd(selectedDate);
@@ -5819,13 +5799,14 @@ function getScheduleBatchForDisplay(selectedDate) {
     return { deadline: nearest, items: batch };
 }
 
-// 日历条带数据：指定年月，返回该月内可见的排单条带 { id, clientId, productCount, startDate, endDate }[]
+// 日历条带数据：指定年月，返回该月内可见的排单条带 { id, clientId, productCount, startDate, endDate }[]（已完结不渲染）
 function getScheduleBarsForCalendar(year, month) {
     const bars = [];
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
     const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     history.forEach(item => {
+        if (isOrderSettled(item)) return;
         if (!item.startTime && !item.deadline) return;
         // 如果该排单所有制品都已完成，则不再渲染彩条
         ensureProductDoneStates(item);
@@ -6067,22 +6048,6 @@ function updateScheduleTitleTodayButton() {
     if (todayBtn) {
         todayBtn.classList.toggle('d-none', isCurrentMonth);
     }
-    // #region agent log
-    try {
-        const todayEl = document.querySelector('.schedule-title-today-pill');
-        const filterEl = document.querySelector('.schedule-todo-filter-btn');
-        const data = { viewportW: window.innerWidth };
-        if (todayEl) {
-            const t = getComputedStyle(todayEl);
-            data.today = { height: t.height, minHeight: t.minHeight, padding: t.padding, fontSize: t.fontSize, lineHeight: t.lineHeight, borderWidth: t.borderWidth, className: todayEl.className };
-        }
-        if (filterEl) {
-            const f = getComputedStyle(filterEl);
-            data.filter = { height: f.height, minHeight: f.minHeight, padding: f.padding, fontSize: f.fontSize, lineHeight: f.lineHeight, className: filterEl.className };
-        }
-        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:updateScheduleTitleTodayButton',message:'Today vs filter computed styles',data:data,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-    } catch (e) {}
-    // #endregion
 }
 
 // 渲染当前批次制品 todo 区（按快捷筛选或选中日期显示排单制品）
@@ -6213,6 +6178,22 @@ function closeScheduleTodoCardModal() {
     var el = document.getElementById('scheduleTodoCardModal');
     if (el) el.classList.add('d-none');
 }
+// 记录页：点击行打开操作弹窗（事件委托，避免 inline onclick 与 id 类型问题）
+(function () {
+    var container = document.getElementById('recordContainer');
+    if (container) {
+        container.addEventListener('click', function (e) {
+            var row = e.target.closest('.record-item-clickable');
+            if (!row) return;
+            if (e.target.closest('.record-item-checkbox') || e.target.closest('.record-item-delete')) return;
+            var id = row.getAttribute('data-id');
+            if (id == null || id === '') return;
+            var num = Number(id);
+            if (!isNaN(num) && String(num) === String(id)) id = num;
+            openScheduleTodoCardModal(id);
+        });
+    }
+})();
 function scheduleTodoCardAction(action) {
     var id = scheduleTodoCardModalRecordId;
     closeScheduleTodoCardModal();
@@ -6226,7 +6207,7 @@ function scheduleTodoCardAction(action) {
 }
 function needDepositChecked() {
     var el = document.getElementById('needDeposit');
-    return el ? el.checked : false;
+    return el ? el.value === 'yes' : false;
 }
 function openSettlementModal(recordId, preSelectedType) {
     var item = history.find(function (h) { return h.id === recordId; });
@@ -6295,6 +6276,9 @@ function showSettlementForm(type) {
             };
         });
     } else if (type === 'waste_fee') {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:showSettlementForm',message:'waste_fee branch',data:{type:'waste_fee'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
+        // #endregion
         settlementCurrentFormType = 'waste_fee';
         document.getElementById('settlementFormWasteFee').classList.remove('d-none');
         settlementRenderWasteFeeForm();
@@ -6392,8 +6376,8 @@ function settlementToggleCancelFeeFields() {
 
 function computeCancelFeeAmount(item, rule, ratePercent, fixedAmount) {
     if (rule === 'percent') {
-        var base = item.finalTotal != null ? item.finalTotal : 0;
-        return base * (parseFloat(ratePercent) || 0) / 100;
+        var base = (item.agreedAmount != null ? item.agreedAmount : item.totalBeforePlatformFee) != null ? (item.agreedAmount != null ? item.agreedAmount : item.totalBeforePlatformFee) : (item.finalTotal || 0);
+        return (base || 0) * (parseFloat(ratePercent) || 0) / 100;
     }
     return parseFloat(fixedAmount) || 0;
 }
@@ -6420,14 +6404,75 @@ function settlementRenderWasteFeeForm() {
     var gifts = item.giftPrices || [];
     var allItems = products.map(function (p, i) { return { label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: i }; });
     gifts.forEach(function (g, i) { allItems.push({ label: '[赠品] ' + (g.product || '赠品') + (g.quantity > 1 ? ' x ' + g.quantity : ''), idx: products.length + i }); });
+    
+    // 从设置页读取废稿费配置
+    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var mode = wf.mode || 'percent_total';
+    var defaultRate = (wf.defaultRate != null ? wf.defaultRate : 30) / 100; // 转为 0~1
+    var defaultFixedPerItem = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
+    var minAmount = wf.minAmount != null ? wf.minAmount : '';
+    var maxAmount = wf.maxAmount != null ? wf.maxAmount : '';
+    
+    // 设置隐藏的 select 值（供后续读取）
+    var ruleEl = document.getElementById('settlementWasteRule');
+    if (ruleEl) ruleEl.value = mode;
+    
+    // 显示当前模式名称
+    var modeNames = {
+        'percent_total': '按原总额比例',
+        'percent_charged_only': '按已完成制品及工艺比例（按件+同模+工艺层数+废稿比例）',
+        'fixed_per_item': '按件固定',
+        'fixed_amount': '按固定金额'
+    };
+    var modeTextEl = document.getElementById('settlementWasteModeText');
+    if (modeTextEl) modeTextEl.textContent = modeNames[mode] || mode;
+
+    var byPieceWrap = document.getElementById('settlementWasteByPieceWrap');
+    var percentTotalWrap = document.getElementById('settlementWastePercentTotalWrap');
+    var fixedPerItemWrap = document.getElementById('settlementWasteFixedPerItemWrap');
+    var fixedAmountWrap = document.getElementById('settlementWasteFixedAmountWrap');
+    
+    if (byPieceWrap) byPieceWrap.classList.toggle('d-none', mode !== 'percent_charged_only');
+    if (percentTotalWrap) percentTotalWrap.classList.toggle('d-none', mode !== 'percent_total');
+    if (fixedPerItemWrap) fixedPerItemWrap.classList.toggle('d-none', mode !== 'fixed_per_item');
+    if (fixedAmountWrap) fixedAmountWrap.classList.toggle('d-none', mode !== 'fixed_amount');
+    
+    if (mode === 'percent_charged_only') {
+        settlementRenderWasteByPieceForm();
+        return;
+    }
+    if (mode === 'percent_total') {
+        settlementRenderPercentTotalForm();
+        return;
+    }
+    if (mode === 'fixed_per_item') {
+        settlementRenderFixedPerItemForm();
+        return;
+    }
+    if (mode === 'fixed_amount') {
+        settlementRenderFixedAmountForm();
+        return;
+    }
+    
+    // 填充参数默认值
+    var rateEl = document.getElementById('settlementWasteRate');
+    var fixedPerItemEl = document.getElementById('settlementFixedPerItem');
+    var minEl = document.getElementById('settlementWasteMin');
+    var maxEl = document.getElementById('settlementWasteMax');
+    if (rateEl) rateEl.value = defaultRate;
+    if (fixedPerItemEl) fixedPerItemEl.value = defaultFixedPerItem;
+    if (minEl) minEl.value = minAmount;
+    if (maxEl) maxEl.value = maxAmount;
+    
+    // 渲染制品列表
     var listEl = document.getElementById('settlementChargedList');
     listEl.innerHTML = allItems.map(function (it) {
         return '<label><input type="checkbox" class="settlement-charged-item" data-idx="' + it.idx + '" checked> ' + it.label + '</label>';
     }).join('');
+    
     var doneStates = item.productDoneStates || [];
     var processListEl = document.getElementById('settlementProcessDoneList');
-    var rule = document.getElementById('settlementWasteRule').value;
-    var showProcessDone = rule === 'percent_charged_only' || rule === 'fixed_per_item';
+    var showProcessDone = mode === 'percent_charged_only' || mode === 'fixed_per_item';
     document.getElementById('settlementProcessDoneFlags').classList.toggle('d-none', !showProcessDone);
     if (showProcessDone) {
         processListEl.innerHTML = allItems.map(function (it, i) {
@@ -6435,6 +6480,7 @@ function settlementRenderWasteFeeForm() {
             return '<label><input type="checkbox" class="settlement-process-done-item" data-idx="' + it.idx + '" ' + (done ? 'checked' : '') + '> ' + it.label + '</label>';
         }).join('');
     }
+    
     var showCharged = true;
     document.getElementById('settlementChargedIndices').classList.toggle('d-none', !showCharged);
     listEl.querySelectorAll('input').forEach(function (cb) {
@@ -6443,11 +6489,14 @@ function settlementRenderWasteFeeForm() {
     processListEl.querySelectorAll('input').forEach(function (cb) {
         cb.addEventListener('change', function () { settlementUpdateWastePreview(); });
     });
-    document.getElementById('settlementWasteRule').addEventListener('change', function () { settlementRenderWasteFeeForm(); });
-    document.getElementById('settlementWasteRate').addEventListener('input', settlementUpdateWastePreview);
-    document.getElementById('settlementFixedPerItem').addEventListener('input', settlementUpdateWastePreview);
-    document.getElementById('settlementWasteMin').addEventListener('input', settlementUpdateWastePreview);
-    document.getElementById('settlementWasteMax').addEventListener('input', settlementUpdateWastePreview);
+    // 不再监听规则变更（已固定）
+    if (rateEl) rateEl.addEventListener('input', settlementUpdateWastePreview);
+    if (fixedPerItemEl) fixedPerItemEl.addEventListener('input', settlementUpdateWastePreview);
+    if (minEl) minEl.addEventListener('input', settlementUpdateWastePreview);
+    if (maxEl) maxEl.addEventListener('input', settlementUpdateWastePreview);
+    
+    // 初始预览
+    settlementUpdateWastePreview();
 }
 
 function computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, chargedIndices, processDoneFlags) {
@@ -6460,7 +6509,7 @@ function computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmo
     var base = 0;
     var count = 0;
     if (rule === 'percent_total') {
-        var total = item.finalTotal != null ? item.finalTotal : (item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : 0);
+        var total = (item.agreedAmount != null ? item.agreedAmount : item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : item.finalTotal) || 0;
         if (chargedIndices.length < allItems.length) {
             total = 0;
             chargedIndices.forEach(function (i) {
@@ -6485,25 +6534,567 @@ function computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmo
 }
 
 function settlementUpdateWastePreview() {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:settlementUpdateWastePreview',message:'entry',data:{settlementModalRecordId:settlementModalRecordId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(function(){});
+    // #endregion
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
-    var rule = document.getElementById('settlementWasteRule').value;
-    var rate = document.getElementById('settlementWasteRate').value;
-    var fixedPerItem = document.getElementById('settlementFixedPerItem').value;
-    var minAmount = document.getElementById('settlementWasteMin').value;
-    var maxAmount = document.getElementById('settlementWasteMax').value;
-    var charged = [];
-    document.querySelectorAll('.settlement-charged-item:checked').forEach(function (cb) { charged.push(parseInt(cb.dataset.idx, 10)); });
-    var processDone = [];
-    var list = document.querySelectorAll('.settlement-process-done-item');
-    if (list.length) {
-        list.forEach(function (cb) { processDone[parseInt(cb.dataset.idx, 10)] = cb.checked; });
+    var ruleEl = document.getElementById('settlementWasteRule');
+    var rule = ruleEl ? ruleEl.value : 'percent_total';
+    var amount;
+    if (rule === 'fixed_amount') {
+        var fixedAmountEl = document.getElementById('settlementWasteFixedAmount');
+        amount = fixedAmountEl ? (parseFloat(fixedAmountEl.value) || 0) : 0;
+        amount = Math.max(0, amount);
     } else {
-        var doneStates = item.productDoneStates || [];
-        (item.productPrices || []).concat(item.giftPrices || []).forEach(function (_, i) { processDone[i] = !!doneStates[i]; });
+        var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+        var rateEl = document.getElementById('settlementWasteRate');
+        var fixedPerItemEl = document.getElementById('settlementFixedPerItem');
+        var minEl = document.getElementById('settlementWasteMin');
+        var maxEl = document.getElementById('settlementWasteMax');
+        var rate = rateEl ? rateEl.value : (wf.defaultRate != null ? String(wf.defaultRate) : '30');
+        var fixedPerItem = fixedPerItemEl ? fixedPerItemEl.value : (wf.defaultFixedPerItem != null ? String(wf.defaultFixedPerItem) : '20');
+        var minAmount = minEl ? minEl.value : (wf.minAmount != null ? String(wf.minAmount) : '');
+        var maxAmount = maxEl ? maxEl.value : (wf.maxAmount != null ? String(wf.maxAmount) : '');
+        var charged = [];
+        document.querySelectorAll('.settlement-charged-item:checked').forEach(function (cb) { charged.push(parseInt(cb.dataset.idx, 10)); });
+        var processDone = [];
+        var list = document.querySelectorAll('.settlement-process-done-item');
+        if (list.length) {
+            list.forEach(function (cb) { processDone[parseInt(cb.dataset.idx, 10)] = cb.checked; });
+        } else {
+            var doneStates = item.productDoneStates || [];
+            (item.productPrices || []).concat(item.giftPrices || []).forEach(function (_, i) { processDone[i] = !!doneStates[i]; });
+        }
+        amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
     }
-    var amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
-    document.getElementById('settlementWastePreview').textContent = '废稿费预览：¥' + amount.toFixed(2);
+    // #region agent log
+    var _previewEl = document.getElementById('settlementWastePreview');
+    fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:6559',message:'before set textContent',data:{previewElIsNull:_previewEl===null,amount:amount},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H3'})}).catch(function(){});
+    // #endregion
+    if (_previewEl) _previewEl.textContent = '应收金额：¥' + amount.toFixed(2);
+    var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+    if (finalAmountEl) finalAmountEl.value = amount.toFixed(2);
+}
+
+// 按已完成制品及工艺比例：计算单行制品金额（产品+工艺，同模在行内、工艺按已做层数）
+function computeWasteByPieceRowAmount(allItem, wasteQty, processLayersDone) {
+    if (!allItem || wasteQty <= 0) return 0;
+    var basePrice = Number(allItem.basePrice) || 0;
+    var sameModelUnitPrice = Number(allItem.sameModelUnitPrice) || 0;
+    var sameModel = (allItem.sameModelCount != null && allItem.sameModelCount > 0);
+    var productAmount = sameModel
+        ? basePrice + Math.max(0, wasteQty - 1) * sameModelUnitPrice
+        : wasteQty * basePrice;
+    var processAmount = 0;
+    var processDetails = allItem.processDetails || [];
+    for (var i = 0; i < processDetails.length; i++) {
+        var p = processDetails[i];
+        var layers = p.layers || 1;
+        var pricePerLayer = (Number(p.unitPrice) || 0) / layers;
+        var layersDone = (processLayersDone && processLayersDone[i] != null) ? Math.min(parseInt(processLayersDone[i], 10) || 0, layers) : 0;
+        processAmount += pricePerLayer * layersDone * wasteQty;
+    }
+    return productAmount + processAmount;
+}
+
+// 按原总额比例
+function settlementRenderPercentTotalForm() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var defaultRate = (wf.defaultRate != null ? wf.defaultRate : 30);
+    var baseAmount = item.agreedAmount != null ? item.agreedAmount : (item.finalTotal != null ? item.finalTotal : 0);
+    
+    document.getElementById('settlementPercentTotalBase').textContent = '¥' + baseAmount.toFixed(2);
+    document.getElementById('settlementPercentTotalRatio').textContent = defaultRate + '%';
+    
+    var wasteFee = baseAmount * (defaultRate / 100);
+    document.getElementById('settlementPercentTotalWasteFee').textContent = '¥' + wasteFee.toFixed(2);
+    
+    settlementRenderOtherFeesForMode('PercentTotal', item, wf);
+    settlementUpdatePercentTotalPreview();
+}
+
+// 按件固定
+function settlementRenderFixedPerItemForm() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var products = item.productPrices || [];
+    var gifts = item.giftPrices || [];
+    var allItems = [];
+    products.forEach(function (p, i) {
+        allItems.push({ idx: i, label: (p.product || '制品') + (p.quantity > 1 ? ' x' + p.quantity : ''), quantity: p.quantity || 1 });
+    });
+    gifts.forEach(function (g, i) {
+        allItems.push({ idx: products.length + i, label: '[赠品] ' + (g.product || '赠品') + (g.quantity > 1 ? ' x' + g.quantity : ''), quantity: g.quantity || 1 });
+    });
+    
+    var listEl = document.getElementById('settlementFixedPerItemList');
+    if (listEl) {
+        listEl.innerHTML = allItems.map(function (it) {
+            return '<label class="settlement-coeff-label"><input type="checkbox" class="settlement-fixed-per-item-check" data-idx="' + it.idx + '" data-qty="' + it.quantity + '" checked><span class="settlement-coeff-text">' + it.label + '</span></label>';
+        }).join('');
+        listEl.querySelectorAll('input').forEach(function (cb) {
+            cb.addEventListener('change', settlementUpdateFixedPerItemPreview);
+        });
+    }
+    
+    var fixedPerItem = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
+    document.getElementById('settlementFixedPerItemPrice').textContent = '¥' + fixedPerItem.toFixed(2);
+    
+    settlementRenderOtherFeesForMode('FixedPerItem', item, wf);
+    settlementUpdateFixedPerItemPreview();
+}
+
+// 按固定金额
+function settlementRenderFixedAmountForm() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var fixedAmount = wf.defaultFixedAmount != null ? wf.defaultFixedAmount : 50;
+    
+    document.getElementById('settlementFixedAmountWasteFee').textContent = '¥' + fixedAmount.toFixed(2);
+    
+    settlementRenderOtherFeesForMode('FixedAmount', item, wf);
+    settlementUpdateFixedAmountPreview();
+}
+
+// 通用：渲染其他费用（用于各模式）
+function settlementRenderOtherFeesForMode(modePrefix, item, wf) {
+    var otherFees = item.otherFees || [];
+    var otherFeesEl = document.getElementById('settlement' + modePrefix + 'OtherFees');
+    var otherRatioDefault = (wf && wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
+    
+    if (otherFeesEl) {
+        if (otherFees.length === 0) {
+            otherFeesEl.innerHTML = '<p class="settlement-hint">无其他费用</p>';
+        } else {
+            otherFeesEl.innerHTML = otherFees.map(function (fee, fi) {
+                var amt = Number(fee.amount) || 0;
+                return '<div class="settlement-other-fee-row" data-fi="' + fi + '">' +
+                    '<div class="settlement-other-fee-head">' +
+                    '<span class="settlement-other-fee-label">' + (fi + 1) + '、' + (fee.name || '费用') + '</span>' +
+                    '<select class="settlement-other-fee-select settlement-' + modePrefix.toLowerCase() + '-other-select" data-fi="' + fi + '">' +
+                    '<option value="full" selected>按全价</option>' +
+                    '<option value="waste_ratio">按废稿比例</option>' +
+                    '<option value="exclude">不计入</option>' +
+                    '</select></div>' +
+                    '<p class="settlement-other-fee-charged">本条计入：¥' + amt.toFixed(2) + '</p></div>';
+            }).join('');
+            otherFeesEl.querySelectorAll('select').forEach(function (sel) {
+                sel.addEventListener('change', function() {
+                    if (modePrefix === 'PercentTotal') settlementUpdatePercentTotalPreview();
+                    else if (modePrefix === 'FixedPerItem') settlementUpdateFixedPerItemPreview();
+                    else if (modePrefix === 'FixedAmount') settlementUpdateFixedAmountPreview();
+                });
+            });
+        }
+    }
+}
+
+function settlementRenderWasteByPieceForm() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var products = item.productPrices || [];
+    var gifts = item.giftPrices || [];
+    var allItems = [];
+    products.forEach(function (p, i) {
+        allItems.push({
+            idx: i,
+            label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''),
+            basePrice: p.basePrice,
+            sameModelUnitPrice: p.sameModelUnitPrice,
+            sameModelCount: p.sameModelCount,
+            quantity: p.quantity,
+            processDetails: p.processDetails || []
+        });
+    });
+    gifts.forEach(function (g, i) {
+        allItems.push({
+            idx: products.length + i,
+            label: '[赠品] ' + (g.product || '赠品') + (g.quantity > 1 ? ' x ' + g.quantity : ''),
+            basePrice: g.basePrice,
+            sameModelUnitPrice: g.sameModelUnitPrice,
+            sameModelCount: g.sameModelCount || 0,
+            quantity: g.quantity,
+            processDetails: g.processDetails || []
+        });
+    });
+
+    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var savedWf = (item.settlement && item.settlement.wasteFee && item.settlement.wasteFee.rule === 'percent_charged_only') ? item.settlement.wasteFee : null;
+    var defaultRate = (savedWf && savedWf.wasteRatio != null) ? Math.round(savedWf.wasteRatio * 100) : (wf.defaultRate != null ? wf.defaultRate : 30);
+    var defaultMin = (savedWf && savedWf.minAmount != null) ? savedWf.minAmount : (wf.minAmount != null ? wf.minAmount : '');
+    var defaultMax = (savedWf && savedWf.maxAmount != null) ? savedWf.maxAmount : (wf.maxAmount != null ? wf.maxAmount : '');
+
+    var tableEl = document.getElementById('settlementWasteDetailTable');
+    if (tableEl) {
+        var savedRowsByIdx = {};
+        if (savedWf && Array.isArray(savedWf.rows)) savedWf.rows.forEach(function (r) { savedRowsByIdx[r.idx] = r; });
+        var html = '';
+        allItems.forEach(function (it, seqNum) {
+            var savedRow = savedRowsByIdx[it.idx];
+            var wasteQtyVal = (savedRow && savedRow.wasteQty != null) ? savedRow.wasteQty : 0;
+            var productName = (it.label || '').replace(/\s*[x×]\s*\d+\s*$/i, '').trim() || (it.label || '制品');
+            var qty = it.quantity || 1;
+            var sameModel = (it.sameModelCount != null && it.sameModelCount > 0);
+            var sameModelPart = sameModel ? ' 同模X' + (it.sameModelCount || 1) : '';
+            html += '<div class="settlement-waste-detail-row" data-idx="' + it.idx + '">';
+            html += '<div class="settlement-waste-row-label">' + (seqNum + 1) + '、' + productName + 'x' + qty + sameModelPart + '</div>';
+            var maxQty = it.quantity || 999;
+            html += '<label class="settlement-waste-qty-line">已完成 <span class="settlement-waste-qty-wrap"><button type="button" class="settlement-waste-qty-btn settlement-waste-qty-minus" data-idx="' + it.idx + '" aria-label="减">−</button><input type="number" class="settlement-waste-qty" data-idx="' + it.idx + '" min="0" max="' + maxQty + '" value="' + wasteQtyVal + '" step="1"><button type="button" class="settlement-waste-qty-btn settlement-waste-qty-plus" data-idx="' + it.idx + '" aria-label="加">+</button></span> 件</label>';
+            var pd = it.processDetails || [];
+            pd.forEach(function (proc, pi) {
+                var layers = proc.layers || 1;
+                var layersDoneVal = (savedRow && savedRow.processLayersDone && savedRow.processLayersDone[pi] != null) ? savedRow.processLayersDone[pi] : 0;
+                html += '<label class="settlement-process-layers">' + (proc.name || '工艺') + ' 总' + layers + '层 已做 <span class="settlement-waste-qty-wrap"><button type="button" class="settlement-process-layers-btn settlement-process-layers-minus" data-idx="' + it.idx + '" data-pi="' + pi + '" aria-label="减">−</button><input type="number" class="settlement-process-layers-done" data-idx="' + it.idx + '" data-pi="' + pi + '" min="0" max="' + layers + '" value="' + layersDoneVal + '" step="1"><button type="button" class="settlement-process-layers-btn settlement-process-layers-plus" data-idx="' + it.idx + '" data-pi="' + pi + '" aria-label="加">+</button></span> 层</label>';
+            });
+            html += '<div class="settlement-waste-row-amount">本行制品金额：¥0.00</div>';
+            html += '</div>';
+        });
+        tableEl.innerHTML = html;
+        tableEl.querySelectorAll('.settlement-waste-qty-minus').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var idx = btn.dataset.idx;
+                var row = btn.closest('.settlement-waste-detail-row');
+                var inp = row && row.querySelector('.settlement-waste-qty');
+                if (inp) {
+                    var v = parseInt(inp.value, 10) || 0;
+                    inp.value = Math.max(0, v - 1);
+                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+        });
+        tableEl.querySelectorAll('.settlement-waste-qty-plus').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var row = btn.closest('.settlement-waste-detail-row');
+                var inp = row && row.querySelector('.settlement-waste-qty');
+                if (inp) {
+                    var max = parseInt(inp.getAttribute('max'), 10) || 999;
+                    var v = parseInt(inp.value, 10) || 0;
+                    inp.value = Math.min(max, v + 1);
+                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+        });
+        tableEl.querySelectorAll('.settlement-process-layers-minus').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var row = btn.closest('.settlement-waste-detail-row');
+                var inp = row && row.querySelector('.settlement-process-layers-done[data-idx="' + btn.dataset.idx + '"][data-pi="' + btn.dataset.pi + '"]');
+                if (inp) {
+                    var v = parseInt(inp.value, 10) || 0;
+                    inp.value = Math.max(0, v - 1);
+                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+        });
+        tableEl.querySelectorAll('.settlement-process-layers-plus').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var row = btn.closest('.settlement-waste-detail-row');
+                var inp = row && row.querySelector('.settlement-process-layers-done[data-idx="' + btn.dataset.idx + '"][data-pi="' + btn.dataset.pi + '"]');
+                if (inp) {
+                    var max = parseInt(inp.getAttribute('max'), 10) || 999;
+                    var v = parseInt(inp.value, 10) || 0;
+                    inp.value = Math.min(max, v + 1);
+                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+        });
+    }
+
+    var ratioEl = document.getElementById('settlementWasteRatio');
+    if (ratioEl) {
+        ratioEl.textContent = defaultRate + '%';
+    }
+    var coeffEl = document.getElementById('settlementCoefficientsIncluded');
+    if (coeffEl) {
+        var coeffList = [];
+        if (item.usageType != null && defaultSettings.usageCoefficients && defaultSettings.usageCoefficients[item.usageType]) {
+            var uv = getCoefficientValue(defaultSettings.usageCoefficients[item.usageType]);
+            var un = (defaultSettings.usageCoefficients[item.usageType] && defaultSettings.usageCoefficients[item.usageType].name) ? defaultSettings.usageCoefficients[item.usageType].name : '';
+            coeffList.push({ key: 'usage', category: '用途', name: un, value: uv });
+        }
+        if (item.urgentType != null && defaultSettings.urgentCoefficients && defaultSettings.urgentCoefficients[item.urgentType]) {
+            var gv = getCoefficientValue(defaultSettings.urgentCoefficients[item.urgentType]);
+            var gn = (defaultSettings.urgentCoefficients[item.urgentType] && defaultSettings.urgentCoefficients[item.urgentType].name) ? defaultSettings.urgentCoefficients[item.urgentType].name : '';
+            coeffList.push({ key: 'urgent', category: '加急', name: gn, value: gv });
+        }
+        if (item.discountType != null && defaultSettings.discountCoefficients && defaultSettings.discountCoefficients[item.discountType]) {
+            var dv = getCoefficientValue(defaultSettings.discountCoefficients[item.discountType]);
+            var dn = (defaultSettings.discountCoefficients[item.discountType] && defaultSettings.discountCoefficients[item.discountType].name) ? defaultSettings.discountCoefficients[item.discountType].name : '';
+            coeffList.push({ key: 'discount', category: '折扣', name: dn, value: dv });
+        }
+        (defaultSettings.extraPricingUp || []).forEach(function (e, ei) {
+            var sel = (item.extraUpSelections && item.extraUpSelections[ei]) ? item.extraUpSelections[ei] : null;
+            if (sel && e.options && e.options[sel.optionValue] != null) {
+                var ov = getCoefficientValue(e.options[sel.optionValue]);
+                var on = (e.options[sel.optionValue] && e.options[sel.optionValue].name) ? e.options[sel.optionValue].name : (e.name || '');
+                coeffList.push({ key: 'extraUp_' + ei, category: (e.name || '加价'), name: on, value: ov });
+            }
+        });
+        (defaultSettings.extraPricingDown || []).forEach(function (e, ei) {
+            var sel = (item.extraDownSelections && item.extraDownSelections[ei]) ? item.extraDownSelections[ei] : null;
+            if (sel && e.options && e.options[sel.optionValue] != null) {
+                var ov = getCoefficientValue(e.options[sel.optionValue]);
+                var on = (e.options[sel.optionValue] && e.options[sel.optionValue].name) ? e.options[sel.optionValue].name : (e.name || '');
+                coeffList.push({ key: 'extraDown_' + ei, category: (e.name || '扩展折扣'), name: on, value: ov });
+            }
+        });
+        coeffList = coeffList.filter(function (c) {
+            var valueNum = typeof c.value === 'number' ? c.value : parseFloat(c.value);
+            return valueNum == null || isNaN(valueNum) || Math.abs(valueNum - 1) > 0.001;
+        });
+        var savedCoeff = (savedWf && savedWf.coefficientsIncluded) ? savedWf.coefficientsIncluded : null;
+        coeffEl.innerHTML = coeffList.map(function (c) {
+            var checked = (savedCoeff && savedCoeff[c.key]) ? ' checked' : ' checked';
+            if (savedCoeff && savedCoeff.hasOwnProperty(c.key)) checked = savedCoeff[c.key] ? ' checked' : '';
+            var valueNum = typeof c.value === 'number' ? c.value : parseFloat(c.value);
+            var showMultiplier = (valueNum != null && !isNaN(valueNum) && Math.abs(valueNum - 1) > 0.001);
+            var text = (c.category || '') + (c.name ? (c.category ? ' ' + c.name : c.name) : '') + (showMultiplier ? ' ×' + valueNum : '');
+            return '<label class="settlement-coeff-label"><input type="checkbox" class="settlement-coeff-included" data-key="' + c.key + '"' + checked + '><span class="settlement-coeff-text">' + text + '</span></label>';
+        }).join('');
+        coeffEl.querySelectorAll('input').forEach(function (cb) {
+            cb.addEventListener('change', settlementUpdateWasteByPiecePreview);
+        });
+    }
+
+    var otherFees = item.otherFees || [];
+    var otherFeesEl = document.getElementById('settlementOtherFeesByItem');
+    var savedOtherEntries = (savedWf && savedWf.otherFeesEntries) ? savedWf.otherFeesEntries : null;
+    var otherRatioDefault = (wf && wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
+    if (otherFeesEl) {
+        if (otherFees.length === 0) {
+            otherFeesEl.innerHTML = '<p class="settlement-hint">无其他费用</p>';
+        } else {
+            otherFeesEl.innerHTML = otherFees.map(function (fee, fi) {
+                var amt = Number(fee.amount) || 0;
+                var entry = savedOtherEntries && savedOtherEntries[fi] ? savedOtherEntries[fi] : null;
+                var mode = (entry && entry.mode) ? entry.mode : 'full';
+                if (mode !== 'full' && mode !== 'waste_ratio' && mode !== 'exclude') mode = 'full';
+                var chargedVal = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherRatioDefault : amt);
+                var chargedDisplay = (entry && entry.chargedAmount != null) ? entry.chargedAmount.toFixed(2) : chargedVal.toFixed(2);
+                return '<div class="settlement-other-fee-row" data-fi="' + fi + '">' +
+                    '<div class="settlement-other-fee-head">' +
+                    '<span class="settlement-other-fee-label">' + (fi + 1) + '、' + (fee.name || '费用') + '</span>' +
+                    '<select class="settlement-other-fee-select" data-fi="' + fi + '">' +
+                    '<option value="full"' + (mode === 'full' ? ' selected' : '') + '>按全价</option>' +
+                    '<option value="waste_ratio"' + (mode === 'waste_ratio' ? ' selected' : '') + '>按废稿比例</option>' +
+                    '<option value="exclude"' + (mode === 'exclude' ? ' selected' : '') + '>不计入</option>' +
+                    '</select></div>' +
+                    '<p class="settlement-other-fee-charged">本条计入：¥' + chargedDisplay + '</p>';
+            }).join('');
+            otherFeesEl.querySelectorAll('select.settlement-other-fee-select').forEach(function (sel) {
+                sel.addEventListener('change', settlementUpdateWasteByPiecePreview);
+            });
+        }
+    }
+
+    tableEl && tableEl.querySelectorAll('.settlement-waste-qty, .settlement-process-layers-done').forEach(function (inp) {
+        inp.addEventListener('input', settlementUpdateWasteByPiecePreview);
+    });
+    settlementUpdateWasteByPiecePreview();
+    var orderPaid = item.agreedAmount != null ? item.agreedAmount : (item.finalTotal != null ? item.finalTotal : 0);
+    var previewEl = document.getElementById('settlementWastePreview');
+    if (previewEl) previewEl.textContent = '应收金额：¥' + Number(orderPaid).toFixed(2);
+}
+
+// 按原总额比例：更新预览
+function settlementUpdatePercentTotalPreview() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var defaultRate = (wf.defaultRate != null ? wf.defaultRate : 30);
+    var baseAmount = item.agreedAmount != null ? item.agreedAmount : (item.finalTotal != null ? item.finalTotal : 0);
+    var wasteFee = baseAmount * (defaultRate / 100);
+    
+    var otherFeesWasteRatio = (wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
+    var otherFees = item.otherFees || [];
+    var otherFeesAmount = 0;
+    otherFees.forEach(function (fee, fi) {
+        var amt = Number(fee.amount) || 0;
+        var selectEl = document.querySelector('.settlement-percenttotal-other-select[data-fi="' + fi + '"]');
+        var mode = selectEl ? selectEl.value : 'full';
+        var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
+        otherFeesAmount += charged;
+        var rowEl = document.querySelector('#settlementPercentTotalOtherFees .settlement-other-fee-row[data-fi="' + fi + '"]');
+        if (rowEl) {
+            var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
+            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
+        }
+    });
+    
+    document.getElementById('settlementPercentTotalOtherAmount').textContent = '¥' + otherFeesAmount.toFixed(2);
+    var totalReceivable = wasteFee + otherFeesAmount;
+    var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+    if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+}
+
+// 按件固定：更新预览
+function settlementUpdateFixedPerItemPreview() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var fixedPerItem = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
+    
+    var count = 0;
+    document.querySelectorAll('.settlement-fixed-per-item-check:checked').forEach(function (cb) {
+        count += parseInt(cb.dataset.qty, 10) || 1;
+    });
+    document.getElementById('settlementFixedPerItemCount').textContent = count;
+    
+    var wasteFee = count * fixedPerItem;
+    document.getElementById('settlementFixedPerItemWasteFee').textContent = '¥' + wasteFee.toFixed(2);
+    
+    var otherFeesWasteRatio = (wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
+    var otherFees = item.otherFees || [];
+    var otherFeesAmount = 0;
+    otherFees.forEach(function (fee, fi) {
+        var amt = Number(fee.amount) || 0;
+        var selectEl = document.querySelector('.settlement-fixedperitem-other-select[data-fi="' + fi + '"]');
+        var mode = selectEl ? selectEl.value : 'full';
+        var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
+        otherFeesAmount += charged;
+        var rowEl = document.querySelector('#settlementFixedPerItemOtherFees .settlement-other-fee-row[data-fi="' + fi + '"]');
+        if (rowEl) {
+            var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
+            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
+        }
+    });
+    
+    document.getElementById('settlementFixedPerItemOtherAmount').textContent = '¥' + otherFeesAmount.toFixed(2);
+    var totalReceivable = wasteFee + otherFeesAmount;
+    var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+    if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+}
+
+// 按固定金额：更新预览
+function settlementUpdateFixedAmountPreview() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var wasteFee = wf.defaultFixedAmount != null ? wf.defaultFixedAmount : 50;
+    
+    var otherFeesWasteRatio = (wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
+    var otherFees = item.otherFees || [];
+    var otherFeesAmount = 0;
+    otherFees.forEach(function (fee, fi) {
+        var amt = Number(fee.amount) || 0;
+        var selectEl = document.querySelector('.settlement-fixedamount-other-select[data-fi="' + fi + '"]');
+        var mode = selectEl ? selectEl.value : 'full';
+        var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
+        otherFeesAmount += charged;
+        var rowEl = document.querySelector('#settlementFixedAmountOtherFees .settlement-other-fee-row[data-fi="' + fi + '"]');
+        if (rowEl) {
+            var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
+            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
+        }
+    });
+    
+    document.getElementById('settlementFixedAmountOtherAmount').textContent = '¥' + otherFeesAmount.toFixed(2);
+    var totalReceivable = wasteFee + otherFeesAmount;
+    var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+    if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+}
+
+function settlementUpdateWasteByPiecePreview() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var products = item.productPrices || [];
+    var gifts = item.giftPrices || [];
+    var allItems = products.concat(gifts);
+
+    var tableEl = document.getElementById('settlementWasteDetailTable');
+    var detailAmount = 0;
+    var rowAmounts = [];
+    if (tableEl) {
+        tableEl.querySelectorAll('.settlement-waste-detail-row').forEach(function (row) {
+            var idx = parseInt(row.dataset.idx, 10);
+            var wasteQtyEl = row.querySelector('.settlement-waste-qty');
+            var wasteQty = wasteQtyEl ? (parseInt(wasteQtyEl.value, 10) || 0) : 0;
+            var processLayersDone = [];
+            row.querySelectorAll('.settlement-process-layers-done').forEach(function (inp) {
+                processLayersDone.push(parseInt(inp.value, 10) || 0);
+            });
+            var allItem = allItems[idx];
+            var rowAmt = computeWasteByPieceRowAmount(allItem, wasteQty, processLayersDone);
+            rowAmounts[idx] = rowAmt;
+            detailAmount += rowAmt;
+            var amountSpan = row.querySelector('.settlement-waste-row-amount');
+            if (amountSpan) amountSpan.textContent = '本行制品金额：¥' + rowAmt.toFixed(2);
+        });
+    }
+
+    var ratioEl = document.getElementById('settlementWasteRatio');
+    var ratioText = ratioEl ? (ratioEl.textContent || '').trim() : '';
+    var ratio = 0.3;
+    if (ratioText) {
+        if (ratioText.indexOf('%') !== -1) ratio = (parseFloat(ratioText) || 30) / 100;
+        else ratio = parseFloat(ratioText) || 0.3;
+    }
+    var feeSubtotal = detailAmount * ratio;
+
+    var coeffProduct = 1;
+    document.querySelectorAll('.settlement-coeff-included:checked').forEach(function (cb) {
+        var key = cb.dataset.key;
+        if (key === 'usage' && item.usageType != null && defaultSettings.usageCoefficients && defaultSettings.usageCoefficients[item.usageType]) {
+            coeffProduct *= getCoefficientValue(defaultSettings.usageCoefficients[item.usageType]) || 1;
+        } else if (key === 'urgent' && item.urgentType != null && defaultSettings.urgentCoefficients && defaultSettings.urgentCoefficients[item.urgentType]) {
+            coeffProduct *= getCoefficientValue(defaultSettings.urgentCoefficients[item.urgentType]) || 1;
+        } else if (key === 'discount' && item.discountType != null && defaultSettings.discountCoefficients && defaultSettings.discountCoefficients[item.discountType]) {
+            coeffProduct *= getCoefficientValue(defaultSettings.discountCoefficients[item.discountType]) || 1;
+        } else if (key && key.indexOf('extraUp_') === 0) {
+            var ei = parseInt(key.replace('extraUp_', ''), 10);
+            var e = (defaultSettings.extraPricingUp || [])[ei];
+            var sel = (item.extraUpSelections && item.extraUpSelections[ei]) ? item.extraUpSelections[ei] : null;
+            if (e && sel && e.options && e.options[sel.optionValue] != null) coeffProduct *= getCoefficientValue(e.options[sel.optionValue]) || 1;
+        } else if (key && key.indexOf('extraDown_') === 0) {
+            var ei = parseInt(key.replace('extraDown_', ''), 10);
+            var e = (defaultSettings.extraPricingDown || [])[ei];
+            var sel = (item.extraDownSelections && item.extraDownSelections[ei]) ? item.extraDownSelections[ei] : null;
+            if (e && sel && e.options && e.options[sel.optionValue] != null) coeffProduct *= getCoefficientValue(e.options[sel.optionValue]) || 1;
+        }
+    });
+    var feeBase = feeSubtotal * coeffProduct;
+    var wfMinMax = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) ? defaultSettings.settlementRules.wasteFee : {};
+    var minEl = document.getElementById('settlementWasteMinByPiece');
+    var maxEl = document.getElementById('settlementWasteMaxByPiece');
+    var minV = minEl ? minEl.value : (wfMinMax.minAmount != null && wfMinMax.minAmount !== '' ? String(wfMinMax.minAmount) : '');
+    var maxV = maxEl ? maxEl.value : (wfMinMax.maxAmount != null && wfMinMax.maxAmount !== '' ? String(wfMinMax.maxAmount) : '');
+    if (minV !== '' && minV != null && !isNaN(parseFloat(minV))) feeBase = Math.max(feeBase, parseFloat(minV));
+    if (maxV !== '' && maxV != null && !isNaN(parseFloat(maxV))) feeBase = Math.min(feeBase, parseFloat(maxV));
+    var wasteFeeAmount = Math.max(0, feeBase);
+
+    var wfOther = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) ? defaultSettings.settlementRules.wasteFee : {};
+    var otherFeesWasteRatio = (wfOther.otherFeesWasteRatio != null) ? Number(wfOther.otherFeesWasteRatio) : 0.5;
+    var otherFees = item.otherFees || [];
+    var otherFeesAmount = 0;
+    otherFees.forEach(function (fee, fi) {
+        var amt = Number(fee.amount) || 0;
+        var selectEl = document.querySelector('.settlement-other-fee-row[data-fi="' + fi + '"] select.settlement-other-fee-select');
+        var mode = selectEl ? selectEl.value : 'full';
+        var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
+        otherFeesAmount += charged;
+        var rowEl = document.querySelector('.settlement-other-fee-row[data-fi="' + fi + '"]');
+        if (rowEl) {
+            var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
+            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
+        }
+    });
+
+    var totalReceivable = wasteFeeAmount + otherFeesAmount;
+
+    var detailAmountEl = document.getElementById('settlementWasteDetailAmount');
+    if (detailAmountEl) detailAmountEl.textContent = '¥' + detailAmount.toFixed(2);
+    var detailTotalEl = document.getElementById('settlementWasteDetailTotal');
+    if (detailTotalEl) detailTotalEl.textContent = '¥' + feeSubtotal.toFixed(2);
+    var subtotalEl = document.getElementById('settlementWasteFeeSubtotal');
+    if (subtotalEl) subtotalEl.textContent = '¥' + feeSubtotal.toFixed(2);
+    var otherAmountEl = document.getElementById('settlementOtherFeesAmount');
+    if (otherAmountEl) otherAmountEl.textContent = '¥' + otherFeesAmount.toFixed(2);
+    var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+    if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
 }
 
 function settlementRenderNormalForm() {
@@ -6607,29 +7198,239 @@ function settlementConfirm() {
         };
     } else if (type === 'waste_fee') {
         var rule = document.getElementById('settlementWasteRule').value;
-        var rate = parseFloat(document.getElementById('settlementWasteRate').value) || 0;
-        var fixedPerItem = parseFloat(document.getElementById('settlementFixedPerItem').value) || 0;
-        var minAmount = document.getElementById('settlementWasteMin').value;
-        var maxAmount = document.getElementById('settlementWasteMax').value;
-        var charged = [];
-        document.querySelectorAll('.settlement-charged-item:checked').forEach(function (cb) { charged.push(parseInt(cb.dataset.idx, 10)); });
-        var processDone = [];
-        document.querySelectorAll('.settlement-process-done-item').forEach(function (cb) { processDone[parseInt(cb.dataset.idx, 10)] = cb.checked; });
-        var amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
-        item.settlement = {
-            type: 'waste_fee',
-            amount: amount,
-            at: at,
-            wasteFee: {
-                rule: rule,
-                rate: rate,
-                chargedIndices: charged,
-                processDoneFlags: processDone,
-                fixedPerItem: fixedPerItem,
-                minAmount: minAmount === '' ? undefined : parseFloat(minAmount),
-                maxAmount: maxAmount === '' ? null : (maxAmount === '' ? null : parseFloat(maxAmount))
+        var byPieceWrap = document.getElementById('settlementWasteByPieceWrap');
+        var useByPiece = (rule === 'percent_charged_only' && byPieceWrap && !byPieceWrap.classList.contains('d-none'));
+        if (useByPiece) {
+            var products = item.productPrices || [];
+            var gifts = item.giftPrices || [];
+            var allItems = products.concat(gifts);
+            var rows = [];
+            var detailAmount = 0;
+            var tableEl = document.getElementById('settlementWasteDetailTable');
+            if (tableEl) {
+                tableEl.querySelectorAll('.settlement-waste-detail-row').forEach(function (row) {
+                    var idx = parseInt(row.dataset.idx, 10);
+                    var wasteQtyEl = row.querySelector('.settlement-waste-qty');
+                    var wasteQty = wasteQtyEl ? (parseInt(wasteQtyEl.value, 10) || 0) : 0;
+                    var processLayersDone = [];
+                    row.querySelectorAll('.settlement-process-layers-done').forEach(function (inp) { processLayersDone.push(parseInt(inp.value, 10) || 0); });
+                    var allItem = allItems[idx];
+                    var rowAmt = computeWasteByPieceRowAmount(allItem, wasteQty, processLayersDone);
+                    detailAmount += rowAmt;
+                    rows.push({ idx: idx, wasteQty: wasteQty, processLayersDone: processLayersDone, rowAmount: rowAmt });
+                });
             }
-        };
+            var ratioElConfirm = document.getElementById('settlementWasteRatio');
+            var ratioTextConfirm = ratioElConfirm ? (ratioElConfirm.textContent || '').trim() : '';
+            var wasteRatio = 0.3;
+            if (ratioTextConfirm) {
+                if (ratioTextConfirm.indexOf('%') !== -1) wasteRatio = (parseFloat(ratioTextConfirm) || 30) / 100;
+                else wasteRatio = parseFloat(ratioTextConfirm) || 0.3;
+            }
+            var feeSubtotal = detailAmount * wasteRatio;
+            var coeffIncluded = {};
+            document.querySelectorAll('.settlement-coeff-included:checked').forEach(function (cb) { coeffIncluded[cb.dataset.key] = true; });
+            var coeffProduct = 1;
+            Object.keys(coeffIncluded).forEach(function (key) {
+                if (key === 'usage' && item.usageType != null && defaultSettings.usageCoefficients && defaultSettings.usageCoefficients[item.usageType]) coeffProduct *= getCoefficientValue(defaultSettings.usageCoefficients[item.usageType]) || 1;
+                else if (key === 'urgent' && item.urgentType != null && defaultSettings.urgentCoefficients && defaultSettings.urgentCoefficients[item.urgentType]) coeffProduct *= getCoefficientValue(defaultSettings.urgentCoefficients[item.urgentType]) || 1;
+                else if (key === 'discount' && item.discountType != null && defaultSettings.discountCoefficients && defaultSettings.discountCoefficients[item.discountType]) coeffProduct *= getCoefficientValue(defaultSettings.discountCoefficients[item.discountType]) || 1;
+                else if (key && key.indexOf('extraUp_') === 0) { var ei = parseInt(key.replace('extraUp_', ''), 10); var e = (defaultSettings.extraPricingUp || [])[ei]; var sel = (item.extraUpSelections && item.extraUpSelections[ei]) ? item.extraUpSelections[ei] : null; if (e && sel && e.options && e.options[sel.optionValue] != null) coeffProduct *= getCoefficientValue(e.options[sel.optionValue]) || 1; }
+                else if (key && key.indexOf('extraDown_') === 0) { var ei = parseInt(key.replace('extraDown_', ''), 10); var e = (defaultSettings.extraPricingDown || [])[ei]; var sel = (item.extraDownSelections && item.extraDownSelections[ei]) ? item.extraDownSelections[ei] : null; if (e && sel && e.options && e.options[sel.optionValue] != null) coeffProduct *= getCoefficientValue(e.options[sel.optionValue]) || 1; }
+            });
+            var feeBase = feeSubtotal * coeffProduct;
+            var wfMinMaxConfirm = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) ? defaultSettings.settlementRules.wasteFee : {};
+            var minElConfirm = document.getElementById('settlementWasteMinByPiece');
+            var maxElConfirm = document.getElementById('settlementWasteMaxByPiece');
+            var minV = minElConfirm ? minElConfirm.value : (wfMinMaxConfirm.minAmount != null && wfMinMaxConfirm.minAmount !== '' ? String(wfMinMaxConfirm.minAmount) : '');
+            var maxV = maxElConfirm ? maxElConfirm.value : (wfMinMaxConfirm.maxAmount != null && wfMinMaxConfirm.maxAmount !== '' ? String(wfMinMaxConfirm.maxAmount) : '');
+            if (minV !== '' && minV != null && !isNaN(parseFloat(minV))) feeBase = Math.max(feeBase, parseFloat(minV));
+            if (maxV !== '' && maxV != null && !isNaN(parseFloat(maxV))) feeBase = Math.min(feeBase, parseFloat(maxV));
+            var wasteFeeAmount = Math.max(0, feeBase);
+            var wfOtherConfirm = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) ? defaultSettings.settlementRules.wasteFee : {};
+            var otherFeesWasteRatioConfirm = (wfOtherConfirm.otherFeesWasteRatio != null) ? Number(wfOtherConfirm.otherFeesWasteRatio) : 0.5;
+            var otherFees = item.otherFees || [];
+            var otherFeesAmount = 0;
+            var otherFeesEntries = [];
+            otherFees.forEach(function (fee, fi) {
+                var amt = Number(fee.amount) || 0;
+                var selectEl = document.querySelector('.settlement-other-fee-row[data-fi="' + fi + '"] select.settlement-other-fee-select');
+                var mode = selectEl ? selectEl.value : 'full';
+                var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatioConfirm : amt);
+                otherFeesAmount += charged;
+                otherFeesEntries.push({ name: fee.name, orderAmount: amt, mode: mode, chargedAmount: charged });
+            });
+            var totalWasteReceivable = wasteFeeAmount + otherFeesAmount;
+            var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalWasteReceivable) : totalWasteReceivable;
+            finalAmount = Math.max(0, finalAmount);
+            item.settlement = {
+                type: 'waste_fee',
+                amount: finalAmount,
+                at: at,
+                wasteFee: {
+                    rule: 'percent_charged_only',
+                    detailAmount: detailAmount,
+                    wasteRatio: wasteRatio,
+                    rows: rows,
+                    coefficientsIncluded: coeffIncluded,
+                    minAmount: minV !== '' && minV != null && !isNaN(parseFloat(minV)) ? parseFloat(minV) : undefined,
+                    maxAmount: maxV !== '' && maxV != null && !isNaN(parseFloat(maxV)) ? parseFloat(maxV) : null,
+                    feeSubtotal: feeSubtotal,
+                    wasteFeeAmount: wasteFeeAmount,
+                    otherFeesEntries: otherFeesEntries,
+                    otherFeesWasteRatio: otherFeesWasteRatioConfirm,
+                    otherFeesAmount: otherFeesAmount,
+                    totalWasteReceivable: totalWasteReceivable
+                }
+            };
+        } else if (rule === 'percent_total') {
+            var wfPercentTotal = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+            var defaultRate = (wfPercentTotal.defaultRate != null ? wfPercentTotal.defaultRate : 30);
+            var baseAmount = item.agreedAmount != null ? item.agreedAmount : (item.finalTotal != null ? item.finalTotal : 0);
+            var wasteFee = baseAmount * (defaultRate / 100);
+            
+            var otherFeesWasteRatio = (wfPercentTotal.otherFeesWasteRatio != null) ? Number(wfPercentTotal.otherFeesWasteRatio) : 0.5;
+            var otherFees = item.otherFees || [];
+            var otherFeesAmount = 0;
+            var otherFeesEntries = [];
+            otherFees.forEach(function (fee, fi) {
+                var amt = Number(fee.amount) || 0;
+                var selectEl = document.querySelector('.settlement-percenttotal-other-select[data-fi="' + fi + '"]');
+                var mode = selectEl ? selectEl.value : 'full';
+                var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
+                otherFeesAmount += charged;
+                otherFeesEntries.push({ name: fee.name, orderAmount: amt, mode: mode, chargedAmount: charged });
+            });
+            
+            var totalReceivable = wasteFee + otherFeesAmount;
+            var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            finalAmount = Math.max(0, finalAmount);
+            
+            item.settlement = {
+                type: 'waste_fee',
+                amount: finalAmount,
+                at: at,
+                wasteFee: {
+                    rule: 'percent_total',
+                    rate: defaultRate / 100,
+                    baseAmount: baseAmount,
+                    wasteFeeAmount: wasteFee,
+                    otherFeesEntries: otherFeesEntries,
+                    otherFeesWasteRatio: otherFeesWasteRatio,
+                    otherFeesAmount: otherFeesAmount,
+                    totalReceivable: totalReceivable
+                }
+            };
+        } else if (rule === 'fixed_per_item') {
+            var wfFixedPerItem = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+            var fixedPerItem = wfFixedPerItem.defaultFixedPerItem != null ? wfFixedPerItem.defaultFixedPerItem : 20;
+            var chargedIndices = [];
+            var count = 0;
+            document.querySelectorAll('.settlement-fixed-per-item-check:checked').forEach(function (cb) {
+                chargedIndices.push(parseInt(cb.dataset.idx, 10));
+                count += parseInt(cb.dataset.qty, 10) || 1;
+            });
+            var wasteFee = count * fixedPerItem;
+            
+            var otherFeesWasteRatio = (wfFixedPerItem.otherFeesWasteRatio != null) ? Number(wfFixedPerItem.otherFeesWasteRatio) : 0.5;
+            var otherFees = item.otherFees || [];
+            var otherFeesAmount = 0;
+            var otherFeesEntries = [];
+            otherFees.forEach(function (fee, fi) {
+                var amt = Number(fee.amount) || 0;
+                var selectEl = document.querySelector('.settlement-fixedperitem-other-select[data-fi="' + fi + '"]');
+                var mode = selectEl ? selectEl.value : 'full';
+                var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
+                otherFeesAmount += charged;
+                otherFeesEntries.push({ name: fee.name, orderAmount: amt, mode: mode, chargedAmount: charged });
+            });
+            
+            var totalReceivable = wasteFee + otherFeesAmount;
+            var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            finalAmount = Math.max(0, finalAmount);
+            
+            item.settlement = {
+                type: 'waste_fee',
+                amount: finalAmount,
+                at: at,
+                wasteFee: {
+                    rule: 'fixed_per_item',
+                    fixedPerItem: fixedPerItem,
+                    chargedIndices: chargedIndices,
+                    count: count,
+                    wasteFeeAmount: wasteFee,
+                    otherFeesEntries: otherFeesEntries,
+                    otherFeesWasteRatio: otherFeesWasteRatio,
+                    otherFeesAmount: otherFeesAmount,
+                    totalReceivable: totalReceivable
+                }
+            };
+        } else if (rule === 'fixed_amount') {
+            var wfFixedAmount = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+            var wasteFee = wfFixedAmount.defaultFixedAmount != null ? wfFixedAmount.defaultFixedAmount : 50;
+            
+            var otherFeesWasteRatio = (wfFixedAmount.otherFeesWasteRatio != null) ? Number(wfFixedAmount.otherFeesWasteRatio) : 0.5;
+            var otherFees = item.otherFees || [];
+            var otherFeesAmount = 0;
+            var otherFeesEntries = [];
+            otherFees.forEach(function (fee, fi) {
+                var amt = Number(fee.amount) || 0;
+                var selectEl = document.querySelector('.settlement-fixedamount-other-select[data-fi="' + fi + '"]');
+                var mode = selectEl ? selectEl.value : 'full';
+                var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
+                otherFeesAmount += charged;
+                otherFeesEntries.push({ name: fee.name, orderAmount: amt, mode: mode, chargedAmount: charged });
+            });
+            
+            var totalReceivable = wasteFee + otherFeesAmount;
+            var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            finalAmount = Math.max(0, finalAmount);
+            
+            item.settlement = {
+                type: 'waste_fee',
+                amount: finalAmount,
+                at: at,
+                wasteFee: {
+                    rule: 'fixed_amount',
+                    fixedAmount: wasteFee,
+                    otherFeesEntries: otherFeesEntries,
+                    otherFeesWasteRatio: otherFeesWasteRatio,
+                    otherFeesAmount: otherFeesAmount,
+                    totalReceivable: totalReceivable
+                }
+            };
+        } else {
+            var rate = parseFloat(document.getElementById('settlementWasteRate').value) || 0;
+            var fixedPerItem = parseFloat(document.getElementById('settlementFixedPerItem').value) || 0;
+            var minAmount = document.getElementById('settlementWasteMin').value;
+            var maxAmount = document.getElementById('settlementWasteMax').value;
+            var charged = [];
+            document.querySelectorAll('.settlement-charged-item:checked').forEach(function (cb) { charged.push(parseInt(cb.dataset.idx, 10)); });
+            var processDone = [];
+            document.querySelectorAll('.settlement-process-done-item').forEach(function (cb) { processDone[parseInt(cb.dataset.idx, 10)] = cb.checked; });
+            var amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
+            var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || amount) : amount;
+            finalAmount = Math.max(0, finalAmount);
+            item.settlement = {
+                type: 'waste_fee',
+                amount: finalAmount,
+                at: at,
+                wasteFee: {
+                    rule: rule,
+                    rate: rate,
+                    chargedIndices: charged,
+                    processDoneFlags: processDone,
+                    fixedPerItem: fixedPerItem,
+                    minAmount: minAmount === '' ? undefined : parseFloat(minAmount),
+                    maxAmount: maxAmount === '' ? null : (maxAmount === '' ? null : parseFloat(maxAmount))
+                }
+            };
+        }
     } else {
         var reasonEl = document.getElementById('settlementDiscountReason');
         var discountReason = reasonEl ? (reasonEl.value || '').trim() : '';
@@ -6639,7 +7440,7 @@ function settlementConfirm() {
         var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
         var receipt, discount, discountRate, newPlatformFee;
         if (discountType === 'amount') {
-            var base = item.finalTotal != null ? item.finalTotal : 0;
+            var base = (item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
             discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
             receipt = Math.max(0, base - discount);
             discountRate = undefined;
@@ -6671,7 +7472,8 @@ function settlementConfirm() {
     closeSettlementModal();
     if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
     if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
-    showGlobalToast('结算已保存');
+    if (document.getElementById('recordContainer')) applyRecordFilters();
+    showGlobalToast('结算已保存，订单已归档到记录页');
 }
 
 // 加载历史记录（增强版：支持筛选、排序、分组）
@@ -6693,6 +7495,7 @@ function loadHistory(searchKeyword = '', filters = {}) {
                 (item.clientId && item.clientId.toLowerCase().includes(keywordLower)) ||
                 (item.contact && item.contact.toLowerCase().includes(keywordLower)) ||
                 (item.deadline && item.deadline.toLowerCase().includes(keywordLower)) ||
+                (item.agreedAmount != null && item.agreedAmount.toString().includes(keywordLower)) ||
                 (item.finalTotal && item.finalTotal.toString().includes(keywordLower)) ||
                 (item.totalProductsPrice && item.totalProductsPrice.toString().includes(keywordLower))
             );
@@ -7738,6 +8541,10 @@ function loadQuoteFromHistory(id) {
                 };
             });
         }
+        // 从排单卡片点「小票」进入时，记下原订单 ID，使小票页内点「排单」时覆盖原订单并轻提示
+        if (window.receiptOpenedFromRecord) {
+            window.editingHistoryId = id;
+        }
         // 先切换到报价页面
         showPage('quote');
         
@@ -7799,6 +8606,7 @@ function exportHistoryToExcel() {
                 (item.clientId && item.clientId.toLowerCase().includes(keywordLower)) ||
                 (item.contact && item.contact.toLowerCase().includes(keywordLower)) ||
                 (item.deadline && item.deadline.toLowerCase().includes(keywordLower)) ||
+                (item.agreedAmount != null && item.agreedAmount.toString().includes(keywordLower)) ||
                 (item.finalTotal && item.finalTotal.toString().includes(keywordLower))
             );
         });
@@ -8390,21 +9198,94 @@ function loadSettings() {
     if (cancelFeeRuleEl) cancelFeeRuleEl.value = cf.defaultRule || 'percent';
     if (cancelFeeRateEl) cancelFeeRateEl.value = (cf.defaultRate != null ? cf.defaultRate * 100 : 10);
     if (cancelFeeFixedEl) cancelFeeFixedEl.value = cf.defaultFixedAmount != null ? cf.defaultFixedAmount : 50;
-    var wasteFeeRuleEl = document.getElementById('wasteFeeRule');
-    var wasteFeeRateEl = document.getElementById('wasteFeeRate');
-    var wasteFeeFixedPerItemEl = document.getElementById('wasteFeeFixedPerItem');
-    if (wasteFeeRuleEl) wasteFeeRuleEl.value = wf.defaultRule || 'percent_total';
-    if (wasteFeeRateEl) wasteFeeRateEl.value = (wf.defaultRate != null ? wf.defaultRate * 100 : 30);
-    if (wasteFeeFixedPerItemEl) wasteFeeFixedPerItemEl.value = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
     var dr = defaultSettings.depositRate;
     var depositEl = document.getElementById('depositRate');
     if (depositEl) depositEl.value = (dr != null && !isNaN(dr)) ? Math.round(dr * 100) : 30;
+    // 废稿费设置（新）
+    var wasteRuleModeEl = document.getElementById('wasteRuleMode');
+    var wasteRateDefaultEl = document.getElementById('wasteRateDefault');
+    var wasteFixedPerItemDefaultEl = document.getElementById('wasteFixedPerItemDefault');
+    var wasteMinAmountDefaultEl = document.getElementById('wasteMinAmountDefault');
+    var wasteMaxAmountDefaultEl = document.getElementById('wasteMaxAmountDefault');
+    var wasteMode = wf.mode || 'percent_total';
+    if (wasteRuleModeEl) wasteRuleModeEl.value = wasteMode;
+    if (wasteRateDefaultEl) wasteRateDefaultEl.value = (wf.defaultRate != null ? wf.defaultRate : 30);
+    if (wasteFixedPerItemDefaultEl) wasteFixedPerItemDefaultEl.value = (wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20);
+    var wasteFixedAmountDefaultEl = document.getElementById('wasteFixedAmountDefault');
+    if (wasteFixedAmountDefaultEl) wasteFixedAmountDefaultEl.value = (wf.defaultFixedAmount != null ? wf.defaultFixedAmount : 50);
+    if (wasteMinAmountDefaultEl) wasteMinAmountDefaultEl.value = (wf.minAmount != null ? wf.minAmount : '');
+    if (wasteMaxAmountDefaultEl) wasteMaxAmountDefaultEl.value = (wf.maxAmount != null ? wf.maxAmount : '');
+    updateWasteFeeDefaultVisibility(wasteMode);
     if (defaultSettings.orderRemark !== undefined) {
         var el = document.getElementById('orderRemarkText');
         if (el) el.value = defaultSettings.orderRemark;
     }
     updateOrderRemarkPreview();
     renderOtherFees();
+}
+
+// 根据废稿费模式显示对应默认值区域（选择哪个模式显示哪个模式默认值）
+function updateWasteFeeDefaultVisibility(mode) {
+    var rateWrap = document.getElementById('wasteRateDefaultWrap');
+    var fixedPerItemWrap = document.getElementById('wasteFixedPerItemDefaultWrap');
+    var fixedAmountWrap = document.getElementById('wasteFixedAmountDefaultWrap');
+    if (rateWrap) rateWrap.classList.toggle('d-none', mode === 'fixed_per_item' || mode === 'fixed_amount');
+    if (fixedPerItemWrap) fixedPerItemWrap.classList.toggle('d-none', mode !== 'fixed_per_item');
+    if (fixedAmountWrap) fixedAmountWrap.classList.toggle('d-none', mode !== 'fixed_amount');
+}
+
+// 更新废稿费模式
+function updateWasteRuleMode(value) {
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
+    if (!defaultSettings.settlementRules.wasteFee) defaultSettings.settlementRules.wasteFee = {};
+    defaultSettings.settlementRules.wasteFee.mode = value;
+    updateWasteFeeDefaultVisibility(value);
+    saveData();
+}
+
+// 更新废稿费默认比例（%）
+function updateWasteRateDefault(value) {
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
+    if (!defaultSettings.settlementRules.wasteFee) defaultSettings.settlementRules.wasteFee = {};
+    var n = parseFloat(value);
+    defaultSettings.settlementRules.wasteFee.defaultRate = (!isNaN(n) && n >= 0) ? n : 30;
+    saveData();
+}
+
+// 更新废稿费默认按件金额（元）
+function updateWasteFixedPerItemDefault(value) {
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
+    if (!defaultSettings.settlementRules.wasteFee) defaultSettings.settlementRules.wasteFee = {};
+    var n = parseFloat(value);
+    defaultSettings.settlementRules.wasteFee.defaultFixedPerItem = (!isNaN(n) && n >= 0) ? n : 20;
+    saveData();
+}
+
+// 更新废稿费保底金额（元）
+function updateWasteMinAmountDefault(value) {
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
+    if (!defaultSettings.settlementRules.wasteFee) defaultSettings.settlementRules.wasteFee = {};
+    var n = parseFloat(value);
+    defaultSettings.settlementRules.wasteFee.minAmount = (!isNaN(n) && n >= 0) ? n : null;
+    saveData();
+}
+
+// 更新废稿费封顶金额（元）
+function updateWasteMaxAmountDefault(value) {
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
+    if (!defaultSettings.settlementRules.wasteFee) defaultSettings.settlementRules.wasteFee = {};
+    var n = parseFloat(value);
+    defaultSettings.settlementRules.wasteFee.maxAmount = (!isNaN(n) && n >= 0) ? n : null;
+    saveData();
+}
+
+// 更新废稿费默认固定金额（元，用于「按固定金额」模式）
+function updateWasteFixedAmountDefault(value) {
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {} };
+    if (!defaultSettings.settlementRules.wasteFee) defaultSettings.settlementRules.wasteFee = {};
+    var n = parseFloat(value);
+    defaultSettings.settlementRules.wasteFee.defaultFixedAmount = (!isNaN(n) && n >= 0) ? n : 50;
+    saveData();
 }
 
 // 订单备注弹窗：打开

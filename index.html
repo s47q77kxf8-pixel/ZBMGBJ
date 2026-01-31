@@ -590,30 +590,93 @@
                                     </div>
                                 </div>
                                 <!-- 废稿 -->
-                                <div id="settlementFormWasteFee" class="settlement-form d-none">
-                                    <div class="settlement-waste-rule">
+                                <div id="settlementFormWasteFee" class="settlement-form settlement-form-waste d-none">
+                                    <div class="settlement-form-block settlement-waste-rule">
                                         <p class="settlement-step-label">废稿费规则</p>
-                                        <select id="settlementWasteRule">
+                                        <select id="settlementWasteRule" style="display:none;">
                                             <option value="percent_total">按原总额比例</option>
-                                            <option value="percent_charged_only">仅参与计费且已做工艺的金额比例</option>
+                                            <option value="percent_charged_only">按已完成制品及工艺比例（按件+同模+工艺层数+废稿比例）</option>
                                             <option value="fixed_per_item">按件固定</option>
+                                            <option value="fixed_amount">按固定金额</option>
                                         </select>
+                                        <p class="settlement-waste-mode-hint" style="color: var(--text-light); font-size: 0.85rem; margin-top: 0.25rem;">当前使用「<span id="settlementWasteModeText">按原总额比例</span>」模式（在设置页可更改）</p>
                                     </div>
-                                    <div class="settlement-waste-params">
-                                        <label>比例（0~1，如 0.3=30%）<input type="number" id="settlementWasteRate" min="0" max="1" step="0.01" value="0.3"></label>
-                                        <label>按件金额（元）<input type="number" id="settlementFixedPerItem" min="0" step="0.01" value="0"></label>
-                                        <label>保底（元，可选）<input type="number" id="settlementWasteMin" min="0" step="0.01" placeholder="0"></label>
-                                        <label>封顶（元，可选）<input type="number" id="settlementWasteMax" min="0" step="0.01" placeholder="不封顶"></label>
+                                    <!-- 按已完成制品及工艺比例：4个模块 -->
+                                    <div id="settlementWasteByPieceWrap" class="settlement-form-block settlement-waste-by-piece d-none">
+                                        <!-- 模块1：制品明细 -->
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">一、制品明细</p>
+                                            <div id="settlementWasteDetailTable" class="settlement-waste-detail-table"></div>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">废稿制品应收：<span id="settlementWasteDetailAmount">¥0.00</span> × <span id="settlementWasteRatio">30%</span> = <span id="settlementWasteDetailTotal">¥0.00</span></p>
+                                        </div>
+                                        <!-- 模块2：参与计算的费用系数 -->
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">二、参与计算的费用系数</p>
+                                            <p class="settlement-hint">在原订单已有基础上勾选，取值来自原订单，不含同模</p>
+                                            <div id="settlementCoefficientsIncluded" class="settlement-coefficients-included"></div>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">废稿费小计：<span id="settlementWasteFeeSubtotal">¥0.00</span></p>
+                                        </div>
+                                        <!-- 模块3：其他费用 -->
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">三、其他费用</p>
+                                            <p class="settlement-hint">按每一项选择计入方式（废稿比例按设置页计算）</p>
+                                            <div id="settlementOtherFeesByItem" class="settlement-other-fees-by-item"></div>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">其他费用计入：<span id="settlementOtherFeesAmount">¥0.00</span></p>
+                                        </div>
                                     </div>
-                                    <div id="settlementChargedIndices" class="settlement-charged-indices d-none">
-                                        <p class="settlement-step-label">参与计费的制品（不勾选则不收该件废稿费）</p>
-                                        <div id="settlementChargedList"></div>
+                                    <!-- 按原总额比例 -->
+                                    <div id="settlementWastePercentTotalWrap" class="settlement-form-block d-none">
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">一、废稿比例</p>
+                                            <p class="settlement-waste-detail-summary">预定实收：<span id="settlementPercentTotalBase">¥0.00</span></p>
+                                            <p class="settlement-waste-detail-summary">废稿比例：<span id="settlementPercentTotalRatio">30%</span></p>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">废稿费：<span id="settlementPercentTotalWasteFee">¥0.00</span></p>
+                                        </div>
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">二、其他费用</p>
+                                            <p class="settlement-hint">按每一项选择计入方式（废稿比例按设置页计算）</p>
+                                            <div id="settlementPercentTotalOtherFees" class="settlement-other-fees-by-item"></div>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">其他费用计入：<span id="settlementPercentTotalOtherAmount">¥0.00</span></p>
+                                        </div>
                                     </div>
-                                    <div id="settlementProcessDoneFlags" class="settlement-process-done d-none">
-                                        <p class="settlement-step-label">已做工艺（未做工艺不收取时勾选已做的）</p>
-                                        <div id="settlementProcessDoneList"></div>
+                                    <!-- 按件固定 -->
+                                    <div id="settlementWasteFixedPerItemWrap" class="settlement-form-block d-none">
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">一、参与计费的制品</p>
+                                            <p class="settlement-hint">勾选参与计费的制品</p>
+                                            <div id="settlementFixedPerItemList" class="settlement-coefficients-included"></div>
+                                            <p class="settlement-waste-detail-summary">计费件数：<span id="settlementFixedPerItemCount">0</span> 件</p>
+                                        </div>
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">二、按件金额</p>
+                                            <p class="settlement-waste-detail-summary">按件金额：<span id="settlementFixedPerItemPrice">¥20.00</span></p>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">废稿费：<span id="settlementFixedPerItemWasteFee">¥0.00</span></p>
+                                        </div>
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">三、其他费用</p>
+                                            <p class="settlement-hint">按每一项选择计入方式（废稿比例按设置页计算）</p>
+                                            <div id="settlementFixedPerItemOtherFees" class="settlement-other-fees-by-item"></div>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">其他费用计入：<span id="settlementFixedPerItemOtherAmount">¥0.00</span></p>
+                                        </div>
                                     </div>
-                                    <p id="settlementWastePreview" class="settlement-preview"></p>
+                                    <!-- 按固定金额 -->
+                                    <div id="settlementWasteFixedAmountWrap" class="settlement-form-block d-none">
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">一、固定金额</p>
+                                            <p class="settlement-hint">与订单金额无关</p>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">废稿费：<span id="settlementFixedAmountWasteFee">¥50.00</span></p>
+                                        </div>
+                                        <div class="settlement-waste-module">
+                                            <p class="settlement-step-label">二、其他费用</p>
+                                            <p class="settlement-hint">按每一项选择计入方式（废稿比例按设置页计算）</p>
+                                            <div id="settlementFixedAmountOtherFees" class="settlement-other-fees-by-item"></div>
+                                            <p class="settlement-waste-detail-summary settlement-waste-receivable-line">其他费用计入：<span id="settlementFixedAmountOtherAmount">¥0.00</span></p>
+                                        </div>
+                                    </div>
+                                    <p class="settlement-waste-detail-summary settlement-waste-receivable-line" id="settlementWastePreview">应收金额：¥0.00</p>
+                                    <div class="settlement-preview settlement-waste-final">
+                                        <label>废稿实收（元，可修改）<input type="number" id="settlementWasteFinalAmount" min="0" step="0.01" value="0"></label>
+                                    </div>
                                 </div>
                                 <!-- 正常结单 -->
                                 <div id="settlementFormNormal" class="settlement-form d-none">
@@ -675,6 +738,7 @@
                                         <div class="receipt-agreed-btns">
                                             <button type="button" class="btn secondary small" onclick="roundAgreedAmount('floor')" title="向下取整">向下</button>
                                             <button type="button" class="btn secondary small" onclick="roundAgreedAmount('ten')" title="取整到十位">取整到十</button>
+                                            <button type="button" class="btn secondary small" onclick="roundAgreedAmount('hundred')" title="取整到百位">取整到百</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1810,20 +1874,45 @@
                                 <div class="category-content d-none" id="wasteFeeRules-content">
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label>废稿费默认规则</label>
-                                            <select id="wasteFeeRule" onchange="updateSettlementRule('wasteFee','defaultRule',this.value)">
-                                                <option value="percent_total">按总额比例</option>
-                                                <option value="percent_charged_only">仅计费项比例</option>
+                                            <label for="wasteRuleMode">废稿费模式</label>
+                                            <select id="wasteRuleMode" onchange="updateWasteRuleMode(this.value)">
+                                                <option value="percent_total">按原总额比例</option>
+                                                <option value="percent_charged_only">按已完成制品及工艺比例（按件+同模+工艺层数+废稿比例）</option>
                                                 <option value="fixed_per_item">按件固定</option>
+                                                <option value="fixed_amount">按固定金额</option>
                                             </select>
+                                            <small class="text-gray">废稿页将只显示此模式</small>
+                                        </div>
+                                    </div>
+                                    <div id="wasteRateDefaultWrap" class="form-row">
+                                        <div class="form-group">
+                                            <label for="wasteRateDefault">默认比例（%）</label>
+                                            <input type="number" id="wasteRateDefault" placeholder="如 30" min="0" max="100" step="1" onchange="updateWasteRateDefault(this.value)">
+                                            <small class="text-gray">用于「按原总额比例」「按已完成制品及工艺比例」</small>
+                                        </div>
+                                    </div>
+                                    <div id="wasteFixedPerItemDefaultWrap" class="form-row d-none">
+                                        <div class="form-group">
+                                            <label for="wasteFixedPerItemDefault">默认按件金额（元）</label>
+                                            <input type="number" id="wasteFixedPerItemDefault" placeholder="如 20" min="0" step="1" onchange="updateWasteFixedPerItemDefault(this.value)">
+                                            <small class="text-gray">用于「按件固定」</small>
+                                        </div>
+                                    </div>
+                                    <div id="wasteFixedAmountDefaultWrap" class="form-row d-none">
+                                        <div class="form-group">
+                                            <label for="wasteFixedAmountDefault">默认固定金额（元）</label>
+                                            <input type="number" id="wasteFixedAmountDefault" placeholder="如 50" min="0" step="0.01" onchange="updateWasteFixedAmountDefault(this.value)">
+                                            <small class="text-gray">用于「按固定金额」，与订单金额无关</small>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="wasteMinAmountDefault">保底金额（元，可选）</label>
+                                            <input type="number" id="wasteMinAmountDefault" placeholder="留空表示无保底" min="0" step="1" onchange="updateWasteMinAmountDefault(this.value)">
                                         </div>
                                         <div class="form-group">
-                                            <label>默认比例（%）</label>
-                                            <input type="number" id="wasteFeeRate" min="0" max="100" step="0.1" onchange="updateSettlementRule('wasteFee','defaultRate',this.value/100)">
-                                        </div>
-                                        <div class="form-group">
-                                            <label>默认每件金额（元）</label>
-                                            <input type="number" id="wasteFeeFixedPerItem" min="0" step="1" onchange="updateSettlementRule('wasteFee','defaultFixedPerItem',this.value)">
+                                            <label for="wasteMaxAmountDefault">封顶金额（元，可选）</label>
+                                            <input type="number" id="wasteMaxAmountDefault" placeholder="留空表示不封顶" min="0" step="1" onchange="updateWasteMaxAmountDefault(this.value)">
                                         </div>
                                     </div>
                                 </div>
