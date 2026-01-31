@@ -271,6 +271,10 @@ html.theme-dark .nav-btn:focus,
 html.theme-dark .nav-btn:focus-visible {
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
 }
+html.theme-dark .schedule-title-today-pill {
+    border-color: var(--border-color);
+    background: var(--card-bg);
+}
 html.theme-dark .schedule-title-row .schedule-title-today-pill:hover,
 html.theme-dark .schedule-title-today-pill:hover {
     background: rgba(255, 255, 255, 0.08) !important;
@@ -941,6 +945,70 @@ body {
     flex: 1;
     overflow: auto;
     padding: 0.75rem 1rem 1rem;
+}
+
+/* 约定实收栏（小票抽屉内，紧凑排版） */
+.receipt-agreed-amount-bar {
+    padding: 0.5rem 0;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.receipt-agreed-amount-bar .receipt-agreed-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+}
+.receipt-agreed-amount-bar .receipt-agreed-row:last-child {
+    margin-bottom: 0;
+}
+.receipt-agreed-amount-bar .receipt-agreed-row-compact {
+    margin-bottom: 0.25rem;
+}
+.receipt-agreed-amount-bar .receipt-agreed-label {
+    font-size: 0.8125rem;
+    color: var(--text-light);
+    flex-shrink: 0;
+}
+.receipt-agreed-amount-bar .receipt-agreed-note {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    opacity: 0.85;
+}
+.receipt-agreed-amount-bar .receipt-agreed-value {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9rem;
+}
+.receipt-agreed-amount-bar .receipt-agreed-controls-inline {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 1;
+    min-width: 0;
+}
+.receipt-agreed-amount-bar #agreedAmountInput {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    width: 5.5rem;
+    flex-shrink: 0;
+}
+.receipt-agreed-amount-bar .receipt-agreed-btns {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+}
+.receipt-agreed-amount-bar .receipt-agreed-btns .btn {
+    padding: 0.25rem 0.45rem;
+    font-size: 0.7rem;
+}
+.receipt-calc-note {
+    font-size: 0.8rem !important;
+    color: var(--text-light) !important;
 }
 
 .receipt-drawer-content {
@@ -3386,6 +3454,11 @@ input:checked + .toggle-slider:before {
 .receipt-summary-value {
     flex: 1;
     text-align: right;
+}
+.receipt-summary-value-wrap {
+    flex: 1;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
     min-width: 60px;
     font-family: inherit;
     display: flex;
@@ -3421,6 +3494,21 @@ input:checked + .toggle-slider:before {
 }
 /* 经典主题保留绿色优惠色，符合“0 元优惠”直觉 */
 .receipt-theme-classic .receipt-gift-free-amount {
+    color: #16a34a;
+}
+/* 抹零优惠：与赠品优惠同风格，强调色 */
+/* 应收金额行：文字与原价下边缘对齐 */
+.receipt-agreed-row {
+    align-items: flex-end;
+}
+.receipt-rounding-discount,
+.receipt-rounding-amount {
+    font-weight: bold;
+    font-size: 1.1em;
+    color: var(--receipt-accent, #16a34a);
+}
+.receipt-theme-classic .receipt-rounding-discount,
+.receipt-theme-classic .receipt-rounding-amount {
     color: #16a34a;
 }
 .receipt-summary-coefficient-detail {
@@ -5252,13 +5340,14 @@ input:checked + .toggle-slider:before {
     height: 1px;
 }
 .schedule-title-today-pill {
-    border-radius: 6px;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.62rem;
+    border-radius: 999px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
     line-height: 1;
-    border: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
     color: var(--text-color);
 }
 .schedule-title-row .schedule-title-today-pill,
@@ -5268,6 +5357,7 @@ input:checked + .toggle-slider:before {
 .schedule-title-row .schedule-title-today-pill:hover,
 .schedule-title-actions .schedule-title-today-pill:hover {
     background: rgba(0, 0, 0, 0.04) !important;
+    border-color: var(--border-color);
 }
 .schedule-title-row .schedule-title-today-pill:active,
 .schedule-title-actions .schedule-title-today-pill:active {
@@ -5526,16 +5616,6 @@ input:checked + .toggle-slider:before {
 }
 .schedule-todo-filters-wrap .schedule-title-today-pill:active {
     background: rgba(0, 0, 0, 0.08) !important;
-}
-.schedule-title-today-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-.schedule-title-today-pill .schedule-today-icon {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
 }
 .schedule-todo-filters {
     display: inline-flex;

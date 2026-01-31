@@ -3003,10 +3003,10 @@ function getFilteredHistoryForRecord() {
     }
 
     if (filters.minPrice !== undefined && filters.minPrice !== '') {
-        filteredHistory = filteredHistory.filter(item => (item.finalTotal || 0) >= parseFloat(filters.minPrice));
+        filteredHistory = filteredHistory.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(filters.minPrice));
     }
     if (filters.maxPrice !== undefined && filters.maxPrice !== '') {
-        filteredHistory = filteredHistory.filter(item => (item.finalTotal || 0) <= parseFloat(filters.maxPrice));
+        filteredHistory = filteredHistory.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) <= parseFloat(filters.maxPrice));
     }
 
     filteredHistory = filteredHistory.slice().sort((a, b) => {
@@ -3014,9 +3014,9 @@ function getFilteredHistoryForRecord() {
             case 'time-asc':
                 return new Date(a.timestamp) - new Date(b.timestamp);
             case 'price-desc':
-                return (b.finalTotal || 0) - (a.finalTotal || 0);
+                return ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0) - ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0);
             case 'price-asc':
-                return (a.finalTotal || 0) - (b.finalTotal || 0);
+                return ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0) - ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0);
             case 'client-asc':
                 return (a.clientId || '').localeCompare(b.clientId || '');
             case 'client-desc':
@@ -3044,7 +3044,7 @@ function applyRecordFilters() {
 
     const renderItem = (item) => {
         const clientId = (item && item.clientId) ? String(item.clientId) : '—';
-        const amount = formatMoney(item && item.finalTotal);
+        const amount = formatMoney(item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal));
         const status = getRecordProgressStatus(item);
         const isSelected = selectedHistoryIds.has(item.id);
         return `
@@ -3261,14 +3261,14 @@ function exportRecordToExcel() {
             }
         });
     }
-    if (minPrice !== '') exportData = exportData.filter(item => (item.finalTotal || 0) >= parseFloat(minPrice));
-    if (maxPrice !== '') exportData = exportData.filter(item => (item.finalTotal || 0) <= parseFloat(maxPrice));
+    if (minPrice !== '') exportData = exportData.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(minPrice));
+    if (maxPrice !== '') exportData = exportData.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) <= parseFloat(maxPrice));
 
     exportData = exportData.slice().sort((a, b) => {
         switch (sortBy) {
             case 'time-asc': return new Date(a.timestamp) - new Date(b.timestamp);
-            case 'price-desc': return (b.finalTotal || 0) - (a.finalTotal || 0);
-            case 'price-asc': return (a.finalTotal || 0) - (b.finalTotal || 0);
+            case 'price-desc': return ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0) - ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0);
+            case 'price-asc': return ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0) - ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0);
             case 'client-asc': return (a.clientId || '').localeCompare(b.clientId || '');
             case 'client-desc': return (b.clientId || '').localeCompare(a.clientId || '');
             case 'time-desc':
@@ -3410,6 +3410,10 @@ function getStatsDataset(historySource, filters) {
         });
     }
     const amountKey = filters.amountBasis === 'totalProductsPrice' ? 'totalProductsPrice' : 'finalTotal';
+    const getAmount = (item) => {
+        if (amountKey === 'totalProductsPrice') return Number(item.totalProductsPrice) || 0;
+        return Number(item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
+    };
     const includeGifts = filters.giftMode !== 'exclude';
     const giftRevenueAsZero = filters.giftMode === 'zero';
 
@@ -3424,7 +3428,7 @@ function getStatsDataset(historySource, filters) {
 
     list.forEach(item => {
         ensureProductDoneStates(item);
-        const revenue = Number(item[amountKey]) || 0;
+        const revenue = getAmount(item);
         revenueTotal += revenue;
         const products = Array.isArray(item.productPrices) ? item.productPrices : [];
         const gifts = includeGifts && Array.isArray(item.giftPrices) ? item.giftPrices : [];
@@ -4486,12 +4490,13 @@ function calculatePrice() {
     // 计算总价：总价 = (制品1+…+制品N) * 加价类1*…*加价类n * 折扣类1*…*折扣类n + 其他费用合计 + 平台手续费
     const productsTotal = totalProductsPrice;
     const totalWithCoefficients = productsTotal * pricingUpProduct * pricingDownProduct;
-    // 3. 加上其他费用
+    // 3. 报价金额 = 我要收取的总金额（制品+系数+其他费用，不含平台费）
     const totalBeforePlatformFee = totalWithCoefficients + totalOtherFees;
-    // 4. 计算平台手续费，四舍五入到元
-    const platformFeeAmount = Math.round(totalBeforePlatformFee * (platformFee / 100));
-    // 5. 计算最终总价
-    const finalTotal = totalBeforePlatformFee + platformFeeAmount;
+    // 4. 约定实收 = 报价金额（默认），平台费 = 约定实收×费率（平台收取，不经过我手）
+    const agreedAmount = totalBeforePlatformFee;
+    const platformFeeAmount = Math.round(agreedAmount * (platformFee / 100));
+    // 5. 客户实付 = 约定实收 + 平台费
+    const finalTotal = agreedAmount + platformFeeAmount;
     
     // 获取开始时间
     const startTimeValue = document.getElementById('startTime')?.value;
@@ -4524,6 +4529,7 @@ function calculatePrice() {
         totalWithCoefficients: totalWithCoefficients,
         totalBeforePlatformFee: totalBeforePlatformFee,
         finalTotal: finalTotal,
+        agreedAmount: agreedAmount,
         needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (document.getElementById('needDeposit') && document.getElementById('needDeposit').checked)),
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; if (v && def && v === def) return new Date().toISOString(); if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
@@ -5120,19 +5126,29 @@ function generateQuote() {
         html += `</div>`;
     }
     
-    // 总金额（显示在平台费之前，折扣后金额+其他费用）
-    // 总金额应该总是显示，无论是否有折扣或其他费用
-    html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">总金额</div><div class="receipt-summary-value">¥${totalBeforePlat.toFixed(2)}</div></div>`;
+    // 应收金额 = 约定实收（抹零价）；有抹零时：抹零优惠行在上、用强调色，应收金额行上强调色+下划线原价（同赠品优惠）
+    var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat;
+    var showRounding = Math.abs((quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat) - totalBeforePlat) > 0.001;
+    if (showRounding) {
+        var roundingDiscount = totalBeforePlat - agreed;
+        if (roundingDiscount > 0) {
+            html += `<div class="receipt-summary-row receipt-rounding-row"><div class="receipt-summary-label">抹零优惠</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;"><span class="receipt-rounding-discount">-¥${roundingDiscount.toFixed(2)}</span></div></div>`;
+        }
+        var valueHtml = `<span class="receipt-rounding-amount">¥${agreed.toFixed(2)}</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${totalBeforePlat.toFixed(2)}</span>`;
+        html += `<div class="receipt-summary-row receipt-agreed-row" style="font-weight: bold; align-items: flex-end;${roundingDiscount <= 0 ? ' margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;' : ''}"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+    } else {
+        html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap">¥${agreed.toFixed(2)}</div></div>`;
+    }
     
-    // 平台费
+    // 平台费 = 约定实收×费率（平台收取，不经过我手）
     if (quoteData.platformFeeAmount > 0) {
         const platformFeeRate = quoteData.platformFee || 0;
         html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
-    }
-    
-    // 实付金额（只有在有平台费时才显示）
-    if (quoteData.platformFeeAmount > 0) {
-        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${quoteData.finalTotal.toFixed(2)}</div></div>`;
+        // 客户实付 = 约定实收 + 平台费
+        var customerPays = quoteData.finalTotal != null ? quoteData.finalTotal : (agreed + quoteData.platformFeeAmount);
+        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${customerPays.toFixed(2)}</div></div>`;
+    } else {
+        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${agreed.toFixed(2)}</div></div>`;
     }
             
             // 添加底部内容
@@ -5182,6 +5198,53 @@ function syncReceiptDrawerContent() {
     drawerContainer.innerHTML = mainContainer.innerHTML;
 }
 
+// 约定实收：取整并更新（报价金额=我要收取的，平台费=约定实收×费率）
+function roundAgreedAmount(mode) {
+    if (!quoteData) return;
+    var base = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (quoteData.finalTotal || 0);
+    var val;
+    if (mode === 'round') val = Math.round(base);
+    else if (mode === 'ceil') val = Math.ceil(base);
+    else if (mode === 'floor') val = Math.floor(base);
+    else if (mode === 'ten') val = Math.round(base / 10) * 10;
+    else return;
+    quoteData.agreedAmount = Math.max(0, val);
+    // 平台费 = 约定实收×费率，客户实付 = 约定实收+平台费
+    var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
+    quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
+    quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
+    updateAgreedAmountBar();
+    generateQuote();
+    syncReceiptDrawerContent();
+}
+// 约定实收：同步 UI 栏
+function updateAgreedAmountBar() {
+    var bar = document.getElementById('receiptAgreedAmountBar');
+    var calcEl = document.getElementById('receiptCalcAmount');
+    var inputEl = document.getElementById('agreedAmountInput');
+    if (!bar || !calcEl || !inputEl) return;
+    if (!quoteData) {
+        bar.classList.add('d-none');
+        return;
+    }
+    bar.classList.remove('d-none');
+    var calc = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (quoteData.finalTotal || 0);
+    var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : calc;
+    calcEl.textContent = '¥' + calc.toFixed(2);
+    inputEl.value = agreed;
+    inputEl.onchange = inputEl.oninput = function () {
+        var v = parseFloat(inputEl.value);
+        if (!isNaN(v) && v >= 0) {
+            quoteData.agreedAmount = v;
+            var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
+            quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
+            quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
+            generateQuote();
+            syncReceiptDrawerContent();
+        }
+    };
+}
+
 // 打开小票抽屉
 function openReceiptDrawer() {
     const drawer = document.getElementById('receiptDrawer');
@@ -5195,6 +5258,7 @@ function openReceiptDrawer() {
 
     // 同步当前小票内容
     syncReceiptDrawerContent();
+    updateAgreedAmountBar();
 
     // 打开抽屉后再次根据当前屏幕尺寸调整小票缩放
     adjustReceiptScale();
@@ -5674,6 +5738,22 @@ function renderScheduleMonthTitleStats(year, month) {
     const shouldShowToday = !isCurrentMonth || isOtherDay;
     const todayBtn = document.querySelector('.schedule-title-today-pill');
     if (todayBtn) todayBtn.classList.toggle('d-none', !shouldShowToday);
+    // #region agent log
+    try {
+        const todayEl = document.querySelector('.schedule-title-today-pill');
+        const filterEl = document.querySelector('.schedule-todo-filter-btn');
+        const data = { viewportW: window.innerWidth };
+        if (todayEl) {
+            const t = getComputedStyle(todayEl);
+            data.today = { height: t.height, minHeight: t.minHeight, padding: t.padding, fontSize: t.fontSize, lineHeight: t.lineHeight, borderWidth: t.borderWidth, className: todayEl.className };
+        }
+        if (filterEl) {
+            const f = getComputedStyle(filterEl);
+            data.filter = { height: f.height, minHeight: f.minHeight, padding: f.padding, fontSize: f.fontSize, lineHeight: f.lineHeight, className: filterEl.className };
+        }
+        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:renderScheduleMonthTitleStats',message:'Today vs filter computed styles',data:data,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    } catch (e) {}
+    // #endregion
 }
 
 // 点击标题月份弹出日期选择
@@ -5987,6 +6067,22 @@ function updateScheduleTitleTodayButton() {
     if (todayBtn) {
         todayBtn.classList.toggle('d-none', isCurrentMonth);
     }
+    // #region agent log
+    try {
+        const todayEl = document.querySelector('.schedule-title-today-pill');
+        const filterEl = document.querySelector('.schedule-todo-filter-btn');
+        const data = { viewportW: window.innerWidth };
+        if (todayEl) {
+            const t = getComputedStyle(todayEl);
+            data.today = { height: t.height, minHeight: t.minHeight, padding: t.padding, fontSize: t.fontSize, lineHeight: t.lineHeight, borderWidth: t.borderWidth, className: todayEl.className };
+        }
+        if (filterEl) {
+            const f = getComputedStyle(filterEl);
+            data.filter = { height: f.height, minHeight: f.minHeight, padding: f.padding, fontSize: f.fontSize, lineHeight: f.lineHeight, className: filterEl.className };
+        }
+        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:updateScheduleTitleTodayButton',message:'Today vs filter computed styles',data:data,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    } catch (e) {}
+    // #endregion
 }
 
 // 渲染当前批次制品 todo 区（按快捷筛选或选中日期显示排单制品）
@@ -6456,7 +6552,7 @@ function settlementUpdateNormalPreview() {
     var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
 
     if (discountType === 'amount') {
-        var base = item.finalTotal != null ? item.finalTotal : 0;
+        var base = (item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
         var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
         var receipt = Math.max(0, base - discount);
         if (amountEl) amountEl.value = receipt.toFixed(2);
@@ -6634,12 +6730,12 @@ function loadHistory(searchKeyword = '', filters = {}) {
     // 3. 价格范围筛选
     if (filters.minPrice !== undefined && filters.minPrice !== '') {
         filteredHistory = filteredHistory.filter(item => 
-            item.finalTotal >= parseFloat(filters.minPrice)
+            ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(filters.minPrice)
         );
     }
     if (filters.maxPrice !== undefined && filters.maxPrice !== '') {
         filteredHistory = filteredHistory.filter(item => 
-            item.finalTotal <= parseFloat(filters.maxPrice)
+            ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) <= parseFloat(filters.maxPrice)
         );
     }
     
@@ -6652,9 +6748,9 @@ function loadHistory(searchKeyword = '', filters = {}) {
                 case 'time-asc':
                     return new Date(a.timestamp) - new Date(b.timestamp);
                 case 'price-desc':
-                    return (b.finalTotal || 0) - (a.finalTotal || 0);
+                    return ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0) - ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0);
                 case 'price-asc':
-                    return (a.finalTotal || 0) - (b.finalTotal || 0);
+                    return ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0) - ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0);
                 case 'client-asc':
                     return (a.clientId || '').localeCompare(b.clientId || '');
                 case 'client-desc':
@@ -6750,7 +6846,7 @@ function generateHistoryItemHTML(item) {
             <div class="history-item-content">
                 联系方式: ${item.contact}\n
                 截稿日: ${item.deadline}\n
-                最终总价: ¥${item.finalTotal.toFixed(2)}
+                实收: ¥${(item.agreedAmount != null ? item.agreedAmount : item.finalTotal).toFixed(2)}
             </div>
             <div class="history-item-actions">
                 <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
@@ -7581,6 +7677,7 @@ function loadQuoteFromHistory(id) {
             totalProductsPrice: quote.totalProductsPrice || 0,
             totalPriceBeforeFee: quote.totalPriceBeforeFee || 0,
             finalTotal: quote.finalTotal || 0,
+            agreedAmount: quote.agreedAmount != null ? quote.agreedAmount : (quote.totalBeforePlatformFee != null ? quote.totalBeforePlatformFee : ((quote.finalTotal || 0) - (quote.platformFeeAmount || 0))),
             platformFeeAmount: quote.platformFeeAmount || 0,
             // 确保startTime字段存在
             startTime: quote.startTime || null,
@@ -7737,10 +7834,10 @@ function exportHistoryToExcel() {
     
     // 应用价格筛选
     if (minPrice) {
-        exportData = exportData.filter(item => item.finalTotal >= parseFloat(minPrice));
+        exportData = exportData.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(minPrice));
     }
     if (maxPrice) {
-        exportData = exportData.filter(item => item.finalTotal <= parseFloat(maxPrice));
+        exportData = exportData.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) <= parseFloat(maxPrice));
     }
     
     if (exportData.length === 0) {
@@ -7758,7 +7855,7 @@ function exportHistoryToExcel() {
         '制品总价': item.totalProductsPrice || 0,
         '其他费用': item.totalOtherFees || 0,
         '平台费': item.platformFeeAmount || 0,
-        '最终总价': item.finalTotal || 0,
+        '实收金额': (item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0,
         '用途系数': item.usage || 1,
         '加急系数': item.urgent || 1,
         '折扣系数': item.discount || 1,

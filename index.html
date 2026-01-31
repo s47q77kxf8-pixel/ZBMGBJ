@@ -520,11 +520,7 @@
                                 <button type="button" class="schedule-todo-filter-btn" data-filter="pending" onclick="setScheduleTodoFilter('pending')">待排</button>
                                 <button type="button" class="schedule-todo-filter-btn active" data-filter="today" onclick="setScheduleTodoFilter('today')">当日</button>
                             </div>
-                            <!-- 返回今日：Today+图标为一个按钮。图标可选 #i-today-curved(弯箭头) #i-today-calendar-dot(日历+圆点) #i-today-crosshair(十字靶心) #i-today-skip-start(跳至开头) -->
-                            <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">
-                                <span class="schedule-today-text">Today</span>
-                                <svg class="icon schedule-today-icon" aria-hidden="true"><use href="#i-today-hook"></use></svg>
-                            </button>
+                            <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">Today</button>
                         </div>
                         <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
                         <div id="scheduleTodoModules" class="schedule-todo-modules">
@@ -667,6 +663,22 @@
                             <button type="button" class="btn receipt-drawer-action" onclick="handleReceiptSchedule()">排单</button>
                         </div>
                         <div class="receipt-drawer-body">
+                            <div id="receiptAgreedAmountBar" class="receipt-agreed-amount-bar d-none">
+                                <div class="receipt-agreed-row receipt-agreed-row-compact">
+                                    <span class="receipt-agreed-label">报价金额<span class="receipt-agreed-note">（不含平台费）</span></span>
+                                    <span id="receiptCalcAmount" class="receipt-agreed-value">¥0.00</span>
+                                </div>
+                                <div class="receipt-agreed-row receipt-agreed-row-inline">
+                                    <span class="receipt-agreed-label">约定实收</span>
+                                    <div class="receipt-agreed-controls-inline">
+                                        <input type="number" id="agreedAmountInput" step="0.01" min="0" placeholder="与单主约定的金额">
+                                        <div class="receipt-agreed-btns">
+                                            <button type="button" class="btn secondary small" onclick="roundAgreedAmount('floor')" title="向下取整">向下</button>
+                                            <button type="button" class="btn secondary small" onclick="roundAgreedAmount('ten')" title="取整到十位">取整到十</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <div class="receipt-drawer-toolbar d-flex justify-between items-center">
                                 <div class="receipt-drawer-toolbar-left">
                                     <span class="receipt-drawer-subtitle">小票</span>
