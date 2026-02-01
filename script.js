@@ -344,6 +344,7 @@ const defaultSettings = {
             orderNotification: '',  // 订单通知
             showStartTime: true,  // 是否显示开始时间
             showDeadline: true,  // 是否显示截稿时间
+            showOrderTime: true,  // 是否体现下单时间
             showDesigner: true,  // 是否显示设计师
             showContactInfo: true,  // 是否显示联系方式
             customText: '',  // 自定义文本
@@ -595,10 +596,7 @@ function init() {
     document.addEventListener('DOMContentLoaded', function() {
         const startTime = document.getElementById('startTime');
         if (startTime) {
-            // 设置开始时间为今天
-            const today = new Date();
-            const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-            startTime.value = formattedDate;
+            startTime.value = toYmd(new Date());
             
             startTime.addEventListener('change', calculateDeadline);
         }
@@ -640,6 +638,11 @@ function init() {
         if (scheduleTitleDateInput) {
             scheduleTitleDateInput.addEventListener('change', onScheduleTitleDateChange);
         }
+        // 离开页面前立即落盘，避免防抖导致未保存
+        window.addEventListener('beforeunload', function () {
+            clearTimeout(_saveDataTimer);
+            if (typeof doSaveData === 'function') doSaveData();
+        });
     });
 
     // 默认进入时渲染排单页（报价页），确保刷新后排单日历正常显示
@@ -753,8 +756,9 @@ function loadData() {
     }
 }
 
-// 保存数据到本地存储
-function saveData() {
+// 保存数据到本地存储（防抖：短时间多次调用只写入一次）
+var _saveDataTimer;
+function doSaveData() {
     try {
         localStorage.setItem('quoteHistory', JSON.stringify(history));
         localStorage.setItem('calculatorSettings', JSON.stringify(defaultSettings));
@@ -763,13 +767,16 @@ function saveData() {
     } catch (error) {
         console.error('保存数据失败:', error);
     }
-    // 单独保存 templates，避免因其他键失败或 templates 序列化问题导致模板丢失
     try {
         const data = Array.isArray(templates) ? templates : [];
         localStorage.setItem('templates', JSON.stringify(data));
     } catch (e) {
         console.error('保存模板失败:', e);
     }
+}
+function saveData() {
+    clearTimeout(_saveDataTimer);
+    _saveDataTimer = setTimeout(doSaveData, 250);
 }
 
 // 导出设置为JSON文件
@@ -2156,6 +2163,7 @@ function updateReceiptInfo(field, value) {
             orderNotification: '',
             showStartTime: true,
             showDeadline: true,
+            showOrderTime: true,
             showDesigner: true,
             showContactInfo: true,
             customText: '',
@@ -2559,11 +2567,14 @@ function loadReceiptCustomizationToForm() {
             }
             if (document.getElementById('showStartTime')) {
                 document.getElementById('showStartTime').checked = settings.receiptInfo.showStartTime !== false; // 默认为true
-            }
-            if (document.getElementById('showDeadline')) {
-                document.getElementById('showDeadline').checked = settings.receiptInfo.showDeadline !== false; // 默认为true
-            }
-            if (document.getElementById('showDesigner')) {
+                                            }
+                                            if (document.getElementById('showDeadline')) {
+                                                document.getElementById('showDeadline').checked = settings.receiptInfo.showDeadline !== false; // 默认为true
+                                            }
+                                            if (document.getElementById('showOrderTime')) {
+                                                document.getElementById('showOrderTime').checked = settings.receiptInfo.showOrderTime !== false; // 默认为true
+                                            }
+                                            if (document.getElementById('showDesigner')) {
                 document.getElementById('showDesigner').checked = settings.receiptInfo.showDesigner !== false; // 默认为true
             }
             if (document.getElementById('showContactInfo')) {
@@ -2681,6 +2692,7 @@ function clearReceiptCustomization() {
                 orderNotification: '',
                 showStartTime: true,
                 showDeadline: true,
+                showOrderTime: true,
                 showDesigner: true,
                 showContactInfo: true,
                 customText: '',
@@ -2864,6 +2876,21 @@ function formatMoney(value) {
     return '¥' + num.toFixed(2);
 }
 
+function formatRecordShortDate(timestamp) {
+    if (!timestamp) return '—';
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return '—';
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    return m + '/' + day;
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    const s = String(str);
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function renderRecordPage() {
     // 初次进入记录页：默认应用筛选并渲染
     updateRecordFilterBadge();
@@ -2907,15 +2934,13 @@ function updateRecordFilterBadge() {
     if (!badge) return;
     let count = 0;
     const timeFilter = document.getElementById('recordTimeFilter');
+    const statusFilter = document.getElementById('recordStatusFilter');
     const minPrice = document.getElementById('recordMinPrice');
     const maxPrice = document.getElementById('recordMaxPrice');
-    const sortBy = document.getElementById('recordSortBy');
-    const groupBy = document.getElementById('recordGroupBy');
     if (timeFilter && timeFilter.value && timeFilter.value !== 'all') count++;
+    if (statusFilter && statusFilter.value && statusFilter.value !== 'all') count++;
     if (minPrice && minPrice.value) count++;
     if (maxPrice && maxPrice.value) count++;
-    if (sortBy && sortBy.value && sortBy.value !== 'time-desc') count++;
-    if (groupBy && groupBy.value && groupBy.value !== 'none') count++;
     if (count > 0) {
         badge.textContent = count;
         badge.classList.remove('d-none');
@@ -2928,18 +2953,16 @@ function resetRecordFilters() {
     const timeFilter = document.getElementById('recordTimeFilter');
     const startDate = document.getElementById('recordStartDate');
     const endDate = document.getElementById('recordEndDate');
+    const statusFilter = document.getElementById('recordStatusFilter');
     const minPrice = document.getElementById('recordMinPrice');
     const maxPrice = document.getElementById('recordMaxPrice');
-    const sortBy = document.getElementById('recordSortBy');
-    const groupBy = document.getElementById('recordGroupBy');
     const customDateRange = document.getElementById('recordCustomDateRange');
     if (timeFilter) timeFilter.value = 'all';
     if (startDate) startDate.value = '';
     if (endDate) endDate.value = '';
+    if (statusFilter) statusFilter.value = 'all';
     if (minPrice) minPrice.value = '';
     if (maxPrice) maxPrice.value = '';
-    if (sortBy) sortBy.value = 'time-desc';
-    if (groupBy) groupBy.value = 'none';
     if (customDateRange) customDateRange.classList.add('d-none');
     selectedHistoryIds.clear();
     updateRecordFilterBadge();
@@ -2951,6 +2974,7 @@ function getFilteredHistoryForRecord() {
     const timeFilterEl = document.getElementById('recordTimeFilter');
     const startDateEl = document.getElementById('recordStartDate');
     const endDateEl = document.getElementById('recordEndDate');
+    const statusFilterEl = document.getElementById('recordStatusFilter');
     const minPriceEl = document.getElementById('recordMinPrice');
     const maxPriceEl = document.getElementById('recordMaxPrice');
     const sortByEl = document.getElementById('recordSortBy');
@@ -2961,10 +2985,11 @@ function getFilteredHistoryForRecord() {
         timeRange: timeFilterEl ? timeFilterEl.value : 'all',
         startDate: startDateEl ? startDateEl.value : '',
         endDate: endDateEl ? endDateEl.value : '',
+        statusFilter: statusFilterEl ? statusFilterEl.value : 'all',
         minPrice: minPriceEl ? minPriceEl.value : '',
         maxPrice: maxPriceEl ? maxPriceEl.value : '',
         sortBy: sortByEl ? sortByEl.value : 'time-desc',
-        groupBy: groupByEl ? groupByEl.value : 'none'
+        groupBy: groupByEl ? groupByEl.value : 'month'
     };
 
     if (!Array.isArray(history) || history.length === 0) {
@@ -3018,6 +3043,10 @@ function getFilteredHistoryForRecord() {
         });
     }
 
+    if (filters.statusFilter && filters.statusFilter !== 'all') {
+        filteredHistory = filteredHistory.filter(item => getRecordProgressStatus(item).text === filters.statusFilter);
+    }
+
     if (filters.minPrice !== undefined && filters.minPrice !== '') {
         filteredHistory = filteredHistory.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(filters.minPrice));
     }
@@ -3059,14 +3088,18 @@ function applyRecordFilters() {
     }
 
     const renderItem = (item) => {
-        const clientId = (item && item.clientId) ? String(item.clientId) : '—';
+        const clientId = escapeHtml((item && item.clientId) ? String(item.clientId) : '—');
+        const shortDate = formatRecordShortDate(item && item.timestamp);
         const amount = formatMoney(item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal));
         const status = getRecordProgressStatus(item);
         const isSelected = selectedHistoryIds.has(item.id);
         return `
             <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}">
                 <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})" onclick="event.stopPropagation()">
-                <span class="record-item-client">${clientId}</span>
+                <div class="record-item-client-wrap">
+                    <span class="record-item-client">${clientId}</span>
+                    <span class="record-item-date">${shortDate}</span>
+                </div>
                 <div class="record-item-right">
                     <span class="record-item-amount">${amount}</span>
                     <span class="record-status ${status.className}">${status.text}</span>
@@ -3108,8 +3141,13 @@ function applyRecordFilters() {
 // ===== 记录页：同步数据导出/导入（跨端手动同步） =====
 function exportSyncData() {
     try {
+        const { list } = getFilteredHistoryForRecord();
+        if (!list || list.length === 0) {
+            alert('当前筛选下无记录，请调整筛选后再导出 JSON，或使用导出 Excel。');
+            return;
+        }
         const exportPayload = {
-            quoteHistory: history,
+            quoteHistory: list,
             calculatorSettings: defaultSettings,
             productSettings: productSettings,
             processSettings: processSettings,
@@ -3163,6 +3201,111 @@ function closeRecordExportPopover() {
     if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
+function toggleRecordSortPopover() {
+    const pop = document.getElementById('recordSortPopover');
+    const btn = document.getElementById('recordSortBtn');
+    if (!pop || !btn) return;
+    const isHidden = pop.classList.contains('d-none');
+    pop.classList.toggle('d-none', !isHidden);
+    pop.setAttribute('aria-hidden', isHidden ? 'false' : 'true');
+    btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+    if (isHidden) {
+        setTimeout(function () {
+            document.addEventListener('click', function closeRecordSort(e) {
+                if (!pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                    closeRecordSortPopover();
+                    document.removeEventListener('click', closeRecordSort);
+                }
+            });
+        }, 0);
+    }
+}
+
+function closeRecordSortPopover() {
+    const pop = document.getElementById('recordSortPopover');
+    const btn = document.getElementById('recordSortBtn');
+    if (pop) {
+        pop.classList.add('d-none');
+        pop.setAttribute('aria-hidden', 'true');
+    }
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function setRecordSortValue(value) {
+    const el = document.getElementById('recordSortBy');
+    if (el) el.value = value;
+    applyRecordFilters();
+    closeRecordSortPopover();
+}
+
+var recordImportPendingData = null;
+var recordImportPendingInput = null;
+
+function showRecordImportModeModal(data, fileInput) {
+    recordImportPendingData = data;
+    recordImportPendingInput = fileInput || null;
+    var modal = document.getElementById('recordImportModeModal');
+    if (modal) {
+        modal.classList.remove('d-none');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+}
+
+function closeRecordImportModeModal() {
+    recordImportPendingData = null;
+    recordImportPendingInput = null;
+    var modal = document.getElementById('recordImportModeModal');
+    if (modal) {
+        modal.classList.add('d-none');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+}
+
+function applyRecordImportOverwrite() {
+    var data = recordImportPendingData;
+    var inp = recordImportPendingInput;
+    closeRecordImportModeModal();
+    if (inp) inp.value = '';
+    if (!data) return;
+    if (Array.isArray(data.quoteHistory)) {
+        history = data.quoteHistory;
+        history.forEach(function (item) { ensureProductDoneStates(item); });
+    }
+    if (data.calculatorSettings != null) {
+        normalizeCoefficients(data.calculatorSettings);
+        Object.keys(data.calculatorSettings).forEach(function (key) {
+            if (data.calculatorSettings[key] != null && typeof data.calculatorSettings[key] === 'object' && Object.keys(data.calculatorSettings[key]).length === 0) return;
+            defaultSettings[key] = data.calculatorSettings[key];
+        });
+    }
+    if (data.productSettings != null) productSettings = data.productSettings;
+    if (data.processSettings != null) processSettings = data.processSettings;
+    if (data.templates != null) templates = data.templates;
+    saveData();
+    applyRecordFilters();
+    alert('导入成功，数据已同步到本机。');
+}
+
+function applyRecordImportMerge() {
+    var data = recordImportPendingData;
+    var fileInput = recordImportPendingInput;
+    closeRecordImportModeModal();
+    if (fileInput) fileInput.value = '';
+    if (!data) return;
+    var appendedCount = 0;
+    if (Array.isArray(data.quoteHistory) && data.quoteHistory.length > 0) {
+        var existingIds = new Set(history.map(function (h) { return h.id; }));
+        var toAppend = data.quoteHistory.filter(function (item) { return !existingIds.has(item.id); });
+        toAppend.forEach(function (item) { ensureProductDoneStates(item); });
+        history = history.concat(toAppend);
+        history.sort(function (a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+        appendedCount = toAppend.length;
+    }
+    saveData();
+    applyRecordFilters();
+    alert('导入成功，已合并 ' + appendedCount + ' 条记录，本机设置未变更。');
+}
+
 function handleRecordSyncImport(event) {
     const input = event && event.target;
     if (!input || !input.files || !input.files[0]) return;
@@ -3183,32 +3326,12 @@ function handleRecordSyncImport(event) {
                 input.value = '';
                 return;
             }
-            if (!confirm('将用导入的数据覆盖本机对应数据，是否继续？')) {
-                input.value = '';
-                return;
-            }
-            if (hasHistory) {
-                history = data.quoteHistory;
-                history.forEach(function (item) { ensureProductDoneStates(item); });
-            }
-            if (data.calculatorSettings != null) {
-                normalizeCoefficients(data.calculatorSettings);
-                Object.keys(data.calculatorSettings).forEach(function (key) {
-                    if (data.calculatorSettings[key] != null && typeof data.calculatorSettings[key] === 'object' && Object.keys(data.calculatorSettings[key]).length === 0) return;
-                    defaultSettings[key] = data.calculatorSettings[key];
-                });
-            }
-            if (data.productSettings != null) productSettings = data.productSettings;
-            if (data.processSettings != null) processSettings = data.processSettings;
-            if (data.templates != null) templates = data.templates;
-            saveData();
-            applyRecordFilters();
-            alert('导入成功，数据已同步到本机。');
+            showRecordImportModeModal(data, input);
         } catch (e) {
             console.error('导入失败:', e);
             alert('导入失败：' + (e.message || '文件格式错误'));
+            input.value = '';
         }
-        input.value = '';
     };
     reader.readAsText(file, 'UTF-8');
 }
@@ -3319,23 +3442,42 @@ function openStatsPage() {
     showPage('stats');
 }
 
+// 与 getRecordProgressStatus 对齐，支持待排单/已撤单/有废稿/已结单
 function getStatsOrderStatus(item) {
-    if (!item) return 'notStarted';
+    if (!item) return '未开始';
+    if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) return '已撤单';
+    if (item.settlement && item.settlement.type === 'waste_fee') return '有废稿';
+    if (item.settlement && item.settlement.type === 'normal') return '已结单';
+    if (item.status === 'closed') return '已结单';
     ensureProductDoneStates(item);
     const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
     const total = states.length;
-    if (total === 0) return 'notStarted';
     let doneCount = 0;
     for (let i = 0; i < total; i++) if (states[i]) doneCount++;
-    if (doneCount === 0) return 'notStarted';
-    if (doneCount === total) return 'completed';
-    return 'inProgress';
+    const pending = !item.startTime && !item.deadline;
+    if (pending) return '待排单';
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    const startTime = item.startTime ? new Date(item.startTime).getTime() : null;
+    const deadline = item.deadline ? new Date(item.deadline).getTime() : null;
+    const nowTime = now.getTime();
+    if (total > 0 && doneCount === total) return '已完成';
+    if (startTime && nowTime < startTime) return '未开始';
+    if (deadline && nowTime >= deadline && (total === 0 || doneCount < total)) return '已逾期';
+    return '进行中';
+}
+
+function getStatsAmount(item, amountBasis, giftMode) {
+    if (!item) return 0;
+    if (item.settlement && item.settlement.amount != null) return Number(item.settlement.amount) || 0;
+    if (amountBasis === 'totalProductsPrice') return Number(item.totalProductsPrice) || 0;
+    return Number(item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
 }
 
 function isStatsOrderOverdue(item) {
     if (!item || !item.deadline) return false;
     const status = getStatsOrderStatus(item);
-    if (status === 'completed') return false;
+    if (status === '已完成' || status === '已撤单' || status === '有废稿' || status === '已结单') return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const d = new Date(item.deadline);
@@ -3352,9 +3494,16 @@ function getStatsFiltersFromUI() {
     const statusFilter = document.getElementById('statsStatusFilter');
     const quickStart = document.getElementById('statsStartDate');
     const quickEnd = document.getElementById('statsEndDate');
-    const timeRange = (timeEl && timeEl.value) ? timeEl.value : 'month';
+    const viewYearEl = document.getElementById('statsViewYear');
+    const viewMonthEl = document.getElementById('statsViewMonth');
+    const timeRange = (timeEl && timeEl.value) ? timeEl.value : 'thisMonth';
+    const now = new Date();
+    const viewYear = (viewYearEl && viewYearEl.value) ? parseInt(viewYearEl.value, 10) : now.getFullYear();
+    const viewMonth = (viewMonthEl && viewMonthEl.value) ? parseInt(viewMonthEl.value, 10) : now.getMonth();
     return {
         timeRange: timeRange,
+        viewYear: isFinite(viewYear) ? viewYear : now.getFullYear(),
+        viewMonth: isFinite(viewMonth) && viewMonth >= 0 && viewMonth <= 11 ? viewMonth : now.getMonth(),
         startDate: (customStart && customStart.value) || (quickStart && quickStart.value) || '',
         endDate: (customEnd && customEnd.value) || (quickEnd && quickEnd.value) || '',
         amountBasis: amountBasis ? amountBasis.value : 'finalTotal',
@@ -3364,29 +3513,26 @@ function getStatsFiltersFromUI() {
 }
 
 function getStatsDateRange(filters) {
+    if (filters.timeRange === 'all') return { all: true };
     const now = new Date();
     now.setHours(23, 59, 59, 999);
     let start = new Date(now);
     let end = new Date(now);
     start.setHours(0, 0, 0, 0);
     switch (filters.timeRange) {
-        case 'today':
+        case 'thisMonth': {
+            const y = filters.viewYear != null ? filters.viewYear : now.getFullYear();
+            const m = filters.viewMonth != null ? filters.viewMonth : now.getMonth();
+            start = new Date(y, m, 1, 0, 0, 0, 0);
+            end = new Date(y, m + 1, 0, 23, 59, 59, 999);
             break;
-        case 'week':
-            start.setDate(start.getDate() - 6);
+        }
+        case 'thisYear': {
+            const y = filters.viewYear != null ? filters.viewYear : now.getFullYear();
+            start = new Date(y, 0, 1, 0, 0, 0, 0);
+            end = new Date(y, 11, 31, 23, 59, 59, 999);
             break;
-        case 'month':
-            start.setDate(start.getDate() - 29);
-            break;
-        case 'thisMonth':
-            start.setDate(1);
-            break;
-        case 'lastMonth':
-            start.setMonth(start.getMonth() - 1);
-            start.setDate(1);
-            end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
-            end.setHours(23, 59, 59, 999);
-            break;
+        }
         case 'custom':
             if (filters.startDate) start = new Date(filters.startDate);
             if (filters.endDate) end = new Date(filters.endDate);
@@ -3394,10 +3540,9 @@ function getStatsDateRange(filters) {
             end.setHours(23, 59, 59, 999);
             break;
         default:
-            start.setDate(start.getDate() - 29);
-    }
-    if (filters.timeRange !== 'lastMonth' && filters.timeRange !== 'custom') {
-        end.setHours(23, 59, 59, 999);
+            start.setDate(1);
+            end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+            end.setHours(23, 59, 59, 999);
     }
     return { start, end };
 }
@@ -3406,30 +3551,36 @@ function getStatsDataset(historySource, filters) {
     if (!Array.isArray(historySource) || historySource.length === 0) {
         return {
             filteredRecords: [],
-            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0 },
+            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0 },
             dailyAgg: [],
+            weeklyAgg: [],
+            monthlyAgg: [],
             byClient: [],
-            byProduct: []
+            byProduct: [],
+            byStatus: [],
+            byUsage: [],
+            byUrgent: [],
+            byProcess: []
         };
     }
-    const { start, end } = getStatsDateRange(filters);
-    let list = historySource.filter(item => {
-        const t = item.timestamp ? new Date(item.timestamp) : null;
-        if (!t || isNaN(t.getTime())) return false;
-        return t >= start && t <= end;
-    });
+    const dateRange = getStatsDateRange(filters);
+    let list = historySource;
+    if (!dateRange.all) {
+        const { start, end } = dateRange;
+        list = historySource.filter(item => {
+            const t = item.timestamp ? new Date(item.timestamp) : null;
+            if (!t || isNaN(t.getTime())) return false;
+            return t >= start && t <= end;
+        });
+    }
     if (filters.statusFilter !== 'all') {
         list = list.filter(item => {
             const status = getStatsOrderStatus(item);
-            if (filters.statusFilter === 'overdue') return isStatsOrderOverdue(item);
+            if (filters.statusFilter === '已逾期') return isStatsOrderOverdue(item);
             return status === filters.statusFilter;
         });
     }
-    const amountKey = filters.amountBasis === 'totalProductsPrice' ? 'totalProductsPrice' : 'finalTotal';
-    const getAmount = (item) => {
-        if (amountKey === 'totalProductsPrice') return Number(item.totalProductsPrice) || 0;
-        return Number(item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
-    };
+    const getAmount = (item) => getStatsAmount(item, filters.amountBasis, filters.giftMode);
     const includeGifts = filters.giftMode !== 'exclude';
     const giftRevenueAsZero = filters.giftMode === 'zero';
 
@@ -3438,9 +3589,20 @@ function getStatsDataset(historySource, filters) {
     let itemDone = 0;
     let orderDoneCount = 0;
     let overdueOrderCount = 0;
+    let orderSettledCount = 0;
+    let cancelOrderCount = 0;
+    let cancelAmountTotal = 0;
+    let wasteOrderCount = 0;
+    let wasteAmountTotal = 0;
+    let totalOtherFeesSum = 0;
+    let totalPlatformFeeSum = 0;
     const dailyMap = {};
     const clientMap = {};
     const productMap = {};
+    const statusMap = {};
+    const usageMap = {};
+    const urgentMap = {};
+    const processMap = {};
 
     list.forEach(item => {
         ensureProductDoneStates(item);
@@ -3455,8 +3617,23 @@ function getStatsDataset(historySource, filters) {
         itemTotal += nItems;
         itemDone += nDone;
         const orderStatus = getStatsOrderStatus(item);
-        if (orderStatus === 'completed') orderDoneCount++;
+        if (orderStatus === '已完成') orderDoneCount++;
         if (isStatsOrderOverdue(item)) overdueOrderCount++;
+        if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee' || item.settlement.type === 'waste_fee' || item.settlement.type === 'normal')) orderSettledCount++;
+        if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
+            cancelOrderCount++;
+            cancelAmountTotal += (item.settlement.amount != null ? Number(item.settlement.amount) : 0) || 0;
+        }
+        if (item.settlement && item.settlement.type === 'waste_fee') {
+            wasteOrderCount++;
+            wasteAmountTotal += (item.settlement.amount != null ? Number(item.settlement.amount) : 0) || 0;
+        }
+        totalOtherFeesSum += (item.totalOtherFees != null ? Number(item.totalOtherFees) : 0) || 0;
+        totalPlatformFeeSum += (item.platformFeeAmount != null ? Number(item.platformFeeAmount) : 0) || 0;
+        const status = orderStatus;
+        if (!statusMap[status]) statusMap[status] = { status: status, orderCount: 0, amountTotal: 0 };
+        statusMap[status].orderCount += 1;
+        statusMap[status].amountTotal += revenue;
 
         const dateStr = item.timestamp ? new Date(item.timestamp).toISOString().slice(0, 10) : '';
         if (dateStr) {
@@ -3486,16 +3663,67 @@ function getStatsDataset(historySource, filters) {
                 productMap[name].revenueTotal += giftRevenueAsZero ? 0 : (Number(p.productTotal) || 0);
             });
         }
+        const usageType = item.usageType || '—';
+        const usageDisplayName = (usageType !== '—' && defaultSettings.usageCoefficients && defaultSettings.usageCoefficients[usageType] && defaultSettings.usageCoefficients[usageType].name)
+            ? defaultSettings.usageCoefficients[usageType].name : usageType;
+        if (!usageMap[usageType]) usageMap[usageType] = { name: usageDisplayName, orderCount: 0, amountTotal: 0 };
+        usageMap[usageType].orderCount += 1;
+        usageMap[usageType].amountTotal += revenue;
+        const urgentType = item.urgentType || '—';
+        const urgentDisplayName = (urgentType !== '—' && defaultSettings.urgentCoefficients && defaultSettings.urgentCoefficients[urgentType] && defaultSettings.urgentCoefficients[urgentType].name)
+            ? defaultSettings.urgentCoefficients[urgentType].name : urgentType;
+        if (!urgentMap[urgentType]) urgentMap[urgentType] = { name: urgentDisplayName, orderCount: 0, amountTotal: 0 };
+        urgentMap[urgentType].orderCount += 1;
+        urgentMap[urgentType].amountTotal += revenue;
+        const allItems = products.concat(includeGifts ? gifts : []);
+        allItems.forEach(p => {
+            const details = p.processDetails || [];
+            details.forEach(proc => {
+                const pname = proc.name || '工艺';
+                if (!processMap[pname]) processMap[pname] = { name: pname, count: 0, feeTotal: 0 };
+                processMap[pname].count += 1;
+                processMap[pname].feeTotal += (Number(proc.fee) || 0);
+            });
+        });
     });
 
     const orderCount = list.length;
     const aov = orderCount > 0 ? revenueTotal / orderCount : 0;
     const itemDoneRate = itemTotal > 0 ? (itemDone / itemTotal) * 100 : 0;
     const orderDoneRate = orderCount > 0 ? (orderDoneCount / orderCount) * 100 : 0;
+    const orderSettledRate = orderCount > 0 ? (orderSettledCount / orderCount) * 100 : 0;
 
     const dailyAgg = Object.keys(dailyMap).sort().map(k => dailyMap[k]);
+    var weeklyMap = {};
+    dailyAgg.forEach(function (d) {
+        var dt = new Date(d.date);
+        var day = dt.getDay() || 7;
+        var monday = new Date(dt);
+        monday.setDate(dt.getDate() - day + 1);
+        var weekKey = monday.toISOString().slice(0, 10);
+        if (!weeklyMap[weekKey]) weeklyMap[weekKey] = { weekStart: weekKey, revenue: 0, orders: 0, itemTotal: 0, itemDone: 0 };
+        weeklyMap[weekKey].revenue += d.revenue;
+        weeklyMap[weekKey].orders += d.orders;
+        weeklyMap[weekKey].itemTotal += d.itemTotal;
+        weeklyMap[weekKey].itemDone += d.itemDone;
+    });
+    var weeklyAgg = Object.keys(weeklyMap).sort().map(function (k) { return weeklyMap[k]; });
+    var monthlyMap = {};
+    dailyAgg.forEach(function (d) {
+        var monthKey = d.date.slice(0, 7);
+        if (!monthlyMap[monthKey]) monthlyMap[monthKey] = { month: monthKey, revenue: 0, orders: 0, itemTotal: 0, itemDone: 0 };
+        monthlyMap[monthKey].revenue += d.revenue;
+        monthlyMap[monthKey].orders += d.orders;
+        monthlyMap[monthKey].itemTotal += d.itemTotal;
+        monthlyMap[monthKey].itemDone += d.itemDone;
+    });
+    var monthlyAgg = Object.keys(monthlyMap).sort().map(function (k) { return monthlyMap[k]; });
     const byClient = Object.values(clientMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
     const byProduct = Object.values(productMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
+    const byStatus = ['待排单', '未开始', '进行中', '已完成', '已逾期', '已撤单', '有废稿', '已结单'].map(s => statusMap[s] || { status: s, orderCount: 0, amountTotal: 0 });
+    const byUsage = Object.values(usageMap).sort((a, b) => b.amountTotal - a.amountTotal);
+    const byUrgent = Object.values(urgentMap).sort((a, b) => b.amountTotal - a.amountTotal);
+    const byProcess = Object.values(processMap).sort((a, b) => b.feeTotal - a.feeTotal);
 
     return {
         filteredRecords: list,
@@ -3508,12 +3736,118 @@ function getStatsDataset(historySource, filters) {
             itemDoneRate,
             orderDoneCount,
             orderDoneRate,
-            overdueOrderCount
+            overdueOrderCount,
+            orderSettledCount,
+            orderSettledRate,
+            cancelOrderCount,
+            cancelAmountTotal,
+            wasteOrderCount,
+            wasteAmountTotal,
+            totalOtherFeesSum,
+            totalPlatformFeeSum
         },
         dailyAgg,
+        weeklyAgg,
+        monthlyAgg,
         byClient,
-        byProduct
+        byProduct,
+        byStatus,
+        byUsage,
+        byUrgent,
+        byProcess
     };
+}
+
+function getStatsComparison(filters, currentTotals) {
+    if (filters.timeRange !== 'thisMonth' && filters.timeRange !== 'thisYear') return null;
+    var prevFilters = { timeRange: filters.timeRange, viewYear: filters.viewYear, viewMonth: filters.viewMonth, statusFilter: filters.statusFilter || 'all', amountBasis: filters.amountBasis || 'finalTotal', giftMode: filters.giftMode || 'exclude' };
+    if (filters.timeRange === 'thisMonth') {
+        prevFilters.viewMonth = filters.viewMonth - 1;
+        if (prevFilters.viewMonth < 0) { prevFilters.viewMonth = 11; prevFilters.viewYear--; }
+    } else if (filters.timeRange === 'thisYear') {
+        prevFilters.viewYear = filters.viewYear - 1;
+    }
+    var prevDataset = getStatsDataset(history, prevFilters);
+    var prev = prevDataset.totals;
+    if (prev.orderCount === 0 && prev.revenueTotal === 0) return null;
+    var changeOrderPct = prev.orderCount > 0 ? ((currentTotals.orderCount - prev.orderCount) / prev.orderCount * 100) : null;
+    var changeRevenuePct = prev.revenueTotal > 0 ? ((currentTotals.revenueTotal - prev.revenueTotal) / prev.revenueTotal * 100) : null;
+    return { prevTotals: prev, changeOrderPct: changeOrderPct, changeRevenuePct: changeRevenuePct };
+}
+
+function renderStatsComparison(filters, totals) {
+    var wrap = document.getElementById('statsComparisonWrap');
+    if (!wrap) return;
+    var comp = getStatsComparison(filters, totals);
+    if (!comp) { wrap.innerHTML = ''; wrap.classList.add('d-none'); return; }
+    wrap.classList.remove('d-none');
+    var fmt = function (v) {
+        if (v == null || !isFinite(v)) return { text: '—', cls: '' };
+        var s = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+        return { text: s, cls: v > 0 ? 'stats-change-up' : (v < 0 ? 'stats-change-down' : '') };
+    };
+    var o = fmt(comp.changeOrderPct);
+    var r = fmt(comp.changeRevenuePct);
+    var label = filters.timeRange === 'thisMonth' ? '环比上月' : '环比去年';
+    wrap.innerHTML = '<p class="stats-comparison">' + label + '：订单 <span class="' + o.cls + '">' + o.text + '</span>，收入 <span class="' + r.cls + '">' + r.text + '</span></p>';
+}
+
+function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess) {
+    const container = document.getElementById('statsDistribution');
+    if (!container) return;
+    var hasStatus = byStatus && byStatus.some(function (s) { return s.orderCount > 0 || s.amountTotal > 0; });
+    var hasUsage = byUsage && byUsage.length > 0;
+    var hasUrgent = byUrgent && byUrgent.length > 0;
+    var hasProcess = byProcess && byProcess.length > 0;
+    if (!hasStatus && !hasUsage && !hasUrgent && !hasProcess) { container.innerHTML = ''; container.classList.add('d-none'); return; }
+    container.classList.remove('d-none');
+    var tabs = [];
+    var panels = [];
+    if (hasStatus) {
+        tabs.push('<button type="button" class="btn secondary small active" data-dist-tab="status">状态</button>');
+        var shtml = '';
+        byStatus.forEach(function (s) {
+            if (s.orderCount > 0 || s.amountTotal > 0) {
+                shtml += '<div class="stats-status-item"><span class="stats-status-name">' + (s.status || '—') + '</span><span class="stats-status-val">' + s.orderCount + ' 单 / ¥' + (s.amountTotal || 0).toFixed(2) + '</span></div>';
+            }
+        });
+        panels.push({ id: 'status', html: '<div class="stats-status-list">' + shtml + '</div>' });
+    }
+    if (hasUsage) {
+        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="usage">用途</button>');
+        var uhtml = '';
+        byUsage.forEach(function (r) { uhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span></div>'; });
+        panels.push({ id: 'usage', html: '<div class="stats-dim-list">' + uhtml + '</div>' });
+    }
+    if (hasUrgent) {
+        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="urgent">加急</button>');
+        var ghtml = '';
+        byUrgent.forEach(function (r) { ghtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span></div>'; });
+        panels.push({ id: 'urgent', html: '<div class="stats-dim-list">' + ghtml + '</div>' });
+    }
+    if (hasProcess) {
+        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="process">工艺</button>');
+        var prhtml = '';
+        byProcess.forEach(function (r) { prhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span></div>'; });
+        panels.push({ id: 'process', html: '<div class="stats-dim-list">' + prhtml + '</div>' });
+    }
+    var firstId = panels[0].id;
+    var html = '<h3 class="stats-block-title">数据分布</h3>';
+    html += '<div class="stats-top-tabs">' + tabs.join('') + '</div>';
+    panels.forEach(function (p, i) {
+        html += '<div id="statsDistPanel' + p.id + '" class="stats-dist-panel-wrap' + (p.id === firstId ? '' : ' d-none') + '">' + p.html + '</div>';
+    });
+    container.innerHTML = html;
+    container.querySelectorAll('[data-dist-tab]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var tab = this.dataset.distTab;
+            container.querySelectorAll('[data-dist-tab]').forEach(function (b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            container.querySelectorAll('.stats-dist-panel-wrap').forEach(function (w) { w.classList.add('d-none'); });
+            var panel = document.getElementById('statsDistPanel' + tab);
+            if (panel) panel.classList.remove('d-none');
+        });
+    });
 }
 
 function renderStatsKpis(totals) {
@@ -3526,12 +3860,20 @@ function renderStatsKpis(totals) {
         return v.toFixed(1);
     };
     grid.innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">订单数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div></div>
-        <div class="kpi-card"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">制品项总数</div><div class="kpi-value" id="kpiItemTotal">${totals.itemTotal}</div></div>
+        <div class="kpi-section-title">核心指标</div>
+        <div class="kpi-card kpi-card-primary"><div class="kpi-label">订单数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div></div>
+        <div class="kpi-card kpi-card-primary"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div></div>
+        <div class="kpi-card kpi-card-primary"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div></div>
+        <div class="kpi-card kpi-card-primary"><div class="kpi-label">制品项</div><div class="kpi-value" id="kpiItemTotal">${totals.itemTotal}</div></div>
+        <div class="kpi-section-title">进度与结算</div>
         <div class="kpi-card"><div class="kpi-label">制品项完成率</div><div class="kpi-value" id="kpiItemDoneRate">${fmt(totals.itemDoneRate)}%</div></div>
-        <div class="kpi-card"><div class="kpi-label">逾期订单数</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div></div>
+        <div class="kpi-card"><div class="kpi-label">订单完结率</div><div class="kpi-value" id="kpiOrderSettledRate">${fmt(totals.orderSettledRate || 0)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">逾期</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div></div>
+        <div class="kpi-card"><div class="kpi-label">撤单</div><div class="kpi-value kpi-value-small" id="kpiCancel">${totals.cancelOrderCount || 0} 单 / ${fmt(totals.cancelAmountTotal || 0, true)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">废稿</div><div class="kpi-value kpi-value-small" id="kpiWaste">${totals.wasteOrderCount || 0} 单 / ${fmt(totals.wasteAmountTotal || 0, true)}</div></div>
+        <div class="kpi-section-title">费用</div>
+        <div class="kpi-card"><div class="kpi-label">其他费用</div><div class="kpi-value" id="kpiOtherFees">${fmt(totals.totalOtherFeesSum || 0, true)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">平台费</div><div class="kpi-value" id="kpiPlatformFee">${fmt(totals.totalPlatformFeeSum || 0, true)}</div></div>
     `;
     let orderRateEl = document.getElementById('kpiOrderDoneRate');
     if (!orderRateEl) {
@@ -3540,25 +3882,31 @@ function renderStatsKpis(totals) {
         orderRateEl.id = 'kpiOrderDoneRate';
         grid.parentNode.insertBefore(orderRateEl, grid.nextSibling);
     }
-    orderRateEl.textContent = '订单完成率：' + fmt(totals.orderDoneRate) + '%（已完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）';
+    orderRateEl.textContent = '制品全完成率：' + fmt(totals.orderDoneRate) + '%（制品全完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）；订单完结率：' + fmt(totals.orderSettledRate || 0) + '%（已结算 ' + (totals.orderSettledCount || 0) + ' / ' + totals.orderCount + '）';
 }
 
-function renderStatsTrends(dailyAgg) {
+function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     const container = document.getElementById('statsTrends');
     if (!container) return;
-    if (!dailyAgg || dailyAgg.length === 0) {
+    var currentTab = (window.statsTrendGranularity || 'day');
+    var agg = currentTab === 'week' ? (weeklyAgg || []) : (currentTab === 'month' ? (monthlyAgg || []) : (dailyAgg || []));
+    if (!agg || agg.length === 0) {
         container.innerHTML = '<p class="text-gray">暂无趋势数据</p>';
         return;
     }
-    const maxRev = Math.max(1, ...dailyAgg.map(d => d.revenue));
-    const maxOrd = Math.max(1, ...dailyAgg.map(d => d.orders));
+    var labelKey = currentTab === 'week' ? 'weekStart' : (currentTab === 'month' ? 'month' : 'date');
+    const maxRev = Math.max(1, ...agg.map(d => d.revenue));
+    const maxOrd = Math.max(1, ...agg.map(d => d.orders));
     const maxRate = 100;
-    let html = '<h3 class="stats-block-title">趋势（按日）</h3>';
+    var tabLabel = currentTab === 'week' ? '按周' : (currentTab === 'month' ? '按月' : '按日');
+    var html = '<h3 class="stats-block-title">趋势</h3>';
+    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small' + (currentTab === 'day' ? ' active' : '') + '" data-gran="day">按日</button><button type="button" class="btn secondary small' + (currentTab === 'week' ? ' active' : '') + '" data-gran="week">按周</button><button type="button" class="btn secondary small' + (currentTab === 'month' ? ' active' : '') + '" data-gran="month">按月</button></div>';
     html += '<div class="stats-mini-bars">';
-    dailyAgg.forEach(d => {
-        const rate = d.itemTotal > 0 ? (d.itemDone / d.itemTotal) * 100 : 0;
+    agg.forEach(function (d) {
+        var rate = d.itemTotal > 0 ? (d.itemDone / d.itemTotal) * 100 : 0;
+        var lbl = d[labelKey] || d.date || d.weekStart || d.month || '—';
         html += '<div class="stats-bar-row">';
-        html += '<span class="stats-bar-label">' + d.date + '</span>';
+        html += '<span class="stats-bar-label">' + lbl + '</span>';
         html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-rev" style="width:' + (d.revenue / maxRev * 100) + '%"></div></div><span class="stats-bar-legend">¥' + (d.revenue || 0).toFixed(0) + '</span>';
         html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-ord" style="width:' + (d.orders / maxOrd * 100) + '%"></div></div><span class="stats-bar-legend">' + d.orders + '单</span>';
         html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-rate" style="width:' + (rate / maxRate * 100) + '%"></div></div><span class="stats-bar-legend">' + rate.toFixed(0) + '%</span>';
@@ -3566,6 +3914,12 @@ function renderStatsTrends(dailyAgg) {
     });
     html += '</div>';
     container.innerHTML = html;
+    container.querySelectorAll('.stats-top-tabs button[data-gran]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            window.statsTrendGranularity = this.dataset.gran;
+            applyStatsFilters();
+        });
+    });
 }
 
 function renderStatsTopLists(byClient, byProduct) {
@@ -3613,7 +3967,7 @@ function updateStatsFilterBadge() {
     if (!badge) return;
     const f = getStatsFiltersFromUI();
     let n = 0;
-    if (f.timeRange !== 'month') n++;
+    if (f.timeRange !== 'thisMonth') n++;
     if (f.amountBasis !== 'finalTotal') n++;
     if (f.giftMode !== 'exclude') n++;
     if (f.statusFilter !== 'all') n++;
@@ -3654,7 +4008,12 @@ function resetStatsFilters() {
     const customEnd = document.getElementById('statsCustomEnd');
     const quickStart = document.getElementById('statsStartDate');
     const quickEnd = document.getElementById('statsEndDate');
-    if (timeEl) timeEl.value = 'month';
+    const viewYearEl = document.getElementById('statsViewYear');
+    const viewMonthEl = document.getElementById('statsViewMonth');
+    const now = new Date();
+    if (timeEl) timeEl.value = 'thisMonth';
+    if (viewYearEl) viewYearEl.value = String(now.getFullYear());
+    if (viewMonthEl) viewMonthEl.value = String(now.getMonth());
     if (amountEl) amountEl.value = 'finalTotal';
     if (giftEl) giftEl.value = 'exclude';
     if (statusEl) statusEl.value = 'all';
@@ -3662,32 +4021,14 @@ function resetStatsFilters() {
     if (customEnd) customEnd.value = '';
     if (quickStart) quickStart.value = '';
     if (quickEnd) quickEnd.value = '';
-    document.getElementById('statsCustomDateRange').classList.add('d-none');
+    const customRange = document.getElementById('statsCustomDateRange');
+    if (customRange) customRange.classList.add('d-none');
     updateStatsFilterBadge();
     applyStatsFilters();
 }
 
 function toggleStatsCustomDate() {
-    const wrap = document.getElementById('statsCustomDateWrap');
-    const toggleBtn = document.getElementById('statsCustomDateToggle');
-    if (!wrap || !toggleBtn) return;
-    const isHidden = wrap.classList.contains('d-none');
-    wrap.classList.toggle('d-none', !isHidden);
-    if (isHidden) {
-        const timeEl = document.getElementById('statsTimeFilter');
-        if (timeEl) timeEl.value = 'custom';
-        const quickStart = document.getElementById('statsStartDate');
-        const quickEnd = document.getElementById('statsEndDate');
-        if (quickStart && !quickStart.value) {
-            const end = new Date();
-            const start = new Date(end);
-            start.setDate(start.getDate() - 29);
-            quickStart.value = start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0') + '-' + String(start.getDate()).padStart(2, '0');
-            quickEnd.value = end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0');
-        }
-        onStatsFilterChange();
-        applyStatsFilters();
-    }
+    setStatsQuickRange('custom');
 }
 
 function onStatsQuickCustomChange() {
@@ -3698,27 +4039,66 @@ function onStatsQuickCustomChange() {
 }
 
 function setStatsQuickRange(range) {
-    const now = new Date();
-    let start = new Date(now);
-    let end = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-    if (range === 'today') { }
-    else if (range === 'week') { start.setDate(start.getDate() - 6); }
-    else if (range === 'month') { start.setDate(start.getDate() - 29); }
-    else if (range === 'thisMonth') { start.setDate(1); }
-    else if (range === 'lastMonth') { start.setMonth(start.getMonth() - 1); start.setDate(1); end = new Date(start.getFullYear(), start.getMonth() + 1, 0); end.setHours(23, 59, 59, 999); }
-    const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    document.getElementById('statsStartDate').value = ymd(start);
-    document.getElementById('statsEndDate').value = ymd(end);
     const timeEl = document.getElementById('statsTimeFilter');
-    if (timeEl) timeEl.value = range === 'today' ? 'today' : range === 'week' ? 'week' : range === 'month' ? 'month' : range === 'thisMonth' ? 'thisMonth' : range === 'lastMonth' ? 'lastMonth' : 'custom';
+    const dateNavWrap = document.getElementById('statsDateNavWrap');
+    const customWrap = document.getElementById('statsCustomDateWrap');
+    const viewYearEl = document.getElementById('statsViewYear');
+    const viewMonthEl = document.getElementById('statsViewMonth');
+    const now = new Date();
+    if (timeEl) timeEl.value = range;
+    if (range === 'thisMonth' || range === 'thisYear') {
+        if (viewYearEl) viewYearEl.value = String(now.getFullYear());
+        if (viewMonthEl) viewMonthEl.value = String(now.getMonth());
+        if (dateNavWrap) dateNavWrap.classList.remove('d-none');
+        if (customWrap) customWrap.classList.add('d-none');
+    } else if (range === 'all') {
+        if (dateNavWrap) dateNavWrap.classList.add('d-none');
+        if (customWrap) customWrap.classList.add('d-none');
+    } else if (range === 'custom') {
+        if (dateNavWrap) dateNavWrap.classList.add('d-none');
+        if (customWrap) customWrap.classList.remove('d-none');
+        const quickStart = document.getElementById('statsStartDate');
+        const quickEnd = document.getElementById('statsEndDate');
+        if (quickStart && !quickStart.value) {
+            const end = new Date();
+            const start = new Date(end);
+            start.setDate(start.getDate() - 29);
+            quickStart.value = toYmd(start);
+            quickEnd.value = toYmd(end);
+        }
+    }
     onStatsFilterChange();
+    applyStatsFilters();
+}
+
+function setStatsDateNav(delta) {
+    const timeEl = document.getElementById('statsTimeFilter');
+    const viewYearEl = document.getElementById('statsViewYear');
+    const viewMonthEl = document.getElementById('statsViewMonth');
+    const range = timeEl ? timeEl.value : 'thisMonth';
+    const now = new Date();
+    let y = (viewYearEl && viewYearEl.value) ? parseInt(viewYearEl.value, 10) : now.getFullYear();
+    let m = (viewMonthEl && viewMonthEl.value) ? parseInt(viewMonthEl.value, 10) : now.getMonth();
+    if (!isFinite(y)) y = now.getFullYear();
+    if (!isFinite(m) || m < 0 || m > 11) m = now.getMonth();
+    if (range === 'thisMonth') {
+        m += delta;
+        if (m > 11) { m = 0; y++; }
+        else if (m < 0) { m = 11; y--; }
+        if (viewYearEl) viewYearEl.value = String(y);
+        if (viewMonthEl) viewMonthEl.value = String(m);
+    } else if (range === 'thisYear') {
+        y += delta;
+        if (viewYearEl) viewYearEl.value = String(y);
+    }
     applyStatsFilters();
 }
 
 function applyStatsFilters() {
     const f = getStatsFiltersFromUI();
+    const dateNavWrap = document.getElementById('statsDateNavWrap');
+    const customWrap = document.getElementById('statsCustomDateWrap');
+    const dateNavLabel = document.getElementById('statsDateNavLabel');
     if (f.timeRange === 'custom' && f.startDate) {
         const customStart = document.getElementById('statsCustomStart');
         const customEnd = document.getElementById('statsCustomEnd');
@@ -3728,10 +4108,27 @@ function applyStatsFilters() {
     document.querySelectorAll('.stats-quick-btn').forEach(function (btn) {
         btn.classList.toggle('active', btn.dataset.range === f.timeRange);
     });
+    if (dateNavWrap) {
+        if (f.timeRange === 'thisMonth' || f.timeRange === 'thisYear') {
+            dateNavWrap.classList.remove('d-none');
+            var vy = document.getElementById('statsViewYear');
+            var vm = document.getElementById('statsViewMonth');
+            if (vy && !vy.value) { vy.value = String(f.viewYear); }
+            if (vm && !vm.value && f.timeRange === 'thisMonth') { vm.value = String(f.viewMonth); }
+            if (dateNavLabel) {
+                dateNavLabel.textContent = f.timeRange === 'thisMonth' ? (f.viewYear + '年' + (f.viewMonth + 1) + '月') : (f.viewYear + '年');
+            }
+        } else {
+            dateNavWrap.classList.add('d-none');
+        }
+    }
+    if (customWrap) customWrap.classList.toggle('d-none', f.timeRange !== 'custom');
     const dataset = getStatsDataset(history, f);
     renderStatsKpis(dataset.totals);
-    renderStatsTrends(dataset.dailyAgg);
+    renderStatsComparison(f, dataset.totals);
+    renderStatsTrends(dataset.dailyAgg, dataset.weeklyAgg, dataset.monthlyAgg);
     renderStatsTopLists(dataset.byClient, dataset.byProduct);
+    renderStatsDistribution(dataset.byStatus, dataset.byUsage, dataset.byUrgent, dataset.byProcess);
 }
 
 function renderStatsPage() {
@@ -3757,11 +4154,39 @@ function exportStatsToExcel() {
             ['客单价', dataset.totals.aov],
             ['制品项总数', dataset.totals.itemTotal],
             ['制品项完成率(%)', dataset.totals.itemDoneRate],
-            ['订单完成数', dataset.totals.orderDoneCount],
-            ['订单完成率(%)', dataset.totals.orderDoneRate],
-            ['逾期订单数', dataset.totals.overdueOrderCount]
+            ['制品全完成订单数', dataset.totals.orderDoneCount],
+            ['制品全完成率(%)', dataset.totals.orderDoneRate],
+            ['逾期订单数', dataset.totals.overdueOrderCount],
+            ['已结算订单数', dataset.totals.orderSettledCount || 0],
+            ['订单完结率(%)', dataset.totals.orderSettledRate || 0],
+            ['撤单数', dataset.totals.cancelOrderCount || 0],
+            ['撤单费合计', dataset.totals.cancelAmountTotal || 0],
+            ['废稿数', dataset.totals.wasteOrderCount || 0],
+            ['废稿费合计', dataset.totals.wasteAmountTotal || 0],
+            ['其他费用合计', dataset.totals.totalOtherFeesSum || 0],
+            ['平台费合计', dataset.totals.totalPlatformFeeSum || 0]
         ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), '汇总');
+        var statusData = [['状态', '订单数', '金额合计']];
+        (dataset.byStatus || []).forEach(function (row) {
+            if (row.orderCount > 0 || row.amountTotal > 0) statusData.push([row.status, row.orderCount, row.amountTotal]);
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(statusData), '按状态分组');
+        if (dataset.byUsage && dataset.byUsage.length > 0) {
+            var usageData = [['用途', '订单数', '金额合计']];
+            dataset.byUsage.forEach(function (row) { usageData.push([row.name, row.orderCount, row.amountTotal]); });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(usageData), '按用途');
+        }
+        if (dataset.byUrgent && dataset.byUrgent.length > 0) {
+            var urgentData = [['加急', '订单数', '金额合计']];
+            dataset.byUrgent.forEach(function (row) { urgentData.push([row.name, row.orderCount, row.amountTotal]); });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(urgentData), '按加急');
+        }
+        if (dataset.byProcess && dataset.byProcess.length > 0) {
+            var processData = [['工艺', '出现次数', '费用合计']];
+            dataset.byProcess.forEach(function (row) { processData.push([row.name, row.count, row.feeTotal]); });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(processData), '按工艺');
+        }
         const clientData = [['单主ID', '订单数', '总金额']];
         dataset.byClient.forEach(c => { clientData.push([c.clientId, c.orderCount, c.revenueTotal]); });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clientData), 'Top单主');
@@ -3784,8 +4209,7 @@ function openCalculatorDrawer() {
     // 下单时间：默认当天（仅日期，可编辑）；未改时提交/保存用实时时间
     var orderTimeInput = document.getElementById('orderTimeInput');
     if (orderTimeInput) {
-        var today = new Date();
-        var todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        var todayStr = toYmd(new Date());
         orderTimeInput.value = todayStr;
         window.calculatorOrderTimeDefault = todayStr;
     }
@@ -3796,6 +4220,16 @@ function openCalculatorDrawer() {
 
     drawer.classList.add('open');
     isCalculatorOpen = true;
+
+    // 编辑模式下显示「另存为新单」按钮
+    var saveAsNewBtn = document.getElementById('calculatorSaveAsNewBtn');
+    if (saveAsNewBtn) {
+        if (window.editingHistoryId) {
+            saveAsNewBtn.classList.remove('d-none');
+        } else {
+            saveAsNewBtn.classList.add('d-none');
+        }
+    }
 }
 
 // 关闭计算抽屉
@@ -4127,8 +4561,8 @@ function removeProduct(id) {
     document.querySelector(`[data-id="${id}"]`).remove();
 }
 
-// 计算价格
-function calculatePrice() {
+// 计算价格；saveAsNew 为 true 时：另存为新单（不覆盖原记录），保存后关闭抽屉不打开小票
+function calculatePrice(saveAsNew) {
     // 获取单主信息（支持自动生成单主ID：YYYYMMDDXNN）
     const clientIdInputEl = document.getElementById('clientId');
     let clientIdValue = clientIdInputEl ? clientIdInputEl.value.trim() : '';
@@ -4559,6 +4993,17 @@ function calculatePrice() {
         syncReceiptDrawerContent();
     }
     
+    // 另存为新单：清除编辑 ID 后保存为新记录，关闭抽屉，不打开小票
+    if (saveAsNew && window.editingHistoryId) {
+        window.editingHistoryId = null;
+        saveToHistory(); // 会刷新月历/todo、saveData、applyHistoryFilters
+        if (typeof closeCalculatorDrawer === 'function') {
+            closeCalculatorDrawer();
+        }
+        showPage('quote');
+        return;
+    }
+    
     // 关闭计算抽屉（从计算页返回排单页）
     if (typeof closeCalculatorDrawer === 'function') {
         closeCalculatorDrawer();
@@ -4640,6 +5085,12 @@ function generateQuote() {
     // 截稿时间
     if (receiptInfo.showDeadline !== false && quoteData.deadline) {  // 默认为true
         receiptInfoHtml += `<p class="receipt-text-sm">DEADLINE: ${quoteData.deadline}</p>`;
+    }
+    // 下单时间
+    if (receiptInfo.showOrderTime !== false && quoteData.timestamp) {
+        const orderDate = new Date(quoteData.timestamp);
+        const orderTimeStr = orderDate.getFullYear() + '-' + String(orderDate.getMonth() + 1).padStart(2, '0') + '-' + String(orderDate.getDate()).padStart(2, '0') + ' ' + String(orderDate.getHours()).padStart(2, '0') + ':' + String(orderDate.getMinutes()).padStart(2, '0');
+        receiptInfoHtml += `<p class="receipt-text-sm">下单时间: ${orderTimeStr}</p>`;
     }
         
     // 设计师
@@ -5537,9 +5988,6 @@ function saveToHistory() {
             ...quoteData,
             productDoneStates
         });
-        if (history.length > 20) {
-            history = history.slice(0, 20);
-        }
         showGlobalToast('报价单已加入排单！');
     }
     
@@ -5602,12 +6050,6 @@ function isOrderSettled(item) {
 // 按选中日期获取所有排单：返回该日期在时间范围内的所有排单（排除已完结）
 function getScheduleItemsForDate(selectedDate) {
     if (!selectedDate) return [];
-    const normalizeYmd = (d) => {
-        if (!d) return null;
-        const x = typeof d === 'string' ? new Date(d) : d;
-        if (isNaN(x.getTime())) return null;
-        return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
-    };
     const target = normalizeYmd(selectedDate);
     if (!target) return [];
     return history.filter(h => {
@@ -5644,7 +6086,7 @@ function setScheduleTodoFilter(f) {
     document.querySelectorAll('.schedule-todo-filter-btn').forEach(btn => {
         btn.classList.toggle('active', (btn.dataset.filter || '') === f);
     });
-    renderScheduleTodoSection();
+    debouncedRefreshScheduleView();
 }
 
 function getScheduleItemsByFilter() {
@@ -5676,6 +6118,19 @@ function getScheduleItemsForMonth(year, month) {
         end.setHours(23, 59, 59, 999);
         return !(end < monthStart || start > monthEnd);
     });
+}
+
+// 日期格式化为 YYYY-MM-DD（统一工具，减少重复）
+function toYmd(d) {
+    if (!d) return '';
+    var x = d instanceof Date ? d : new Date(d);
+    if (isNaN(x.getTime())) return '';
+    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+}
+// 同 toYmd，无效时返回 null（用于需区分“无日期”的场景）
+function normalizeYmd(d) {
+    var s = toYmd(d);
+    return s || null;
 }
 
 function formatYmdCn(dateStr) {
@@ -5721,7 +6176,6 @@ function renderScheduleMonthTitleStats(year, month) {
 
     // 日期选择器默认值
     const now = new Date();
-    const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     const todayYmd = toYmd(now);
     const dateInput = document.getElementById('scheduleTitleDateInput');
     if (dateInput) dateInput.value = window.scheduleSelectedDate || todayYmd;
@@ -5758,32 +6212,22 @@ function onScheduleTitleDateChange() {
         window.scheduleCalendarYear = d.getFullYear();
         window.scheduleCalendarMonth = d.getMonth() + 1;
     }
-    renderScheduleCalendar();
-    renderScheduleTodoSection();
+    debouncedRefreshScheduleView();
 }
 
 // 点击 Today 按钮：跳回今天
 function scheduleTodoBackToToday() {
     const now = new Date();
-    const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     window.scheduleSelectedDate = toYmd(now);
     window.scheduleCalendarYear = now.getFullYear();
     window.scheduleCalendarMonth = now.getMonth() + 1;
-    renderScheduleCalendar();
-    renderScheduleTodoSection();
-    updateScheduleTitle();
+    debouncedRefreshScheduleView();
 }
 
 // 当前批次：返回「最近截稿日」或「选中日所在截稿日」的那批排单。返回 { deadline: 'YYYY-MM-DD', items: schedule[] }（排除已完结）
 function getScheduleBatchForDisplay(selectedDate) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const normalizeYmd = (d) => {
-        if (!d) return null;
-        const x = typeof d === 'string' ? new Date(d) : d;
-        if (isNaN(x.getTime())) return null;
-        return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
-    };
     const items = history.filter(h => h.deadline && !isOrderSettled(h)).map(ensureProductDoneStates);
     if (items.length === 0) return { deadline: null, items: [] };
     if (selectedDate) {
@@ -5793,7 +6237,7 @@ function getScheduleBatchForDisplay(selectedDate) {
         return { deadline: target, items: batch };
     }
     const deadlines = [...new Set(items.map(h => normalizeYmd(h.deadline)))].filter(Boolean).sort();
-    const todayStr = normalizeYmd(today);
+    const todayStr = toYmd(today) || '';
     const nearest = deadlines.find(d => d >= todayStr) || deadlines[deadlines.length - 1];
     const batch = items.filter(h => normalizeYmd(h.deadline) === nearest);
     return { deadline: nearest, items: batch };
@@ -5804,7 +6248,6 @@ function getScheduleBarsForCalendar(year, month) {
     const bars = [];
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
-    const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     history.forEach(item => {
         if (isOrderSettled(item)) return;
         if (!item.startTime && !item.deadline) return;
@@ -5859,10 +6302,19 @@ var SCHEDULE_BAR_COLORS_DARK = [
 var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#fca5a5', '#93c5fd', '#fd8a5c', '#86efac', '#c4b5fd', '#fde047', '#f472b6'];
 var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#f87171', '#60a5fa', '#f97316', '#4ade80', '#c084fc', '#facc15', '#ec4899'];
 
-// 按星期视图：同周内条带轨道分配，最多 3 条（一行一天最多显示 3 个）
-function assignWeekBarsToTracks(segments) {
+// 根据屏幕宽度返回日历彩条最大轨道数
+function getScheduleMaxTracks() {
+    var w = typeof window !== 'undefined' ? window.innerWidth : 768;
+    if (w >= 1024) return 5;
+    if (w >= 768) return 4;
+    if (w >= 480) return 3;
+    return 2;
+}
+
+// 按星期视图：同周内条带轨道分配，maxTracks 随屏幕宽度动态调整
+function assignWeekBarsToTracks(segments, maxTracks) {
+    if (maxTracks == null) maxTracks = getScheduleMaxTracks();
     var tracks = [];
-    var maxTracks = 3;
     segments.forEach(function (s) {
         var placed = false;
         for (var t = 0; t < tracks.length && t < maxTracks; t++) {
@@ -5897,7 +6349,6 @@ function renderScheduleCalendar() {
     const totalCells = Math.ceil((startPad + daysInMonth) / 7) * 7;
     const numRows = totalCells / 7;
     const bars = getScheduleBarsForCalendar(y, m);
-    const toYmd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     const todayYmd = toYmd(now);
 
     // 本月内条带起止日（1-based）
@@ -5959,7 +6410,7 @@ function renderScheduleCalendar() {
             if (startCol > endCol) return;
             segments.push({ startCol: startCol, endCol: endCol, bar: b.bar });
         });
-        const weekTracks = assignWeekBarsToTracks(segments);
+        const weekTracks = assignWeekBarsToTracks(segments, getScheduleMaxTracks());
         if (weekTracks.length > 0) {
             var isDark = document.documentElement.classList.contains('theme-dark');
             var barColors = isDark && SCHEDULE_BAR_COLORS_DARK ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
@@ -5990,8 +6441,7 @@ function renderScheduleCalendar() {
         if (!d) return;
         el.addEventListener('click', function () {
             window.scheduleSelectedDate = d;
-            renderScheduleCalendar();
-            renderScheduleTodoSection();
+            debouncedRefreshScheduleView();
         });
     });
 
@@ -6008,12 +6458,25 @@ function renderScheduleCalendar() {
             if (clickedDay >= 1 && clickedDay <= daysInMonth) {
                 const dateStr = toYmd(new Date(y, m - 1, clickedDay));
                 window.scheduleSelectedDate = dateStr;
-                renderScheduleCalendar();
-                renderScheduleTodoSection();
+                debouncedRefreshScheduleView();
             }
         });
     });
 }
+
+// 月份/日期切换防抖：快速连续操作只触发一次重绘
+function debounce(fn, ms) {
+    var t;
+    return function () {
+        clearTimeout(t);
+        t = setTimeout(fn, ms);
+    };
+}
+var debouncedRefreshScheduleView = debounce(function () {
+    renderScheduleCalendar();
+    renderScheduleTodoSection();
+    updateScheduleTitleTodayButton();
+}, 120);
 
 function scheduleCalendarPrevMonth() {
     if (window.scheduleCalendarMonth <= 1) {
@@ -6022,9 +6485,7 @@ function scheduleCalendarPrevMonth() {
     } else {
         window.scheduleCalendarMonth--;
     }
-    renderScheduleCalendar();
-    renderScheduleTodoSection();
-    updateScheduleTitleTodayButton();
+    debouncedRefreshScheduleView();
 }
 
 function scheduleCalendarNextMonth() {
@@ -6034,9 +6495,7 @@ function scheduleCalendarNextMonth() {
     } else {
         window.scheduleCalendarMonth++;
     }
-    renderScheduleCalendar();
-    renderScheduleTodoSection();
-    updateScheduleTitleTodayButton();
+    debouncedRefreshScheduleView();
 }
 
 function updateScheduleTitleTodayButton() {
@@ -6086,7 +6545,7 @@ function renderScheduleTodoSection() {
         var d = new Date(str);
         return isNaN(d.getTime()) ? '—' : (d.getMonth() + 1) + '.' + d.getDate();
     };
-    modulesEl.innerHTML = '';
+    var cardHtmls = [];
     sortedItems.forEach(item => {
         ensureProductDoneStates(item);
         const doneStates = item.productDoneStates || [];
@@ -6118,7 +6577,7 @@ function renderScheduleTodoSection() {
             '<input type="checkbox" class="schedule-todo-checkbox" ' + (done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + idx + '" onchange="toggleScheduleTodoDone(this)">' +
             '<span class="schedule-todo-label">' + label + '</span></div>'
         ).join('');
-        modulesEl.innerHTML += ''
+        cardHtmls.push(''
             + '<div class="schedule-todo-card" onclick="handleScheduleTodoCardClick(' + item.id + ', event)">'
             + '  <div class="schedule-todo-card-main">'
             + '    <div class="schedule-todo-card-head">'
@@ -6134,30 +6593,38 @@ function renderScheduleTodoSection() {
             + '    </div>'
             + '    <div class="schedule-todo-card-products">' + chipHtml + '</div>'
             + '  </div>'
-            + '</div>';
+            + '</div>');
     });
+    modulesEl.innerHTML = cardHtmls.join('');
 }
 
 function toggleScheduleTodoDone(checkbox) {
     const id = parseInt(checkbox.dataset.id, 10);
     const idx = parseInt(checkbox.dataset.idx, 10);
     
-    // 验证数据有效性
     if (isNaN(id) || isNaN(idx)) {
         console.error('Invalid data attributes:', checkbox.dataset);
         return;
     }
-    
+    const item = history.find(h => h.id === id);
+    if (!item) return;
+    ensureProductDoneStates(item);
+    const total = (Array.isArray(item.productPrices) ? item.productPrices.length : 0) + (Array.isArray(item.giftPrices) ? item.giftPrices.length : 0);
+    const doneBefore = (item.productDoneStates || []).filter(Boolean).length;
+    const wasAllDone = total > 0 && doneBefore === total;
+
     setScheduleProductDone(id, idx, checkbox.checked);
     const row = checkbox.closest('.schedule-todo-row');
-    if (row) {
-        row.classList.toggle('schedule-todo-done', checkbox.checked);
-        // 勾选后重新渲染 todo 与 日历彩条，保持排序与状态实时同步
-        setTimeout(() => {
-            renderScheduleTodoSection();
-            renderScheduleCalendar();
-        }, 0);
-    }
+    if (row) row.classList.toggle('schedule-todo-done', checkbox.checked);
+    ensureProductDoneStates(item);
+    const doneAfter = (item.productDoneStates || []).filter(Boolean).length;
+    const isAllDoneNow = total > 0 && doneAfter === total;
+    const allDoneChanged = wasAllDone !== isAllDoneNow;
+
+    setTimeout(function () {
+        renderScheduleTodoSection();
+        if (allDoneChanged) renderScheduleCalendar();
+    }, 0);
 }
 
 // 点击 todo 卡片：弹出操作菜单；仅点击制品行（芯片）时不弹窗，点击卡片或制品区空白处均弹窗
@@ -6276,13 +6743,9 @@ function showSettlementForm(type) {
             };
         });
     } else if (type === 'waste_fee') {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:showSettlementForm',message:'waste_fee branch',data:{type:'waste_fee'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
-        // #endregion
         settlementCurrentFormType = 'waste_fee';
         document.getElementById('settlementFormWasteFee').classList.remove('d-none');
         settlementRenderWasteFeeForm();
-        settlementUpdateWastePreview();
     } else if (type === 'normal') {
         settlementCurrentFormType = 'normal';
         document.getElementById('settlementFormNormal').classList.remove('d-none');
@@ -6400,18 +6863,10 @@ function settlementRenderWasteFeeForm() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
     ensureProductDoneStates(item);
-    var products = item.productPrices || [];
-    var gifts = item.giftPrices || [];
-    var allItems = products.map(function (p, i) { return { label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: i }; });
-    gifts.forEach(function (g, i) { allItems.push({ label: '[赠品] ' + (g.product || '赠品') + (g.quantity > 1 ? ' x ' + g.quantity : ''), idx: products.length + i }); });
     
     // 从设置页读取废稿费配置
     var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
     var mode = wf.mode || 'percent_total';
-    var defaultRate = (wf.defaultRate != null ? wf.defaultRate : 30) / 100; // 转为 0~1
-    var defaultFixedPerItem = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
-    var minAmount = wf.minAmount != null ? wf.minAmount : '';
-    var maxAmount = wf.maxAmount != null ? wf.maxAmount : '';
     
     // 设置隐藏的 select 值（供后续读取）
     var ruleEl = document.getElementById('settlementWasteRule');
@@ -6453,50 +6908,6 @@ function settlementRenderWasteFeeForm() {
         settlementRenderFixedAmountForm();
         return;
     }
-    
-    // 填充参数默认值
-    var rateEl = document.getElementById('settlementWasteRate');
-    var fixedPerItemEl = document.getElementById('settlementFixedPerItem');
-    var minEl = document.getElementById('settlementWasteMin');
-    var maxEl = document.getElementById('settlementWasteMax');
-    if (rateEl) rateEl.value = defaultRate;
-    if (fixedPerItemEl) fixedPerItemEl.value = defaultFixedPerItem;
-    if (minEl) minEl.value = minAmount;
-    if (maxEl) maxEl.value = maxAmount;
-    
-    // 渲染制品列表
-    var listEl = document.getElementById('settlementChargedList');
-    listEl.innerHTML = allItems.map(function (it) {
-        return '<label><input type="checkbox" class="settlement-charged-item" data-idx="' + it.idx + '" checked> ' + it.label + '</label>';
-    }).join('');
-    
-    var doneStates = item.productDoneStates || [];
-    var processListEl = document.getElementById('settlementProcessDoneList');
-    var showProcessDone = mode === 'percent_charged_only' || mode === 'fixed_per_item';
-    document.getElementById('settlementProcessDoneFlags').classList.toggle('d-none', !showProcessDone);
-    if (showProcessDone) {
-        processListEl.innerHTML = allItems.map(function (it, i) {
-            var done = !!doneStates[it.idx];
-            return '<label><input type="checkbox" class="settlement-process-done-item" data-idx="' + it.idx + '" ' + (done ? 'checked' : '') + '> ' + it.label + '</label>';
-        }).join('');
-    }
-    
-    var showCharged = true;
-    document.getElementById('settlementChargedIndices').classList.toggle('d-none', !showCharged);
-    listEl.querySelectorAll('input').forEach(function (cb) {
-        cb.addEventListener('change', function () { settlementUpdateWastePreview(); });
-    });
-    processListEl.querySelectorAll('input').forEach(function (cb) {
-        cb.addEventListener('change', function () { settlementUpdateWastePreview(); });
-    });
-    // 不再监听规则变更（已固定）
-    if (rateEl) rateEl.addEventListener('input', settlementUpdateWastePreview);
-    if (fixedPerItemEl) fixedPerItemEl.addEventListener('input', settlementUpdateWastePreview);
-    if (minEl) minEl.addEventListener('input', settlementUpdateWastePreview);
-    if (maxEl) maxEl.addEventListener('input', settlementUpdateWastePreview);
-    
-    // 初始预览
-    settlementUpdateWastePreview();
 }
 
 function computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, chargedIndices, processDoneFlags) {
@@ -6534,9 +6945,6 @@ function computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmo
 }
 
 function settlementUpdateWastePreview() {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:settlementUpdateWastePreview',message:'entry',data:{settlementModalRecordId:settlementModalRecordId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(function(){});
-    // #endregion
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
     var ruleEl = document.getElementById('settlementWasteRule');
@@ -6568,11 +6976,6 @@ function settlementUpdateWastePreview() {
         }
         amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
     }
-    // #region agent log
-    var _previewEl = document.getElementById('settlementWastePreview');
-    fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:6559',message:'before set textContent',data:{previewElIsNull:_previewEl===null,amount:amount},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H3'})}).catch(function(){});
-    // #endregion
-    if (_previewEl) _previewEl.textContent = '应收金额：¥' + amount.toFixed(2);
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl) finalAmountEl.value = amount.toFixed(2);
 }
@@ -6625,10 +7028,18 @@ function settlementRenderFixedPerItemForm() {
     var gifts = item.giftPrices || [];
     var allItems = [];
     products.forEach(function (p, i) {
-        allItems.push({ idx: i, label: (p.product || '制品') + (p.quantity > 1 ? ' x' + p.quantity : ''), quantity: p.quantity || 1 });
+        var qty = p.quantity || 1;
+        var sameModel = (p.sameModelCount != null && p.sameModelCount > 0);
+        var sameModelPart = sameModel ? ' 同模x' + (p.sameModelCount || 1) : '';
+        var label = (p.product || '制品') + 'x' + qty + sameModelPart;
+        allItems.push({ idx: i, label: label, quantity: qty });
     });
     gifts.forEach(function (g, i) {
-        allItems.push({ idx: products.length + i, label: '[赠品] ' + (g.product || '赠品') + (g.quantity > 1 ? ' x' + g.quantity : ''), quantity: g.quantity || 1 });
+        var qty = g.quantity || 1;
+        var sameModel = (g.sameModelCount != null && g.sameModelCount > 0);
+        var sameModelPart = sameModel ? ' 同模x' + (g.sameModelCount || 1) : '';
+        var label = '[赠品] ' + (g.product || '赠品') + 'x' + qty + sameModelPart;
+        allItems.push({ idx: products.length + i, label: label, quantity: qty });
     });
     
     var listEl = document.getElementById('settlementFixedPerItemList');
@@ -6642,7 +7053,12 @@ function settlementRenderFixedPerItemForm() {
     }
     
     var fixedPerItem = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
-    document.getElementById('settlementFixedPerItemPrice').textContent = '¥' + fixedPerItem.toFixed(2);
+    var priceEl = document.getElementById('settlementFixedPerItemPrice');
+    if (priceEl && priceEl.tagName === 'INPUT') {
+        priceEl.value = fixedPerItem;
+        priceEl.removeEventListener('input', settlementUpdateFixedPerItemPreview);
+        priceEl.addEventListener('input', settlementUpdateFixedPerItemPreview);
+    }
     
     settlementRenderOtherFeesForMode('FixedPerItem', item, wf);
     settlementUpdateFixedPerItemPreview();
@@ -6655,10 +7071,39 @@ function settlementRenderFixedAmountForm() {
     var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
     var fixedAmount = wf.defaultFixedAmount != null ? wf.defaultFixedAmount : 50;
     
-    document.getElementById('settlementFixedAmountWasteFee').textContent = '¥' + fixedAmount.toFixed(2);
+    var feeEl = document.getElementById('settlementFixedAmountWasteFee');
+    if (feeEl && feeEl.tagName === 'INPUT') {
+        feeEl.value = fixedAmount;
+        feeEl.removeEventListener('input', settlementUpdateFixedAmountPreview);
+        feeEl.addEventListener('input', settlementUpdateFixedAmountPreview);
+    }
     
     settlementRenderOtherFeesForMode('FixedAmount', item, wf);
     settlementUpdateFixedAmountPreview();
+}
+
+// 通用：计算并渲染其他费用（用于各模式预览与确认）
+function computeAndRenderOtherFeesWaste(item, wf, selectClass, containerId, amountElId) {
+    var otherFeesWasteRatio = (wf && wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
+    var otherFees = item.otherFees || [];
+    var otherFeesAmount = 0;
+    var otherFeesEntries = [];
+    otherFees.forEach(function (fee, fi) {
+        var amt = Number(fee.amount) || 0;
+        var selectEl = document.querySelector('.' + selectClass + '[data-fi="' + fi + '"]');
+        var mode = selectEl ? selectEl.value : 'full';
+        var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
+        otherFeesAmount += charged;
+        otherFeesEntries.push({ name: fee.name, orderAmount: amt, mode: mode, chargedAmount: charged });
+        var rowEl = document.querySelector('#' + containerId + ' .settlement-other-fee-row[data-fi="' + fi + '"]');
+        if (rowEl) {
+            var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
+            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
+        }
+    });
+    var amountEl = document.getElementById(amountElId);
+    if (amountEl) amountEl.textContent = '¥' + otherFeesAmount.toFixed(2);
+    return { otherFeesAmount: otherFeesAmount, otherFeesEntries: otherFeesEntries };
 }
 
 // 通用：渲染其他费用（用于各模式）
@@ -6908,25 +7353,8 @@ function settlementUpdatePercentTotalPreview() {
     var defaultRate = (wf.defaultRate != null ? wf.defaultRate : 30);
     var baseAmount = item.agreedAmount != null ? item.agreedAmount : (item.finalTotal != null ? item.finalTotal : 0);
     var wasteFee = baseAmount * (defaultRate / 100);
-    
-    var otherFeesWasteRatio = (wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
-    var otherFees = item.otherFees || [];
-    var otherFeesAmount = 0;
-    otherFees.forEach(function (fee, fi) {
-        var amt = Number(fee.amount) || 0;
-        var selectEl = document.querySelector('.settlement-percenttotal-other-select[data-fi="' + fi + '"]');
-        var mode = selectEl ? selectEl.value : 'full';
-        var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
-        otherFeesAmount += charged;
-        var rowEl = document.querySelector('#settlementPercentTotalOtherFees .settlement-other-fee-row[data-fi="' + fi + '"]');
-        if (rowEl) {
-            var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
-            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
-        }
-    });
-    
-    document.getElementById('settlementPercentTotalOtherAmount').textContent = '¥' + otherFeesAmount.toFixed(2);
-    var totalReceivable = wasteFee + otherFeesAmount;
+    var other = computeAndRenderOtherFeesWaste(item, wf, 'settlement-percenttotal-other-select', 'settlementPercentTotalOtherFees', 'settlementPercentTotalOtherAmount');
+    var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
 }
@@ -6936,7 +7364,8 @@ function settlementUpdateFixedPerItemPreview() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
     var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
-    var fixedPerItem = wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20;
+    var priceEl = document.getElementById('settlementFixedPerItemPrice');
+    var fixedPerItem = (priceEl && priceEl.value !== undefined) ? (parseFloat(priceEl.value) || 0) : (wf.defaultFixedPerItem != null ? wf.defaultFixedPerItem : 20);
     
     var count = 0;
     document.querySelectorAll('.settlement-fixed-per-item-check:checked').forEach(function (cb) {
@@ -6947,24 +7376,8 @@ function settlementUpdateFixedPerItemPreview() {
     var wasteFee = count * fixedPerItem;
     document.getElementById('settlementFixedPerItemWasteFee').textContent = '¥' + wasteFee.toFixed(2);
     
-    var otherFeesWasteRatio = (wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
-    var otherFees = item.otherFees || [];
-    var otherFeesAmount = 0;
-    otherFees.forEach(function (fee, fi) {
-        var amt = Number(fee.amount) || 0;
-        var selectEl = document.querySelector('.settlement-fixedperitem-other-select[data-fi="' + fi + '"]');
-        var mode = selectEl ? selectEl.value : 'full';
-        var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
-        otherFeesAmount += charged;
-        var rowEl = document.querySelector('#settlementFixedPerItemOtherFees .settlement-other-fee-row[data-fi="' + fi + '"]');
-        if (rowEl) {
-            var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
-            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
-        }
-    });
-    
-    document.getElementById('settlementFixedPerItemOtherAmount').textContent = '¥' + otherFeesAmount.toFixed(2);
-    var totalReceivable = wasteFee + otherFeesAmount;
+    var other = computeAndRenderOtherFeesWaste(item, wf, 'settlement-fixedperitem-other-select', 'settlementFixedPerItemOtherFees', 'settlementFixedPerItemOtherAmount');
+    var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
 }
@@ -6974,26 +7387,11 @@ function settlementUpdateFixedAmountPreview() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
     var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
-    var wasteFee = wf.defaultFixedAmount != null ? wf.defaultFixedAmount : 50;
+    var feeEl = document.getElementById('settlementFixedAmountWasteFee');
+    var wasteFee = (feeEl && feeEl.value !== undefined) ? (parseFloat(feeEl.value) || 0) : (wf.defaultFixedAmount != null ? wf.defaultFixedAmount : 50);
     
-    var otherFeesWasteRatio = (wf.otherFeesWasteRatio != null) ? Number(wf.otherFeesWasteRatio) : 0.5;
-    var otherFees = item.otherFees || [];
-    var otherFeesAmount = 0;
-    otherFees.forEach(function (fee, fi) {
-        var amt = Number(fee.amount) || 0;
-        var selectEl = document.querySelector('.settlement-fixedamount-other-select[data-fi="' + fi + '"]');
-        var mode = selectEl ? selectEl.value : 'full';
-        var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
-        otherFeesAmount += charged;
-        var rowEl = document.querySelector('#settlementFixedAmountOtherFees .settlement-other-fee-row[data-fi="' + fi + '"]');
-        if (rowEl) {
-            var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
-            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
-        }
-    });
-    
-    document.getElementById('settlementFixedAmountOtherAmount').textContent = '¥' + otherFeesAmount.toFixed(2);
-    var totalReceivable = wasteFee + otherFeesAmount;
+    var other = computeAndRenderOtherFeesWaste(item, wf, 'settlement-fixedamount-other-select', 'settlementFixedAmountOtherFees', 'settlementFixedAmountOtherAmount');
+    var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
 }
@@ -7325,7 +7723,8 @@ function settlementConfirm() {
             };
         } else if (rule === 'fixed_per_item') {
             var wfFixedPerItem = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
-            var fixedPerItem = wfFixedPerItem.defaultFixedPerItem != null ? wfFixedPerItem.defaultFixedPerItem : 20;
+            var priceElConfirm = document.getElementById('settlementFixedPerItemPrice');
+            var fixedPerItem = (priceElConfirm && priceElConfirm.value !== undefined) ? (parseFloat(priceElConfirm.value) || 0) : (wfFixedPerItem.defaultFixedPerItem != null ? wfFixedPerItem.defaultFixedPerItem : 20);
             var chargedIndices = [];
             var count = 0;
             document.querySelectorAll('.settlement-fixed-per-item-check:checked').forEach(function (cb) {
@@ -7370,7 +7769,8 @@ function settlementConfirm() {
             };
         } else if (rule === 'fixed_amount') {
             var wfFixedAmount = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
-            var wasteFee = wfFixedAmount.defaultFixedAmount != null ? wfFixedAmount.defaultFixedAmount : 50;
+            var feeElConfirm = document.getElementById('settlementFixedAmountWasteFee');
+            var wasteFee = (feeElConfirm && feeElConfirm.value !== undefined) ? (parseFloat(feeElConfirm.value) || 0) : (wfFixedAmount.defaultFixedAmount != null ? wfFixedAmount.defaultFixedAmount : 50);
             
             var otherFeesWasteRatio = (wfFixedAmount.otherFeesWasteRatio != null) ? Number(wfFixedAmount.otherFeesWasteRatio) : 0.5;
             var otherFees = item.otherFees || [];
@@ -8014,7 +8414,7 @@ function editHistoryItem(id) {
         var d = new Date(quote.timestamp);
         var orderTimeInput = document.getElementById('orderTimeInput');
         if (orderTimeInput && !isNaN(d.getTime())) {
-            orderTimeInput.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            orderTimeInput.value = toYmd(d);
         }
     }
     if (quote.startTime) {

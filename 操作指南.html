@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>操作指南 - Metton · 接单助手</title>
+    <script>
+    (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
+    </script>
+    <style>
+        :root { --text: #1c1917; --text-muted: #57534e; --bg: #fafaf9; --card: #fff; --tap-min: 44px; }
+        html.theme-dark { --text: #e5e5e5; --text-muted: #a1a1aa; --bg: #18181b; --card: #27272a; }
+        * { box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; }
+        body {
+            margin: 0 auto;
+            padding: 1rem max(1rem, env(safe-area-inset-right, 0px)) calc(2rem + env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            font-size: 16px;
+            line-height: 1.7;
+            color: var(--text);
+            background: var(--bg);
+            max-width: 720px;
+            -webkit-font-smoothing: antialiased;
+            overflow-wrap: break-word;
+        }
+        h1 { font-size: 1.35rem; margin: 0 0 0.75rem; line-height: 1.3; }
+        h2 { font-size: 1.1rem; margin: 1.75rem 0 0.75rem; padding-bottom: 0.35rem; border-bottom: 1px solid rgba(0,0,0,.08); line-height: 1.35; scroll-margin-top: 0.5rem; }
+        html.theme-dark h2 { border-color: rgba(255,255,255,.12); }
+        h3 { font-size: 1rem; margin: 1.25rem 0 0.5rem; font-weight: 600; scroll-margin-top: 0.5rem; }
+        p { margin: 0.6rem 0; }
+        ul, ol { margin: 0.6rem 0; padding-left: 1.4rem; }
+        li { margin-bottom: 0.3rem; }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            min-height: var(--tap-min);
+            padding: 0.5rem 0;
+            margin: -0.5rem 0 0.5rem -0.25rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.95em;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .back-link:hover, .back-link:active { color: var(--text); text-decoration: underline; }
+        .table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 0.75rem 0;
+            border-radius: 6px;
+            border: 1px solid rgba(0,0,0,.08);
+        }
+        html.theme-dark .table-wrap { border-color: rgba(255,255,255,.12); }
+        table { border-collapse: collapse; width: 100%; min-width: 280px; font-size: 0.9em; }
+        th, td {
+            border: 1px solid rgba(0,0,0,.1);
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        html.theme-dark th, html.theme-dark td { border-color: rgba(255,255,255,.15); }
+        th { background: rgba(0,0,0,.05); font-weight: 600; white-space: nowrap; }
+        html.theme-dark th { background: rgba(255,255,255,.06); }
+        @media (max-width: 480px) {
+            th, td { padding: 0.5rem 0.6rem; font-size: 0.85em; }
+            th { white-space: normal; }
+            ul, ol { padding-left: 1.2rem; }
+            h2 { margin-top: 1.5rem; }
+        }
+        .section { margin-bottom: 1.5rem; }
+        .foot-note { color: var(--text-muted); font-size: 0.9em; margin-top: 1.5rem; padding-top: 0.5rem; border-top: 1px solid rgba(0,0,0,.06); }
+        html.theme-dark .foot-note { border-color: rgba(255,255,255,.1); }
+        .guide-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: var(--bg);
+            margin: -1rem -1rem 0.5rem -1rem;
+            padding: 1rem 1rem 0.75rem;
+            border-bottom: 1px solid rgba(0,0,0,.06);
+        }
+        html.theme-dark .guide-header { border-color: rgba(255,255,255,.08); }
+        .page-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0; flex-wrap: wrap; }
+        .page-header h1 { margin: 0; flex: 1; min-width: 0; }
+        .toc-trigger {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: var(--tap-min); min-height: var(--tap-min);
+            padding: 0 0.75rem;
+            background: rgba(0,0,0,.06);
+            border: none; border-radius: 8px;
+            color: var(--text);
+            font-size: 0.95em;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .toc-trigger:hover, .toc-trigger:active { background: rgba(0,0,0,.1); }
+        html.theme-dark .toc-trigger { background: rgba(255,255,255,.1); }
+        html.theme-dark .toc-trigger:hover, html.theme-dark .toc-trigger:active { background: rgba(255,255,255,.18); }
+        .toc-overlay {
+            position: fixed; inset: 0; z-index: 100;
+            background: rgba(0,0,0,.35);
+            opacity: 0; visibility: hidden; transition: opacity .2s, visibility .2s;
+        }
+        .toc-overlay.open { opacity: 1; visibility: visible; }
+        .toc-drawer {
+            position: fixed; left: 0; top: 0; bottom: 0; z-index: 101;
+            width: min(85vw, 300px);
+            max-width: 300px;
+            background: var(--card);
+            box-shadow: 4px 0 20px rgba(0,0,0,.15);
+            padding: 1rem 0;
+            padding-left: max(1rem, env(safe-area-inset-left, 0px));
+            padding-top: max(1rem, env(safe-area-inset-top, 0px));
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            transform: translateX(-100%);
+            transition: transform .25s ease-out;
+        }
+        .toc-drawer.open { transform: translateX(0); }
+        html.theme-dark .toc-drawer { box-shadow: 4px 0 20px rgba(0,0,0,.4); }
+        .toc-drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 0 1rem 0.75rem 0; margin-bottom: 0.5rem; border-bottom: 1px solid rgba(0,0,0,.08); }
+        html.theme-dark .toc-drawer-header { border-color: rgba(255,255,255,.12); }
+        .toc-drawer-title { font-weight: 600; font-size: 1rem; margin: 0; }
+        .toc-drawer-close {
+            display: flex; align-items: center; justify-content: center;
+            width: 36px; height: 36px;
+            border: none; background: transparent;
+            color: var(--text-muted);
+            font-size: 1.25rem; line-height: 1;
+            cursor: pointer;
+            border-radius: 6px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .toc-drawer-close:hover, .toc-drawer-close:active { background: rgba(0,0,0,.06); color: var(--text); }
+        html.theme-dark .toc-drawer-close:hover, html.theme-dark .toc-drawer-close:active { background: rgba(255,255,255,.1); color: var(--text); }
+        .toc { padding: 0 1rem 0 0; font-size: 0.95em; }
+        .toc-title { display: none; }
+        .toc ul { list-style: none; margin: 0; padding: 0; }
+        .toc > ul > li { margin: 0; }
+        .toc li { margin: 0.25rem 0; }
+        .toc li ul { margin: 0.2rem 0 0.5rem 0; padding-left: 1rem; border-left: 2px solid rgba(0,0,0,.08); }
+        html.theme-dark .toc li ul { border-color: rgba(255,255,255,.15); }
+        .toc a {
+            display: block; padding: 0.4rem 0;
+            color: var(--text); text-decoration: none;
+            border-radius: 4px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .toc a:hover, .toc a:active { color: var(--text-muted); background: rgba(0,0,0,.04); }
+        html.theme-dark .toc a:hover, html.theme-dark .toc a:active { background: rgba(255,255,255,.06); }
+        .toc li ul a { font-size: 0.9em; color: var(--text-muted); padding: 0.3rem 0; }
+        html.theme-dark .toc li ul a { color: #a1a1aa; }
+    </style>
+</head>
+<body>
+    <header class="guide-header">
+        <a href="index.html" class="back-link">← 返回 Metton · 接单助手</a>
+        <div class="page-header">
+            <h1>Metton · 接单助手 · 操作指南</h1>
+            <button type="button" class="toc-trigger" id="tocTrigger" aria-label="打开目录">目录</button>
+        </div>
+    </header>
+
+    <div class="toc-overlay" id="tocOverlay" aria-hidden="true"></div>
+    <aside class="toc-drawer" id="tocDrawer" aria-label="目录">
+        <div class="toc-drawer-header">
+            <span class="toc-drawer-title">目录</span>
+            <button type="button" class="toc-drawer-close" id="tocClose" aria-label="关闭">×</button>
+        </div>
+        <nav class="toc">
+            <p class="toc-title">目录</p>
+            <ul>
+                <li><a href="#part1">第一部分：简易上手</a></li>
+                <li><a href="#part2">第二部分：按页面详细描述</a>
+                    <ul>
+                        <li><a href="#toc-quick">界面与入口速查</a></li>
+                        <li><a href="#s3">三、排单页（主页面）</a></li>
+                        <li><a href="#s4">四、计算抽屉</a></li>
+                        <li><a href="#s5">五、小票抽屉</a></li>
+                        <li><a href="#s6">六、小票设置面板（底部弹出）</a></li>
+                        <li><a href="#s7">七、排单卡片操作弹窗</a></li>
+                        <li><a href="#s8">八、结算弹窗</a></li>
+                        <li><a href="#s9">九、记录页</a></li>
+                        <li><a href="#s10">十、统计页</a></li>
+                        <li><a href="#s11">十一、设置页</a></li>
+                        <li><a href="#s12">十二、订单备注弹窗</a></li>
+                        <li><a href="#s13">十三、模板的保存与使用</a></li>
+                        <li><a href="#s14">十四、价格公式（供参考）</a></li>
+                        <li><a href="#s15">十五、注意事项</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </nav>
+    </aside>
+
+    <script>
+    (function(){
+        var overlay = document.getElementById('tocOverlay');
+        var drawer = document.getElementById('tocDrawer');
+        var trigger = document.getElementById('tocTrigger');
+        var closeBtn = document.getElementById('tocClose');
+        function openToc() {
+            overlay.classList.add('open');
+            drawer.classList.add('open');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+        function closeToc() {
+            overlay.classList.remove('open');
+            drawer.classList.remove('open');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+        trigger.addEventListener('click', openToc);
+        closeBtn.addEventListener('click', closeToc);
+        overlay.addEventListener('click', closeToc);
+        drawer.querySelectorAll('.toc a').forEach(function(a) {
+            a.addEventListener('click', function() { setTimeout(closeToc, 150); });
+        });
+    })();
+    </script>
+
+    <h2 id="part1">第一部分：简易上手</h2>
+
+    <h3>1. 打开应用</h3>
+    <p>用浏览器打开项目里的 <strong>index.html</strong>，首次使用需联网。</p>
+
+    <h3>2. 首次设置（建议先做）</h3>
+    <ol>
+        <li>点击导航 <strong>「设置」</strong>。</li>
+        <li>填 <strong>美工信息</strong>（ID、联系方式、默认工期）。</li>
+        <li>在 <strong>制品设置</strong> 添加常用制品（如吧唧、拍立得）并填价格。</li>
+        <li>在 <strong>系数设置</strong> 检查用途、加急、折扣等（有默认值）。</li>
+        <li>在 <strong>工艺设置</strong> 添加工艺（如烫色、白墨）及每层单价。</li>
+        <li>点击 <strong>「保存设置」</strong>。</li>
+    </ol>
+
+    <h3>3. 做一单报价</h3>
+    <ol>
+        <li>点击导航 <strong>「排单」</strong> 回到主页面。</li>
+        <li>点击 <strong>+</strong> 打开计算抽屉。</li>
+        <li>填 <strong>单主 ID</strong>、<strong>联系方式</strong>、<strong>开始时间</strong>、<strong>截稿时间</strong>（可选）。</li>
+        <li>选 <strong>用途</strong>、<strong>加急</strong> 等设置选项。</li>
+        <li>在 <strong>制品</strong> 区添加制品：选类型、数量、工艺等。</li>
+        <li>点击 <strong>「报价」</strong>，小票自动生成并加入排单。</li>
+    </ol>
+
+    <h3>4. 查看与保存小票</h3>
+    <ul>
+        <li>小票抽屉会弹出：可点 <strong>「存图」</strong> 导出图片发给单主。</li>
+        <li>已自动写入排单；在排单页月历和「当前批次」区可查看。</li>
+        <li>点击排单卡片可 <strong>编辑</strong>、<strong>小票</strong>、<strong>备注</strong>、<strong>撤单</strong>、<strong>废稿</strong>、<strong>结单</strong>。</li>
+    </ul>
+
+    <h3>5. 常用入口</h3>
+    <div class="table-wrap"><table>
+        <tr><th>入口</th><th>作用</th></tr>
+        <tr><td><strong>排单</strong></td><td>主页面，月历与待办</td></tr>
+        <tr><td><strong>+</strong></td><td>打开计算抽屉</td></tr>
+        <tr><td><strong>设置</strong></td><td>美工信息、制品、系数、工艺</td></tr>
+        <tr><td>排单页右上 <strong>统计</strong></td><td>查看订单数、收入等</td></tr>
+        <tr><td>排单页右上 <strong>记录</strong></td><td>历史记录列表</td></tr>
+    </table></div>
+
+    <h2 id="part2">第二部分：按页面详细描述</h2>
+    <p style="color: var(--text-muted);">以下按<strong>页面、抽屉、弹窗</strong>逐一说明用法，方便按界面查找操作。</p>
+
+    <h3 id="toc-quick">界面与入口速查</h3>
+    <p>每个界面的打开与关闭方式：</p>
+    <div class="table-wrap"><table>
+        <tr><th>界面</th><th>如何打开</th><th>如何关闭</th></tr>
+        <tr><td>排单页</td><td>导航「排单」</td><td>主页面</td></tr>
+        <tr><td>计算抽屉</td><td>导航 <strong>+</strong> 或排单卡片「编辑」</td><td>左上 × 或点「报价」后自动关闭</td></tr>
+        <tr><td>小票抽屉</td><td>点「报价」后自动打开；或排单卡片「小票」</td><td>左上 × 或遮罩</td></tr>
+        <tr><td>小票设置面板</td><td>小票抽屉内「小票设置」图标</td><td>「保存设置」或遮罩</td></tr>
+        <tr><td>排单卡片操作弹窗</td><td>点击月历排单条或 todo 区排单模块</td><td>遮罩或 ×</td></tr>
+        <tr><td>结算弹窗</td><td>排单卡片「撤单」「废稿」「结单」</td><td>遮罩、× 或「取消」</td></tr>
+        <tr><td>记录页</td><td>排单页右上「记录」图标</td><td>左上「返回」</td></tr>
+        <tr><td>记录页筛选/导出/排序</td><td>记录页内对应图标</td><td>遮罩或「应用」</td></tr>
+        <tr><td>导入方式弹窗</td><td>记录页「导入」后选 JSON</td><td>选「覆盖」或「合并」后自动关闭</td></tr>
+        <tr><td>统计页</td><td>排单页右上「统计」图标</td><td>左上「返回」</td></tr>
+        <tr><td>统计页筛选抽屉</td><td>统计页「筛选」图标</td><td>遮罩或「应用」</td></tr>
+        <tr><td>设置页</td><td>导航「设置」</td><td>主页面</td></tr>
+        <tr><td>添加制品/系数/工艺弹窗</td><td>设置页对应区块「添加」</td><td>× 或「取消」</td></tr>
+        <tr><td>订单备注弹窗</td><td>计算页单主「备注」或排单卡片「备注」</td><td>× 或「确定」</td></tr>
+    </table></div>
+
+    <h2 id="s3">三、排单页（主页面）</h2>
+    <h3>3.1 如何进入</h3>
+    <p>点击导航 <strong>「排单」</strong>；或从记录页/统计页点击「返回」。</p>
+    <h3>3.2 区域与操作</h3>
+    <p><strong>工具栏（顶部）</strong></p>
+    <ul>
+        <li><strong>‹</strong> / <strong>›</strong>：月历上一月 / 下一月。</li>
+        <li><strong>日期按钮</strong>（显示年月）：点击打开日期选择器，选某日后月历跳到该月。</li>
+        <li><strong>昼夜模式</strong>：点击切换；长按（或右键）跟随系统。</li>
+        <li><strong>统计</strong> / <strong>记录</strong>：进入对应页。</li>
+    </ul>
+    <p><strong>月历区</strong>：按开始/截稿时间显示排单彩条；跨天显示跨日彩条。<strong>点击某条彩条</strong>：弹出该单的操作菜单。</p>
+    <p><strong>当前批次（todo 区）</strong></p>
+    <ul>
+        <li><strong>筛选</strong>：当日（默认）/ 当月 / 待排 / 所有。Today 按钮：选中非今天时出现，点后回今日。</li>
+        <li><strong>排单列表</strong>：每项前有复选框，勾选表示制品已完成（进度跟进）。<strong>点击排单模块</strong>：弹出操作菜单。</li>
+    </ul>
+
+    <h2 id="s4">四、计算抽屉</h2>
+    <h3>4.1 如何打开</h3>
+    <p>点击导航 <strong>+</strong>：新建。排单卡片「编辑」：加载该单，改完可覆盖或另存。</p>
+    <h3>4.2 如何关闭</h3>
+    <p>左上 <strong>×</strong>：不保存。<strong>报价</strong>：生成小票并加入排单，自动关闭并打开小票。<strong>另存为新单</strong>（仅编辑模式）：保存为新排单，关闭，不打开小票。</p>
+    <h3>4.3 填写内容</h3>
+    <div class="table-wrap"><table>
+        <tr><th>区块</th><th>内容</th></tr>
+        <tr><td>单主信息</td><td>单主 ID、联系方式、下单/开始/截稿时间；「备注」打开备注弹窗</td></tr>
+        <tr><td>设置选项</td><td>用途、加急、同模、折扣、平台费；右侧「模版填表」加载模板</td></tr>
+        <tr><td>其他费用</td><td>抠图费等，预设或自定义</td></tr>
+        <tr><td>制品/赠品</td><td>类型、单双面、数量、同模、工艺</td></tr>
+    </table></div>
+    <h3>4.4 底部按钮</h3>
+    <p><strong>报价</strong>：生成并加入（编辑模式下覆盖原单）。<strong>另存为新单</strong>：仅编辑模式显示。<strong>保存为模板</strong>：输入名称保存当前组合。</p>
+
+    <h2 id="s5">五、小票抽屉</h2>
+    <h3>5.1 如何打开</h3>
+    <p>计算抽屉点「报价」后自动打开；或排单卡片「小票」。</p>
+    <h3>5.2 顶部操作</h3>
+    <p><strong>排单</strong>：保存到排单列表。<strong>主题</strong>：下拉选主题。<strong>小票设置</strong>：打开设置面板。<strong>存图</strong>：导出图片。</p>
+
+    <h2 id="s6">六、小票设置面板（底部弹出）</h2>
+    <p>小票抽屉内点「小票设置」打开。三个标签：<strong>设置</strong>（头图/尾图/标题等）、<strong>主题</strong>（边框/底纹）、<strong>字体</strong>。底部：清除设置、保存设置。</p>
+
+    <h2 id="s7">七、排单卡片操作弹窗</h2>
+    <p>在月历上点击某条排单彩条，或在下方 todo 区点击某个排单模块，会弹出<strong>操作菜单</strong>，包含：</p>
+    <div class="table-wrap"><table>
+        <tr><th>操作</th><th>说明</th></tr>
+        <tr><td><strong>编辑</strong></td><td>关闭菜单并打开<strong>计算抽屉</strong>，将该单数据加载到计算页。改完后可二选一：点击 <strong>「报价」</strong> <strong>覆盖</strong>原记录；或点击 <strong>「另存为新单」</strong> 保存为一条新排单（原单不变）。</td></tr>
+        <tr><td><strong>小票</strong></td><td>打开该单的<strong>小票视图</strong>，可查看报价明细；在此可<strong>保存图片</strong>或再点「排单」写回历史。</td></tr>
+        <tr><td><strong>备注</strong></td><td>打开备注弹窗，可填写或查看该单的备注（仅本地保存，不会打在小票上）。</td></tr>
+        <tr><td><strong>撤单</strong></td><td>打开<strong>结算弹窗</strong>，选择撤单（跑单），按设置页「跑单相关」规则填写跑单费金额等，确认后该单状态变为「已撤单」。</td></tr>
+        <tr><td><strong>废稿</strong></td><td>打开<strong>结算弹窗</strong>，选择废稿，按设置页「废稿相关」规则填写废稿费金额等，确认后该单状态变为「有废稿」。</td></tr>
+        <tr><td><strong>结单</strong></td><td>打开<strong>结算弹窗</strong>，选择正常结单，填写实收金额等，确认后该单状态变为「已结单」。</td></tr>
+    </table></div>
+    <p>结算弹窗中的金额、备注会保存到该条记录，统计页会按结算结果统计收入/撤单/废稿金额。</p>
+
+    <h2 id="s8">八、结算弹窗</h2>
+    <p>排单卡片选「撤单」「废稿」「结单」后打开。第一步选类型；第二步按类型填写（撤单：退全款或收跑单费；废稿：按设置页规则填；结单：填实收）；第三步点「确定」保存。</p>
+
+    <h2 id="s9">九、记录页</h2>
+    <p>排单页右上点「记录」进入；左上「返回」退出。</p>
+    <p><strong>顶部</strong>：导入（选 JSON 后弹出「导入方式」弹窗：覆盖/合并）、导出（弹层：JSON/Excel）。</p>
+    <p><strong>搜索/排序/筛选</strong>：搜索框、排序图标（弹层选时间/价格/单主）、筛选图标（打开筛选抽屉）。</p>
+    <p><strong>筛选抽屉</strong>：时间范围、状态、价格范围；全选、批量删除。点「应用」关闭。</p>
+    <p><strong>导入方式弹窗</strong>：记录页点「导入」并选 JSON 后出现；选「覆盖本机数据」或「新增合并记录」。</p>
+    <p>历史记录数量不限。数据在本地，换设备或清空会丢失，请及时导出备份。</p>
+
+    <h2 id="s10">十、统计页</h2>
+    <p>排单页右上点「统计」进入；左上「返回」退出。</p>
+    <p><strong>快捷时间</strong>：本月 / 本年 / 全部 / 自定义。</p>
+    <p><strong>内容</strong>：KPI 卡片、环比/同比、趋势图、Top 制品榜。顶部：导出 Excel、筛选。</p>
+    <p><strong>筛选抽屉</strong>：时间范围、金额口径、赠品计入方式、订单状态。点「应用」关闭。</p>
+
+    <h2 id="s11">十一、设置页</h2>
+    <p>导航「设置」进入。美工信息、制品设置、系数设置、结算配置、工艺设置。</p>
+    <p><strong>添加制品弹窗</strong>：制品设置→「添加」。填分类、名称、计价方式及价格。</p>
+    <p><strong>添加系数弹窗</strong>：系数设置→「添加」。填大类、小类、系数值。</p>
+    <p><strong>添加工艺弹窗</strong>：工艺设置→「添加」。填名称、每层单价。</p>
+    <p>修改后点 <strong>「保存设置」</strong>；可 <strong>「恢复默认设置」</strong>。</p>
+
+    <h2 id="s12">十二、订单备注弹窗</h2>
+    <p>计算页单主「备注」或排单卡片「备注」打开。查看模式只读；编辑模式可输入，智能读取、复制。点 × 或「确定」关闭。</p>
+
+    <h2 id="s13">十三、模板的保存与使用</h2>
+    <p><strong>保存</strong>：计算抽屉底部「保存为模板」，输入名称。<strong>加载</strong>：「设置选项」右侧「模版填表」→ 选模板 → 加载。模版填表内可删除模板。</p>
+
+    <h2 id="s14">十四、价格公式（供参考）</h2>
+    <ul>
+        <li><strong>单件制品价</strong> = 基础价 × (1 + 同模系数×(柄图数−1)) + 工艺费用×工艺层数</li>
+        <li><strong>总价</strong> = 各制品价相加 → 乘上加价类系数、折扣类系数 → 再加上其他费用合计与平台手续费</li>
+    </ul>
+    <p>具体系数、工艺单价、其他费用以 <strong>设置页</strong> 当前配置为准。</p>
+
+    <h2 id="s15">十五、注意事项</h2>
+    <ol>
+        <li><strong>数据在本地</strong>：设置与历史都存在本机浏览器，清空缓存或换设备会丢失，重要内容请保存图片或导出 JSON/Excel。</li>
+        <li><strong>跨端同步</strong>：记录页导入/导出 JSON，可选择覆盖或合并，用于不同设备间手动同步。</li>
+        <li><strong>历史记录</strong>：数量不做限制，建议定期导出备份。</li>
+        <li><strong>打印/导出</strong>：若小票被裁切，可调整打印边距或导出时缩放。</li>
+        <li><strong>移动端</strong>：筛选采用抽屉式，点击「筛选」按钮打开。</li>
+    </ol>
+
+    <div class="foot-note">
+        <p style="margin: 0.5rem 0;">更多技术说明与项目结构见 <strong>README.md</strong>。</p>
+        <p style="margin: 0.5rem 0;">应用内可在 <strong>设置页</strong>→「美工信息」标题栏右侧点击「操作指南」（图标+文字）打开本指南。</p>
+    </div>
+    <a href="index.html" class="back-link" style="margin-top: 1rem; margin-bottom: 0;">← 返回 Metton · 接单助手</a>
+</body>
+</html>
