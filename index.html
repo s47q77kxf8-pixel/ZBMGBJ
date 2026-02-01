@@ -487,9 +487,9 @@
                         <div class="order-platform-contact-row">
                             <div class="form-group">
                                 <label for="orderPlatform">接单平台</label>
-                                <div class="input-row-with-icon order-platform-input-wrap">
-                                    <input type="text" id="orderPlatform" list="orderPlatformList" placeholder="可直接输入或选QQ/微信/小红书等" title="可直接输入或选择候选；与设置中平台名称一致时自动匹配手续费；右侧按钮一键清空" oninput="syncOrderPlatformToPlatform()">
-                                    <button type="button" class="btn-icon-only order-platform-clear" onclick="clearOrderPlatformInput()" aria-label="一键清空" title="一键清空">
+                                <div id="orderPlatformWrap" class="order-platform-input-wrap">
+                                    <input type="text" id="orderPlatform" list="orderPlatformList" placeholder="可直接输入或选QQ/微信/小红书等" title="可直接输入或选择候选；与设置中平台名称一致时自动匹配手续费；框内清空键" oninput="syncOrderPlatformToPlatform(); toggleOrderPlatformClear();" onchange="toggleOrderPlatformClear();">
+                                    <button type="button" class="order-platform-clear" onclick="clearOrderPlatformInput()" aria-label="一键清空" title="一键清空">
                                         <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
                                         <span class="sr-only">清空</span>
                                     </button>
