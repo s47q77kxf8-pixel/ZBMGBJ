@@ -144,8 +144,10 @@ html.theme-dark .schedule-calendar-cell-other {
 html.theme-dark .schedule-calendar-cell-weekend {
     color: #f87171;
 }
+/* 黑夜下今日格子显式设置文字颜色，避免首次切黑夜时不可见 */
 html.theme-dark .schedule-calendar-cell-today:not(.schedule-calendar-cell-selected) {
     background: rgba(255, 255, 255, 0.08);
+    color: #e5e5e5;
 }
 html.theme-dark .schedule-calendar-cell[data-date]:hover:not(.schedule-calendar-cell-other):not(.schedule-calendar-cell-selected) {
     background: rgba(255, 255, 255, 0.06);
@@ -280,9 +282,11 @@ html.theme-dark .nav-btn:focus,
 html.theme-dark .nav-btn:focus-visible {
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
 }
+/* 黑夜下 Today 按钮显式设置颜色，避免首次切黑夜时变量未生效导致不可见 */
 html.theme-dark .schedule-title-today-pill {
     border-color: var(--border-color);
     background: var(--card-bg);
+    color: #e5e5e5;
 }
 html.theme-dark .schedule-title-row .schedule-title-today-pill:hover,
 html.theme-dark .schedule-title-today-pill:hover {

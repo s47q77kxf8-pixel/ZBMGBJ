@@ -416,6 +416,8 @@ function applyTheme() {
     } else {
         root.classList.remove('theme-dark');
     }
+    // 强制重排，避免黑夜模式下 Today/今日 首次切换时变量未生效导致不可见
+    void root.offsetHeight;
     updateThemeToggleIcon();
     // 切换主题后重新渲染排单日历和 todo，使彩条/圆点使用对应配色
     if (typeof renderScheduleCalendar === 'function' && document.getElementById('scheduleCalendar')) {
