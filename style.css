@@ -6878,6 +6878,12 @@ html.theme-dark .settlement-preview {
     flex-shrink: 0;
 }
 
+.record-item-amount-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    align-items: flex-end;
+}
 .record-item-amount {
     font-size: 0.8rem;
     font-weight: 600;

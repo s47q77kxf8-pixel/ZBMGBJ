@@ -3109,7 +3109,12 @@ function applyRecordFilters() {
         const clientId = escapeHtml((item && item.clientId) ? String(item.clientId) : '—');
         const clientDisplay = platformLabel ? (platformLabel + ' ' + clientId) : clientId;
         const shortDate = formatRecordShortDate(item && item.timestamp);
-        const amount = formatMoney(item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal));
+        const receivableAmount = item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal);
+        const actualAmount = (item && item.settlement && item.settlement.amount != null) ? Number(item.settlement.amount) : receivableAmount;
+        const hasSettlementWithDiff = item && item.settlement && (receivableAmount == null || Math.abs((actualAmount || 0) - (receivableAmount || 0)) > 0.001);
+        const amountHtml = hasSettlementWithDiff
+            ? `<div class="record-item-amount-wrap"><span class="record-item-amount">${formatMoney(actualAmount)}</span><span class="record-item-date">/应收 ${formatMoney(receivableAmount)}</span></div>`
+            : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`;
         const status = getRecordProgressStatus(item);
         const isSelected = selectedHistoryIds.has(item.id);
         return `
@@ -3120,7 +3125,7 @@ function applyRecordFilters() {
                     <span class="record-item-date">${shortDate}</span>
                 </div>
                 <div class="record-item-right">
-                    <span class="record-item-amount">${amount}</span>
+                    ${amountHtml}
                     <span class="record-status ${status.className}">${status.text}</span>
                     <button type="button" class="icon-action-btn delete record-item-delete" onclick="event.stopPropagation(); if(confirm('确定删除该记录？')) deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
                         <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
@@ -10037,7 +10042,7 @@ function renderDiscountReasonsList() {
         html += '<span class="discount-reason-name">' + (r.name || '') + '</span>';
         html += '<span class="text-gray" style="font-size:0.85rem;">默认' + preferStr + '：' + (r.preferType === 'rate' ? rateStr : amountStr) + '</span>';
         html += '<button type="button" class="btn secondary btn-compact" onclick="openEditDiscountReasonModal(' + r.id + ')">编辑</button>';
-        html += '<button type="button" class="icon-action-btn delete" onclick="deleteDiscountReason(' + r.id + ')" aria-label="删除" title="删除">×</button>';
+        html += '<button type="button" class="icon-action-btn delete" onclick="deleteDiscountReason(' + r.id + ')" aria-label="删除" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button>';
         html += '</div>';
     });
     if (list.length === 0) {
