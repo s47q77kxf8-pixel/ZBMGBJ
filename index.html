@@ -1970,6 +1970,22 @@
                                     </div>
                                 </div>
                             </div>
+                            <!-- 优惠原因（结单时可选，可设默认金额/默认折扣） -->
+                            <div class="category-container settlement-group">
+                                <div class="category-header" onclick="toggleCategory('discountReasons')">
+                                    <div class="category-title">优惠原因</div>
+                                    <div class="category-actions">
+                                        <button type="button" class="btn btn-compact" onclick="event.stopPropagation();openAddDiscountReasonModal()">添加</button>
+                                        <div class="category-toggle">▼</div>
+                                    </div>
+                                </div>
+                                <div class="category-content d-none" id="discountReasons-content">
+                                    <p class="text-gray" style="font-size:0.85rem; margin-bottom:0.5rem;">结单时可在结算弹窗中选择优惠原因，选中后自动带出默认金额或默认折扣；可在此增删改。</p>
+                                    <div id="discountReasonsList" class="discount-reasons-list">
+                                        <!-- 由 JS 渲染 -->
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2058,8 +2074,48 @@
                         </div>
                     </div>
                 </div>
-                
-                
+
+                <!-- 添加/编辑优惠原因弹窗 -->
+                <div id="addDiscountReasonModal" class="modal d-none">
+                    <div class="modal-content modal-content-compact">
+                        <div class="modal-header">
+                            <h3 id="addDiscountReasonModalTitle">添加优惠原因</h3>
+                            <span class="close" onclick="closeAddDiscountReasonModal()">&times;</span>
+                        </div>
+                        <div class="modal-body">
+                            <input type="hidden" id="editDiscountReasonId" value="">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="discountReasonName">名称</label>
+                                    <input type="text" id="discountReasonName" placeholder="如延期补偿、老客优惠">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="discountReasonPreferType">默认优惠方式</label>
+                                    <select id="discountReasonPreferType">
+                                        <option value="amount">减去金额</option>
+                                        <option value="rate">优惠折扣</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="discountReasonDefaultAmount">默认金额（元，选「减去金额」时生效）</label>
+                                    <input type="number" id="discountReasonDefaultAmount" min="0" step="0.01" value="0" placeholder="0">
+                                </div>
+                                <div class="form-group">
+                                    <label for="discountReasonDefaultRate">默认折扣（0~0.99，选「优惠折扣」时生效，如 0.95=95折）</label>
+                                    <input type="number" id="discountReasonDefaultRate" min="0" max="0.99" step="0.01" value="0.99" placeholder="0.99">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn" onclick="saveDiscountReason()">保存</button>
+                            <button class="btn secondary" onclick="closeAddDiscountReasonModal()">取消</button>
+                        </div>
+                    </div>
+                </div>
                 
                 <div class="d-flex gap-2">
                     <button class="btn save-settings" onclick="saveSettings()">保存设置</button>
@@ -2256,7 +2312,14 @@
                                     <label>优惠系数（0~0.99，如 0.9 表示 9 折）<input type="number" id="settlementDiscountRate" min="0" max="0.99" step="0.01" value="0.99" placeholder="0.99"></label>
                                     <p class="settlement-hint">实收 = (实付 - 平台费) × 系数，平台费按新实收重新计算</p>
                                 </div>
-                                <label>优惠原因（可选）<input type="text" id="settlementDiscountReason" class="settlement-input" placeholder="如活动、老客等"></label>
+                                <div class="settlement-reason-row">
+                                    <label>优惠原因（可选）</label>
+                                    <select id="settlementDiscountReasonSelect" class="settlement-input">
+                                        <option value="">无</option>
+                                        <!-- 预设由 JS 填充 -->
+                                    </select>
+                                    <input type="text" id="settlementDiscountReason" class="settlement-input d-none" placeholder="如活动、老客等" title="选择「其他」时可填写">
+                                </div>
                                 <label>实收金额（元，可修改）<input type="number" id="settlementNormalAmount" min="0" step="0.01" value="0"></label>
                                 <p id="settlementNewPlatformFeeText" class="settlement-hint d-none"></p>
                             </div>

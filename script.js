@@ -299,7 +299,7 @@ const defaultSettings = {
     otherFees: {
         // 其他费用类别，可动态添加
     },
-    // 结算规则配置（撤单/废稿默认值）
+    // 结算规则配置（撤单/废稿默认值 + 优惠原因）
     settlementRules: {
         cancelFee: {
             defaultRule: 'percent',
@@ -316,7 +316,12 @@ const defaultSettings = {
             maxAmount: null,        // 封顶金额（元，null 表示不封顶）
             defaultPartialProducts: false,
             defaultExcludeNoProcess: false
-        }
+        },
+        // 优惠原因（结单时可选，每项可设默认金额和/或默认折扣）
+        discountReasons: [
+            { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.95, preferType: 'rate' },
+            { id: 2, name: '老客优惠', defaultAmount: 10, defaultRate: null, preferType: 'amount' }
+        ]
     },
     // 定金比例（0~1，如 0.5 = 50%）
     depositRate: 0.3,
@@ -538,8 +543,18 @@ function init() {
     if (!defaultSettings.settlementRules) {
         defaultSettings.settlementRules = {
             cancelFee: { defaultRule: 'percent', defaultRate: 0.1, defaultFixedAmount: 50, minAmount: 0, maxAmount: null },
-            wasteFee: { mode: 'percent_total', defaultRate: 30, defaultFixedPerItem: 20, defaultFixedAmount: 50, minAmount: null, maxAmount: null, defaultPartialProducts: false, defaultExcludeNoProcess: false }
+            wasteFee: { mode: 'percent_total', defaultRate: 30, defaultFixedPerItem: 20, defaultFixedAmount: 50, minAmount: null, maxAmount: null, defaultPartialProducts: false, defaultExcludeNoProcess: false },
+            discountReasons: [
+                { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.95, preferType: 'rate' },
+                { id: 2, name: '老客优惠', defaultAmount: 10, defaultRate: null, preferType: 'amount' }
+            ]
         };
+    }
+    if (!defaultSettings.settlementRules.discountReasons || !Array.isArray(defaultSettings.settlementRules.discountReasons)) {
+        defaultSettings.settlementRules.discountReasons = [
+            { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.95, preferType: 'rate' },
+            { id: 2, name: '老客优惠', defaultAmount: 10, defaultRate: null, preferType: 'amount' }
+        ];
     }
     // 旧数据迁移：wasteFee.defaultRule → mode，defaultRate 从 0~1 → 0~100
     if (defaultSettings.settlementRules.wasteFee) {
@@ -5477,8 +5492,16 @@ function generateQuote() {
     const totalWithCoeff = quoteData.totalWithCoefficients != null ? quoteData.totalWithCoefficients : (quoteData.totalProductsPrice * up * down);
     const totalBeforePlat = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (totalWithCoeff + (quoteData.totalOtherFees || 0));
     const base = quoteData.totalProductsPrice;
+    var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat;
+    var finalPay = quoteData.platformFeeAmount > 0 ? (quoteData.finalTotal != null ? quoteData.finalTotal : (agreed + quoteData.platformFeeAmount)) : agreed;
+    // 有相同的只显示后一个：制品小计与应收相同则不显示制品小计，应收与实付相同则不显示应收
+    var showBase = Math.abs(base - agreed) >= 0.005;
+    var showAgreed = Math.abs(agreed - finalPay) >= 0.005;
     
-    html += `<div class="receipt-summary"><div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">¥${base.toFixed(2)}</div></div>`;
+    html += `<div class="receipt-summary">`;
+    if (showBase) {
+        html += `<div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">¥${base.toFixed(2)}</div></div>`;
+    }
     
     // 区块1：加价类系数
     if (addAmount !== 0 && up !== 1) {
@@ -5668,19 +5691,21 @@ function generateQuote() {
     }
     
     // 应收金额 = 约定实收（抹零价）；有抹零时：抹零优惠行在上、用强调色，应收金额行上强调色+下划线原价（同赠品优惠）
-    var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat;
-    var showRounding = Math.abs((quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat) - totalBeforePlat) > 0.001;
-    if (showRounding) {
-        var roundingDiscount = totalBeforePlat - agreed;
-        var valueHtml = `<span class="receipt-rounding-amount">¥${agreed.toFixed(2)}</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${totalBeforePlat.toFixed(2)}</span>`;
-        if (roundingDiscount > 0) {
-            var leftLabel = `<span class="receipt-agreed-row-left"><span class="receipt-agreed-label-bold">应收金额</span><span class="receipt-rounding-discount">（-¥${roundingDiscount.toFixed(2)}）</span></span>`;
-            html += `<div class="receipt-summary-row receipt-agreed-row receipt-agreed-row-with-rounding" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">${leftLabel}</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+    // 与实付金额相同时只显示实付金额（显示后一个），不同则按原有显示
+    if (showAgreed) {
+        var showRounding = Math.abs((quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat) - totalBeforePlat) > 0.001;
+        if (showRounding) {
+            var roundingDiscount = totalBeforePlat - agreed;
+            var valueHtml = `<span class="receipt-rounding-amount">¥${agreed.toFixed(2)}</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${totalBeforePlat.toFixed(2)}</span>`;
+            if (roundingDiscount > 0) {
+                var leftLabel = `<span class="receipt-agreed-row-left"><span class="receipt-agreed-label-bold">应收金额</span><span class="receipt-rounding-discount">（-¥${roundingDiscount.toFixed(2)}）</span></span>`;
+                html += `<div class="receipt-summary-row receipt-agreed-row receipt-agreed-row-with-rounding" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">${leftLabel}</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+            } else {
+                html += `<div class="receipt-summary-row receipt-agreed-row" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+            }
         } else {
-            html += `<div class="receipt-summary-row receipt-agreed-row" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+            html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap">¥${agreed.toFixed(2)}</div></div>`;
         }
-    } else {
-        html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap">¥${agreed.toFixed(2)}</div></div>`;
     }
     
     // 平台费 = 约定实收×费率（平台收取，不经过我手）
@@ -5691,7 +5716,7 @@ function generateQuote() {
         var customerPays = quoteData.finalTotal != null ? quoteData.finalTotal : (agreed + quoteData.platformFeeAmount);
         html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${customerPays.toFixed(2)}</div></div>`;
     } else {
-        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${agreed.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${finalPay.toFixed(2)}</div></div>`;
     }
     // 定金选是时：小票显示需付定金 = 实付金额 × 定金比例
     if (quoteData.needDeposit) {
@@ -9873,6 +9898,7 @@ function loadSettings() {
     }
     updateOrderRemarkPreview();
     renderOtherFees();
+    renderDiscountReasonsList();
 }
 
 // 根据废稿费模式显示对应默认值区域（选择哪个模式显示哪个模式默认值）
@@ -9937,6 +9963,102 @@ function updateWasteFixedAmountDefault(value) {
     var n = parseFloat(value);
     defaultSettings.settlementRules.wasteFee.defaultFixedAmount = (!isNaN(n) && n >= 0) ? n : 50;
     saveData();
+}
+
+// ---------- 优惠原因（结算配置） ----------
+function getDiscountReasons() {
+    return (defaultSettings.settlementRules && defaultSettings.settlementRules.discountReasons) ? defaultSettings.settlementRules.discountReasons.slice() : [];
+}
+
+function renderDiscountReasonsList() {
+    var container = document.getElementById('discountReasonsList');
+    if (!container) return;
+    var list = getDiscountReasons();
+    var html = '';
+    list.forEach(function (r) {
+        var amountStr = (r.defaultAmount != null && r.defaultAmount !== '') ? (r.defaultAmount + ' 元') : '—';
+        var rateStr = (r.defaultRate != null && r.defaultRate !== '') ? ((r.defaultRate * 100).toFixed(0) + ' 折') : '—';
+        var preferStr = (r.preferType === 'rate') ? '折扣' : '金额';
+        html += '<div class="form-row align-items-center discount-reason-item" style="margin-bottom:0.5rem;">';
+        html += '<span class="discount-reason-name">' + (r.name || '') + '</span>';
+        html += '<span class="text-gray" style="font-size:0.85rem;">默认' + preferStr + '：' + (r.preferType === 'rate' ? rateStr : amountStr) + '</span>';
+        html += '<button type="button" class="btn secondary btn-compact" onclick="openEditDiscountReasonModal(' + r.id + ')">编辑</button>';
+        html += '<button type="button" class="icon-action-btn delete" onclick="deleteDiscountReason(' + r.id + ')" aria-label="删除" title="删除">×</button>';
+        html += '</div>';
+    });
+    if (list.length === 0) {
+        html = '<p class="text-gray" style="font-size:0.85rem;">暂无优惠原因，点击「添加」创建（如延期补偿、老客优惠）</p>';
+    }
+    container.innerHTML = html;
+}
+
+function openAddDiscountReasonModal() {
+    document.getElementById('addDiscountReasonModalTitle').textContent = '添加优惠原因';
+    document.getElementById('editDiscountReasonId').value = '';
+    document.getElementById('discountReasonName').value = '';
+    document.getElementById('discountReasonPreferType').value = 'rate';
+    document.getElementById('discountReasonDefaultAmount').value = '0';
+    document.getElementById('discountReasonDefaultRate').value = '0.95';
+    document.getElementById('addDiscountReasonModal').classList.remove('d-none');
+}
+
+function openEditDiscountReasonModal(id) {
+    var list = getDiscountReasons();
+    var r = list.find(function (x) { return x.id === id; });
+    if (!r) return;
+    document.getElementById('addDiscountReasonModalTitle').textContent = '编辑优惠原因';
+    document.getElementById('editDiscountReasonId').value = r.id;
+    document.getElementById('discountReasonName').value = r.name || '';
+    document.getElementById('discountReasonPreferType').value = r.preferType || 'rate';
+    document.getElementById('discountReasonDefaultAmount').value = (r.defaultAmount != null && r.defaultAmount !== '') ? r.defaultAmount : '0';
+    document.getElementById('discountReasonDefaultRate').value = (r.defaultRate != null && r.defaultRate !== '') ? r.defaultRate : '0.99';
+    document.getElementById('addDiscountReasonModal').classList.remove('d-none');
+}
+
+function closeAddDiscountReasonModal() {
+    document.getElementById('addDiscountReasonModal').classList.add('d-none');
+}
+
+function saveDiscountReason() {
+    var editId = document.getElementById('editDiscountReasonId').value;
+    var name = (document.getElementById('discountReasonName').value || '').trim();
+    if (!name) {
+        alert('请输入优惠原因名称');
+        return;
+    }
+    if (!defaultSettings.settlementRules) defaultSettings.settlementRules = { cancelFee: {}, wasteFee: {}, discountReasons: [] };
+    if (!defaultSettings.settlementRules.discountReasons) defaultSettings.settlementRules.discountReasons = [];
+    var list = defaultSettings.settlementRules.discountReasons;
+    var preferType = (document.getElementById('discountReasonPreferType').value === 'amount') ? 'amount' : 'rate';
+    var defaultAmount = parseFloat(document.getElementById('discountReasonDefaultAmount').value);
+    var defaultRate = parseFloat(document.getElementById('discountReasonDefaultRate').value);
+    if (isNaN(defaultAmount) || defaultAmount < 0) defaultAmount = 0;
+    if (isNaN(defaultRate) || defaultRate < 0 || defaultRate > 0.99) defaultRate = 0.99;
+
+    if (editId) {
+        var idx = list.findIndex(function (x) { return String(x.id) === String(editId); });
+        if (idx >= 0) {
+            list[idx] = { id: list[idx].id, name: name, defaultAmount: defaultAmount, defaultRate: preferType === 'rate' ? defaultRate : null, preferType: preferType };
+        }
+    } else {
+        var nextId = list.length ? Math.max.apply(null, list.map(function (x) { return x.id || 0; })) + 1 : 1;
+        list.push({ id: nextId, name: name, defaultAmount: preferType === 'amount' ? defaultAmount : 0, defaultRate: preferType === 'rate' ? defaultRate : null, preferType: preferType });
+    }
+    saveData();
+    renderDiscountReasonsList();
+    closeAddDiscountReasonModal();
+}
+
+function deleteDiscountReason(id) {
+    if (!confirm('确定要删除该优惠原因吗？')) return;
+    if (!defaultSettings.settlementRules || !defaultSettings.settlementRules.discountReasons) return;
+    var list = defaultSettings.settlementRules.discountReasons;
+    var idx = list.findIndex(function (x) { return x.id === id; });
+    if (idx >= 0) {
+        list.splice(idx, 1);
+        saveData();
+        renderDiscountReasonsList();
+    }
 }
 
 // 订单备注弹窗：打开
