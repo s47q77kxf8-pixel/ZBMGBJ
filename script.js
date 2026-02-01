@@ -5756,7 +5756,7 @@ function roundAgreedAmount(mode) {
     if (mode === 'round') val = Math.round(base);
     else if (mode === 'ceil') val = Math.ceil(base);
     else if (mode === 'floor') val = Math.floor(base);
-    else if (mode === 'ten') val = Math.round(base / 10) * 10;
+    else if (mode === 'ten') val = Math.floor(base / 10) * 10;
     else if (mode === 'hundred') val = Math.floor(base / 100) * 100;
     else return;
     quoteData.agreedAmount = Math.max(0, val);
