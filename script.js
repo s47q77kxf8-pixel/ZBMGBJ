@@ -6863,8 +6863,9 @@ function syncOrderPlatformToPlatform() {
     if (!text) return;
     var platformFees = defaultSettings.platformFees;
     if (platformFees && typeof platformFees === 'object') {
+        var textLower = text.toLowerCase();
         var match = Object.entries(platformFees).find(function (e) {
-            return e[1] && (e[1].name === text);
+            return e[1] && (e[1].name || '').toLowerCase() === textLower;
         });
         if (match) {
             platformEl.value = match[0];
@@ -6901,19 +6902,20 @@ function toggleOrderPlatformClear() {
     else wrap.classList.remove('has-value');
 }
 
-// 根据单主 ID 从历史记录自动填充接单平台和联系方式（取该单主最近一条记录）
+// 根据单主 ID（或关键字）从历史记录自动填充接单平台和联系方式（先精确匹配，再关键字包含匹配，取最近一条）
 function fillOrderPlatformAndContactFromHistory() {
     var clientIdEl = document.getElementById('clientId');
     var orderPlatformEl = document.getElementById('orderPlatform');
     var contactInfoEl = document.getElementById('contactInfo');
     if (!clientIdEl || !orderPlatformEl || !contactInfoEl) return;
-    var clientId = (clientIdEl.value || '').trim();
-    if (!clientId || !Array.isArray(history) || history.length === 0) return;
-    var key = clientId.toLowerCase();
+    var keyword = (clientIdEl.value || '').trim();
+    if (!keyword || !Array.isArray(history) || history.length === 0) return;
+    var keyLower = keyword.toLowerCase();
     for (var i = history.length - 1; i >= 0; i--) {
         var item = history[i];
         var itemId = (item && item.clientId != null) ? String(item.clientId).trim().toLowerCase() : '';
-        if (itemId === key) {
+        var match = (itemId === keyLower) || (itemId.indexOf(keyLower) >= 0);
+        if (match) {
             orderPlatformEl.value = (item.contact != null && item.contact !== '') ? String(item.contact).trim() : '';
             contactInfoEl.value = (item.contactInfo != null && item.contactInfo !== '') ? String(item.contactInfo).trim() : '';
             if (typeof syncOrderPlatformToPlatform === 'function') syncOrderPlatformToPlatform();
@@ -6921,6 +6923,11 @@ function fillOrderPlatformAndContactFromHistory() {
             return;
         }
     }
+}
+var fillFromHistoryInputTimer = null;
+function debouncedFillFromHistory() {
+    if (fillFromHistoryInputTimer) clearTimeout(fillFromHistoryInputTimer);
+    fillFromHistoryInputTimer = setTimeout(fillOrderPlatformAndContactFromHistory, 350);
 }
 
 function openSettlementModal(recordId, preSelectedType) {
@@ -7749,7 +7756,53 @@ function settlementRenderNormalForm() {
     var rateWrap = document.getElementById('settlementDiscountRateWrap');
     document.getElementById('settlementDiscountAmount').value = '0';
     document.getElementById('settlementDiscountRate').value = '0.99';
-    document.getElementById('settlementDiscountReason').value = '';
+    var reasonInput = document.getElementById('settlementDiscountReason');
+    var reasonSelect = document.getElementById('settlementDiscountReasonSelect');
+    if (reasonInput) reasonInput.value = '';
+    // 优惠原因下拉：无 + 预设 + 其他
+    if (reasonSelect) {
+        var reasons = getDiscountReasons();
+        reasonSelect.innerHTML = '<option value="">无</option>';
+        reasons.forEach(function (r) {
+            reasonSelect.innerHTML += '<option value="' + r.id + '">' + (r.name || '') + '</option>';
+        });
+        reasonSelect.innerHTML += '<option value="other">其他</option>';
+        reasonSelect.value = '';
+        reasonSelect.onchange = function () {
+            var val = reasonSelect.value;
+            if (val === '') {
+                if (reasonInput) { reasonInput.value = ''; reasonInput.classList.add('d-none'); }
+                return;
+            }
+            if (val === 'other') {
+                if (reasonInput) { reasonInput.value = ''; reasonInput.classList.remove('d-none'); }
+                return;
+            }
+            var preset = getDiscountReasons().find(function (x) { return String(x.id) === String(val); });
+            if (preset && reasonInput) {
+                reasonInput.value = preset.name || '';
+                reasonInput.classList.remove('d-none');
+            }
+            if (preset) {
+                var preferType = preset.preferType || 'rate';
+                var radioAmount = document.querySelector('input[name="settlementDiscountType"][value="amount"]');
+                var radioRate = document.querySelector('input[name="settlementDiscountType"][value="rate"]');
+                if (radioAmount) radioAmount.checked = (preferType === 'amount');
+                if (radioRate) radioRate.checked = (preferType === 'rate');
+                if (amountWrap) amountWrap.classList.toggle('d-none', preferType !== 'amount');
+                if (rateWrap) rateWrap.classList.toggle('d-none', preferType !== 'rate');
+                if (preferType === 'amount') {
+                    document.getElementById('settlementDiscountAmount').value = (preset.defaultAmount != null && !isNaN(preset.defaultAmount)) ? preset.defaultAmount : '0';
+                } else {
+                    var rateVal = (preset.defaultRate != null && !isNaN(preset.defaultRate)) ? preset.defaultRate : 0.99;
+                    if (rateVal > 0.99) rateVal = 0.99;
+                    document.getElementById('settlementDiscountRate').value = rateVal;
+                }
+                settlementUpdateNormalPreview();
+            }
+        };
+        if (reasonInput) reasonInput.classList.add('d-none');
+    }
     document.querySelectorAll('input[name="settlementDiscountType"]').forEach(function (r) {
         r.addEventListener('change', function () {
             var isAmount = document.querySelector('input[name="settlementDiscountType"]:checked').value === 'amount';
@@ -8712,8 +8765,9 @@ function editHistoryItem(id) {
         // 恢复平台手续费与接单平台（联动）；无 platformType 时尝试用 contact 按平台名称匹配（兼容旧数据）
         var platformKeyToSet = quote.platformType;
         if (!platformKeyToSet && quote.contact && defaultSettings.platformFees) {
+            var contactLower = String(quote.contact).trim().toLowerCase();
             var match = Object.entries(defaultSettings.platformFees).find(function (e) {
-                return (e[1] && e[1].name === quote.contact);
+                return (e[1] && (e[1].name || '').toLowerCase() === contactLower);
             });
             if (match) platformKeyToSet = match[0];
         }
