@@ -1892,6 +1892,12 @@ input:focus, select:focus {
     max-width: 480px;
 }
 
+/* 订单备注弹窗：显示在计算抽屉之上（计算抽屉 z-index 10002） */
+#orderRemarkModal,
+#orderRemarkViewModal {
+    z-index: 10010;
+}
+
 /* 订单备注查看弹窗：限制高度，内容区可滚动，关闭按钮始终可见 */
 #orderRemarkViewModal .modal-content {
     max-height: 85vh;

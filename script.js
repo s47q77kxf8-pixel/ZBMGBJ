@@ -6167,6 +6167,11 @@ function saveToHistory() {
             productDoneStates
         });
         showGlobalToast('报价单已加入排单！');
+        // 新单保存后清空当前备注，避免下一单未填备注时沿用本单备注
+        if (defaultSettings) defaultSettings.orderRemark = '';
+        var orderRemarkTextEl = document.getElementById('orderRemarkText');
+        if (orderRemarkTextEl) orderRemarkTextEl.value = '';
+        if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
     }
     
     saveData();
@@ -6463,7 +6468,7 @@ function getScheduleBarsForCalendar(year, month) {
         if (end < monthStart || start > monthEnd) return;
         const startDate = toYmd(start);
         const endDate = toYmd(end);
-        const productCount = (Array.isArray(item.productPrices) ? item.productPrices.length : 0) + (Array.isArray(item.giftPrices) ? item.giftPrices.length : 0);
+        const productCount = getOrderItemQuantityTotal(item);
         bars.push({ id: item.id, clientId: item.clientId || '', productCount, startDate, endDate });
     });
     return bars;
@@ -6750,9 +6755,8 @@ function renderScheduleTodoSection() {
         const doneStates = item.productDoneStates || [];
         const products = Array.isArray(item.productPrices) ? item.productPrices : [];
         const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
-        const total = products.length + gifts.length;
-        let doneCount = 0;
-        for (let i = 0; i < doneStates.length; i++) { if (doneStates[i]) doneCount++; }
+        const total = getOrderItemQuantityTotal(item);
+        const doneCount = getOrderDoneQuantityTotal(item);
         // todo 时间显示为下单时间（timestamp）
         const orderDateStr = item.timestamp;
         const orderDate = orderDateStr ? new Date(orderDateStr) : null;
