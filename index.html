@@ -260,10 +260,6 @@
             <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0 0-3L16.5 4.5a2.1 2.1 0 0 0-3 0L3 15v5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             <path d="M12.5 5.5l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
-        <symbol id="i-receipt" viewBox="0 0 24 24">
-            <path d="M6 2h12v20l-2-1-2 1-2-1-2 1-2-1-2 1V2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            <path d="M9 7h6M9 11h6M9 15h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </symbol>
         <symbol id="i-plus" viewBox="0 0 24 24">
             <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
@@ -271,13 +267,135 @@
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
             <path d="M14 2v6h6M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </symbol>
+        <!-- 小票图标（与保存按钮同比例 24×24 stroke 2，可替换 href 切换） -->
+        <!-- ① 横条+竖线（当前） -->
         <symbol id="i-receipt" viewBox="0 0 24 24">
-            <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2"/>
-            <path d="M8 10h8M8 14h8M8 18h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M2 9h20v6H2V9Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 9v6M14 9v6M18 9v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- ② 纸条+横线（经典小票） -->
+        <symbol id="i-receipt-list" viewBox="0 0 24 24">
+            <path d="M6 4h12a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 9h8M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- ③ 横条（极简） -->
+        <symbol id="i-receipt-strip" viewBox="0 0 24 24">
+            <path d="M3 10h18v4H3V10Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <!-- ④ 双横条（叠票） -->
+        <symbol id="i-receipt-double" viewBox="0 0 24 24">
+            <path d="M4 7h16v3H4V7Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M4 14h16v3H4v-3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <!-- ⑤ 方纸+横线 -->
+        <symbol id="i-receipt-roll" viewBox="0 0 24 24">
+            <path d="M5 5h14v14H5V5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 9h8M8 12h8M8 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- ⑥ 三横线（清单） -->
+        <symbol id="i-receipt-lines" viewBox="0 0 24 24">
+            <path d="M6 7h12M6 12h12M6 17h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- ⑦ 竖条+横线（热敏条） -->
+        <symbol id="i-receipt-tape" viewBox="0 0 24 24">
+            <path d="M9 4h6v16H9V4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M7 8h10M7 12h10M7 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- ⑧ 撕边横条 -->
+        <symbol id="i-receipt-tear" viewBox="0 0 24 24">
+            <path d="M3 9h18v2.5c0 .5-1.5 2.5-3 2.5s-3-2-4.5-2-2.5 2-4.5 2S5 11.5 5 11V9Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <!-- ⑨ 圆角条+横线 -->
+        <symbol id="i-receipt-round" viewBox="0 0 24 24">
+            <path d="M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 11h8M8 14h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- ⑩ 票据角（折角） -->
+        <symbol id="i-receipt-fold" viewBox="0 0 24 24">
+            <path d="M5 5h11l5 5v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M16 5v5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- ⑪～⑮ 更多小票 -->
+        <symbol id="i-receipt-curl" viewBox="0 0 24 24">
+            <path d="M4 10h16v1.5c0 .8-2 2.5-4 2.5s-4-1.7-6-2.5-2 .5-4 .5-2-1-2-1.5V10Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-receipt-dash" viewBox="0 0 24 24">
+            <path d="M5 9h2M9 9h2M13 9h2M17 9h2M5 13h2M9 13h6M5 17h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-receipt-narrow" viewBox="0 0 24 24">
+            <path d="M10 5h4v14h-4V5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 9h8M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-receipt-triple" viewBox="0 0 24 24">
+            <path d="M4 6h16v2.5H4V6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M4 11h16v2.5H4V11Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M4 16h16v2.5H4V16Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-receipt-belt" viewBox="0 0 24 24">
+            <path d="M3 11h18v2H3v-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M6 8v8M10 8v8M14 8v8M18 8v8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
         <symbol id="i-overwrite" viewBox="0 0 24 24">
             <path d="M4 4h12l4 4v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             <path d="M8 12l3 3 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <!-- 保存图标备选（与小票同比例 24×24 stroke 2） -->
+        <symbol id="i-save-disk" viewBox="0 0 24 24">
+            <path d="M6 4h10l2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 12h8M8 16h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-save-check" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M14 2v6h6M9 15l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-save-down" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M14 2v6h6M12 11v6M9 14l3 3 3-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-save-folder" viewBox="0 0 24 24">
+            <path d="M4 4h6l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M12 12v6M9 15l3-3 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-save-bookmark" viewBox="0 0 24 24">
+            <path d="M6 4h12v16l-6-4-6 4V4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-save-archive" viewBox="0 0 24 24">
+            <path d="M4 6h16v2H4V6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M4 6v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 12h8M8 16h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-save-clipboard" viewBox="0 0 24 24">
+            <path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 2h8v4H8V2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-save-pin" viewBox="0 0 24 24">
+            <path d="M12 2v6l4 4v8h-2v-6h-4v6H8v-8l4-4V2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-save-copy" viewBox="0 0 24 24">
+            <path d="M8 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 4a2 2 0 0 1 2-2h8v4a2 2 0 0 1 2 2v8" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <!-- ⑪～⑮ 更多保存 -->
+        <symbol id="i-save-floppy" viewBox="0 0 24 24">
+            <path d="M6 2h8l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 2v6h8V2M8 14h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-save-circle-check" viewBox="0 0 24 24">
+            <path d="M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-save-inbox" viewBox="0 0 24 24">
+            <path d="M6 4h12v6l-3 4H9l-3-4V4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M6 14v6h12v-6M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-save-lock" viewBox="0 0 24 24">
+            <path d="M8 4h8v4H8V4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M6 8h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-save-plus" viewBox="0 0 24 24">
+            <path d="M6 4h10l2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M12 9v6M9 12h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
         <symbol id="i-copy-new" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -339,11 +457,11 @@
                         <h2 class="calculator-drawer-title">计算报价</h2>
                         <div class="calculator-actions icon-text-actions">
                             <button type="button" class="icon-text-btn primary" id="calculatorQuoteBtn" onclick="calculatePrice()" title="生成小票并加入排单（编辑模式下覆盖原单）">
-                                <svg class="icon sm"><use href="#i-receipt"></use></svg>
+                                <svg class="icon sm"><use href="#i-save-clipboard"></use></svg>
                                 <span>小票</span>
                             </button>
                             <button type="button" class="icon-text-btn d-none" id="calculatorSaveBtn" onclick="calculatePrice(undefined, undefined, true)" title="保存到排单（选择覆盖或另存新单）">
-                                <svg class="icon sm"><use href="#i-overwrite"></use></svg>
+                                <svg class="icon sm"><use href="#i-save-check"></use></svg>
                                 <span>保存</span>
                             </button>
                         </div>
@@ -576,8 +694,10 @@
                             </button>
                             <h2 class="receipt-drawer-title">报价小票</h2>
                             <div class="receipt-drawer-actions receipt-drawer-actions-flat">
-                                <button type="button" class="receipt-drawer-btn-flat" onclick="generateQuote()" title="刷新小票">小票</button>
-                                <button type="button" class="receipt-drawer-btn-flat" onclick="handleReceiptSchedule()" title="将当前报价保存到排单列表">保存</button>
+                                <button type="button" class="icon-text-btn receipt-drawer-save-btn" onclick="handleReceiptSchedule()" title="将当前报价保存到排单列表">
+                                    <svg class="icon sm"><use href="#i-save-check"></use></svg>
+                                    <span>保存</span>
+                                </button>
                             </div>
                         </div>
                         <div class="receipt-drawer-body">
