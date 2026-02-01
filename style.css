@@ -2805,6 +2805,19 @@ input[type="range"]#customThemeTextureOpacity {
     border-top: 1px solid #e2e8f0;
 }
 
+/* 优惠原因：名称 编辑 删除 一行显示 */
+.discount-reasons-list .discount-reason-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    margin-bottom: 0.5rem;
+}
+.discount-reasons-list .discount-reason-name {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
 /* 加价类/折扣类均为单数时：加价类最后一项与折扣类第一项并排显示 */
 .coefficient-pair-row {
     display: flex;
@@ -4783,7 +4796,7 @@ input:checked + .toggle-slider:before {
     display: flex;
     flex-direction: column;
     animation: slideInRight 0.3s;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .filter-drawer-header {
@@ -4824,8 +4837,10 @@ input:checked + .toggle-slider:before {
 
 .filter-drawer-body {
     flex: 1;
+    min-height: 0;
     padding: 1rem;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .filter-section {
@@ -4857,12 +4872,12 @@ input:checked + .toggle-slider:before {
 }
 
 .filter-drawer-footer {
+    flex-shrink: 0;
     padding: 1rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
     border-top: 1px solid var(--border-color);
     display: flex;
     gap: 0.75rem;
-    position: sticky;
-    bottom: 0;
     background: var(--card-bg);
 }
 
@@ -5160,8 +5175,26 @@ input:checked + .toggle-slider:before {
 }
 
 @media (max-width: 768px) {
+    /* 筛选抽屉在手机上用可见视口高度，避免底部「应用/重置」被挡住 */
+    .history-filter-drawer {
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100vh;
+        max-height: 100dvh;
+    }
     .filter-drawer-content {
         width: 90%;
+        max-height: 100%;
+    }
+    
+    /* 筛选抽屉底部「应用/重置」在手机上始终贴底可见、易点 */
+    .filter-drawer-footer {
+        min-height: 56px;
+        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+    }
+    .filter-drawer-footer .btn {
+        min-height: 44px;
+        font-size: 1rem;
     }
     
     /* 确保筛选按钮在移动端可见 */

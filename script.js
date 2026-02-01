@@ -10038,18 +10038,14 @@ function renderDiscountReasonsList() {
     var list = getDiscountReasons();
     var html = '';
     list.forEach(function (r) {
-        var amountStr = (r.defaultAmount != null && r.defaultAmount !== '') ? (r.defaultAmount + ' 元') : '—';
-        var rateStr = (r.defaultRate != null && r.defaultRate !== '') ? ((r.defaultRate * 100).toFixed(0) + ' 折') : '—';
-        var preferStr = (r.preferType === 'rate') ? '折扣' : '金额';
-        html += '<div class="form-row align-items-center discount-reason-item" style="margin-bottom:0.5rem;">';
+        html += '<div class="discount-reason-item">';
         html += '<span class="discount-reason-name">' + (r.name || '') + '</span>';
-        html += '<span class="text-gray" style="font-size:0.85rem;">默认' + preferStr + '：' + (r.preferType === 'rate' ? rateStr : amountStr) + '</span>';
         html += '<button type="button" class="btn secondary btn-compact" onclick="openEditDiscountReasonModal(' + r.id + ')">编辑</button>';
         html += '<button type="button" class="icon-action-btn delete" onclick="deleteDiscountReason(' + r.id + ')" aria-label="删除" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button>';
         html += '</div>';
     });
     if (list.length === 0) {
-        html = '<p class="text-gray" style="font-size:0.85rem;">暂无优惠原因，点击「添加」创建（如延期补偿、老客优惠）</p>';
+        html = '<p class="text-gray" style="font-size:0.85rem;">暂无优惠原因，点击「添加」创建。</p>';
     }
     container.innerHTML = html;
 }
