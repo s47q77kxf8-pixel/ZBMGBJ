@@ -271,6 +271,18 @@
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
             <path d="M14 2v6h6M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </symbol>
+        <symbol id="i-receipt" viewBox="0 0 24 24">
+            <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 10h8M8 14h8M8 18h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-overwrite" viewBox="0 0 24 24">
+            <path d="M4 4h12l4 4v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M8 12l3 3 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-copy-new" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M14 2v6h6M12 11v6M9 14h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
         <!-- 废稿（稿纸划掉，区别于删除） -->
         <symbol id="i-file-x" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -325,8 +337,16 @@
                             <span class="sr-only">关闭</span>
                         </button>
                         <h2 class="calculator-drawer-title">计算报价</h2>
-                        <button type="button" class="btn calculator-drawer-action" id="calculatorQuoteBtn" onclick="calculatePrice()" title="生成报价并加入排单（编辑模式下覆盖原单）">报价</button>
-                        <button type="button" class="btn secondary calculator-drawer-action d-none" id="calculatorSaveAsNewBtn" onclick="calculatePrice(true)" title="保存为新排单，不覆盖当前编辑的原单">另存为新单</button>
+                        <div class="calculator-actions icon-text-actions">
+                            <button type="button" class="icon-text-btn primary" id="calculatorQuoteBtn" onclick="calculatePrice()" title="生成小票并加入排单（编辑模式下覆盖原单）">
+                                <svg class="icon sm"><use href="#i-receipt"></use></svg>
+                                <span>小票</span>
+                            </button>
+                            <button type="button" class="icon-text-btn d-none" id="calculatorSaveBtn" onclick="calculatePrice(undefined, undefined, true)" title="保存到排单（选择覆盖或另存新单）">
+                                <svg class="icon sm"><use href="#i-overwrite"></use></svg>
+                                <span>保存</span>
+                            </button>
+                        </div>
                     </div>
                     <div class="calculator-drawer-body">
                         <!-- 计算页原有内容 -->
@@ -367,7 +387,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="orderTimeInput">下单时间</label>
-                            <input type="date" id="orderTimeInput" class="order-time-input" aria-label="下单时间" placeholder="yyyy/mm/dd">
+                            <input type="date" id="orderTimeInput" class="order-time-input" aria-label="下单时间" placeholder="yyyy-mm-dd">
                         </div>
                         <div class="form-group">
                             <label for="startTime">开始时间</label>
@@ -555,7 +575,10 @@
                                 <span class="sr-only">关闭</span>
                             </button>
                             <h2 class="receipt-drawer-title">报价小票</h2>
-                            <button type="button" class="btn receipt-drawer-action" onclick="handleReceiptSchedule()" title="将当前报价保存到排单列表">排单</button>
+                            <div class="receipt-drawer-actions receipt-drawer-actions-flat">
+                                <button type="button" class="receipt-drawer-btn-flat" onclick="generateQuote()" title="刷新小票">小票</button>
+                                <button type="button" class="receipt-drawer-btn-flat" onclick="handleReceiptSchedule()" title="将当前报价保存到排单列表">保存</button>
+                            </div>
                         </div>
                         <div class="receipt-drawer-body">
                             <div id="receiptAgreedAmountBar" class="receipt-agreed-amount-bar d-none">
@@ -2157,6 +2180,50 @@
                 <button class="btn btn-compact secondary" onclick="smartParseOrderRemark()">智能读取</button>
                 <button class="btn btn-compact secondary" onclick="copyOrderRemark()">复制</button>
                 <button class="btn btn-compact" onclick="closeOrderRemarkModal()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 计算页保存方式选择弹窗（编辑模式下点「保存」时弹出） -->
+    <div id="calculatorSaveChoiceModal" class="history-record-modal d-none" aria-hidden="true">
+        <div class="history-record-overlay" onclick="closeCalculatorSaveChoiceModal()"></div>
+        <div class="history-record-content record-import-mode-content">
+            <div class="history-record-header">
+                <h2>保存方式</h2>
+                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeCalculatorSaveChoiceModal()" aria-label="关闭" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+            </div>
+            <div class="history-record-body">
+                <p class="mb-2">请选择如何保存当前报价：</p>
+                <div class="d-flex flex-col gap-2">
+                    <button type="button" class="btn secondary w-full" onclick="calculatorSaveChoiceOverwrite()">覆盖原订单</button>
+                    <button type="button" class="btn w-full" onclick="calculatorSaveChoiceSaveAsNew()">另存为新排单</button>
+                    <button type="button" class="btn secondary w-full" onclick="closeCalculatorSaveChoiceModal()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 小票页排单保存方式选择弹窗（编辑模式下点「排单」时弹出） -->
+    <div id="receiptScheduleChoiceModal" class="history-record-modal d-none" aria-hidden="true">
+        <div class="history-record-overlay" onclick="closeReceiptScheduleChoiceModal()"></div>
+        <div class="history-record-content record-import-mode-content">
+            <div class="history-record-header">
+                <h2>保存方式</h2>
+                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeReceiptScheduleChoiceModal()" aria-label="关闭" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+            </div>
+            <div class="history-record-body">
+                <p class="mb-2">请选择如何保存当前小票：</p>
+                <div class="d-flex flex-col gap-2">
+                    <button type="button" class="btn secondary w-full" onclick="receiptScheduleChoiceOverwrite()">覆盖原订单</button>
+                    <button type="button" class="btn w-full" onclick="receiptScheduleChoiceSaveAsNew()">另存为新排单</button>
+                    <button type="button" class="btn secondary w-full" onclick="closeReceiptScheduleChoiceModal()">取消</button>
+                </div>
             </div>
         </div>
     </div>

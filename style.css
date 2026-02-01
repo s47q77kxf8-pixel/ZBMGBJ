@@ -679,6 +679,41 @@ body {
     min-width: 4.5rem;
 }
 
+/* 方案1：上图下文按钮（图标 + 文字垂直） */
+.calculator-actions.icon-text-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.calculator-actions .icon-text-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    padding: 0.3rem 0.5rem;
+    min-width: 48px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.7rem;
+    color: var(--text-color);
+    transition: all 0.2s;
+}
+.calculator-actions .icon-text-btn.primary {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+.calculator-actions .icon-text-btn:hover {
+    opacity: 0.9;
+}
+.calculator-actions .icon-text-btn .icon.sm {
+    width: 18px;
+    height: 18px;
+}
+
 .calculator-drawer-close {
     border-radius: 999px;
     background: transparent;
@@ -722,8 +757,8 @@ body {
     border-radius: var(--radius-md);
     background: var(--bg-color);
     min-width: 10rem;
-    pointer-events: auto;
-    touch-action: manipulation;
+    position: relative;
+    z-index: 1;
 }
 .calculator-content .order-time-input:focus {
     border-color: var(--primary-color);
@@ -741,6 +776,7 @@ body {
 /* 抽屉打开状态 */
 .calculator-drawer.open {
     pointer-events: auto;
+    z-index: 10002;
 }
 
 .calculator-drawer.open .calculator-drawer-panel {
@@ -7632,9 +7668,25 @@ html.theme-dark .settlement-preview {
     text-align: center;
 }
 
-.receipt-drawer-action {
+.receipt-drawer-actions {
     flex-shrink: 0;
-    min-width: 4.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.receipt-drawer-actions-flat .receipt-drawer-btn-flat {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.85rem;
+    color: var(--text-color);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: color 0.2s, background-color 0.2s;
+}
+.receipt-drawer-actions-flat .receipt-drawer-btn-flat:hover {
+    color: var(--primary-color);
+    background: var(--primary-light);
 }
 
 .receipt-drawer-close {

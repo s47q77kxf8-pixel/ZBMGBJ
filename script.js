@@ -4188,6 +4188,7 @@ function exportStatsToExcel() {
         const wb = XLSX.utils.book_new();
         const summary = [
             ['统计汇总'],
+            ['时间口径', f.timeBasis === 'deadline' ? '按截稿日' : '按记录时间'],
             ['订单数', dataset.totals.orderCount],
             ['总收入', dataset.totals.revenueTotal],
             ['客单价', dataset.totals.aov],
@@ -4243,10 +4244,6 @@ function exportStatsToExcel() {
 
 // 打开计算抽屉；skipOrderTimeReset 为 true 时不重置下单时间（用于编辑加载历史记录）
 function openCalculatorDrawer(skipOrderTimeReset) {
-    // #region agent log
-    var _el0 = document.getElementById('orderTimeInput');
-    fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:openCalculatorDrawer',message:'entry',data:{skipOrderTimeReset:!!skipOrderTimeReset,orderTimeValueBefore:_el0?_el0.value:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
-    // #endregion
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
 
@@ -4267,20 +4264,11 @@ function openCalculatorDrawer(skipOrderTimeReset) {
 
     drawer.classList.add('open');
     isCalculatorOpen = true;
-    // #region agent log
-    var _el1 = document.getElementById('orderTimeInput');
-    fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:openCalculatorDrawer',message:'after add open',data:{orderTimeValue:_el1?_el1.value:null,readonly:_el1?_el1.hasAttribute('readonly'):null,disabled:_el1?_el1.disabled:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H5'})}).catch(function(){});
-    // #endregion
 
-    // 编辑模式下显示「另存为新单」按钮
-    var saveAsNewBtn = document.getElementById('calculatorSaveAsNewBtn');
-    if (saveAsNewBtn) {
-        if (window.editingHistoryId) {
-            saveAsNewBtn.classList.remove('d-none');
-        } else {
-            saveAsNewBtn.classList.add('d-none');
-        }
-    }
+    // 编辑模式下显示「保存」按钮（弹窗选择覆盖/新单）
+    var isEdit = !!window.editingHistoryId;
+    var saveBtn = document.getElementById('calculatorSaveBtn');
+    if (saveBtn) saveBtn.classList.toggle('d-none', !isEdit);
 }
 
 // 关闭计算抽屉
@@ -4631,8 +4619,8 @@ function removeProduct(id) {
     document.querySelector(`[data-id="${id}"]`).remove();
 }
 
-// 计算价格；saveAsNew 为 true 时：另存为新单（不覆盖原记录），保存后关闭抽屉不打开小票
-function calculatePrice(saveAsNew) {
+// 计算价格；saveAsNew 为 true 时：另存新单（不覆盖原记录）；skipReceipt 为 true 时：覆盖保存原订单，均不打开小票；openSaveChoiceModal 为 true 时：仅计算并弹出保存方式选择弹窗
+function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
     // 获取单主信息（支持自动生成单主ID：YYYYMMDDXNN）
     const clientIdInputEl = document.getElementById('clientId');
     let clientIdValue = clientIdInputEl ? clientIdInputEl.value.trim() : '';
@@ -5056,7 +5044,7 @@ function calculatePrice(saveAsNew) {
         agreedAmount: agreedAmount,
         needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (function(){ var el = document.getElementById('needDeposit'); return el && el.value === 'yes'; })()),
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
-        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; var out = (v && def && v === def) ? new Date().toISOString() : (v ? (function(){ var d = new Date(v + 'T00:00:00'); return !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString(); }()) : new Date().toISOString()); fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:quoteData-timestamp',message:'timestamp for save',data:{elExists:!!el,v:v,def:def,used:out?out.slice(0,10):null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(function(){}); return out; })()
+        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; if (v && def && v === def) return new Date().toISOString(); if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
     // 生成报价单（主小票区域）
@@ -5067,18 +5055,30 @@ function calculatePrice(saveAsNew) {
         syncReceiptDrawerContent();
     }
     
-    // 另存为新单：清除编辑 ID 后保存为新记录，关闭抽屉，不打开小票
+    // 打开保存方式选择弹窗（编辑模式下点「保存」时，不直接保存）
+    if (openSaveChoiceModal && window.editingHistoryId) {
+        openCalculatorSaveChoiceModal();
+        return;
+    }
+    
+    // 另存新单：清除编辑 ID 后保存为新记录，关闭抽屉，不打开小票
     if (saveAsNew && window.editingHistoryId) {
         window.editingHistoryId = null;
-        saveToHistory(); // 会刷新月历/todo、saveData、applyHistoryFilters
-        if (typeof closeCalculatorDrawer === 'function') {
-            closeCalculatorDrawer();
-        }
+        saveToHistory();
+        if (typeof closeCalculatorDrawer === 'function') closeCalculatorDrawer();
         showPage('quote');
         return;
     }
     
-    // 关闭计算抽屉（从计算页返回排单页）
+    // 覆盖保存：编辑模式下直接保存原订单，关闭抽屉，不打开小票
+    if (skipReceipt && window.editingHistoryId) {
+        saveToHistory();
+        if (typeof closeCalculatorDrawer === 'function') closeCalculatorDrawer();
+        showPage('quote');
+        return;
+    }
+    
+    // 默认：关闭计算抽屉并打开小票
     if (typeof closeCalculatorDrawer === 'function') {
         closeCalculatorDrawer();
     }
@@ -5862,8 +5862,80 @@ function handleReceiptDrawerClose() {
 
 // 在小票页内点击“排单”悬浮球时，复用保存到历史记录的逻辑
 function handleReceiptSchedule() {
+    if (window.editingHistoryId) {
+        openReceiptScheduleChoiceModal();
+        return;
+    }
     saveToHistory();
     maybeReturnToRecordAndCloseReceipt();
+}
+
+// 打开小票页排单保存方式选择弹窗
+function openReceiptScheduleChoiceModal() {
+    var modal = document.getElementById('receiptScheduleChoiceModal');
+    if (modal) {
+        modal.classList.remove('d-none');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+}
+
+// 关闭小票页排单保存方式选择弹窗
+function closeReceiptScheduleChoiceModal() {
+    var modal = document.getElementById('receiptScheduleChoiceModal');
+    if (modal) {
+        modal.classList.add('d-none');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+}
+
+// 弹窗中选择「覆盖原订单」
+function receiptScheduleChoiceOverwrite() {
+    closeReceiptScheduleChoiceModal();
+    saveToHistory();
+    maybeReturnToRecordAndCloseReceipt();
+}
+
+// 弹窗中选择「另存为新排单」
+function receiptScheduleChoiceSaveAsNew() {
+    closeReceiptScheduleChoiceModal();
+    window.editingHistoryId = null;
+    saveToHistory();
+    maybeReturnToRecordAndCloseReceipt();
+}
+
+// 打开计算页保存方式选择弹窗
+function openCalculatorSaveChoiceModal() {
+    var modal = document.getElementById('calculatorSaveChoiceModal');
+    if (modal) {
+        modal.classList.remove('d-none');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+}
+
+// 关闭计算页保存方式选择弹窗
+function closeCalculatorSaveChoiceModal() {
+    var modal = document.getElementById('calculatorSaveChoiceModal');
+    if (modal) {
+        modal.classList.add('d-none');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+}
+
+// 计算页弹窗中选择「覆盖原订单」
+function calculatorSaveChoiceOverwrite() {
+    closeCalculatorSaveChoiceModal();
+    saveToHistory();
+    if (typeof closeCalculatorDrawer === 'function') closeCalculatorDrawer();
+    showPage('quote');
+}
+
+// 计算页弹窗中选择「另存为新排单」
+function calculatorSaveChoiceSaveAsNew() {
+    closeCalculatorSaveChoiceModal();
+    window.editingHistoryId = null;
+    saveToHistory();
+    if (typeof closeCalculatorDrawer === 'function') closeCalculatorDrawer();
+    showPage('quote');
 }
 
 // 手机上自动缩放小票以适应屏幕宽度（保持 400px 内部排版不变）
@@ -6040,7 +6112,6 @@ function saveToHistory() {
             history[index] = {
                 ...quoteData,
                 id: window.editingHistoryId,
-                timestamp: existing.timestamp,
                 productDoneStates: doneStates,
                 settlement: existing.settlement,
                 status: existing.status
@@ -6352,7 +6423,7 @@ function getScheduleBarsForCalendar(year, month) {
     return bars;
 }
 
-// 排单日历条带色板（顺序：青、红、蓝、橙、绿、紫、黄、品红）
+// 排单日历条带色板（顺序：青、红、蓝、橙、绿、紫、黄、品红、茶、珊瑚，共10色）
 var SCHEDULE_BAR_COLORS = [
     'rgba(135, 205, 250, 0.38)',   // 0 青
     'rgba(245, 195, 195, 0.38)',   // 1 红
@@ -6361,12 +6432,14 @@ var SCHEDULE_BAR_COLORS = [
     'rgba(195, 245, 225, 0.38)',   // 4 绿
     'rgba(218, 200, 245, 0.38)',   // 5 紫
     'rgba(255, 235, 100, 0.38)',   // 6 黄
-    'rgba(240, 140, 210, 0.38)'    // 7 品红
+    'rgba(240, 140, 210, 0.38)',   // 7 品红
+    'rgba(210, 180, 140, 0.38)',   // 8 茶
+    'rgba(255, 160, 150, 0.38)'    // 9 珊瑚
 ];
-var SCHEDULE_BAR_TEXT_COLORS = ['#1e5a7a', '#5c2828', '#2d4a6b', '#5c2810', '#2d6850', '#3d2d5c', '#5c4d10', '#6b2d5c'];
-var SCHEDULE_BAR_DOT_COLORS = ['#5eb8e8', '#c47a7a', '#7eb0e8', '#e88a5c', '#6dc49a', '#9d7ec9', '#e6c83d', '#d97eb8'];
+var SCHEDULE_BAR_TEXT_COLORS = ['#1e5a7a', '#5c2828', '#2d4a6b', '#5c2810', '#2d6850', '#3d2d5c', '#5c4d10', '#6b2d5c', '#5c4a28', '#6b2d35'];
+var SCHEDULE_BAR_DOT_COLORS = ['#5eb8e8', '#c47a7a', '#7eb0e8', '#e88a5c', '#6dc49a', '#9d7ec9', '#e6c83d', '#d97eb8', '#d2b48c', '#ffa096'];
 
-// 黑夜模式彩条色板（与白天一一对应：0青 1红 2蓝 3橙 4绿 5紫 6黄 7品红）
+// 黑夜模式彩条色板（与白天一一对应，共10色）
 var SCHEDULE_BAR_COLORS_DARK = [
     'rgba(56, 189, 248, 0.5)',    // 0 青
     'rgba(248, 113, 113, 0.5)',   // 1 红
@@ -6375,10 +6448,12 @@ var SCHEDULE_BAR_COLORS_DARK = [
     'rgba(74, 222, 128, 0.5)',    // 4 绿
     'rgba(192, 132, 252, 0.5)',   // 5 紫
     'rgba(254, 230, 50, 0.5)',    // 6 黄
-    'rgba(236, 72, 153, 0.5)'     // 7 品红
+    'rgba(236, 72, 153, 0.5)',    // 7 品红
+    'rgba(217, 119, 6, 0.5)',     // 8 茶
+    'rgba(244, 63, 94, 0.5)'      // 9 珊瑚
 ];
-var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#fca5a5', '#93c5fd', '#fd8a5c', '#86efac', '#c4b5fd', '#fde047', '#f472b6'];
-var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#f87171', '#60a5fa', '#f97316', '#4ade80', '#c084fc', '#facc15', '#ec4899'];
+var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#fca5a5', '#93c5fd', '#fd8a5c', '#86efac', '#c4b5fd', '#fde047', '#f472b6', '#fcd34d', '#fda4af'];
+var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#f87171', '#60a5fa', '#f97316', '#4ade80', '#c084fc', '#facc15', '#ec4899', '#f59e0b', '#fb7185'];
 
 // 根据屏幕宽度返回日历彩条最大轨道数
 function getScheduleMaxTracks() {
@@ -6800,6 +6875,29 @@ function toggleOrderPlatformClear() {
     if ((input.value || '').trim()) wrap.classList.add('has-value');
     else wrap.classList.remove('has-value');
 }
+
+// 根据单主 ID 从历史记录自动填充接单平台和联系方式（取该单主最近一条记录）
+function fillOrderPlatformAndContactFromHistory() {
+    var clientIdEl = document.getElementById('clientId');
+    var orderPlatformEl = document.getElementById('orderPlatform');
+    var contactInfoEl = document.getElementById('contactInfo');
+    if (!clientIdEl || !orderPlatformEl || !contactInfoEl) return;
+    var clientId = (clientIdEl.value || '').trim();
+    if (!clientId || !Array.isArray(history) || history.length === 0) return;
+    var key = clientId.toLowerCase();
+    for (var i = history.length - 1; i >= 0; i--) {
+        var item = history[i];
+        var itemId = (item && item.clientId != null) ? String(item.clientId).trim().toLowerCase() : '';
+        if (itemId === key) {
+            orderPlatformEl.value = (item.contact != null && item.contact !== '') ? String(item.contact).trim() : '';
+            contactInfoEl.value = (item.contactInfo != null && item.contactInfo !== '') ? String(item.contactInfo).trim() : '';
+            if (typeof syncOrderPlatformToPlatform === 'function') syncOrderPlatformToPlatform();
+            if (typeof toggleOrderPlatformClear === 'function') toggleOrderPlatformClear();
+            return;
+        }
+    }
+}
+
 function openSettlementModal(recordId, preSelectedType) {
     var item = history.find(function (h) { return h.id === recordId; });
     if (!item) {
@@ -8507,14 +8605,16 @@ function editHistoryItem(id) {
     
     // 切换到排单页
     if (typeof showPage === 'function') showPage('quote');
-    // 延迟打开抽屉，确保弹窗关闭动画完成、DOM 稳定；在抽屉打开后再设置下单时间
+    // 延迟打开抽屉，确保弹窗关闭、DOM 稳定；在抽屉打开后再设置下单时间
     var _orderTimeYmd = quote.timestamp ? (function(){ var d = new Date(quote.timestamp); return !isNaN(d.getTime()) ? toYmd(d) : null; }()) : null;
     requestAnimationFrame(function () {
-        openCalculatorDrawer(true);
-        if (_orderTimeYmd) {
-            var _oinp = document.getElementById('orderTimeInput');
-            if (_oinp) { _oinp.value = _orderTimeYmd; _oinp.removeAttribute('readonly'); _oinp.removeAttribute('disabled'); }
-        }
+        requestAnimationFrame(function () {
+            openCalculatorDrawer(true);
+            if (_orderTimeYmd) {
+                var _oinp = document.getElementById('orderTimeInput');
+                if (_oinp) { _oinp.value = _orderTimeYmd; _oinp.removeAttribute('readonly'); _oinp.removeAttribute('disabled'); }
+            }
+        });
     });
 
     // 清空当前制品和赠品
@@ -8733,8 +8833,6 @@ function editHistoryItem(id) {
     
     // 保存当前编辑的历史记录ID，用于更新
     window.editingHistoryId = id;
-    
-    alert('历史记录已加载到计算页，可以修改后重新计算！');
 }
 
 // 从数据添加其他费用（用于编辑历史记录）
@@ -10301,12 +10399,19 @@ function renderProductSettings() {
         const toggleText = isExpanded ? '▲' : '▼';
         const contentClass = isExpanded ? '' : 'd-none';
         
+        const escapedCategory = (category || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         html += `
             <div class="category-container">
-                <div class="category-header" onclick="toggleCategory('${category}')">
+                <div class="category-header" onclick="toggleCategory('${category.replace(/'/g, "\\'")}')">
                     <div class="category-title">${category}</div>
                     <div class="category-count">(${categorySettings.length}个)</div>
-                    <div class="category-toggle">${toggleText}</div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <button type="button" class="icon-action-btn delete" data-category="${escapedCategory}" onclick="event.stopPropagation();deleteProductCategory(this.getAttribute('data-category'))" aria-label="删除分类" title="删除分类">
+                            <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                            <span class="sr-only">删除分类</span>
+                        </button>
+                        <div class="category-toggle">${toggleText}</div>
+                    </div>
                 </div>
                 <div class="category-content ${contentClass}" id="${category}-content">
         `;
@@ -11161,6 +11266,22 @@ function renderPlatformFees() {
     }
     html += '<button type="button" class="btn secondary mt-2" onclick="addPlatformFeeOption()">+ 添加</button>';
     container.innerHTML = html;
+}
+
+// 删除制品大类（将该大类下的制品移至「其他」）
+function deleteProductCategory(categoryName) {
+    if (!categoryName || !categoryName.trim()) return;
+    const category = categoryName.trim();
+    const productsInCategory = productSettings.filter(p => (p.category || '').trim() === category);
+    const count = productsInCategory.length;
+    if (count === 0) return;
+    const targetCategory = '其他';
+    if (!confirm(`确定要删除分类「${category}」吗？该分类下的 ${count} 个制品将移至「${targetCategory}」。`)) {
+        return;
+    }
+    productsInCategory.forEach(p => { p.category = targetCategory; });
+    saveData();
+    renderProductSettings();
 }
 
 // 添加新分类
