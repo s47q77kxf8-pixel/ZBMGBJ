@@ -862,6 +862,11 @@ function addDefaultProductSettings() {
             ]},
             { id: 15, name: '麻将', category: '亚克力类', priceType: 'config', basePrice: 110, baseConfig: '1面', additionalConfigs: [
                 { name: '面', price: 30, unit: '面' }
+            ]},
+            { id: 16, name: '头像', category: '绘制类', priceType: 'nodes', price: 300, nodes: [
+                { name: '草稿', percent: 30 },
+                { name: '色稿', percent: 40 },
+                { name: '成图', percent: 30 }
             ]}
         ];
     }
@@ -4572,6 +4577,42 @@ function updateProductForm(productId) {
                 </div>
             `;
             break;
+            
+        case 'nodes':
+            const nodes = productSetting.nodes || [];
+            const totalPrice = (product.nodeTotalPrice != null && product.nodeTotalPrice !== '') ? product.nodeTotalPrice : (productSetting.price || '');
+            const nodePercents = product.nodePercents && product.nodePercents.length === nodes.length ? product.nodePercents : nodes.map(n => n.percent);
+            const totalNum = parseFloat(totalPrice) || 0;
+            html = `
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="productNodeTotalPrice-${productId}">总价（元）</label>
+                        <input type="number" id="productNodeTotalPrice-${productId}" value="${totalPrice}" min="0" step="1" 
+                               onchange="updateProduct(${productId}, 'nodeTotalPrice', this.value); updateProductForm(${productId})" 
+                               placeholder="填写总价">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1 node-percents-group">
+                        <label>节点比例（可直接修改，比例之和建议 100%）</label>
+                        ${nodes.map((node, idx) => {
+                            const pct = nodePercents[idx] != null ? nodePercents[idx] : node.percent;
+                            const amount = totalNum > 0 ? (totalNum * (pct / 100)).toFixed(2) : '—';
+                            return `
+                                <div class="node-percent-row d-flex gap-2 mb-2 items-center p-2 bg-light rounded">
+                                    <span class="node-percent-name">${(node.name || '节点').replace(/</g, '&lt;')}</span>
+                                    <input type="number" value="${pct}" min="0" max="100" step="1" style="width: 70px;"
+                                           onchange="updateProductNodePercent(${productId}, ${idx}, parseFloat(this.value) || 0); updateProductForm(${productId})">
+                                    <span class="text-gray">%</span>
+                                    <span class="node-percent-amount text-gray">¥${amount}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                        ${nodes.length ? '<p class="text-gray text-sm mt-1">比例之和：<span id="productNodePercentsSum-' + productId + '">' + (nodePercents.reduce((s, p) => s + (parseFloat(p) || 0), 0)) + '</span>%</p>' : '<p class="text-gray text-sm">请在设置页为该制品配置节点</p>'}
+                    </div>
+                </div>
+            `;
+            break;
     }
     
     container.innerHTML = html;
@@ -4594,6 +4635,17 @@ function updateProduct(id, field, value) {
         // 确保值是字符串类型，避免类型转换问题
         product[field] = value;
     }
+}
+
+// 更新按节点收费制品的某节点比例
+function updateProductNodePercent(productId, index, value) {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    if (!Array.isArray(product.nodePercents)) {
+        const productSetting = productSettings.find(p => p.id === parseInt(product.type));
+        product.nodePercents = (productSetting && productSetting.nodes) ? productSetting.nodes.map(n => n.percent) : [];
+    }
+    product.nodePercents[index] = value;
 }
 
 // 快捷增减制品数
@@ -4768,6 +4820,13 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
             case 'config':
                 basePrice = productSetting.basePrice;
                 break;
+            case 'nodes':
+                basePrice = (product.nodeTotalPrice != null && product.nodeTotalPrice !== '') ? parseFloat(product.nodeTotalPrice) : (productSetting.price || 0);
+                if (!basePrice || isNaN(basePrice) || basePrice <= 0) {
+                    alert(`制品${i+1}（${productSetting.name}）请填写总价！`);
+                    return;
+                }
+                break;
         }
         
         // 计算额外配置（如果是基础+递增价类型）
@@ -4811,14 +4870,14 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
             }
         }
         
-        // 计算同模相关数据
-        const sameModelCount = product.sameModel ? product.quantity - 1 : 0;
+        // 计算同模相关数据（按节点收费不参与同模）
+        const sameModelCount = productSetting.priceType === 'nodes' ? 0 : (product.sameModel ? product.quantity - 1 : 0);
         const sameModelUnitPrice = basePrice * sameModelCoefficient;
         const sameModelTotal = sameModelCount * sameModelUnitPrice;
         
-        // 计算背景费
+        // 计算背景费（按节点收费不参与背景费）
         let backgroundFee = 0;
-        if (product.hasBackground) {
+        if (productSetting.priceType !== 'nodes' && product.hasBackground) {
             const backgroundFeePerProduct = defaultSettings.backgroundFee || 0;
             // 主制品全额背景费，同模制品应用同模系数
             const mainBackgroundFee = backgroundFeePerProduct;
@@ -4827,10 +4886,10 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
             backgroundFee = mainBackgroundFee + sameModelBackgroundTotal;
         }
         
-        // 计算工艺费用
+        // 计算工艺费用（按节点收费不参与工艺）
         let totalProcessFee = 0;
         let processDetails = [];
-        
+        if (productSetting.priceType !== 'nodes') {
         // 处理多选工艺
         if (product.processes) {
             Object.values(product.processes).forEach(processChoice => {
@@ -4855,10 +4914,25 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
                 }
             });
         }
+        }
         
         // 计算制品总价
         const baseProductTotal = basePrice + sameModelTotal;
         const productTotal = baseProductTotal + totalProcessFee + backgroundFee;
+        
+        // 按节点收费：生成节点明细
+        let nodeDetails = [];
+        if (productSetting.priceType === 'nodes') {
+            const nodeTotalPrice = basePrice;
+            const qty = product.quantity || 1;
+            const nodes = productSetting.nodes || [];
+            const percents = (product.nodePercents && product.nodePercents.length === nodes.length) ? product.nodePercents : nodes.map(n => n.percent);
+            nodes.forEach((node, idx) => {
+                const percent = percents[idx] != null ? percents[idx] : node.percent;
+                const amount = nodeTotalPrice * qty * (percent / 100);
+                nodeDetails.push({ name: node.name || '节点', percent: percent, amount: amount });
+            });
+        }
         
         // 保存制品价格信息
         const productPriceInfo = {
@@ -4901,6 +4975,12 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
         if (productSetting.priceType === 'double') {
             productPriceInfo.sides = product.sides;
             productPriceInfo.productId = productTypeId;
+        }
+        
+        // 按节点收费：保存总价与节点明细
+        if (productSetting.priceType === 'nodes') {
+            productPriceInfo.nodeTotalPrice = basePrice;
+            productPriceInfo.nodeDetails = nodeDetails;
         }
         
         productPrices.push(productPriceInfo);
@@ -5229,7 +5309,8 @@ function generateQuote() {
         const hasSameModel = item.sameModelCount > 0;
         const hasProcess = item.processDetails && item.processDetails.length > 0;
         const hasAdditionalConfig = item.productType === 'config' && item.additionalConfigDetails && item.additionalConfigDetails.length > 0;
-        const canMerge = !hasSameModel && !hasProcess && item.productType !== 'config' && (item.productType === 'fixed' || (item.productType === 'double' && !hasAdditionalConfig));
+        const isNodes = item.productType === 'nodes';
+        const canMerge = !isNodes && !hasSameModel && !hasProcess && item.productType !== 'config' && (item.productType === 'fixed' || (item.productType === 'double' && !hasAdditionalConfig));
         
         // 获取同模系数值（用于显示）
         let sameModelRate = 0.5;
@@ -5250,7 +5331,7 @@ function generateQuote() {
         // config的成品单价（basePrice已包含配件）
         const finishedProductUnitPrice = item.basePrice;
         
-        // 处理制品名（double需要加单/双面）
+        // 处理制品名（double需要加单/双面；nodes 不加后缀）
         let productName = item.product;
         if (item.productType === 'double') {
             if (item.sides === 'single') {
@@ -5260,8 +5341,17 @@ function generateQuote() {
             }
         }
         
+        // 按节点收费：总览行 + 节点明细
+        if (isNodes) {
+            const nodeTotal = item.nodeTotalPrice != null ? item.nodeTotalPrice : item.basePrice;
+            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${nodeTotal.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+            if (item.nodeDetails && item.nodeDetails.length > 0) {
+                item.nodeDetails.forEach(node => {
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${(node.name || '节点').replace(/</g, '&lt;')} ${node.percent}%</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1">¥${(node.amount || 0).toFixed(2)}</div></div>`;
+                });
+            }
+        } else if (canMerge) {
         // 总览行
-        if (canMerge) {
             // fixed/double 无同模无工艺：合并到总览行
             html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${fullPriceUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
         } else {
@@ -8886,6 +8976,12 @@ function editHistoryItem(id) {
                     product.sides = (productPrice.totalAdditionalCount + 1).toString();
                 }
                 
+                // 恢复按节点收费的总价与节点比例
+                if (productPrice.productType === 'nodes') {
+                    product.nodeTotalPrice = productPrice.nodeTotalPrice != null ? productPrice.nodeTotalPrice : productPrice.basePrice;
+                    product.nodePercents = (productPrice.nodeDetails && productPrice.nodeDetails.length) ? productPrice.nodeDetails.map(d => d.percent) : [];
+                }
+                
                 products.push(product);
                 renderProduct(product);
             }
@@ -9473,6 +9569,9 @@ function exportHistoryToExcel() {
                         break;
                     case 'config':
                         priceTypeText = '基础+递增价';
+                        break;
+                    case 'nodes':
+                        priceTypeText = '按节点收费';
                         break;
                     default:
                         priceTypeText = product.productType || '';
@@ -10316,6 +10415,65 @@ function saveSettings() {
 // 管理递增配置项
 let additionalConfigsList = [];
 
+// 管理按节点收费的节点列表（添加制品弹窗用）
+let nodesList = [];
+let nodeIdCounter = 0;
+
+function addNewProductNode() {
+    nodeIdCounter++;
+    nodesList.push({ id: nodeIdCounter, name: '', percent: 0 });
+    renderNewProductNodes();
+}
+
+function removeNewProductNode(nodeId) {
+    if (!confirm('确定要删除该节点吗？')) return;
+    nodesList = nodesList.filter(n => n.id !== nodeId);
+    renderNewProductNodes();
+}
+
+function updateNewProductNode(nodeId, field, value) {
+    const node = nodesList.find(n => n.id === nodeId);
+    if (node) {
+        if (field === 'percent') {
+            node.percent = parseFloat(value) || 0;
+        } else {
+            node[field] = value;
+        }
+    }
+    renderNewProductNodes();
+}
+
+function renderNewProductNodes() {
+    const container = document.getElementById('newProductNodesContainer');
+    const sumHint = document.getElementById('newProductNodesSumHint');
+    if (!container) return;
+    let html = '';
+    nodesList.forEach((node) => {
+        html += `
+            <div class="d-flex gap-2 mb-2 items-center p-2 bg-light rounded node-row">
+                <input type="text" placeholder="节点名称" value="${(node.name || '').replace(/"/g, '&quot;')}" 
+                       onchange="updateNewProductNode(${node.id}, 'name', this.value)" 
+                       class="flex-1 p-2">
+                <input type="number" placeholder="比例%" value="${node.percent}" min="0" max="100" step="1"
+                       onchange="updateNewProductNode(${node.id}, 'percent', this.value)" 
+                       class="w-100 p-2" style="width: 80px;">
+                <button type="button" class="icon-action-btn delete" onclick="removeNewProductNode(${node.id})" aria-label="删除节点" title="删除">
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                    <span class="sr-only">删除</span>
+                </button>
+            </div>
+        `;
+    });
+    if (nodesList.length === 0) {
+        html = '<p class="text-gray text-sm">暂无节点，点击「添加节点」按钮添加，比例之和须为 100%</p>';
+    }
+    container.innerHTML = html;
+    const sum = nodesList.reduce((s, n) => s + (parseFloat(n.percent) || 0), 0);
+    if (sumHint) {
+        sumHint.textContent = nodesList.length ? `比例之和：${sum}%${sum !== 100 ? '（请调整为 100%）' : ''}` : '';
+    }
+}
+
 function addAdditionalConfig() {
     const container = document.getElementById('additionalConfigsContainer');
     const configId = Date.now();
@@ -10387,10 +10545,14 @@ function openAddProductModal() {
     document.getElementById('newProductPriceDouble').value = '';
     document.getElementById('newProductBaseConfig').value = '';
     document.getElementById('newProductBasePrice').value = '';
+    const nodePriceInput = document.getElementById('newProductNodePrice');
+    if (nodePriceInput) nodePriceInput.value = '';
     additionalConfigsList = [];
+    nodesList = [];
     
     // 显示固定价设置，隐藏其他设置
     showPriceSettings('fixed');
+    renderNewProductNodes();
     
     // 生成分类选项
     generateCategoryOptions();
@@ -10407,6 +10569,16 @@ function openAddProductModal() {
                 addAdditionalConfig(); // 添加一个初始配置项
             }
             renderAdditionalConfigs();
+        } else if (this.value === 'nodes') {
+            if (nodesList.length === 0) {
+                nodeIdCounter++;
+                nodesList.push({ id: nodeIdCounter, name: '草稿', percent: 30 });
+                nodeIdCounter++;
+                nodesList.push({ id: nodeIdCounter, name: '色稿', percent: 40 });
+                nodeIdCounter++;
+                nodesList.push({ id: nodeIdCounter, name: '成图', percent: 30 });
+            }
+            renderNewProductNodes();
         }
     });
 }
@@ -10450,6 +10622,8 @@ function showPriceSettings(priceType) {
     document.getElementById('fixedPriceSettings').classList.add('d-none');
     document.getElementById('doublePriceSettings').classList.add('d-none');
     document.getElementById('configPriceSettings').classList.add('d-none');
+    const nodePriceEl = document.getElementById('nodePriceSettings');
+    if (nodePriceEl) nodePriceEl.classList.add('d-none');
     
     // 显示选中的价格设置
     switch(priceType) {
@@ -10461,6 +10635,9 @@ function showPriceSettings(priceType) {
             break;
         case 'config':
             document.getElementById('configPriceSettings').classList.remove('d-none');
+            break;
+        case 'nodes':
+            if (nodePriceEl) nodePriceEl.classList.remove('d-none');
             break;
     }
 }
@@ -10514,6 +10691,19 @@ function saveNewProduct() {
                 // 兼容旧格式：如果没有配置项，使用旧的单配置格式
                 newProduct.additionalConfigs = [];
             }
+            break;
+        case 'nodes':
+            newProduct.price = parseFloat(document.getElementById('newProductNodePrice').value) || 0;
+            if (nodesList.length === 0) {
+                alert('请至少添加一个节点，且比例之和须为 100%！');
+                return;
+            }
+            const nodesSum = nodesList.reduce((s, n) => s + (parseFloat(n.percent) || 0), 0);
+            if (Math.abs(nodesSum - 100) > 0.01) {
+                alert('节点比例之和须为 100%，当前为 ' + nodesSum + '%！');
+                return;
+            }
+            newProduct.nodes = nodesList.map(n => ({ name: String(n.name || '').trim() || '节点', percent: parseFloat(n.percent) || 0 }));
             break;
     }
     
@@ -10644,6 +10834,7 @@ function renderProductSettings() {
                                 <option value="fixed" ${setting.priceType === 'fixed' ? 'selected' : ''}>固定价</option>
                                 <option value="double" ${setting.priceType === 'double' ? 'selected' : ''}>单双面价</option>
                                 <option value="config" ${setting.priceType === 'config' ? 'selected' : ''}>基础+递增价</option>
+                                <option value="nodes" ${setting.priceType === 'nodes' ? 'selected' : ''}>按节点收费</option>
                             </select>
                         </div>
                     </div>
@@ -10708,6 +10899,38 @@ function renderProductSettings() {
                                     ${setting.additionalConfigs && setting.additionalConfigs.length > 0 ? '' : '<p class="text-gray text-sm">暂无配置项，点击下方按钮添加</p>'}
                                 </div>
                                 <button type="button" class="btn secondary small mt-2" onclick="addProductAdditionalConfigSetting(${setting.id})">添加配置项</button>
+                            </div>
+                        </div>
+                    ` : ''}
+                    <!-- 按节点收费设置 -->
+                    ${setting.priceType === 'nodes' ? `
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>默认总价（元）</label>
+                                <input type="number" value="${setting.price || 0}" onchange="updateProductSetting(${setting.id}, 'price', parseFloat(this.value))" placeholder="例如：300" min="0" step="1">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label>节点列表（比例之和须为 100%）</label>
+                                <div id="productNodesContainer-${setting.id}">
+                                    ${(setting.nodes || []).map((node, index) => `
+                                        <div class="d-flex gap-2 mb-2 items-center p-2 bg-light rounded node-row">
+                                            <input type="text" placeholder="节点名称" value="${(node.name || '').replace(/"/g, '&quot;')}" 
+                                                   onchange="updateProductNodeSetting(${setting.id}, ${index}, 'name', this.value)" 
+                                                   class="flex-1 p-2">
+                                            <input type="number" placeholder="比例%" value="${node.percent || 0}" min="0" max="100" step="1"
+                                                   onchange="updateProductNodeSetting(${setting.id}, ${index}, 'percent', parseFloat(this.value))" 
+                                                   class="w-100 p-2" style="width: 80px;">
+                                            <button type="button" class="icon-action-btn delete" onclick="removeProductNodeSetting(${setting.id}, ${index})" aria-label="删除节点" title="删除">
+                                                <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                                <span class="sr-only">删除</span>
+                                            </button>
+                                        </div>
+                                    `).join('')}
+                                    ${setting.nodes && setting.nodes.length > 0 ? '' : '<p class="text-gray text-sm">暂无节点，点击下方按钮添加</p>'}
+                                </div>
+                                <button type="button" class="btn secondary small mt-2" onclick="addProductNodeSetting(${setting.id})">添加节点</button>
                             </div>
                         </div>
                     ` : ''}
@@ -11575,7 +11798,37 @@ function removeProductAdditionalConfigSetting(productId, index) {
     }
 }
 
+// 按节点收费：添加节点
+function addProductNodeSetting(settingId) {
+    const setting = productSettings.find(p => p.id === settingId);
+    if (setting) {
+        if (!setting.nodes) setting.nodes = [];
+        setting.nodes.push({ name: '新节点', percent: 0 });
+        renderProductSettings();
+    }
+}
 
+// 按节点收费：更新节点
+function updateProductNodeSetting(settingId, index, field, value) {
+    const setting = productSettings.find(p => p.id === settingId);
+    if (setting && setting.nodes && setting.nodes[index]) {
+        if (field === 'percent') {
+            setting.nodes[index][field] = parseFloat(value) || 0;
+        } else {
+            setting.nodes[index][field] = value;
+        }
+    }
+}
+
+// 按节点收费：删除节点
+function removeProductNodeSetting(settingId, index) {
+    if (!confirm('确定要删除该节点吗？')) return;
+    const setting = productSettings.find(p => p.id === settingId);
+    if (setting && setting.nodes && setting.nodes[index]) {
+        setting.nodes.splice(index, 1);
+        renderProductSettings();
+    }
+}
 
 // 删除制品设置
 function deleteProductSetting(id) {
@@ -11750,6 +12003,8 @@ function importFromExcel(event) {
                         priceType = 'double';
                     } else if (rawPriceType === '基础+递增价' || rawPriceType === 'config') {
                         priceType = 'config';
+                    } else if (rawPriceType === '按节点收费' || rawPriceType === 'nodes') {
+                        priceType = 'nodes';
                     }
                     console.log(`第${index + 2}行：制品名称=${name}，原始价格类型=${rawPriceType}，映射后价格类型=${priceType}`);
                     
@@ -11807,21 +12062,40 @@ function importFromExcel(event) {
                                 if (configIndex > 10) break;
                             }
                             
-                            // 如果没有找到编号的配置项，尝试使用旧格式
-                            if (newProduct.additionalConfigs.length === 0) {
-                                const oldConfigName = row['配置名称'] || '配置';
-                                const oldConfigPrice = parseFloat(row['配置价格'] || row['递增价'] || row['递增价格'] || 0) || 0;
-                                const oldConfigUnit = row['配置单位'] || row['单位'] || row['递增单位'] || '';
-                                
-                                if (oldConfigPrice > 0) {  // 如果有价格，则添加配置项
-                                    newProduct.additionalConfigs.push({
-                                        name: oldConfigName,
-                                        price: oldConfigPrice,
-                                        unit: oldConfigUnit
-                                    });
-                                }
+                            break;
+                        case 'nodes':
+                        case '按节点收费':
+                            newProduct.price = parseFloat(row['默认总价'] || row['固定价格'] || row['价格'] || 0) || 0;
+                            newProduct.nodes = [];
+                            const nodeStr = String(row['节点'] || '').trim();
+                            if (nodeStr) {
+                                const nodeParts = nodeStr.split(/[、,，]/);
+                                nodeParts.forEach(p => {
+                                    p = p.trim();
+                                    const m = p.match(/^(.+?)(\d+(?:\.\d+)?)\s*%?\s*$/);
+                                    if (m) {
+                                        newProduct.nodes.push({ name: m[1].trim() || '节点', percent: parseFloat(m[2]) || 0 });
+                                    }
+                                });
+                            }
+                            if (newProduct.nodes.length === 0) {
+                                newProduct.nodes = [{ name: '草稿', percent: 30 }, { name: '色稿', percent: 40 }, { name: '成图', percent: 30 }];
                             }
                             break;
+                    }
+                    
+                    // 兼容：如果没有找到编号的配置项，尝试使用旧格式（仅 config）
+                    if (priceType === 'config' && newProduct.additionalConfigs && newProduct.additionalConfigs.length === 0) {
+                        const oldConfigName = row['配置名称'] || '配置';
+                        const oldConfigPrice = parseFloat(row['配置价格'] || row['递增价'] || row['递增价格'] || 0) || 0;
+                        const oldConfigUnit = row['配置单位'] || row['单位'] || row['递增单位'] || '';
+                        if (oldConfigPrice > 0) {
+                            newProduct.additionalConfigs.push({
+                                name: oldConfigName,
+                                price: oldConfigPrice,
+                                unit: oldConfigUnit
+                            });
+                        }
                     }
                     
                     // 检查是否已存在同名同分类制品，如果存在则替换
@@ -11880,7 +12154,8 @@ function exportToExcel() {
             '制品名称': setting.name || '',
             '计价方式': setting.priceType === 'fixed' ? '固定价' : 
                        setting.priceType === 'double' ? '单双面价' : 
-                       setting.priceType === 'config' ? '基础+递增价' : ''
+                       setting.priceType === 'config' ? '基础+递增价' : 
+                       setting.priceType === 'nodes' ? '按节点收费' : ''
         };
         
         switch(setting.priceType) {
@@ -11890,6 +12165,12 @@ function exportToExcel() {
             case 'double':
                 row['单面价格'] = setting.priceSingle || 0;
                 row['双面价格'] = setting.priceDouble || 0;
+                break;
+            case 'nodes':
+                row['默认总价'] = setting.price || 0;
+                if (setting.nodes && setting.nodes.length > 0) {
+                    row['节点'] = setting.nodes.map(n => (n.name || '节点') + (n.percent != null ? n.percent + '%' : '')).join('、');
+                }
                 break;
             case 'config':
                 row['基础配置'] = setting.baseConfig || '';

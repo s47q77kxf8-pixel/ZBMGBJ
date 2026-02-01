@@ -940,11 +940,10 @@ body {
     }
 }
 
-/* 小票悬浮抽屉：PC 右侧 / 移动端底部 */
+/* 小票悬浮抽屉：PC 右侧 / 移动端底部（z-index 由文件后段统一为 99997） */
 .receipt-drawer {
     position: fixed;
     inset: 0;
-    z-index: 140;
     display: flex;
     justify-content: flex-end;
     align-items: stretch;
@@ -1783,7 +1782,7 @@ input:focus, select:focus {
     margin: 0;
 }
 
-/* 弹窗样式 */
+/* 弹窗样式（层级高于计算抽屉 10002，避免被遮挡） */
 .modal {
     position: fixed;
     top: 0;
@@ -1792,10 +1791,14 @@ input:focus, select:focus {
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
-    z-index: 1000;
+    z-index: 10050;
     display: flex;
     justify-content: center;
     align-items: center;
+    padding: 1rem;
+    box-sizing: border-box;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .modal-content {
@@ -1804,8 +1807,14 @@ input:focus, select:focus {
     border-radius: var(--radius-lg);
     width: 90%;
     max-width: 500px;
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     box-shadow: var(--shadow-md);
     animation: slideIn 0.3s ease-out;
+    flex-shrink: 0;
+    margin: auto;
 }
 
 .modal-content-compact {
@@ -1845,6 +1854,7 @@ input:focus, select:focus {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
+    flex-shrink: 0;
 }
 
 .close {
@@ -1855,6 +1865,10 @@ input:focus, select:focus {
 
 .modal-body {
     margin: 1rem 0;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .modal-body textarea {
@@ -1874,6 +1888,7 @@ input:focus, select:focus {
     justify-content: flex-end;
     gap: 1rem;
     margin-top: 2rem;
+    flex-shrink: 0;
 }
 
 .order-remark-textarea {
@@ -4430,11 +4445,10 @@ input:checked + .toggle-slider:before {
     }
 }
 
-/* 小票预览抽屉（排单页右侧/底部） */
+/* 小票预览抽屉（排单页右侧/底部，z-index 由后段统一） */
 .receipt-drawer {
     position: fixed;
     inset: 0;
-    z-index: 120;
     display: flex;
     align-items: stretch;
     justify-content: flex-end;
@@ -5486,6 +5500,24 @@ input:checked + .toggle-slider:before {
     .incremental-config-unit {
         font-size: 0.75rem;
     }
+}
+
+/* 按节点收费：节点行、比例组 */
+.node-row,
+.node-percent-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.node-percents-group .node-percent-name {
+    min-width: 4em;
+}
+.node-percent-amount {
+    margin-left: auto;
+    font-size: 0.9em;
+}
+.price-settings#nodePriceSettings .node-row input[type="number"] {
+    width: 80px;
 }
 
 /* ========== 排单日历与当前批次 todo ========== */
@@ -7706,6 +7738,7 @@ html.theme-dark .settlement-preview {
 }
 
 /* ========== 小票悬浮抽屉（排单页左侧“小票页”） ========== */
+/* 小票抽屉 z-index 仅在此处定义，高于筛选抽屉(10000)、低于历史记录弹窗(99998) */
 .receipt-drawer {
     position: fixed;
     inset: 0;
