@@ -2832,7 +2832,9 @@ function getRecordProgressStatus(item) {
     const total = states.length;
     let doneCount = 0;
     for (let i = 0; i < total; i++) if (states[i]) doneCount++;
-    const pending = !item.startTime && !item.deadline;
+    const hasStart = (item.startTime && String(item.startTime).trim()) ? true : false;
+    const hasDeadline = (item.deadline && String(item.deadline).trim()) ? true : false;
+    const pending = !hasStart && !hasDeadline;
     const now = new Date();
     now.setHours(23, 59, 59, 999);
     
@@ -3088,7 +3090,9 @@ function applyRecordFilters() {
     }
 
     const renderItem = (item) => {
+        const platformLabel = escapeHtml((item && item.contact) ? String(item.contact).trim() : '');
         const clientId = escapeHtml((item && item.clientId) ? String(item.clientId) : '—');
+        const clientDisplay = platformLabel ? (platformLabel + ' ' + clientId) : clientId;
         const shortDate = formatRecordShortDate(item && item.timestamp);
         const amount = formatMoney(item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal));
         const status = getRecordProgressStatus(item);
@@ -3097,7 +3101,7 @@ function applyRecordFilters() {
             <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}">
                 <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})" onclick="event.stopPropagation()">
                 <div class="record-item-client-wrap">
-                    <span class="record-item-client">${clientId}</span>
+                    <span class="record-item-client">${clientDisplay}</span>
                     <span class="record-item-date">${shortDate}</span>
                 </div>
                 <div class="record-item-right">
@@ -3454,7 +3458,9 @@ function getStatsOrderStatus(item) {
     const total = states.length;
     let doneCount = 0;
     for (let i = 0; i < total; i++) if (states[i]) doneCount++;
-    const pending = !item.startTime && !item.deadline;
+    const hasStart = (item.startTime && String(item.startTime).trim()) ? true : false;
+    const hasDeadline = (item.deadline && String(item.deadline).trim()) ? true : false;
+    const pending = !hasStart && !hasDeadline;
     if (pending) return '待排单';
     const now = new Date();
     now.setHours(23, 59, 59, 999);
@@ -3485,8 +3491,22 @@ function isStatsOrderOverdue(item) {
     return d < today;
 }
 
+// 曾经逾期过：当前逾期 或 已完成但截止日已过（说明逾期后才完成）
+function isStatsOrderEverOverdue(item) {
+    if (!item || !item.deadline) return false;
+    if (isStatsOrderOverdue(item)) return true;
+    const status = getStatsOrderStatus(item);
+    if (status !== '已完成') return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(item.deadline);
+    d.setHours(0, 0, 0, 0);
+    return d < today;
+}
+
 function getStatsFiltersFromUI() {
     const timeEl = document.getElementById('statsTimeFilter');
+    const timeBasisEl = document.getElementById('statsTimeBasis');
     const customStart = document.getElementById('statsCustomStart');
     const customEnd = document.getElementById('statsCustomEnd');
     const amountBasis = document.getElementById('statsAmountBasis');
@@ -3497,11 +3517,13 @@ function getStatsFiltersFromUI() {
     const viewYearEl = document.getElementById('statsViewYear');
     const viewMonthEl = document.getElementById('statsViewMonth');
     const timeRange = (timeEl && timeEl.value) ? timeEl.value : 'thisMonth';
+    const timeBasis = (timeBasisEl && timeBasisEl.value) ? timeBasisEl.value : 'timestamp';
     const now = new Date();
     const viewYear = (viewYearEl && viewYearEl.value) ? parseInt(viewYearEl.value, 10) : now.getFullYear();
     const viewMonth = (viewMonthEl && viewMonthEl.value) ? parseInt(viewMonthEl.value, 10) : now.getMonth();
     return {
         timeRange: timeRange,
+        timeBasis: timeBasis === 'deadline' ? 'deadline' : 'timestamp',
         viewYear: isFinite(viewYear) ? viewYear : now.getFullYear(),
         viewMonth: isFinite(viewMonth) && viewMonth >= 0 && viewMonth <= 11 ? viewMonth : now.getMonth(),
         startDate: (customStart && customStart.value) || (quickStart && quickStart.value) || '',
@@ -3551,7 +3573,7 @@ function getStatsDataset(historySource, filters) {
     if (!Array.isArray(historySource) || historySource.length === 0) {
         return {
             filteredRecords: [],
-            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0 },
+            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0 },
             dailyAgg: [],
             weeklyAgg: [],
             monthlyAgg: [],
@@ -3565,13 +3587,23 @@ function getStatsDataset(historySource, filters) {
     }
     const dateRange = getStatsDateRange(filters);
     let list = historySource;
+    const useDeadline = filters.timeBasis === 'deadline';
     if (!dateRange.all) {
         const { start, end } = dateRange;
+        const startStr = start.toISOString().slice(0, 10);
+        const endStr = end.toISOString().slice(0, 10);
         list = historySource.filter(item => {
+            if (useDeadline) {
+                const d = item.deadline ? normalizeYmd(item.deadline) : null;
+                if (!d) return false;
+                return d >= startStr && d <= endStr;
+            }
             const t = item.timestamp ? new Date(item.timestamp) : null;
             if (!t || isNaN(t.getTime())) return false;
             return t >= start && t <= end;
         });
+    } else if (useDeadline) {
+        list = historySource.filter(item => item.deadline && String(item.deadline).trim());
     }
     if (filters.statusFilter !== 'all') {
         list = list.filter(item => {
@@ -3589,6 +3621,7 @@ function getStatsDataset(historySource, filters) {
     let itemDone = 0;
     let orderDoneCount = 0;
     let overdueOrderCount = 0;
+    let everOverdueOrderCount = 0;
     let orderSettledCount = 0;
     let cancelOrderCount = 0;
     let cancelAmountTotal = 0;
@@ -3619,6 +3652,7 @@ function getStatsDataset(historySource, filters) {
         const orderStatus = getStatsOrderStatus(item);
         if (orderStatus === '已完成') orderDoneCount++;
         if (isStatsOrderOverdue(item)) overdueOrderCount++;
+        if (isStatsOrderEverOverdue(item)) everOverdueOrderCount++;
         if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee' || item.settlement.type === 'waste_fee' || item.settlement.type === 'normal')) orderSettledCount++;
         if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
             cancelOrderCount++;
@@ -3635,7 +3669,7 @@ function getStatsDataset(historySource, filters) {
         statusMap[status].orderCount += 1;
         statusMap[status].amountTotal += revenue;
 
-        const dateStr = item.timestamp ? new Date(item.timestamp).toISOString().slice(0, 10) : '';
+        const dateStr = useDeadline ? (item.deadline ? normalizeYmd(item.deadline) : '') : (item.timestamp ? new Date(item.timestamp).toISOString().slice(0, 10) : '');
         if (dateStr) {
             if (!dailyMap[dateStr]) dailyMap[dateStr] = { date: dateStr, revenue: 0, orders: 0, itemTotal: 0, itemDone: 0 };
             dailyMap[dateStr].revenue += revenue;
@@ -3737,6 +3771,7 @@ function getStatsDataset(historySource, filters) {
             orderDoneCount,
             orderDoneRate,
             overdueOrderCount,
+            everOverdueOrderCount,
             orderSettledCount,
             orderSettledRate,
             cancelOrderCount,
@@ -3869,6 +3904,7 @@ function renderStatsKpis(totals) {
         <div class="kpi-card"><div class="kpi-label">制品项完成率</div><div class="kpi-value" id="kpiItemDoneRate">${fmt(totals.itemDoneRate)}%</div></div>
         <div class="kpi-card"><div class="kpi-label">订单完结率</div><div class="kpi-value" id="kpiOrderSettledRate">${fmt(totals.orderSettledRate || 0)}%</div></div>
         <div class="kpi-card"><div class="kpi-label">逾期</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div></div>
+        <div class="kpi-card"><div class="kpi-label">曾经逾期</div><div class="kpi-value" id="kpiEverOverdueOrders">${totals.everOverdueOrderCount ?? 0}</div></div>
         <div class="kpi-card"><div class="kpi-label">撤单</div><div class="kpi-value kpi-value-small" id="kpiCancel">${totals.cancelOrderCount || 0} 单 / ${fmt(totals.cancelAmountTotal || 0, true)}</div></div>
         <div class="kpi-card"><div class="kpi-label">废稿</div><div class="kpi-value kpi-value-small" id="kpiWaste">${totals.wasteOrderCount || 0} 单 / ${fmt(totals.wasteAmountTotal || 0, true)}</div></div>
         <div class="kpi-section-title">费用</div>
@@ -3968,6 +4004,7 @@ function updateStatsFilterBadge() {
     const f = getStatsFiltersFromUI();
     let n = 0;
     if (f.timeRange !== 'thisMonth') n++;
+    if (f.timeBasis !== 'timestamp') n++;
     if (f.amountBasis !== 'finalTotal') n++;
     if (f.giftMode !== 'exclude') n++;
     if (f.statusFilter !== 'all') n++;
@@ -4001,6 +4038,7 @@ function onStatsFilterChange() {
 
 function resetStatsFilters() {
     const timeEl = document.getElementById('statsTimeFilter');
+    const timeBasisEl = document.getElementById('statsTimeBasis');
     const amountEl = document.getElementById('statsAmountBasis');
     const giftEl = document.getElementById('statsGiftMode');
     const statusEl = document.getElementById('statsStatusFilter');
@@ -4012,6 +4050,7 @@ function resetStatsFilters() {
     const viewMonthEl = document.getElementById('statsViewMonth');
     const now = new Date();
     if (timeEl) timeEl.value = 'thisMonth';
+    if (timeBasisEl) timeBasisEl.value = 'timestamp';
     if (viewYearEl) viewYearEl.value = String(now.getFullYear());
     if (viewMonthEl) viewMonthEl.value = String(now.getMonth());
     if (amountEl) amountEl.value = 'finalTotal';
@@ -4157,6 +4196,7 @@ function exportStatsToExcel() {
             ['制品全完成订单数', dataset.totals.orderDoneCount],
             ['制品全完成率(%)', dataset.totals.orderDoneRate],
             ['逾期订单数', dataset.totals.overdueOrderCount],
+            ['曾经逾期订单数', dataset.totals.everOverdueOrderCount ?? 0],
             ['已结算订单数', dataset.totals.orderSettledCount || 0],
             ['订单完结率(%)', dataset.totals.orderSettledRate || 0],
             ['撤单数', dataset.totals.cancelOrderCount || 0],
@@ -4201,25 +4241,36 @@ function exportStatsToExcel() {
     }
 }
 
-// 打开计算抽屉
-function openCalculatorDrawer() {
+// 打开计算抽屉；skipOrderTimeReset 为 true 时不重置下单时间（用于编辑加载历史记录）
+function openCalculatorDrawer(skipOrderTimeReset) {
+    // #region agent log
+    var _el0 = document.getElementById('orderTimeInput');
+    fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:openCalculatorDrawer',message:'entry',data:{skipOrderTimeReset:!!skipOrderTimeReset,orderTimeValueBefore:_el0?_el0.value:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
+    // #endregion
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
 
-    // 下单时间：默认当天（仅日期，可编辑）；未改时提交/保存用实时时间
-    var orderTimeInput = document.getElementById('orderTimeInput');
-    if (orderTimeInput) {
-        var todayStr = toYmd(new Date());
-        orderTimeInput.value = todayStr;
-        window.calculatorOrderTimeDefault = todayStr;
+    // 下单时间：默认当天（仅日期，可编辑）；编辑模式由 editHistoryItem 填充，不在此重置
+    if (!skipOrderTimeReset) {
+        var orderTimeInput = document.getElementById('orderTimeInput');
+        if (orderTimeInput) {
+            var todayStr = toYmd(new Date());
+            orderTimeInput.value = todayStr;
+            window.calculatorOrderTimeDefault = todayStr;
+        }
     }
 
     // 每次打开时刷新计算页的选择器与系数
     updateCalculatorBuiltinSelects();
     updateCalculatorCoefficientSelects();
+    if (typeof toggleOrderPlatformClear === 'function') toggleOrderPlatformClear();
 
     drawer.classList.add('open');
     isCalculatorOpen = true;
+    // #region agent log
+    var _el1 = document.getElementById('orderTimeInput');
+    fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:openCalculatorDrawer',message:'after add open',data:{orderTimeValue:_el1?_el1.value:null,readonly:_el1?_el1.hasAttribute('readonly'):null,disabled:_el1?_el1.disabled:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H5'})}).catch(function(){});
+    // #endregion
 
     // 编辑模式下显示「另存为新单」按钮
     var saveAsNewBtn = document.getElementById('calculatorSaveAsNewBtn');
@@ -4290,7 +4341,11 @@ function renderGift(gift) {
             </div>
             <div class="form-group">
                 <label for="giftQuantity-${gift.id}">数量</label>
-                <input type="number" id="giftQuantity-${gift.id}" value="${gift.quantity}" min="1" onchange="updateGift(${gift.id}, 'quantity', parseInt(this.value))">
+                <div class="process-layers-stepper-wrap">
+                    <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustGiftQuantity(${gift.id}, -1)">−</button>
+                    <input type="number" id="giftQuantity-${gift.id}" class="process-layers-stepper-input" value="${gift.quantity}" min="1" onchange="var v = Math.max(1, parseInt(this.value) || 1); this.value = v; updateGift(${gift.id}, 'quantity', v)">
+                    <button type="button" class="process-layers-stepper-btn" aria-label="加一" onclick="adjustGiftQuantity(${gift.id}, 1)">+</button>
+                </div>
             </div>
         </div>
         <div class="form-row">
@@ -4383,7 +4438,11 @@ function renderProduct(product) {
             </div>
             <div class="form-group">
                 <label for="productQuantity-${product.id}">制品数</label>
-                <input type="number" id="productQuantity-${product.id}" value="${product.quantity}" min="1" onchange="updateProduct(${product.id}, 'quantity', parseInt(this.value))">
+                <div class="process-layers-stepper-wrap">
+                    <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustProductQuantity(${product.id}, -1)">−</button>
+                    <input type="number" id="productQuantity-${product.id}" class="process-layers-stepper-input" value="${product.quantity}" min="1" onchange="var v = Math.max(1, parseInt(this.value) || 1); this.value = v; updateProduct(${product.id}, 'quantity', v)">
+                    <button type="button" class="process-layers-stepper-btn" aria-label="加一" onclick="adjustProductQuantity(${product.id}, 1)">+</button>
+                </div>
             </div>
         </div>
         <div class="form-row">
@@ -4529,6 +4588,17 @@ function updateProduct(id, field, value) {
     }
 }
 
+// 快捷增减制品数
+function adjustProductQuantity(productId, delta) {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    const current = product.quantity || 1;
+    const next = Math.max(1, current + delta);
+    updateProduct(productId, 'quantity', next);
+    const input = document.getElementById('productQuantity-' + productId);
+    if (input) input.value = next;
+}
+
 // 更新制品额外配置数量
 function updateProductAdditionalConfig(productId, configKey, value) {
     const product = products.find(p => p.id === productId);
@@ -4590,16 +4660,18 @@ function calculatePrice(saveAsNew) {
     } else {
         clientId = clientIdValue;
     }
-    const contactType = document.getElementById('contactType').value;
-    const contact = document.getElementById('contact').value || '未知';
     const deadline = document.getElementById('deadline').value;
     
-    // 获取设置选项的类型
+    // 获取设置选项的类型（接单平台与平台手续费联动，platform 与 orderPlatform 已同步）
     const usageType = document.getElementById('usage').value;
     const urgentType = document.getElementById('urgent').value;
     const sameModelType = document.getElementById('sameModel').value;
     const discountType = document.getElementById('discount').value;
-    const platformType = document.getElementById('platform').value;
+    const platformType = (document.getElementById('platform') && document.getElementById('platform').value) || '';
+    const orderPlatformInput = document.getElementById('orderPlatform');
+    const contactDisplay = (orderPlatformInput && orderPlatformInput.value) ? String(orderPlatformInput.value).trim() : '';
+    const contactInfoEl = document.getElementById('contactInfo');
+    const contactInfoValue = (contactInfoEl && contactInfoEl.value) ? String(contactInfoEl.value).trim() : '';
     
     // 计算其他费用总和
     const otherFeesTotal = Array.isArray(dynamicOtherFees) ? dynamicOtherFees.reduce((sum, fee) => sum + fee.amount, 0) : 0;
@@ -4951,10 +5023,12 @@ function calculatePrice(saveAsNew) {
     // 获取开始时间
     const startTimeValue = document.getElementById('startTime')?.value;
     
-    // 生成报价数据
+    // 生成报价数据（contact 存接单平台名称，contactInfo 存联系方式）
     quoteData = {
         clientId: clientId,
-        contact: `${contactType}: ${contact}`,
+        contact: contactDisplay,
+        contactInfo: contactInfoValue,
+        platformType: platformType,
         startTime: startTimeValue,
         deadline: deadline,
         usage: usage,
@@ -4982,7 +5056,7 @@ function calculatePrice(saveAsNew) {
         agreedAmount: agreedAmount,
         needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (function(){ var el = document.getElementById('needDeposit'); return el && el.value === 'yes'; })()),
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
-        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; if (v && def && v === def) return new Date().toISOString(); if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
+        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; var out = (v && def && v === def) ? new Date().toISOString() : (v ? (function(){ var d = new Date(v + 'T00:00:00'); return !isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString(); }()) : new Date().toISOString()); fetch('http://127.0.0.1:7243/ingest/aacd2503-de7b-44b4-90a0-639adcc9f233',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:quoteData-timestamp',message:'timestamp for save',data:{elExists:!!el,v:v,def:def,used:out?out.slice(0,10):null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(function(){}); return out; })()
     };
     
     // 生成报价单（主小票区域）
@@ -6067,7 +6141,9 @@ function getScheduleItemsAll() {
     return history.filter(h => {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
-        return !!(h.startTime || h.deadline);
+        const hasStart = (h.startTime && String(h.startTime).trim());
+        const hasDeadline = (h.deadline && String(h.deadline).trim());
+        return !!(hasStart || hasDeadline);
     });
 }
 
@@ -6076,7 +6152,9 @@ function getScheduleItemsPending() {
     return history.filter(h => {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
-        return !h.startTime && !h.deadline;
+        const hasStart = (h.startTime && String(h.startTime).trim());
+        const hasDeadline = (h.deadline && String(h.deadline).trim());
+        return !hasStart && !hasDeadline;
     });
 }
 
@@ -6675,6 +6753,52 @@ function scheduleTodoCardAction(action) {
 function needDepositChecked() {
     var el = document.getElementById('needDeposit');
     return el ? el.value === 'yes' : false;
+}
+// 接单平台输入变更时：若与设置中某平台名称一致则自动选中该平台手续费
+function syncOrderPlatformToPlatform() {
+    var orderPlatformEl = document.getElementById('orderPlatform');
+    var platformEl = document.getElementById('platform');
+    if (!orderPlatformEl || !platformEl) return;
+    var text = (orderPlatformEl.value || '').trim();
+    if (!text) return;
+    var platformFees = defaultSettings.platformFees;
+    if (platformFees && typeof platformFees === 'object') {
+        var match = Object.entries(platformFees).find(function (e) {
+            return e[1] && (e[1].name === text);
+        });
+        if (match) {
+            platformEl.value = match[0];
+            if (typeof onPlatformChangeForDeposit === 'function') onPlatformChangeForDeposit();
+        }
+    }
+}
+// 平台手续费变更时同步到接单平台输入框（显示平台名称）
+function onPlatformChangeForDeposit() {
+    var platformEl = document.getElementById('platform');
+    var orderPlatformEl = document.getElementById('orderPlatform');
+    if (!platformEl || !orderPlatformEl) return;
+    var key = platformEl.value;
+    if (key && defaultSettings.platformFees && defaultSettings.platformFees[key]) {
+        orderPlatformEl.value = (defaultSettings.platformFees[key].name || key);
+        toggleOrderPlatformClear();
+    }
+}
+// 接单平台一键清空
+function clearOrderPlatformInput() {
+    var orderPlatformEl = document.getElementById('orderPlatform');
+    if (orderPlatformEl) {
+        orderPlatformEl.value = '';
+        orderPlatformEl.focus();
+        toggleOrderPlatformClear();
+    }
+}
+// 根据接单平台输入框是否有值，显示/隐藏框内清空按钮
+function toggleOrderPlatformClear() {
+    var wrap = document.getElementById('orderPlatformWrap');
+    var input = document.getElementById('orderPlatform');
+    if (!wrap || !input) return;
+    if ((input.value || '').trim()) wrap.classList.add('has-value');
+    else wrap.classList.remove('has-value');
 }
 function openSettlementModal(recordId, preSelectedType) {
     var item = history.find(function (h) { return h.id === recordId; });
@@ -8047,7 +8171,8 @@ function generateHistoryItemHTML(item) {
                 <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
             </div>
             <div class="history-item-content">
-                联系方式: ${item.contact}\n
+                接单平台: ${item.contact || ''}\n
+                联系方式: ${item.contactInfo || ''}\n
                 截稿日: ${item.deadline}\n
                 实收: ¥${(item.agreedAmount != null ? item.agreedAmount : item.finalTotal).toFixed(2)}
             </div>
@@ -8380,8 +8505,17 @@ function editHistoryItem(id) {
         return;
     }
     
-    // 打开计算抽屉，将历史记录加载到计算表单
-    openCalculatorDrawer();
+    // 切换到排单页
+    if (typeof showPage === 'function') showPage('quote');
+    // 延迟打开抽屉，确保弹窗关闭动画完成、DOM 稳定；在抽屉打开后再设置下单时间
+    var _orderTimeYmd = quote.timestamp ? (function(){ var d = new Date(quote.timestamp); return !isNaN(d.getTime()) ? toYmd(d) : null; }()) : null;
+    requestAnimationFrame(function () {
+        openCalculatorDrawer(true);
+        if (_orderTimeYmd) {
+            var _oinp = document.getElementById('orderTimeInput');
+            if (_oinp) { _oinp.value = _orderTimeYmd; _oinp.removeAttribute('readonly'); _oinp.removeAttribute('disabled'); }
+        }
+    });
 
     // 清空当前制品和赠品
     products = [];
@@ -8399,24 +8533,12 @@ function editHistoryItem(id) {
     if (quote.clientId) {
         document.getElementById('clientId').value = quote.clientId;
     }
-    if (quote.contact) {
-        const contactParts = quote.contact.split(':');
-        if (contactParts.length >= 2) {
-            const contactType = contactParts[0].trim();
-            const contactValue = contactParts.slice(1).join(':').trim();
-            document.getElementById('contactType').value = contactType;
-            document.getElementById('contact').value = contactValue;
-        } else {
-            document.getElementById('contact').value = quote.contact;
-        }
-    }
-    if (quote.timestamp) {
-        var d = new Date(quote.timestamp);
-        var orderTimeInput = document.getElementById('orderTimeInput');
-        if (orderTimeInput && !isNaN(d.getTime())) {
-            orderTimeInput.value = toYmd(d);
-        }
-    }
+    var orderPlatformInput = document.getElementById('orderPlatform');
+    if (orderPlatformInput) orderPlatformInput.value = quote.contact || '';
+    var contactInfoInput = document.getElementById('contactInfo');
+    if (contactInfoInput) contactInfoInput.value = quote.contactInfo || '';
+    // 平台手续费在下方 setTimeout 中与系数一并恢复（需等选择器选项就绪）
+    // 下单时间改在 rAF 内、抽屉打开后设置，避免时序问题
     if (quote.startTime) {
         document.getElementById('startTime').value = quote.startTime;
     }
@@ -8462,13 +8584,21 @@ function editHistoryItem(id) {
             }
         }
         
-        // 恢复平台费
-        if (quote.platformType) {
+        // 恢复平台手续费与接单平台（联动）；无 platformType 时尝试用 contact 按平台名称匹配（兼容旧数据）
+        var platformKeyToSet = quote.platformType;
+        if (!platformKeyToSet && quote.contact && defaultSettings.platformFees) {
+            var match = Object.entries(defaultSettings.platformFees).find(function (e) {
+                return (e[1] && e[1].name === quote.contact);
+            });
+            if (match) platformKeyToSet = match[0];
+        }
+        if (platformKeyToSet) {
             const platformSelect = document.getElementById('platform');
             if (platformSelect) {
-                platformSelect.value = quote.platformType;
+                platformSelect.value = platformKeyToSet;
                 if (platformSelect.onchange) platformSelect.onchange();
             }
+            // 接单平台输入框已从 quote.contact 恢复，此处不覆盖
         }
         
         // 恢复其他加价类
@@ -8519,11 +8649,18 @@ function editHistoryItem(id) {
                     processes: {}
                 };
                 
-                // 恢复工艺信息
+                // 恢复工艺信息（processes 以工艺设置 id 为 key，值为 { id, layers, price }）
                 if (productPrice.processDetails && Array.isArray(productPrice.processDetails)) {
                     productPrice.processDetails.forEach(process => {
                         if (process.name && process.layers) {
-                            product.processes[process.name] = process.layers;
+                            const ps = processSettings.find(p => p.name === process.name);
+                            if (ps) {
+                                product.processes[ps.id] = {
+                                    id: ps.id,
+                                    layers: process.layers,
+                                    price: ps.price || 10
+                                };
+                            }
                         }
                     });
                 }
@@ -8562,11 +8699,18 @@ function editHistoryItem(id) {
                     processes: {}
                 };
                 
-                // 恢复工艺信息
+                // 恢复工艺信息（processes 以工艺设置 id 为 key，值为 { id, layers, price }）
                 if (giftPrice.processDetails && Array.isArray(giftPrice.processDetails)) {
                     giftPrice.processDetails.forEach(process => {
                         if (process.name && process.layers) {
-                            gift.processes[process.name] = process.layers;
+                            const ps = processSettings.find(p => p.name === process.name);
+                            if (ps) {
+                                gift.processes[ps.id] = {
+                                    id: ps.id,
+                                    layers: process.layers,
+                                    price: ps.price || 10
+                                };
+                            }
                         }
                     });
                 }
@@ -8788,6 +8932,13 @@ function loadSelectedTemplate() {
         setSel('sameModel', s.sameModelType || '');
         setSel('discount', s.discountType || '');
         setSel('platform', s.platformType || '');
+        var orderPlatformEl = document.getElementById('orderPlatform');
+        if (orderPlatformEl) {
+            orderPlatformEl.value = (s.platformType && defaultSettings.platformFees && defaultSettings.platformFees[s.platformType])
+                ? (defaultSettings.platformFees[s.platformType].name || s.platformType)
+                : '';
+            toggleOrderPlatformClear();
+        }
         (s.extraUpSelections || []).forEach(sel => {
             const el = document.getElementById('extraUp_' + sel.id);
             if (el) { el.value = sel.selectedKey; if (el.onchange) el.onchange(); }
@@ -9057,7 +9208,8 @@ function exportHistoryToExcel() {
     const summaryData = exportData.map(item => ({
         '时间': new Date(item.timestamp).toLocaleString('zh-CN'),
         '单主ID': item.clientId || '',
-        '联系方式': item.contact || '',
+        '接单平台': item.contact || '',
+        '联系方式': item.contactInfo || '',
         '开始时间': item.startTime || '',
         '截稿时间': item.deadline || '',
         '制品总价': item.totalProductsPrice || 0,
@@ -9166,6 +9318,7 @@ function exportHistoryToExcel() {
     const summaryColWidths = [
         { wch: 20 }, // 时间
         { wch: 15 }, // 单主ID
+        { wch: 20 }, // 接单平台
         { wch: 20 }, // 联系方式
         { wch: 12 }, // 开始时间
         { wch: 12 }, // 截稿时间
@@ -10582,7 +10735,7 @@ function deleteExtraCoefficient(id, upDown) {
     updateCalculatorCoefficientSelects();
 }
 
-// 更新计算页中“其他加价类”“其他折扣类”选择器
+// 更新计算页中“其他加价类”“其他折扣类”选择器；同时更新单主信息中的“接单平台”下拉（与平台手续费选项一致）
 function updateCalculatorBuiltinSelects() {
     try {
         const pairs = [
@@ -10637,6 +10790,28 @@ function updateCalculatorBuiltinSelects() {
                     el.innerHTML = html;
                     if (keys.indexOf(prev) >= 0) el.value = prev;
                     else if (keys.length) el.value = keys[0];
+                }
+                // 接单平台候选 = QQ/微信/小红书（固定）+ 设置页平台手续费中的平台名称（排除「无」），设置页增平台后此处自动包含新平台
+                if (p.key === 'platformFees') {
+                    var orderPlatformListEl = document.getElementById('orderPlatformList');
+                    if (orderPlatformListEl) {
+                        var fixed = ['QQ', '微信', '小红书'];
+                        var fromFees = [];
+                        sorted.forEach(function (kv) {
+                            var nm = (kv[1] && kv[1].name) ? kv[1].name : kv[0];
+                            if (nm && nm !== '无') fromFees.push(nm);
+                        });
+                        var seen = {};
+                        var allNames = fixed.slice();
+                        fromFees.forEach(function (n) {
+                            if (!seen[n]) { seen[n] = true; allNames.push(n); }
+                        });
+                        var datalistHtml = allNames.map(function (n) {
+                            var esc = (n || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                            return '<option value="' + esc + '">';
+                        }).join('');
+                        orderPlatformListEl.innerHTML = datalistHtml;
+                    }
                 }
             } catch (e) {
                 console.warn('更新 ' + p.id + ' 选择器时出错：', e);
@@ -11611,6 +11786,17 @@ function updateGift(giftId, field, value) {
     }
 }
 
+// 快捷增减赠品数量
+function adjustGiftQuantity(giftId, delta) {
+    const gift = gifts.find(g => g.id === giftId);
+    if (!gift) return;
+    const current = gift.quantity || 1;
+    const next = Math.max(1, current + delta);
+    updateGift(giftId, 'quantity', next);
+    const input = document.getElementById('giftQuantity-' + giftId);
+    if (input) input.value = next;
+}
+
 // 更新赠品表单选项
 function updateGiftForm(giftId) {
     const gift = gifts.find(g => g.id === giftId);
@@ -11711,10 +11897,13 @@ function updateProcessOptions(productId, isGift = false) {
                     <span>${setting.name}</span>
                 </label>
                 <div id="${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${setting.id}" 
-                     style="display: ${isChecked ? 'flex' : 'none'}; align-items: center; gap: 0.25rem; margin-left: 1rem;">
-                    <input type="number" id="processLayers-${productId}-${setting.id}" value="${layers}" min="1" step="1" 
-                           onchange="updateProcessLayers(${productId}, ${setting.id}, parseInt(this.value), ${isGift})" 
-                           style="width: 40px; padding: 0.15rem; font-size: 0.75rem; border: 1px solid #e0e0e0; border-radius: 3px;">
+                     class="process-layers-stepper-wrap" style="display: ${isChecked ? 'flex' : 'none'}; align-items: center; gap: 0.25rem; margin-left: 1rem;">
+                    <button type="button" class="process-layers-stepper-btn" aria-label="减一层" 
+                            onclick="adjustProcessLayers(${productId}, ${setting.id}, -1, ${isGift})">−</button>
+                    <input type="number" id="processLayers-${productId}-${setting.id}" class="process-layers-stepper-input" value="${layers}" min="1" step="1" 
+                           onchange="var v = Math.max(1, parseInt(this.value) || 1); this.value = v; updateProcessLayers(${productId}, ${setting.id}, v, ${isGift})">
+                    <button type="button" class="process-layers-stepper-btn" aria-label="加一层" 
+                            onclick="adjustProcessLayers(${productId}, ${setting.id}, 1, ${isGift})">+</button>
                     <span style="font-size: 0.75rem; color: #666;">层</span>
                 </div>
             </div>
@@ -11781,7 +11970,22 @@ function updateProcessLayers(productId, processId, layers, isGift = false) {
     const item = items.find(p => p.id === productId);
     if (!item || !item.processes || !item.processes[processId]) return;
     
-    item.processes[processId].layers = layers;
+    const clamped = Math.max(1, parseInt(layers, 10) || 1);
+    item.processes[processId].layers = clamped;
+}
+
+// 快捷增减工艺层数（支持赠品）
+function adjustProcessLayers(productId, processId, delta, isGift = false) {
+    const items = isGift ? gifts : products;
+    const item = items.find(p => p.id === productId);
+    if (!item || !item.processes || !item.processes[processId]) return;
+    
+    const current = item.processes[processId].layers || 1;
+    const next = Math.max(1, current + delta);
+    updateProcessLayers(productId, processId, next, isGift);
+    
+    const input = document.getElementById('processLayers-' + productId + '-' + processId);
+    if (input) input.value = next;
 }
 
 // 删除赠品项

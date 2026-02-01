@@ -722,6 +722,8 @@ body {
     border-radius: var(--radius-md);
     background: var(--bg-color);
     min-width: 10rem;
+    pointer-events: auto;
+    touch-action: manipulation;
 }
 .calculator-content .order-time-input:focus {
     border-color: var(--primary-color);
@@ -815,6 +817,22 @@ body {
     border-radius: 8px;
     font-size: 0.875rem;
     padding: 0.5rem 0.6rem;
+}
+/* 接单平台 + 联系方式同一行（桌面与手机端均并排） */
+#calculator .order-platform-contact-row {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+}
+#calculator .order-platform-contact-row .form-group {
+    flex: 1;
+    min-width: 0;
+}
+#calculator .order-platform-contact-row .form-group input {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
@@ -1599,6 +1617,11 @@ input:focus, select:focus {
     max-width: 120px;
 }
 
+/* 制品设置数字框加长 */
+#productSettingsContainer .product-item input[type="number"] {
+    min-width: 160px;
+}
+
 .process-item-delete {
     flex-shrink: 0;
     padding: 0.25rem 0.5rem;
@@ -1606,6 +1629,51 @@ input:focus, select:focus {
     white-space: nowrap;
     align-self: flex-end;
     margin-bottom: 0;
+}
+
+/* 工艺选择层数快捷增减 */
+.process-layers-stepper-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+.process-layers-stepper-btn {
+    width: 1.4rem;
+    min-width: 1.4rem;
+    height: 1.4rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-color);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 4px;
+    transition: all 0.15s;
+    opacity: 0.7;
+}
+.process-layers-stepper-btn:hover {
+    opacity: 1;
+    color: var(--primary-color);
+}
+.process-layers-stepper-input {
+    width: 2.25rem;
+    min-width: 2.25rem;
+    padding: 0.15rem 0.1rem;
+    text-align: center;
+    font-size: 0.8rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    -moz-appearance: textfield;
+}
+.process-layers-stepper-input::-webkit-outer-spin-button,
+.process-layers-stepper-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 /* 弹窗样式 */
@@ -1811,7 +1879,8 @@ input:focus, select:focus {
         flex-wrap: wrap;
     }
     
-    #calculator .section:first-of-type .form-row .form-group {
+    #calculator .section:first-of-type .form-row .form-group,
+    #calculator .section:first-of-type .form-row:first-of-type .order-platform-contact-row {
         flex: 1 1 calc(50% - 0.25rem) !important;
         min-width: 0;
     }
@@ -1889,7 +1958,7 @@ input:focus, select:focus {
     }
 }
 
-/* 超小屏下单主信息全部单列，与上方 768px 时间行垂直排列一致 */
+/* 超小屏下单主信息：单主ID 单独一行，接单平台+联系方式 同一行并排 */
 @media (max-width: 480px) {
     #calculator .section:first-of-type .form-row:first-of-type {
         flex-direction: column !important;
@@ -1898,6 +1967,15 @@ input:focus, select:focus {
     #calculator .section:first-of-type .form-row:first-of-type .form-group {
         flex: 1 1 100% !important;
         width: 100%;
+    }
+    
+    #calculator .section:first-of-type .form-row:first-of-type .order-platform-contact-row {
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        min-width: 0;
+    }
+    #calculator .order-platform-contact-row .form-group input {
+        min-width: 0;
     }
     
     /* 美工信息页、平台+定金行：超小屏也保持水平排列 */

@@ -346,17 +346,21 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="contact">联系方式</label>
-                            <div class="contact-input-wrapper">
-                                <select id="contactType">
-                                    <option value="QQ">QQ</option>
-                                    <option value="VX">微信</option>
-                                    <option value="MHS">米画师</option>
-                                    <option value="RED">小红书</option>
-                                    <option value="OTHER">其他</option>
-                                </select>
-                                <input type="text" id="contact" placeholder="请输入联系方式">
+                        <div class="order-platform-contact-row">
+                            <div class="form-group">
+                                <label for="orderPlatform">接单平台</label>
+                                <div class="input-row-with-icon order-platform-input-wrap">
+                                    <input type="text" id="orderPlatform" list="orderPlatformList" placeholder="可直接输入或选QQ/微信/小红书等" title="可直接输入或选择候选；与设置中平台名称一致时自动匹配手续费；右侧按钮一键清空" oninput="syncOrderPlatformToPlatform()">
+                                    <button type="button" class="btn-icon-only order-platform-clear" onclick="clearOrderPlatformInput()" aria-label="一键清空" title="一键清空">
+                                        <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
+                                        <span class="sr-only">清空</span>
+                                    </button>
+                                </div>
+                                <datalist id="orderPlatformList"><option value="QQ"><option value="微信"><option value="小红书"></datalist>
+                            </div>
+                            <div class="form-group">
+                                <label for="contactInfo">联系方式</label>
+                                <input type="text" id="contactInfo" placeholder="QQ号/微信号/手机号等" title="单主联系方式，如QQ号、微信号、手机号">
                             </div>
                         </div>
                     </div>
@@ -1368,6 +1372,14 @@
                                     </div>
                                 </div>
                                 <div class="filter-section">
+                                    <label class="filter-label">时间口径</label>
+                                    <select id="statsTimeBasis" class="filter-select" onchange="onStatsFilterChange()">
+                                        <option value="timestamp">按记录时间</option>
+                                        <option value="deadline">按截稿日</option>
+                                    </select>
+                                    <small class="text-gray">按记录时间：按下单时间筛选与聚合；按截稿日：按截稿时间筛选与聚合（无截稿日的订单不参与）</small>
+                                </div>
+                                <div class="filter-section">
                                     <label class="filter-label">金额口径（订单）</label>
                                     <select id="statsAmountBasis" class="filter-select" onchange="onStatsFilterChange()">
                                         <option value="finalTotal">实付 (finalTotal)</option>
@@ -1406,7 +1418,7 @@
                     </div>
                     <details class="stats-note-details">
                         <summary class="stats-note-summary">说明</summary>
-                        <p class="stats-note text-gray">统计按下单时间（timestamp）。赠品「按0元/按原价」仅影响制品项与金额贡献，不代表实收。已结算订单按 settlement 实际金额统计。Top 制品金额为报价明细，非实收。</p>
+                        <p class="stats-note text-gray">时间口径可选「按记录时间」或「按截稿日」；选截稿日时时间范围与趋势均按截稿日统计。赠品「按0元/按原价」仅影响制品项与金额贡献，不代表实收。已结算订单按 settlement 实际金额统计。Top 制品金额为报价明细，非实收。</p>
                     </details>
                     <div id="statsKpiGrid" class="stats-kpi-grid">
                         <!-- KPI 卡片由 JS 渲染 -->
