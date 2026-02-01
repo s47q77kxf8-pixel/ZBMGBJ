@@ -4267,10 +4267,14 @@ function openCalculatorDrawer(skipOrderTimeReset) {
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
 
-    // 下单时间：不填时默认为小票保存时间；仅编辑模式由 editHistoryItem 填充
+    // 下单时间与备注：新建时清空，不填的默认为小票保存时间；编辑模式由 editHistoryItem 填充
     if (!skipOrderTimeReset) {
         var orderTimeInput = document.getElementById('orderTimeInput');
         if (orderTimeInput) orderTimeInput.value = '';
+        if (defaultSettings) defaultSettings.orderRemark = '';
+        var orderRemarkTextEl = document.getElementById('orderRemarkText');
+        if (orderRemarkTextEl) orderRemarkTextEl.value = '';
+        if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
     }
 
     // 每次打开时刷新计算页的选择器与系数
@@ -6317,19 +6321,32 @@ function formatYmdCn(dateStr) {
     return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
 }
 
+// 订单制品总数量（按 quantity 求和：吧唧*1 + 拍立的*2 => 3）
+function getOrderItemQuantityTotal(item) {
+    const products = Array.isArray(item.productPrices) ? item.productPrices : [];
+    const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
+    const sum = (arr) => arr.reduce((s, p) => s + (parseInt(p.quantity, 10) || 1), 0);
+    return sum(products) + sum(gifts);
+}
+
+// 订单已完成的制品数量（按 quantity 求和，只计 productDoneStates 为 true 的项）
+function getOrderDoneQuantityTotal(item) {
+    ensureProductDoneStates(item);
+    const products = Array.isArray(item.productPrices) ? item.productPrices : [];
+    const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
+    const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
+    let done = 0;
+    products.forEach((p, i) => { if (states[i]) done += (parseInt(p.quantity, 10) || 1); });
+    gifts.forEach((g, i) => { if (states[products.length + i]) done += (parseInt(g.quantity, 10) || 1); });
+    return done;
+}
+
 function computeMonthProductStats(items) {
     let total = 0;
     let done = 0;
     items.forEach(item => {
-        ensureProductDoneStates(item);
-        const productLen = Array.isArray(item.productPrices) ? item.productPrices.length : 0;
-        const giftLen = Array.isArray(item.giftPrices) ? item.giftPrices.length : 0;
-        const n = productLen + giftLen;
-        const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
-        total += n;
-        for (let i = 0; i < n && i < states.length; i++) {
-            if (states[i] === true) done++;
-        }
+        total += getOrderItemQuantityTotal(item);
+        done += getOrderDoneQuantityTotal(item);
     });
     return { done, undone: Math.max(0, total - done), total };
 }
@@ -8727,6 +8744,11 @@ function editHistoryItem(id) {
     if (quote.deadline) {
         document.getElementById('deadline').value = quote.deadline;
     }
+    // 恢复订单备注（编辑时显示该条记录的备注，新建时已在 openCalculatorDrawer 中清空）
+    if (defaultSettings) defaultSettings.orderRemark = (quote.orderRemark != null) ? String(quote.orderRemark) : '';
+    var orderRemarkTextEl = document.getElementById('orderRemarkText');
+    if (orderRemarkTextEl) orderRemarkTextEl.value = defaultSettings ? (defaultSettings.orderRemark || '') : '';
+    if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
     
     // 恢复系数选择（需要等待选择器初始化）
     setTimeout(() => {
