@@ -6949,8 +6949,11 @@ html.theme-dark .settlement-preview {
     gap: 0.1rem;
     align-items: flex-end;
 }
+.record-item-amount-wrap .record-item-date {
+    text-decoration: line-through;
+}
 .record-item-amount {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-color);
     white-space: nowrap;

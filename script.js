@@ -3113,7 +3113,7 @@ function applyRecordFilters() {
         const actualAmount = (item && item.settlement && item.settlement.amount != null) ? Number(item.settlement.amount) : receivableAmount;
         const hasSettlementWithDiff = item && item.settlement && (receivableAmount == null || Math.abs((actualAmount || 0) - (receivableAmount || 0)) > 0.001);
         const amountHtml = hasSettlementWithDiff
-            ? `<div class="record-item-amount-wrap"><span class="record-item-amount">${formatMoney(actualAmount)}</span><span class="record-item-date">/应收 ${formatMoney(receivableAmount)}</span></div>`
+            ? `<div class="record-item-amount-wrap"><span class="record-item-amount">${formatMoney(actualAmount)}</span><span class="record-item-date">${formatMoney(receivableAmount)}</span></div>`
             : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`;
         const status = getRecordProgressStatus(item);
         const isSelected = selectedHistoryIds.has(item.id);
@@ -4635,8 +4635,10 @@ function updateProductType(id, productName) {
 
 // 删除制品项
 function removeProduct(id) {
+    if (!confirm('确定要删除该制品项吗？')) return;
     products = products.filter(p => p.id !== id);
-    document.querySelector(`[data-id="${id}"]`).remove();
+    const el = document.querySelector(`[data-id="${id}"]`);
+    if (el) el.remove();
 }
 
 // 计算价格；saveAsNew 为 true 时：另存新单（不覆盖原记录）；skipReceipt 为 true 时：覆盖保存原订单，均不打开小票；openSaveChoiceModal 为 true 时：仅计算并弹出保存方式选择弹窗
@@ -8366,7 +8368,7 @@ function generateHistoryItemHTML(item) {
                     <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
                     <span class="sr-only">编辑</span>
                 </button>
-                <button class="icon-action-btn delete" onclick="deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
+                <button class="icon-action-btn delete" onclick="if(confirm('确定删除该记录？')) deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
                     <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>
                 </button>
@@ -9889,6 +9891,7 @@ function addDynamicOtherFee() {
 
 // 移除动态其他费用
 function removeDynamicOtherFee(id) {
+    if (!confirm('确定要删除该其他费用项吗？')) return;
     dynamicOtherFees = dynamicOtherFees.filter(fee => fee.id !== id);
     renderDynamicOtherFees();
 }
@@ -10302,6 +10305,7 @@ function addAdditionalConfig() {
 }
 
 function removeAdditionalConfig(configId) {
+    if (!confirm('确定要删除该附加配置项吗？')) return;
     additionalConfigsList = additionalConfigsList.filter(c => c.id !== configId);
     renderAdditionalConfigs();
 }
@@ -10770,6 +10774,7 @@ function addCoefficientItem() {
 
 // 删除一条系数值项
 function removeCoefficientItem(btn) {
+    if (!confirm('确定要删除该系数项吗？')) return;
     const row = btn && btn.closest ? btn.closest('.coefficient-item-row') : (btn && btn.parentElement);
     if (row && row.parentElement) row.parentElement.removeChild(row);
 }
@@ -11652,6 +11657,7 @@ function updateProcessSetting(id, field, value) {
 
 // 删除工艺设置
 function deleteProcessSetting(id) {
+    if (!confirm('确定要删除这个工艺设置吗？')) return;
     processSettings = processSettings.filter(p => p.id !== id);
     renderProcessSettings();
 }
@@ -12292,6 +12298,7 @@ function adjustProcessLayers(productId, processId, delta, isGift = false) {
 
 // 删除赠品项
 function removeGift(giftId) {
+    if (!confirm('确定要删除该赠品吗？')) return;
     gifts = gifts.filter(g => g.id !== giftId);
     const giftElement = document.querySelector(`[data-id="${giftId}"]`);
     if (giftElement) {
