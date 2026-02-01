@@ -5607,7 +5607,7 @@ input:checked + .toggle-slider:before {
 }
 .schedule-title-actions .schedule-title-icon-btn .icon path,
 .schedule-title-actions .schedule-title-icon-btn .icon circle {
-    stroke-width: 2.85;
+    stroke-width: 5.2;
 }
 .schedule-title-actions .schedule-title-icon-btn--stats .icon {
     width: 16px;

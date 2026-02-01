@@ -4267,14 +4267,10 @@ function openCalculatorDrawer(skipOrderTimeReset) {
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
 
-    // 下单时间：默认当天（仅日期，可编辑）；编辑模式由 editHistoryItem 填充，不在此重置
+    // 下单时间：不填时默认为小票保存时间；仅编辑模式由 editHistoryItem 填充
     if (!skipOrderTimeReset) {
         var orderTimeInput = document.getElementById('orderTimeInput');
-        if (orderTimeInput) {
-            var todayStr = toYmd(new Date());
-            orderTimeInput.value = todayStr;
-            window.calculatorOrderTimeDefault = todayStr;
-        }
+        if (orderTimeInput) orderTimeInput.value = '';
     }
 
     // 每次打开时刷新计算页的选择器与系数
@@ -5066,7 +5062,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
         agreedAmount: agreedAmount,
         needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (function(){ var el = document.getElementById('needDeposit'); return el && el.value === 'yes'; })()),
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
-        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value; var def = window.calculatorOrderTimeDefault; if (v && def && v === def) return new Date().toISOString(); if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
+        timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
     // 生成报价单（主小票区域）
@@ -5172,21 +5168,22 @@ function generateQuote() {
         const orderNotification = receiptInfo.orderNotification.replace('XXX', quoteData.clientId);
         receiptInfoHtml += `<p class="receipt-text-sm">${orderNotification}</p>`;
     }
-        
+    // 下单时间（小票用英文、仅日期 YYYY-MM-DD，不显示时分；放在开始时间前面）
+    if (receiptInfo.showOrderTime !== false && quoteData.timestamp) {
+        const orderDate = new Date(quoteData.timestamp);
+        const y = orderDate.getFullYear();
+        const m = String(orderDate.getMonth() + 1).padStart(2, '0');
+        const d = String(orderDate.getDate()).padStart(2, '0');
+        const orderDateStr = y + '-' + m + '-' + d;
+        receiptInfoHtml += `<p class="receipt-text-sm">ORDER DATE: ${orderDateStr}</p>`;
+    }
     // 开始时间
     if (receiptInfo.showStartTime !== false && quoteData.startTime) {  // 默认为true
         receiptInfoHtml += `<p class="receipt-text-sm">START TIME: ${quoteData.startTime}</p>`;
     }
-        
     // 截稿时间
     if (receiptInfo.showDeadline !== false && quoteData.deadline) {  // 默认为true
         receiptInfoHtml += `<p class="receipt-text-sm">DEADLINE: ${quoteData.deadline}</p>`;
-    }
-    // 下单时间
-    if (receiptInfo.showOrderTime !== false && quoteData.timestamp) {
-        const orderDate = new Date(quoteData.timestamp);
-        const orderTimeStr = orderDate.getFullYear() + '-' + String(orderDate.getMonth() + 1).padStart(2, '0') + '-' + String(orderDate.getDate()).padStart(2, '0') + ' ' + String(orderDate.getHours()).padStart(2, '0') + ':' + String(orderDate.getMinutes()).padStart(2, '0');
-        receiptInfoHtml += `<p class="receipt-text-sm">下单时间: ${orderTimeStr}</p>`;
     }
         
     // 设计师

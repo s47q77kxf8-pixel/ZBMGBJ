@@ -2367,6 +2367,25 @@
         </div>
     </div>
 
+    <!-- 单主ID 确认填充弹窗：输入关键词后列出匹配的单主ID，选择一项后再填充 -->
+    <div id="clientIdConfirmModal" class="history-record-modal d-none" aria-hidden="true">
+        <div class="history-record-overlay" onclick="closeClientIdConfirmModal()"></div>
+        <div class="history-record-content record-import-mode-content">
+            <div class="history-record-header">
+                <h2>选择单主ID</h2>
+                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeClientIdConfirmModal()" aria-label="关闭" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+            </div>
+            <div class="history-record-body">
+                <p class="text-gray mb-2" style="font-size:0.9rem;">根据输入的关键词匹配到以下记录，点击一项填充单主ID、接单平台与联系方式。</p>
+                <div id="clientIdConfirmList" class="d-flex flex-col gap-1"></div>
+                <button type="button" class="btn secondary w-full mt-2" onclick="closeClientIdConfirmModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 计算页保存方式选择弹窗（编辑模式下点「保存」时弹出） -->
     <div id="calculatorSaveChoiceModal" class="history-record-modal d-none" aria-hidden="true">
         <div class="history-record-overlay" onclick="closeCalculatorSaveChoiceModal()"></div>
