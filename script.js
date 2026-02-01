@@ -4984,7 +4984,13 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
             productPriceInfo.nodeTotalPrice = basePrice;
             productPriceInfo.nodeDetails = nodeDetails;
         }
-        
+        // 制品日计划（排单用，可选）
+        if (Array.isArray(product.dailyPlan) && product.dailyPlan.length > 0) {
+            productPriceInfo.dailyPlan = product.dailyPlan.map(function (p) { return { date: p.date, targetQty: p.targetQty }; });
+        }
+        if (productSetting.priceType === 'nodes' && Array.isArray(product.nodeDailyPlan) && product.nodeDailyPlan.length > 0) {
+            productPriceInfo.nodeDailyPlan = product.nodeDailyPlan.map(function (p) { return { nodeIndex: p.nodeIndex, date: p.date, targetQty: p.targetQty }; });
+        }
         productPrices.push(productPriceInfo);
         
         totalProductsPrice += productTotal;
@@ -5096,7 +5102,13 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
             sides: gift.sides,
             productId: giftTypeId
         };
-        
+        // 赠品日计划（排单用，可选）
+        if (Array.isArray(gift.dailyPlan) && gift.dailyPlan.length > 0) {
+            giftPriceInfo.dailyPlan = gift.dailyPlan.map(function (p) { return { date: p.date, targetQty: p.targetQty }; });
+        }
+        if (productSetting.priceType === 'nodes' && Array.isArray(gift.nodeDailyPlan) && gift.nodeDailyPlan.length > 0) {
+            giftPriceInfo.nodeDailyPlan = gift.nodeDailyPlan.map(function (p) { return { nodeIndex: p.nodeIndex, date: p.date, targetQty: p.targetQty }; });
+        }
         giftPrices.push(giftPriceInfo);
         totalGiftsOriginalPrice += giftOriginalPrice;
     }
@@ -6234,10 +6246,48 @@ function saveToHistory() {
             if (newLen !== prevLen) {
                 doneStates = (quoteData.productPrices || []).map((_, i) => (doneStates[i] === true));
             }
+            var newStart = quoteData.startTime ? normalizeYmd(quoteData.startTime) : null;
+            var newEnd = quoteData.deadline ? normalizeYmd(quoteData.deadline) : null;
+            var inRange = function (d) {
+                if (!newStart || !newEnd) return true;
+                var dm = normalizeYmd(d);
+                return dm && dm >= newStart && dm <= newEnd;
+            };
+            var mergedProductPrices = (quoteData.productPrices || []).map(function (pp, i) {
+                var existingP = (existing.productPrices || [])[i];
+                if (!existingP) return pp;
+                var out = Object.assign({}, pp);
+                if (Array.isArray(existingP.dailyPlan)) {
+                    var filtered = existingP.dailyPlan.filter(function (e) { return inRange(e.date); });
+                    var sum = filtered.reduce(function (s, e) { return s + (e.targetQty || 0); }, 0);
+                    out.dailyPlan = (filtered.length > 0 && sum === (pp.quantity || 1)) ? filtered : undefined;
+                }
+                if (Array.isArray(existingP.nodeDailyPlan)) {
+                    out.nodeDailyPlan = existingP.nodeDailyPlan.filter(function (np) { return np.date && inRange(np.date); });
+                }
+                return out;
+            });
+            var mergedGiftPrices = (quoteData.giftPrices || []).map(function (pp, i) {
+                var existingP = (existing.giftPrices || [])[i];
+                if (!existingP) return pp;
+                var out = Object.assign({}, pp);
+                if (Array.isArray(existingP.dailyPlan)) {
+                    var filtered = existingP.dailyPlan.filter(function (e) { return inRange(e.date); });
+                    var sum = filtered.reduce(function (s, e) { return s + (e.targetQty || 0); }, 0);
+                    out.dailyPlan = (filtered.length > 0 && sum === (pp.quantity || 1)) ? filtered : undefined;
+                }
+                if (Array.isArray(existingP.nodeDailyPlan)) {
+                    out.nodeDailyPlan = existingP.nodeDailyPlan.filter(function (np) { return np.date && inRange(np.date); });
+                }
+                return out;
+            });
             history[index] = {
                 ...quoteData,
+                productPrices: mergedProductPrices,
+                giftPrices: mergedGiftPrices,
                 id: window.editingHistoryId,
                 productDoneStates: doneStates,
+                productDailyDone: Array.isArray(existing.productDailyDone) ? existing.productDailyDone : [],
                 settlement: existing.settlement,
                 status: existing.status
             };
@@ -6256,9 +6306,17 @@ function saveToHistory() {
         history.unshift({
             id: Date.now(),
             ...quoteData,
-            productDoneStates
+            productDoneStates,
+            productDailyDone: []
         });
         showGlobalToast('报价单已加入排单！');
+        if (typeof openDailyPlanModal === 'function' && history.length > 0 && history[0].id) {
+            setTimeout(function () {
+                if (confirm('是否立即设置日计划？')) {
+                    openDailyPlanModal(history[0].id);
+                }
+            }, 300);
+        }
         // 新单保存后清空当前备注，避免下一单未填备注时沿用本单备注
         if (defaultSettings) defaultSettings.orderRemark = '';
         var orderRemarkTextEl = document.getElementById('orderRemarkText');
@@ -6302,6 +6360,17 @@ function ensureProductDoneStates(item) {
     } else if (item.productDoneStates.length > needLen) {
         item.productDoneStates = item.productDoneStates.slice(0, needLen);
     }
+    // productDailyDone 健壮性：过滤无效 productIndex/nodeIndex
+    if (Array.isArray(item.productDailyDone)) {
+        const totalItems = productLen + giftLen;
+        item.productDailyDone = item.productDailyDone.filter(function (e) {
+            if (e.productIndex == null || e.productIndex < 0 || e.productIndex >= totalItems) return false;
+            if (e.nodeIndex != null && (e.nodeIndex < 0 || !Number.isInteger(e.nodeIndex))) return false;
+            return true;
+        });
+    } else {
+        item.productDailyDone = [];
+    }
     return item;
 }
 
@@ -6315,6 +6384,86 @@ function setScheduleProductDone(scheduleId, productIndex, done) {
     saveData();
 }
 
+// 按日完成：获取某日某制品的待完成数（含顺延）
+function getRemainingForDay(item, productIndex, dateYmd, nodeIndex) {
+    if (!item || !dateYmd) return 0;
+    ensureProductDoneStates(item);
+    var products = (Array.isArray(item.productPrices) ? item.productPrices : []).concat(Array.isArray(item.giftPrices) ? item.giftPrices : []);
+    var p = products[productIndex];
+    if (!p) return 0;
+    var plans = [];
+    if (nodeIndex != null) {
+        plans = (Array.isArray(p.nodeDailyPlan) ? p.nodeDailyPlan : []).filter(function (e) { return e.nodeIndex === nodeIndex; });
+    } else {
+        plans = Array.isArray(p.dailyPlan) ? p.dailyPlan : [];
+    }
+    var dateTs = new Date(dateYmd).getTime();
+    var totalPrevPlanned = 0;
+    var totalPrevDone = 0;
+    for (var i = 0; i < plans.length; i++) {
+        var d = normalizeYmd(plans[i].date);
+        if (!d) continue;
+        var tq = plans[i].targetQty || 0;
+        if (new Date(d).getTime() < dateTs) {
+            totalPrevPlanned += tq;
+            var done = (item.productDailyDone || []).filter(function (e) {
+                return e.productIndex === productIndex && (nodeIndex == null ? e.nodeIndex == null : e.nodeIndex === nodeIndex) && normalizeYmd(e.date) === d;
+            }).reduce(function (s, e) { return s + (e.doneQty || 0); }, 0);
+            totalPrevDone += done;
+        }
+    }
+    var todayPlan = plans.find(function (e) { return normalizeYmd(e.date) === dateYmd; });
+    var todayTarget = todayPlan ? (todayPlan.targetQty || 0) : 0;
+    var todayDone = (item.productDailyDone || []).filter(function (e) {
+        return e.productIndex === productIndex && (nodeIndex == null ? e.nodeIndex == null : e.nodeIndex === nodeIndex) && normalizeYmd(e.date) === dateYmd;
+    }).reduce(function (s, e) { return s + (e.doneQty || 0); }, 0);
+    var rollover = Math.max(0, totalPrevPlanned - totalPrevDone);
+    return Math.max(0, todayTarget + rollover - todayDone);
+}
+
+// 设置某日某制品的完成数
+function setProductDailyDone(scheduleId, productIndex, dateYmd, doneQty, nodeIndex) {
+    var item = history.find(function (h) { return h.id === scheduleId; });
+    if (!item) return;
+    ensureProductDoneStates(item);
+    if (!Array.isArray(item.productDailyDone)) item.productDailyDone = [];
+    var idx = item.productDailyDone.findIndex(function (e) {
+        return e.productIndex === productIndex && normalizeYmd(e.date) === dateYmd && (nodeIndex == null ? e.nodeIndex == null : e.nodeIndex === nodeIndex);
+    });
+    if (doneQty <= 0 && idx >= 0) {
+        item.productDailyDone.splice(idx, 1);
+    } else if (doneQty > 0) {
+        var ent = { productIndex: productIndex, date: dateYmd, doneQty: doneQty };
+        if (nodeIndex != null) ent.nodeIndex = nodeIndex;
+        if (idx >= 0) item.productDailyDone[idx] = ent;
+        else item.productDailyDone.push(ent);
+    }
+    var products = (Array.isArray(item.productPrices) ? item.productPrices : []).concat(Array.isArray(item.giftPrices) ? item.giftPrices : []);
+    var p = products[productIndex];
+    if (p) {
+        var qty = p.quantity || 1;
+        var totalDone = (item.productDailyDone || []).filter(function (e) {
+            return e.productIndex === productIndex && (nodeIndex == null ? e.nodeIndex == null : e.nodeIndex === nodeIndex);
+        }).reduce(function (s, e) { return s + (e.doneQty || 0); }, 0);
+        var doneStateIdx = productIndex;
+        if (nodeIndex != null) {
+            var nodesCount = (p.nodeDetails || []).length;
+            if (nodesCount > 0) {
+                var allNodesDone = true;
+                for (var ni = 0; ni < nodesCount; ni++) {
+                    var nd = (item.productDailyDone || []).filter(function (e) { return e.productIndex === productIndex && e.nodeIndex === ni; }).reduce(function (s, e) { return s + (e.doneQty || 0); }, 0);
+                    if (nd < qty) { allNodesDone = false; break; }
+                }
+                item.productDoneStates[doneStateIdx] = allNodesDone;
+            }
+        } else {
+            item.productDoneStates[doneStateIdx] = totalDone >= qty;
+        }
+    }
+    saveData();
+    showGlobalToast('已保存');
+}
+
 // 订单是否已完结（撤稿/废稿/结单后归档，不再在 todo/日历中显示）
 function isOrderSettled(item) {
     if (!item || !item.settlement) return false;
@@ -6322,14 +6471,76 @@ function isOrderSettled(item) {
     return t === 'full_refund' || t === 'cancel_with_fee' || t === 'waste_fee' || t === 'normal';
 }
 
+// 今日制品统计（计划总数、已完成、待完成）
+function getTodayProductStats(selectedDate) {
+    var target = normalizeYmd(selectedDate);
+    if (!target) return { total: 0, done: 0, undone: 0 };
+    var items = getScheduleItemsForDate(selectedDate);
+    var total = 0, done = 0;
+    items.forEach(function (item) {
+        ensureProductDoneStates(item);
+        var products = (Array.isArray(item.productPrices) ? item.productPrices : []).concat(Array.isArray(item.giftPrices) ? item.giftPrices : []);
+        for (var i = 0; i < products.length; i++) {
+            var p = products[i];
+            var todayDoneFn = function (nodeIdx) {
+                return (item.productDailyDone || []).filter(function (e) {
+                    return e.productIndex === i && (nodeIdx == null ? e.nodeIndex == null : e.nodeIndex === nodeIdx) && normalizeYmd(e.date) === target;
+                }).reduce(function (s, e) { return s + (e.doneQty || 0); }, 0);
+            };
+            if (Array.isArray(p.nodeDailyPlan) && (p.nodeDetails || []).length > 0) {
+                for (var ni = 0; ni < (p.nodeDetails || []).length; ni++) {
+                    var planEnt = (p.nodeDailyPlan || []).find(function (e) { return e.nodeIndex === ni && normalizeYmd(e.date) === target; });
+                    if (planEnt && (planEnt.targetQty || 0) > 0) {
+                        var tq = planEnt.targetQty;
+                        total += getRemainingForDay(item, i, target, ni) + todayDoneFn(ni);
+                        done += todayDoneFn(ni);
+                    }
+                }
+            } else if (Array.isArray(p.dailyPlan)) {
+                var planEnt = p.dailyPlan.find(function (e) { return normalizeYmd(e.date) === target; });
+                if (planEnt && (planEnt.targetQty || 0) > 0) {
+                    var rem = getRemainingForDay(item, i, target, null);
+                    var d = todayDoneFn(null);
+                    total += rem + d;
+                    done += d;
+                }
+            }
+        }
+    });
+    return { total: total, done: done, undone: Math.max(0, total - done) };
+}
+
+// 某订单在指定日期是否有日计划（dailyPlan 或 nodeDailyPlan）
+function hasDailyPlanForDate(item, targetYmd) {
+    if (!item || !targetYmd) return false;
+    const products = Array.isArray(item.productPrices) ? item.productPrices : [];
+    const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
+    const allItems = products.concat(gifts);
+    for (var i = 0; i < allItems.length; i++) {
+        var p = allItems[i];
+        if (Array.isArray(p.dailyPlan)) {
+            for (var j = 0; j < p.dailyPlan.length; j++) {
+                if (normalizeYmd(p.dailyPlan[j].date) === targetYmd && (p.dailyPlan[j].targetQty || 0) > 0) return true;
+            }
+        }
+        if (Array.isArray(p.nodeDailyPlan)) {
+            for (var k = 0; k < p.nodeDailyPlan.length; k++) {
+                if (normalizeYmd(p.nodeDailyPlan[k].date) === targetYmd && (p.nodeDailyPlan[k].targetQty || 0) > 0) return true;
+            }
+        }
+    }
+    return false;
+}
+
 // 按选中日期获取所有排单：返回该日期在时间范围内的所有排单（排除已完结）
 function getScheduleItemsForDate(selectedDate) {
     if (!selectedDate) return [];
     const target = normalizeYmd(selectedDate);
     if (!target) return [];
-    return history.filter(h => {
+    return history.filter(function (h) {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
+        if (hasDailyPlanForDate(h, target)) return true;
         const start = h.startTime ? normalizeYmd(h.startTime) : normalizeYmd(h.timestamp);
         const end = h.deadline ? normalizeYmd(h.deadline) : start;
         if (!start || !end) return false;
@@ -6387,7 +6598,7 @@ function getScheduleItemsForMonth(year, month) {
     monthStart.setHours(0, 0, 0, 0);
     const monthEnd = new Date(year, month, 0);
     monthEnd.setHours(23, 59, 59, 999);
-    return history.filter(h => {
+    return history.filter(function (h) {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         const start = h.startTime ? new Date(h.startTime) : new Date(h.timestamp);
@@ -6535,15 +6746,17 @@ function getScheduleBatchForDisplay(selectedDate) {
     return { deadline: nearest, items: batch };
 }
 
-// 日历条带数据：指定年月，返回该月内可见的排单条带 { id, clientId, productCount, startDate, endDate }[]（已完结不渲染）
+// 取制品/节点名首字作为缩写
+function getProductAbbrev(name) { return (name || '').trim().charAt(0) || ''; }
+
+// 日历条带数据：指定年月，返回该月内可见的排单条带（已完结不渲染）
 function getScheduleBarsForCalendar(year, month) {
     const bars = [];
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
-    history.forEach(item => {
+    history.forEach(function (item) {
         if (isOrderSettled(item)) return;
         if (!item.startTime && !item.deadline) return;
-        // 如果该排单所有制品都已完成，则不再渲染彩条
         ensureProductDoneStates(item);
         const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
         const totalLen =
@@ -6561,7 +6774,36 @@ function getScheduleBarsForCalendar(year, month) {
         const startDate = toYmd(start);
         const endDate = toYmd(end);
         const productCount = getOrderItemQuantityTotal(item);
-        bars.push({ id: item.id, clientId: item.clientId || '', productCount, startDate, endDate });
+        var bar = { id: item.id, clientId: item.clientId || '', productCount, startDate, endDate };
+        var products = (Array.isArray(item.productPrices) ? item.productPrices : []).concat(Array.isArray(item.giftPrices) ? item.giftPrices : []);
+        var dateMap = {};
+        var hasAnyPlan = false;
+        products.forEach(function (p) {
+            if (Array.isArray(p.nodeDailyPlan) && (p.nodeDetails || []).length > 0) {
+                (p.nodeDailyPlan || []).forEach(function (np) {
+                    var d = normalizeYmd(np.date);
+                    if (!d || (np.targetQty || 0) <= 0) return;
+                    hasAnyPlan = true;
+                    var nm = ((p.nodeDetails || [])[np.nodeIndex] || {}).name || '节点';
+                    var ab = getProductAbbrev(nm);
+                    if (!dateMap[d]) dateMap[d] = [];
+                    dateMap[d].push(ab + (np.targetQty || 0));
+                });
+            } else if (Array.isArray(p.dailyPlan)) {
+                (p.dailyPlan || []).forEach(function (dp) {
+                    var d = normalizeYmd(dp.date);
+                    if (!d || (dp.targetQty || 0) <= 0) return;
+                    hasAnyPlan = true;
+                    var ab = getProductAbbrev(p.product);
+                    if (!dateMap[d]) dateMap[d] = [];
+                    dateMap[d].push(ab + (dp.targetQty || 0));
+                });
+            }
+        });
+        if (hasAnyPlan) {
+            bar.dailySegments = Object.keys(dateMap).sort().map(function (d) { return { date: d, text: dateMap[d].join(' ') }; });
+        }
+        bars.push(bar);
     });
     return bars;
 }
@@ -6704,7 +6946,20 @@ function renderScheduleCalendar() {
             const startCol = Math.max(0, b.startDay - weekFirstDay);
             const endCol = Math.min(6, b.endDay - weekFirstDay);
             if (startCol > endCol) return;
-            segments.push({ startCol: startCol, endCol: endCol, bar: b.bar });
+            if (b.bar.dailySegments && b.bar.dailySegments.length > 0) {
+                for (var c = startCol; c <= endCol; c++) {
+                    var dayOfMonth = weekFirstDay + c;
+                    var dateStr = (dayOfMonth >= 1 && dayOfMonth <= daysInMonth) ? toYmd(new Date(y, m - 1, dayOfMonth)) : '';
+                    var segText = '';
+                    if (dateStr) {
+                        var ent = b.bar.dailySegments.find(function (ds) { return normalizeYmd(ds.date) === dateStr; });
+                        if (ent) segText = ent.text;
+                    }
+                    segments.push({ startCol: c, endCol: c, bar: b.bar, segmentText: segText, dateStr: dateStr });
+                }
+            } else {
+                segments.push({ startCol: startCol, endCol: endCol, bar: b.bar });
+            }
         });
         const weekTracks = assignWeekBarsToTracks(segments, getScheduleMaxTracks());
         if (weekTracks.length > 0) {
@@ -6720,7 +6975,9 @@ function renderScheduleCalendar() {
                     const label = (b.clientId || '—') + '  ' + b.productCount + '制品';
                     var textColor = barTextColors[idx];
                     var singleDay = s.startCol === s.endCol ? ' data-single-day="1"' : '';
-                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '"' + singleDay + '>' + label + '</div>';
+                    var displayText = (s.segmentText != null && s.segmentText !== '') ? s.segmentText : ((s.segmentText === '') ? '—' : label);
+                    var titleAttr = (s.segmentText ? s.dateStr + ': ' + s.segmentText + ' | ' : '') + label;
+                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';" title="' + titleAttr.replace(/"/g, '&quot;') + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '" data-date="' + (s.dateStr || '') + '"' + singleDay + '>' + (displayText || '\u00A0') + '</div>';
                 });
             });
             html += '</div>';
@@ -6822,6 +7079,20 @@ function renderScheduleTodoSection() {
     const titles = { all: '所有', month: '当月', pending: '待排', today: '当日' };
     const sub = f === 'today' && window.scheduleSelectedDate ? '：' + formatYmdCn(window.scheduleSelectedDate) : '';
     titleEl.textContent = (titles[f] || '当日') + sub;
+    var summaryEl = document.getElementById('scheduleTodaySummary');
+    if (summaryEl) {
+        if (f === 'today' && window.scheduleSelectedDate && items.length > 0) {
+            var stats = getTodayProductStats(window.scheduleSelectedDate);
+            if (stats.total > 0) {
+                summaryEl.innerHTML = '今日计划 ' + stats.total + ' 个 · 已完成 ' + stats.done + ' · 待完成 ' + stats.undone;
+                summaryEl.classList.remove('d-none');
+            } else {
+                summaryEl.classList.add('d-none');
+            }
+        } else {
+            summaryEl.classList.add('d-none');
+        }
+    }
     if (items.length === 0) {
         modulesEl.innerHTML = '<p class="schedule-todo-empty">该日期暂无排单</p>';
         return;
@@ -6861,17 +7132,73 @@ function renderScheduleTodoSection() {
         const client = item.clientId || '单主';
         const progress = doneCount + '/' + total;
         const status = getRecordProgressStatus(item);
-        const productItems = products.map((p, i) => ({ label: (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: i, done: !!doneStates[i] }));
-        const giftItems = gifts.map((p, i) => ({ label: '[赠品] ' + (p.product || '赠品') + (p.quantity > 1 ? ' x ' + p.quantity : ''), idx: products.length + i, done: !!doneStates[products.length + i] }));
+        var selDate = window.scheduleSelectedDate || '';
+        var buildProductItems = function (arr, isGift) {
+            var base = products.length;
+            var out = [];
+            for (var i = 0; i < arr.length; i++) {
+                var p = arr[i];
+                var idx = isGift ? base + i : i;
+                var lab = (isGift ? '[赠品] ' : '') + (p.product || (isGift ? '赠品' : '制品')) + (p.quantity > 1 ? ' x ' + p.quantity : '');
+                var hasNodePlan = Array.isArray(p.nodeDailyPlan) && p.nodeDailyPlan.length > 0;
+                var hasPlan = Array.isArray(p.dailyPlan) && p.dailyPlan.length > 0;
+                if (hasNodePlan && (p.nodeDetails || []).length > 0) {
+                    for (var ni = 0; ni < (p.nodeDetails || []).length; ni++) {
+                        var remaining = selDate ? getRemainingForDay(item, idx, selDate, ni) : 0;
+                        var todayDone = (item.productDailyDone || []).filter(function (e) {
+                            return e.productIndex === idx && e.nodeIndex === ni && normalizeYmd(e.date) === selDate;
+                        }).reduce(function (s, e) { return s + (e.doneQty || 0); }, 0);
+                        var nodeName = (p.nodeDetails[ni] || {}).name || '节点';
+                        out.push({
+                            label: (p.product || '') + ' - ' + nodeName + (p.quantity > 1 ? ' x' + p.quantity : ''),
+                            idx: idx,
+                            nodeIdx: ni,
+                            done: !!doneStates[idx],
+                            hasDailyPlan: true,
+                            remaining: remaining,
+                            todayDone: todayDone
+                        });
+                    }
+                } else if (hasPlan && selDate) {
+                    var planEnt = (p.dailyPlan || []).find(function (e) { return normalizeYmd(e.date) === selDate; });
+                    var remaining = planEnt ? getRemainingForDay(item, idx, selDate, null) : 0;
+                    var todayDone = (item.productDailyDone || []).filter(function (e) {
+                        return e.productIndex === idx && e.nodeIndex == null && normalizeYmd(e.date) === selDate;
+                    }).reduce(function (s, e) { return s + (e.doneQty || 0); }, 0);
+                    out.push({
+                        label: lab,
+                        idx: idx,
+                        nodeIdx: null,
+                        done: !!doneStates[idx],
+                        hasDailyPlan: !!(planEnt && (planEnt.targetQty || 0) > 0),
+                        remaining: remaining,
+                        todayDone: todayDone
+                    });
+                } else {
+                    out.push({ label: lab, idx: idx, nodeIdx: null, done: !!doneStates[idx], hasDailyPlan: false });
+                }
+            }
+            return out;
+        };
+        var productItems = buildProductItems(products, false);
+        var giftItems = buildProductItems(gifts, true);
         const allItems = productItems.concat(giftItems).sort((a, b) => Number(a.done) - Number(b.done));
         var barIdx = Math.abs(item.id) % SCHEDULE_BAR_COLORS.length;
         var dotColors = document.documentElement.classList.contains('theme-dark') && SCHEDULE_BAR_DOT_COLORS_DARK ? SCHEDULE_BAR_DOT_COLORS_DARK : SCHEDULE_BAR_DOT_COLORS;
         var dotColor = (typeof dotColors !== 'undefined' && dotColors.length) ? dotColors[barIdx] : SCHEDULE_BAR_TEXT_COLORS[barIdx];
-        const chipHtml = allItems.map(({ label, idx, done }) =>
-            '<div class="schedule-todo-row schedule-todo-chip' + (done ? ' schedule-todo-done' : '') + '">' +
-            '<input type="checkbox" class="schedule-todo-checkbox" ' + (done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + idx + '" onchange="toggleScheduleTodoDone(this)">' +
-            '<span class="schedule-todo-label">' + label + '</span></div>'
-        ).join('');
+        const chipHtml = allItems.map(function (it) {
+            if (it.hasDailyPlan) {
+                return '<div class="schedule-todo-row schedule-todo-chip' + (it.done ? ' schedule-todo-done' : '') + '">' +
+                    '<input type="checkbox" class="schedule-todo-checkbox" ' + (it.done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + it.idx + '" onchange="toggleScheduleTodoDone(this)">' +
+                    '<span class="schedule-todo-label">' + it.label + '</span>' +
+                    '<span class="schedule-todo-daily">今日 ' + it.remaining + ' 个</span>' +
+                    '<input type="number" class="schedule-todo-done-input" min="0" max="999" value="' + it.todayDone + '" data-id="' + item.id + '" data-idx="' + it.idx + '" data-node="' + (it.nodeIdx != null ? it.nodeIdx : '') + '" data-date="' + selDate + '" onchange="onDailyDoneInputChange(this)" placeholder="0">' +
+                    '</div>';
+            }
+            return '<div class="schedule-todo-row schedule-todo-chip' + (it.done ? ' schedule-todo-done' : '') + '">' +
+                '<input type="checkbox" class="schedule-todo-checkbox" ' + (it.done ? 'checked' : '') + ' data-id="' + item.id + '" data-idx="' + it.idx + '" onchange="toggleScheduleTodoDone(this)">' +
+                '<span class="schedule-todo-label">' + it.label + '</span></div>';
+        }).join('');
         cardHtmls.push(''
             + '<div class="schedule-todo-card" onclick="handleScheduleTodoCardClick(' + item.id + ', event)">'
             + '  <div class="schedule-todo-card-main">'
@@ -6891,6 +7218,16 @@ function renderScheduleTodoSection() {
             + '</div>');
     });
     modulesEl.innerHTML = cardHtmls.join('');
+}
+
+function onDailyDoneInputChange(input) {
+    var id = parseInt(input.dataset.id, 10);
+    var idx = parseInt(input.dataset.idx, 10);
+    var nodeIdx = input.dataset.node === '' ? null : parseInt(input.dataset.node, 10);
+    var dateYmd = input.dataset.date || '';
+    var v = parseInt(input.value, 10) || 0;
+    setProductDailyDone(id, idx, dateYmd, v, nodeIdx);
+    debouncedRefreshScheduleView();
 }
 
 function toggleScheduleTodoDone(checkbox) {
@@ -6961,12 +7298,166 @@ function scheduleTodoCardAction(action) {
     closeScheduleTodoCardModal();
     if (id == null) return;
     if (action === 'edit') editHistoryItem(id);
+    else if (action === 'daily_plan') openDailyPlanModal(id);
     else if (action === 'receipt') { setReceiptFromRecord(); loadQuoteFromHistory(id); }
     else if (action === 'remark') openOrderRemarkViewModal(id);
     else if (action === 'cancel' || action === 'waste_fee' || action === 'normal') {
         openSettlementModal(id, action);
     }
 }
+
+// ========== 日计划编辑 ==========
+var dailyPlanModalRecordId = null;
+function openDailyPlanModal(recordId) {
+    var item = history.find(function (h) { return h.id === recordId; });
+    if (!item || (!item.startTime && !item.deadline)) {
+        alert('请先设置订单的开始时间与截稿时间！');
+        return;
+    }
+    dailyPlanModalRecordId = recordId;
+    renderDailyPlanEditor(item);
+    var el = document.getElementById('dailyPlanModal');
+    if (el) el.classList.remove('d-none');
+}
+function closeDailyPlanModal() {
+    dailyPlanModalRecordId = null;
+    var el = document.getElementById('dailyPlanModal');
+    if (el) el.classList.add('d-none');
+}
+function getDailyPlanDateRange(item) {
+    var start = item.startTime ? new Date(item.startTime) : (item.timestamp ? new Date(item.timestamp) : new Date());
+    var end = item.deadline ? new Date(item.deadline) : new Date(start.getTime());
+    if (isNaN(start.getTime())) start = new Date();
+    if (isNaN(end.getTime())) end = new Date(start.getTime());
+    if (end < start) end = new Date(start.getTime());
+    var dates = [];
+    var d = new Date(start);
+    d.setHours(0, 0, 0, 0);
+    var endYmd = toYmd(end);
+    while (toYmd(d) <= endYmd) {
+        dates.push(toYmd(d));
+        d.setDate(d.getDate() + 1);
+    }
+    return dates;
+}
+function renderDailyPlanEditor(item) {
+    var container = document.getElementById('dailyPlanEditorContainer');
+    if (!container) return;
+    var products = (Array.isArray(item.productPrices) ? item.productPrices : []).concat(Array.isArray(item.giftPrices) ? item.giftPrices : []);
+    var dates = getDailyPlanDateRange(item);
+    if (products.length === 0 || dates.length === 0) {
+        container.innerHTML = '<p class="text-gray">该订单无制品或排期无效。</p>';
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < products.length; i++) {
+        var p = products[i];
+        var qty = p.quantity || 1;
+        var isGift = i >= (item.productPrices || []).length;
+        var label = (p.product || '制品') + (isGift ? ' (赠)' : '') + ' x' + qty;
+        var plan = p.dailyPlan || [];
+        if (Array.isArray(p.nodeDailyPlan) && p.nodeDailyPlan.length > 0) {
+            var nodes = (p.nodeDetails || []).map(function (n) { return n.name || '节点'; });
+            for (var ni = 0; ni < nodes.length; ni++) {
+                var nodePlan = (p.nodeDailyPlan || []).filter(function (np) { return np.nodeIndex === ni; });
+                html += '<div class="daily-plan-item" data-product-index="' + i + '" data-node-index="' + ni + '">';
+                html += '<div class="daily-plan-item-label">' + (p.product || '') + ' - ' + (nodes[ni] || '节点') + ' x' + qty + '</div>';
+                html += '<div class="daily-plan-dates">';
+                for (var di = 0; di < dates.length; di++) {
+                    var ent = nodePlan.find(function (e) { return normalizeYmd(e.date) === dates[di]; });
+                    var val = ent ? (ent.targetQty || 0) : '';
+                    html += '<div class="daily-plan-date-cell"><label>' + dates[di].slice(5) + '</label><input type="number" min="0" step="1" value="' + val + '" data-date="' + dates[di] + '"></div>';
+                }
+                html += '</div></div>';
+            }
+        } else {
+            html += '<div class="daily-plan-item" data-product-index="' + i + '">';
+            html += '<div class="daily-plan-item-label">' + label + '</div>';
+            html += '<div class="daily-plan-dates">';
+            for (var di = 0; di < dates.length; di++) {
+                var ent = plan.find(function (e) { return normalizeYmd(e.date) === dates[di]; });
+                var val = ent ? (ent.targetQty || 0) : '';
+                html += '<div class="daily-plan-date-cell"><label>' + dates[di].slice(5) + '</label><input type="number" min="0" step="1" value="' + val + '" data-date="' + dates[di] + '"></div>';
+            }
+            html += '</div></div>';
+        }
+    }
+    container.innerHTML = html;
+}
+function dailyPlanAverageAll() {
+    var id = dailyPlanModalRecordId;
+    var item = history.find(function (h) { return h.id === id; });
+    if (!item) return;
+    var products = (Array.isArray(item.productPrices) ? item.productPrices : []).concat(Array.isArray(item.giftPrices) ? item.giftPrices : []);
+    var dates = getDailyPlanDateRange(item);
+    if (dates.length === 0) return;
+    var container = document.getElementById('dailyPlanEditorContainer');
+    if (!container) return;
+    var items = container.querySelectorAll('.daily-plan-item');
+    items.forEach(function (row) {
+        var idx = parseInt(row.getAttribute('data-product-index'), 10);
+        var nodeIdx = row.getAttribute('data-node-index');
+        var p = products[idx];
+        if (!p) return;
+        var qty = p.quantity || 1;
+        var perDay = Math.floor(qty / dates.length);
+        var remainder = qty - perDay * dates.length;
+        var inputs = row.querySelectorAll('input[data-date]');
+        inputs.forEach(function (inp, di) {
+            var v = perDay + (di < remainder ? 1 : 0);
+            inp.value = v;
+        });
+    });
+}
+function dailyPlanClearAll() {
+    var container = document.getElementById('dailyPlanEditorContainer');
+    if (!container) return;
+    container.querySelectorAll('input[data-date]').forEach(function (inp) { inp.value = ''; });
+}
+function saveDailyPlan() {
+    var id = dailyPlanModalRecordId;
+    var item = history.find(function (h) { return h.id === id; });
+    if (!item) { closeDailyPlanModal(); return; }
+    var products = (Array.isArray(item.productPrices) ? item.productPrices : []).concat(Array.isArray(item.giftPrices) ? item.giftPrices : []);
+    var container = document.getElementById('dailyPlanEditorContainer');
+    if (!container) { closeDailyPlanModal(); return; }
+    var items = container.querySelectorAll('.daily-plan-item');
+    for (var ii = 0; ii < items.length; ii++) {
+        var row = items[ii];
+        var idx = parseInt(row.getAttribute('data-product-index'), 10);
+        var nodeIdx = row.getAttribute('data-node-index');
+        var p = products[idx];
+        if (!p) continue;
+        var qty = p.quantity || 1;
+        var inputs = row.querySelectorAll('input[data-date]');
+        var plan = [];
+        var sum = 0;
+        for (var j = 0; j < inputs.length; j++) {
+            var v = parseInt(inputs[j].value, 10) || 0;
+            if (v > 0) {
+                plan.push({ date: inputs[j].getAttribute('data-date'), targetQty: v });
+                sum += v;
+            }
+        }
+        if (plan.length > 0 && sum !== qty) {
+            alert('制品「' + (p.product || '') + '」的日计划总和(' + sum + ')须等于数量(' + qty + ')，请修改。');
+            return;
+        }
+        if (nodeIdx != null) {
+            var ni = parseInt(nodeIdx, 10);
+            if (!Array.isArray(p.nodeDailyPlan)) p.nodeDailyPlan = [];
+            p.nodeDailyPlan = p.nodeDailyPlan.filter(function (e) { return e.nodeIndex !== ni; });
+            plan.forEach(function (e) { p.nodeDailyPlan.push({ nodeIndex: ni, date: e.date, targetQty: e.targetQty }); });
+        } else {
+            p.dailyPlan = plan.length > 0 ? plan : undefined;
+        }
+    }
+    saveData();
+    showGlobalToast('日计划已保存！');
+    closeDailyPlanModal();
+    debouncedRefreshScheduleView();
+}
+
 function needDepositChecked() {
     var el = document.getElementById('needDeposit');
     return el ? el.value === 'yes' : false;

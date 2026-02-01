@@ -673,6 +673,7 @@
                             <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">Today</button>
                         </div>
                         <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
+                        <div id="scheduleTodaySummary" class="schedule-today-summary d-none"></div>
                         <div id="scheduleTodoModules" class="schedule-todo-modules">
                             <!-- 按排单分模块的制品 todo 由 JS 渲染 -->
                         </div>
@@ -2156,6 +2157,10 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
                             <span>编辑</span>
                         </button>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('daily_plan')" title="日计划">
+                            <svg class="icon" aria-hidden="true"><use href="#i-today-calendar-dot"></use></svg>
+                            <span>日计划</span>
+                        </button>
                         <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('receipt')" title="小票">
                             <svg class="icon" aria-hidden="true"><use href="#i-image-line-c"></use></svg>
                             <span>小票</span>
@@ -2179,6 +2184,30 @@
                             <span>结单</span>
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 日计划编辑弹窗 -->
+        <div id="dailyPlanModal" class="modal d-none" onclick="if(event.target===this)closeDailyPlanModal()">
+            <div class="modal-content modal-content-wide">
+                <div class="modal-header">
+                    <h3>制品日计划</h3>
+                    <span class="close" onclick="closeDailyPlanModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p class="text-gray text-sm mb-2">在排期内为每个制品分配每日完成数量，未完成将顺延到次日。</p>
+                    <div id="dailyPlanEditorContainer">
+                        <!-- 由 JS 渲染 -->
+                    </div>
+                    <div class="d-flex gap-2 mt-3 flex-wrap">
+                        <button type="button" class="btn secondary" onclick="dailyPlanAverageAll()">平均分配</button>
+                        <button type="button" class="btn secondary" onclick="dailyPlanClearAll()">清空日计划</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn secondary" onclick="closeDailyPlanModal()">取消</button>
+                    <button type="button" class="btn" onclick="saveDailyPlan()">保存</button>
                 </div>
             </div>
         </div>
