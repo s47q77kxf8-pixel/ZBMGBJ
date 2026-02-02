@@ -4581,9 +4581,18 @@ function updateProductForm(productId) {
             break;
             
         case 'nodes':
-            const nodes = productSetting.nodes || [];
+            // 按节点收费：当前单独立维护一份节点列表，默认拷贝自设置，可在前台增删节点（只影响当前单）
+            const baseNodes = productSetting.nodes || [];
+            if (!Array.isArray(product.nodes) || product.nodes.length === 0) {
+                product.nodes = baseNodes.map(function (n) {
+                    return { name: n.name, percent: n.percent };
+                });
+            }
+            const nodes = product.nodes || [];
             const totalPrice = (product.nodeTotalPrice != null && product.nodeTotalPrice !== '') ? product.nodeTotalPrice : (productSetting.price || '');
-            const nodePercents = product.nodePercents && product.nodePercents.length === nodes.length ? product.nodePercents : nodes.map(n => n.percent);
+            const nodePercents = (product.nodePercents && product.nodePercents.length === nodes.length)
+                ? product.nodePercents
+                : nodes.map(function (n) { return n.percent; });
             const totalNum = parseFloat(totalPrice) || 0;
             html = `
                 <div class="form-row">
@@ -4607,10 +4616,15 @@ function updateProductForm(productId) {
                                            onchange="updateProductNodePercent(${productId}, ${idx}, parseFloat(this.value) || 0); updateProductForm(${productId})">
                                     <span class="text-gray">%</span>
                                     <span class="node-percent-amount text-gray">¥${amount}</span>
+                                    <button type="button" class="icon-action-btn delete" onclick="removeProductNodeInstance(${productId}, ${idx})" aria-label="删除节点" title="删除节点">
+                                        <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                        <span class="sr-only">删除节点</span>
+                                    </button>
                                 </div>
                             `;
                         }).join('')}
                         ${nodes.length ? '<p class="text-gray text-sm mt-1">比例之和：<span id="productNodePercentsSum-' + productId + '">' + (nodePercents.reduce((s, p) => s + (parseFloat(p) || 0), 0)) + '</span>%</p>' : '<p class="text-gray text-sm">请在设置页为该制品配置节点</p>'}
+                        <button type="button" class="btn secondary small mt-2" onclick="addProductNodeInstance(${productId})">+ 添加节点</button>
                     </div>
                 </div>
             `;
@@ -4643,11 +4657,47 @@ function updateProduct(id, field, value) {
 function updateProductNodePercent(productId, index, value) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
-    if (!Array.isArray(product.nodePercents)) {
-        const productSetting = productSettings.find(p => p.id === parseInt(product.type));
-        product.nodePercents = (productSetting && productSetting.nodes) ? productSetting.nodes.map(n => n.percent) : [];
+    const productSetting = productSettings.find(p => p.id === parseInt(product.type));
+    const baseNodes = (product && Array.isArray(product.nodes) && product.nodes.length)
+        ? product.nodes
+        : (productSetting && productSetting.nodes) ? productSetting.nodes : [];
+    if (!Array.isArray(product.nodePercents) || product.nodePercents.length !== baseNodes.length) {
+        product.nodePercents = baseNodes.map(function (n) { return n.percent; });
     }
     product.nodePercents[index] = value;
+}
+
+// 按节点收费：当前单内添加一个节点（不修改设置，只影响本单）
+function addProductNodeInstance(productId) {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    const productSetting = productSettings.find(p => p.id === parseInt(product.type));
+    const baseNodes = (productSetting && productSetting.nodes) ? productSetting.nodes : [];
+    if (!Array.isArray(product.nodes) || product.nodes.length === 0) {
+        product.nodes = baseNodes.map(function (n) {
+            return { name: n.name, percent: n.percent };
+        });
+    }
+    product.nodes.push({ name: '新节点', percent: 0 });
+    // 同步扩展 nodePercents
+    if (!Array.isArray(product.nodePercents)) {
+        product.nodePercents = product.nodes.map(function (n) { return n.percent; });
+    } else {
+        product.nodePercents.push(0);
+    }
+    updateProductForm(productId);
+}
+
+// 按节点收费：当前单内删除一个节点（不修改设置，只影响本单）
+function removeProductNodeInstance(productId, index) {
+    const product = products.find(p => p.id === productId);
+    if (!product || !Array.isArray(product.nodes) || !product.nodes[index]) return;
+    if (!confirm('确定要删除该节点吗？')) return;
+    product.nodes.splice(index, 1);
+    if (Array.isArray(product.nodePercents) && product.nodePercents.length > index) {
+        product.nodePercents.splice(index, 1);
+    }
+    updateProductForm(productId);
 }
 
 // 快捷增减制品数
@@ -6614,37 +6664,51 @@ function getScheduleBarsForCalendar(year, month) {
     return bars;
 }
 
-// 排单日历条带色板（顺序：青、红、蓝、橙、绿、紫、黄、品红、茶、珊瑚，共10色）
+// 排单日历条带色板（日程颜色 17 色：小圆点用实色，彩条用半透明）
 var SCHEDULE_BAR_COLORS = [
-    'rgba(135, 205, 250, 0.38)',   // 0 青
-    'rgba(245, 195, 195, 0.38)',   // 1 红
-    'rgba(190, 215, 250, 0.38)',   // 2 蓝
-    'rgba(255, 150, 100, 0.38)',   // 3 橙
-    'rgba(195, 245, 225, 0.38)',   // 4 绿
-    'rgba(218, 200, 245, 0.38)',   // 5 紫
-    'rgba(255, 235, 100, 0.38)',   // 6 黄
-    'rgba(240, 140, 210, 0.38)',   // 7 品红
-    'rgba(210, 180, 140, 0.38)',   // 8 茶
-    'rgba(255, 160, 150, 0.38)'    // 9 珊瑚
+    'rgba(109, 204, 67, 0.38)',   // 0 翠绿
+    'rgba(239, 83, 80, 0.38)',    // 1 红
+    'rgba(236, 64, 122, 0.38)',   // 2 玫红
+    'rgba(244, 143, 177, 0.38)',  // 3 浅粉
+    'rgba(156, 39, 176, 0.38)',   // 4 紫
+    'rgba(103, 58, 183, 0.38)',   // 5 蓝紫
+    'rgba(33, 150, 243, 0.38)',   // 6 蓝
+    'rgba(0, 188, 212, 0.38)',    // 7 青
+    'rgba(139, 195, 74, 0.38)',   // 8 黄绿
+    'rgba(128, 203, 196, 0.38)',  // 9 薄荷
+    'rgba(255, 235, 59, 0.38)',   // 10 黄
+    'rgba(255, 152, 0, 0.38)',    // 11 橙
+    'rgba(255, 87, 34, 0.38)',    // 12 深橙
+    'rgba(121, 85, 72, 0.38)',    // 13 棕
+    'rgba(189, 189, 189, 0.38)',  // 14 浅灰
+    'rgba(96, 125, 139, 0.38)',   // 15 蓝灰
+    'rgba(178, 223, 219, 0.38)'   // 16 浅青
 ];
-var SCHEDULE_BAR_TEXT_COLORS = ['#1e5a7a', '#5c2828', '#2d4a6b', '#5c2810', '#2d6850', '#3d2d5c', '#5c4d10', '#6b2d5c', '#5c4a28', '#6b2d35'];
-var SCHEDULE_BAR_DOT_COLORS = ['#5eb8e8', '#c47a7a', '#7eb0e8', '#e88a5c', '#6dc49a', '#9d7ec9', '#e6c83d', '#d97eb8', '#d2b48c', '#ffa096'];
+var SCHEDULE_BAR_TEXT_COLORS = ['#2d5c1a', '#8b2020', '#8b2048', '#8b4058', '#4a1858', '#2d1858', '#0d47a1', '#006064', '#33691e', '#00695c', '#f9a825', '#e65100', '#bf360c', '#3e2723', '#424242', '#263238', '#004d40'];
+var SCHEDULE_BAR_DOT_COLORS = ['#6DC043', '#EF5350', '#EC407A', '#F48FB1', '#9C27B0', '#673AB7', '#2196F3', '#00BCD4', '#8BC34A', '#80CBC4', '#FFEB3B', '#FF9800', '#FF5722', '#795548', '#BDBDBD', '#607D8B', '#B2DFDB'];
 
-// 黑夜模式彩条色板（与白天一一对应，共10色）
+// 黑夜模式彩条色板（与白天一一对应，共17色）
 var SCHEDULE_BAR_COLORS_DARK = [
-    'rgba(56, 189, 248, 0.5)',    // 0 青
-    'rgba(248, 113, 113, 0.5)',   // 1 红
-    'rgba(96, 165, 250, 0.5)',    // 2 蓝
-    'rgba(251, 106, 54, 0.5)',    // 3 橙
-    'rgba(74, 222, 128, 0.5)',    // 4 绿
-    'rgba(192, 132, 252, 0.5)',   // 5 紫
-    'rgba(254, 230, 50, 0.5)',    // 6 黄
-    'rgba(236, 72, 153, 0.5)',    // 7 品红
-    'rgba(217, 119, 6, 0.5)',     // 8 茶
-    'rgba(244, 63, 94, 0.5)'      // 9 珊瑚
+    'rgba(109, 204, 67, 0.5)',    // 0 翠绿
+    'rgba(239, 83, 80, 0.5)',     // 1 红
+    'rgba(236, 64, 122, 0.5)',    // 2 玫红
+    'rgba(244, 143, 177, 0.5)',   // 3 浅粉
+    'rgba(156, 39, 176, 0.5)',    // 4 紫
+    'rgba(103, 58, 183, 0.5)',    // 5 蓝紫
+    'rgba(33, 150, 243, 0.5)',    // 6 蓝
+    'rgba(0, 188, 212, 0.5)',     // 7 青
+    'rgba(139, 195, 74, 0.5)',    // 8 黄绿
+    'rgba(128, 203, 196, 0.5)',   // 9 薄荷
+    'rgba(255, 235, 59, 0.5)',    // 10 黄
+    'rgba(255, 152, 0, 0.5)',     // 11 橙
+    'rgba(255, 87, 34, 0.5)',     // 12 深橙
+    'rgba(121, 85, 72, 0.5)',     // 13 棕
+    'rgba(189, 189, 189, 0.5)',   // 14 浅灰
+    'rgba(96, 125, 139, 0.5)',    // 15 蓝灰
+    'rgba(178, 223, 219, 0.5)'    // 16 浅青
 ];
-var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#fca5a5', '#93c5fd', '#fd8a5c', '#86efac', '#c4b5fd', '#fde047', '#f472b6', '#fcd34d', '#fda4af'];
-var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#f87171', '#60a5fa', '#f97316', '#4ade80', '#c084fc', '#facc15', '#ec4899', '#f59e0b', '#fb7185'];
+var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#86efac', '#fca5a5', '#f9a8d4', '#fbcfe8', '#e9d5ff', '#c4b5fd', '#93c5fd', '#67e8f9', '#bbf7d0', '#99f6e4', '#fde047', '#fdba74', '#fd8a5c', '#d6d3d1', '#e5e5e5', '#94a3b8', '#99f6e4'];
+var SCHEDULE_BAR_DOT_COLORS_DARK = ['#4ade80', '#f87171', '#f472b6', '#f9a8d4', '#c084fc', '#a78bfa', '#60a5fa', '#22d3ee', '#86efac', '#5eead4', '#facc15', '#f97316', '#fb7185', '#a8a29e', '#d4d4d4', '#64748b', '#5eead4'];
 
 // 根据屏幕宽度返回日历彩条最大轨道数
 function getScheduleMaxTracks() {
@@ -6846,10 +6910,13 @@ function updateScheduleTitleTodayButton() {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
+    const todayYmd = toYmd(now);
     const isCurrentMonth = window.scheduleCalendarYear === currentYear && window.scheduleCalendarMonth === currentMonth;
+    const isOtherDay = !!window.scheduleSelectedDate && window.scheduleSelectedDate !== todayYmd;
+    const shouldShowToday = !isCurrentMonth || isOtherDay;
     const todayBtn = document.querySelector('.schedule-title-today-pill');
     if (todayBtn) {
-        todayBtn.classList.toggle('d-none', isCurrentMonth);
+        todayBtn.classList.toggle('d-none', !shouldShowToday);
     }
 }
 

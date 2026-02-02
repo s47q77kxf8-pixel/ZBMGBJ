@@ -160,8 +160,14 @@ html.theme-dark .schedule-calendar-cell-selected {
     color: #fff !important;
     box-shadow: 0 0 0 1px #3b82f6;
 }
+html.theme-dark .schedule-calendar-cell-selected .schedule-cell-num {
+    color: #fff !important;
+}
 html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend {
     color: #fff;
+}
+html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend .schedule-cell-num {
+    color: #fff !important;
 }
 
 /* 彩条：黑夜模式使用 JS 中 SCHEDULE_BAR_COLORS_DARK 色板，无需 filter */
@@ -337,6 +343,13 @@ html.theme-dark .btn.secondary.btn--icon:hover {
 }
 html.theme-dark .btn.secondary.btn--icon:active {
     background-color: rgba(255, 255, 255, 0.12);
+}
+/* 统计页快捷时间（本月/本年/全部/自定义）：黑夜模式选中用蓝色强调，便于辨认 */
+html.theme-dark .stats-quick-btn.active,
+html.theme-dark .stats-quick-btn:focus-visible {
+    background: #3b82f6 !important;
+    color: #fff !important;
+    border-color: #3b82f6 !important;
 }
 html.theme-dark .btn.danger {
     background-color: rgba(239, 68, 68, 0.2);
@@ -4772,6 +4785,12 @@ input:checked + .toggle-slider:before {
     flex-shrink: 0;
 }
 
+/* 统计页筛选按钮：徽章相对此按钮定位，避免角标错位/溢出 */
+#statsFilterBtn {
+    position: relative;
+    flex-shrink: 0;
+}
+
 .filter-badge {
     position: absolute;
     top: -4px;
@@ -4784,6 +4803,11 @@ input:checked + .toggle-slider:before {
     min-width: 18px;
     text-align: center;
     line-height: 1.2;
+}
+/* 记录页/统计页：筛选按钮上的角标在按钮右上角外侧 */
+.page-filter-btn-with-label .filter-badge {
+    top: -4px;
+    right: -4px;
 }
 /* 记录页/统计页：筛选按钮图标+文字，与排单栏风格一致 */
 .page-filter-btn-with-label {
@@ -5932,11 +5956,20 @@ input:checked + .toggle-slider:before {
     box-shadow: 0 0 0 1px #000;
     height: 72px;
 }
+.schedule-calendar-cell-selected .schedule-cell-num {
+    color: #fff !important;
+}
 .schedule-calendar-cell-selected.schedule-calendar-cell-weekend {
     color: #fff;
 }
+.schedule-calendar-cell-selected.schedule-calendar-cell-weekend .schedule-cell-num {
+    color: #fff !important;
+}
 .schedule-calendar-cell-selected.schedule-calendar-cell-today {
     background: #111827 !important;
+    color: #fff !important;
+}
+.schedule-calendar-cell-selected.schedule-calendar-cell-today .schedule-cell-num {
     color: #fff !important;
 }
 .schedule-week-block {
@@ -5968,11 +6001,12 @@ input:checked + .toggle-slider:before {
     overflow: hidden;
     box-sizing: border-box;
 }
+/* 彩条样式：参考日程颜色例图，圆角条带、略透明 */
 .schedule-bar-strip {
     min-width: 0;
     cursor: pointer;
-    border-radius: 1px;
-    padding: 0 3px;
+    border-radius: 8px;
+    padding: 0 5px;
     font-size: 0.52rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -5988,6 +6022,7 @@ input:checked + .toggle-slider:before {
 }
 .schedule-bar-strip[data-single-day="1"] {
     min-width: 24px;
+    border-radius: 8px;
 }
 .schedule-todo-section {
     background: transparent;
@@ -7576,7 +7611,73 @@ html.theme-dark .settlement-preview {
 }
 #statsFilterDrawer .filter-drawer-content {
     border-radius: 16px 16px 0 0;
+    max-height: 85vh;
+    top: 0;
+    bottom: auto;
 }
+/* 统计页筛选抽屉：内容区可滚动，避免弹窗“太长”把应用按钮挤出视口 */
+#statsFilterDrawer .filter-drawer-body {
+    padding-bottom: 0.5rem;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+#statsFilterDrawer .filter-section {
+    margin-bottom: 1rem;
+}
+#statsFilterDrawer .filter-section small.text-gray {
+    margin-top: 0.35rem;
+    display: block;
+    line-height: 1.35;
+}
+/* 统计页筛选抽屉：底部「应用/重置」始终贴底可见，不被遮挡 */
+#statsFilterDrawer .filter-drawer-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    flex-shrink: 0;
+    margin-top: auto;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+    background: var(--card-bg);
+    min-height: 52px;
+    align-items: center;
+}
+#statsFilterDrawer .filter-drawer-footer .btn {
+    min-height: 44px;
+    font-weight: 500;
+}
+
+/* 记录页筛选抽屉：限制高度 + 内容可滚动，底部「应用/重置」始终可见 */
+#recordFilterDrawer .filter-drawer-content {
+    max-height: 85vh;
+    top: 0;
+    bottom: auto;
+}
+#recordFilterDrawer .filter-drawer-body {
+    padding-bottom: 0.5rem;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+#recordFilterDrawer .filter-section {
+    margin-bottom: 1rem;
+}
+#recordFilterDrawer .filter-drawer-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    flex-shrink: 0;
+    margin-top: auto;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+    background: var(--card-bg);
+    min-height: 52px;
+    align-items: center;
+}
+#recordFilterDrawer .filter-drawer-footer .btn {
+    min-height: 44px;
+    font-weight: 500;
+}
+
 @media (min-width: 640px) {
     .stats-kpi-grid {
         grid-template-columns: repeat(3, 1fr);
@@ -7657,7 +7758,7 @@ html.theme-dark .settlement-preview {
         font-size: 0.5rem;
         line-height: 10px;
         height: 10px;
-        border-radius: 3px;
+        border-radius: 6px;
         margin-bottom: 1px;
     }
     .schedule-bar-chip {
