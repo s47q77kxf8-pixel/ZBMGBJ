@@ -130,6 +130,9 @@ html.theme-dark .schedule-title-actions .schedule-title-icon-btn .icon {
 html.theme-dark .schedule-title-actions .schedule-title-icon-btn svg {
     stroke: #e5e5e5 !important;
 }
+html.theme-dark .schedule-title-actions .schedule-title-action-label {
+    color: #e5e5e5 !important;
+}
 
 /* ② 日历栏：黑夜模式下提升可读性 */
 html.theme-dark .schedule-calendar {
@@ -4782,6 +4785,19 @@ input:checked + .toggle-slider:before {
     text-align: center;
     line-height: 1.2;
 }
+/* 记录页/统计页：筛选按钮图标+文字，与排单栏风格一致 */
+.page-filter-btn-with-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 44px;
+    padding: 0.35rem 0.5rem;
+}
+.page-filter-btn-with-label .page-action-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
 
 /* 历史记录筛选抽屉（移动端风格） */
 .history-filter-drawer {
@@ -5660,6 +5676,24 @@ input:checked + .toggle-slider:before {
 }
 .schedule-title-actions .schedule-title-icon-btn:active {
     background: rgba(0, 0, 0, 0.08) !important;
+}
+/* 排单栏「记录」「统计」图标+文字，触控区域 ≥44px */
+.schedule-title-actions .schedule-title-icon-btn-with-label {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.35rem 0.5rem;
+    gap: 0.25rem;
+    width: auto;
+}
+.schedule-title-actions .schedule-title-action-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+@media (max-width: 400px) {
+    .schedule-title-actions .schedule-title-action-label {
+        font-size: 0.8rem;
+    }
 }
 
 .schedule-title-btn {

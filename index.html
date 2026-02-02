@@ -651,11 +651,13 @@
                                 <svg class="icon theme-icon-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
                                 <svg class="icon theme-icon-moon d-none" aria-hidden="true"><use href="#i-moon"></use></svg>
                             </button>
-                            <button type="button" class="btn secondary btn--icon schedule-title-icon-btn schedule-title-icon-btn--stats" id="openStatsBtn" onclick="openStatsPage()" aria-label="统计" title="统计">
-                                <svg class="icon" aria-hidden="true"><use href="#i-stats-e"></use></svg>
-                            </button>
-                            <button type="button" class="btn secondary btn--icon schedule-title-icon-btn" id="openHistoryRecordBtn" onclick="openRecordPage()" aria-label="记录" title="记录">
+                            <button type="button" class="btn secondary schedule-title-icon-btn schedule-title-icon-btn-with-label" id="openHistoryRecordBtn" onclick="openRecordPage()" aria-label="记录" title="记录">
                                 <svg class="icon" aria-hidden="true"><use href="#i-record-c"></use></svg>
+                                <span class="schedule-title-action-label">记录</span>
+                            </button>
+                            <button type="button" class="btn secondary schedule-title-icon-btn schedule-title-icon-btn-with-label schedule-title-icon-btn--stats" id="openStatsBtn" onclick="openStatsPage()" aria-label="统计" title="统计">
+                                <svg class="icon" aria-hidden="true"><use href="#i-stats-e"></use></svg>
+                                <span class="schedule-title-action-label">统计</span>
                             </button>
                         </div>
                     </div>
@@ -1303,9 +1305,9 @@
             <div id="record" class="page">
                 <div class="schedule-section">
                     <div class="schedule-toolbar record-page-header d-flex justify-between items-center">
-                        <button type="button" class="btn record-back-flat" onclick="showPage('quote')" aria-label="返回" title="返回">
+                        <button type="button" class="btn record-back-flat" onclick="showPage('quote')" aria-label="返回排单" title="返回排单">
                             <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
-                            <span class="sr-only">返回</span>
+                            <span class="sr-only">返回排单</span>
                         </button>
                         <h2 class="schedule-title record-page-title">记录</h2>
                         <div class="d-flex gap-2 items-center record-page-actions">
@@ -1359,9 +1361,9 @@
                                         <button type="button" class="record-sort-opt" data-sort="client-desc" onclick="setRecordSortValue('client-desc')">单主ID（Z-A）</button>
                                     </div>
                                 </div>
-                                <button class="btn secondary btn--icon" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
+                                <button class="btn secondary page-filter-btn-with-label" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
                                     <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
-                                    <span class="sr-only" id="recordFilterBtnText">筛选</span>
+                                    <span class="page-action-label" id="recordFilterBtnText">筛选</span>
                                     <span id="recordFilterBadge" class="filter-badge d-none">0</span>
                                 </button>
                             </div>
@@ -1461,9 +1463,9 @@
             <div id="stats" class="page">
                 <div class="schedule-section stats-page">
                     <header class="stats-header d-flex justify-between items-center">
-                        <button type="button" class="btn btn-back-flat stats-back" onclick="showPage('quote')" aria-label="返回" title="返回">
+                        <button type="button" class="btn btn-back-flat stats-back" onclick="showPage('quote')" aria-label="返回排单" title="返回排单">
                             <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
-                            <span class="sr-only">返回</span>
+                            <span class="sr-only">返回排单</span>
                         </button>
                         <h1 class="stats-title">统计</h1>
                         <div class="stats-actions d-flex gap-2 items-center">
@@ -1471,8 +1473,9 @@
                                 <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
                                 <span class="sr-only">导出Excel</span>
                             </button>
-                            <button type="button" class="btn secondary btn--icon" id="statsFilterBtn" onclick="toggleStatsFilterDrawer()" aria-label="筛选" title="筛选">
+                            <button type="button" class="btn secondary page-filter-btn-with-label" id="statsFilterBtn" onclick="toggleStatsFilterDrawer()" aria-label="筛选" title="筛选">
                                 <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
+                                <span class="page-action-label">筛选</span>
                                 <span id="statsFilterBadge" class="filter-badge d-none">0</span>
                             </button>
                         </div>
