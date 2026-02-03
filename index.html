@@ -424,6 +424,48 @@
             <path d="M3 3v18h18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M7 14l4-4 4 2 6-6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
+        <!-- 方案四：选中加粗描边，加粗版 symbol（stroke-width 2.2） -->
+        <symbol id="i-today-calendar-dot-bold" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M16 2v4M8 2v4M3 10h18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16" r="2" fill="currentColor"/></symbol>
+        <symbol id="i-save-clipboard-bold" viewBox="0 0 24 24">
+            <path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+            <path d="M8 2h8v4H8V2Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+            <path d="M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-stats-e-bold" viewBox="0 0 24 24">
+            <path d="M3 3v18h18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 14l4-4 4 2 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-settings-line-p-bold" viewBox="0 0 24 24">
+            <rect x="4" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="2.2"/>
+            <rect x="14" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="2.2"/>
+            <rect x="4" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="2.2"/>
+            <rect x="14" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="2.2"/>
+        </symbol>
+        <!-- 导航选中态·实心图标（均用 fill="currentColor" 以便继承按钮颜色） -->
+        <symbol id="i-today-calendar-dot-solid" viewBox="0 0 24 24">
+            <!-- 日历主体（圆角矩形，与线性版一致 3,4 宽18 高18 rx2） -->
+            <path d="M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="currentColor"/>
+            <!-- 底部圆点 -->
+            <circle cx="12" cy="16" r="2" fill="currentColor"/>
+            <!-- 顶部两个扣环 -->
+            <rect x="8" y="2" width="4" height="4" rx="0.5" fill="currentColor"/>
+            <rect x="16" y="2" width="4" height="4" rx="0.5" fill="currentColor"/>
+        </symbol>
+        <symbol id="i-save-clipboard-solid" viewBox="0 0 24 24">
+            <path d="M6 4h12v16H6V4z" fill="currentColor"/>
+            <path d="M8 2h8v4H8V2z" fill="currentColor"/>
+        </symbol>
+        <!-- 统计：L 形坐标轴（实心条）+ 折线下填充区域，真正实心 -->
+        <symbol id="i-stats-e-solid" viewBox="0 0 24 24">
+            <path d="M3 3h2v18H3V3z M3 19h18v2H3V19z" fill="currentColor"/>
+            <polygon points="3,21 3,14 7,14 11,10 15,12 21,6 21,21" fill="currentColor"/>
+        </symbol>
+        <symbol id="i-settings-line-p-solid" viewBox="0 0 24 24">
+            <rect x="4" y="4" width="6" height="6" rx="1" fill="currentColor"/>
+            <rect x="14" y="4" width="6" height="6" rx="1" fill="currentColor"/>
+            <rect x="4" y="14" width="6" height="6" rx="1" fill="currentColor"/>
+            <rect x="14" y="14" width="6" height="6" rx="1" fill="currentColor"/>
+        </symbol>
     </svg>
 
     <div class="app-container">
@@ -431,11 +473,17 @@
         <nav class="navbar">
             <div class="nav-buttons">
                 <button class="nav-btn nav-btn-tab nav-btn-quote active" onclick="showPage('quote')" aria-label="排单" title="排单">
-                    <svg class="nav-tab-icon" aria-hidden="true"><use href="#i-today-calendar-dot"></use></svg>
+                    <span class="nav-tab-icon-wrap">
+                        <svg class="nav-tab-icon thin" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-today-calendar-dot"></use></svg>
+                        <svg class="nav-tab-icon bold" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-today-calendar-dot-bold"></use></svg>
+                    </span>
                     <span class="nav-tab-label">排单</span>
                 </button>
                 <button class="nav-btn nav-btn-tab nav-btn-record" onclick="showPage('record')" aria-label="记录" title="记录">
-                    <svg class="nav-tab-icon" aria-hidden="true"><use href="#i-receipt-list"></use></svg>
+                    <span class="nav-tab-icon-wrap">
+                        <svg class="nav-tab-icon thin" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-save-clipboard"></use></svg>
+                        <svg class="nav-tab-icon bold" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-save-clipboard-bold"></use></svg>
+                    </span>
                     <span class="nav-tab-label">记录</span>
                 </button>
                 <button class="nav-btn nav-btn-plus" id="openCalculatorBtn" type="button" onclick="openCalculatorDrawer()" aria-label="开始计算" title="开始计算">
@@ -443,11 +491,17 @@
                     <span class="sr-only">开始计算</span>
                 </button>
                 <button class="nav-btn nav-btn-tab nav-btn-stats" onclick="showPage('stats')" aria-label="统计" title="统计">
-                    <svg class="nav-tab-icon" aria-hidden="true"><use href="#i-stats-e"></use></svg>
+                    <span class="nav-tab-icon-wrap">
+                        <svg class="nav-tab-icon thin" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-stats-e"></use></svg>
+                        <svg class="nav-tab-icon bold" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-stats-e-bold"></use></svg>
+                    </span>
                     <span class="nav-tab-label">统计</span>
                 </button>
                 <button class="nav-btn nav-btn-tab nav-btn-settings" onclick="showPage('settings')" aria-label="设置" title="设置">
-                    <svg class="nav-tab-icon" aria-hidden="true"><use href="#i-settings-line-c3a"></use></svg>
+                    <span class="nav-tab-icon-wrap">
+                        <svg class="nav-tab-icon thin" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-settings-line-p"></use></svg>
+                        <svg class="nav-tab-icon bold" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-settings-line-p-bold"></use></svg>
+                    </span>
                     <span class="nav-tab-label">设置</span>
                 </button>
             </div>
@@ -655,7 +709,8 @@
                             <input type="date" id="scheduleTitleDateInput" class="schedule-title-date-input" placeholder="yyyy/mm/dd">
                             <button type="button" class="btn secondary schedule-title-next" onclick="scheduleCalendarNextMonth()">›</button>
                         </div>
-                        <div class="schedule-title-actions d-flex items-center">
+                        <div class="schedule-title-actions d-flex items-center gap-2">
+                            <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">Today</button>
                             <button type="button" class="btn secondary btn--icon schedule-title-icon-btn" id="themeToggleBtn" onclick="toggleThemeOnClick()" oncontextmenu="toggleThemeLongPress(event); return false;" aria-label="切换昼夜模式" title="点击切换昼夜，长按跟随系统">
                                 <svg class="icon theme-icon-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
                                 <svg class="icon theme-icon-moon d-none" aria-hidden="true"><use href="#i-moon"></use></svg>
@@ -673,7 +728,6 @@
                                 <button type="button" class="schedule-todo-filter-btn" data-filter="pending" onclick="setScheduleTodoFilter('pending')">待排</button>
                                 <button type="button" class="schedule-todo-filter-btn active" data-filter="today" onclick="setScheduleTodoFilter('today')">当日</button>
                             </div>
-                            <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">Today</button>
                         </div>
                         <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
                         <div id="scheduleTodoModules" class="schedule-todo-modules">
@@ -1305,68 +1359,68 @@
             <!-- 记录页（简洁列表：单主ID / 金额 / 完成状态） -->
             <div id="record" class="page">
                 <div class="schedule-section">
-                    <div class="schedule-toolbar record-page-header d-flex justify-between items-center">
-                        <button type="button" class="btn record-back-flat" onclick="showPage('quote')" aria-label="返回排单" title="返回排单">
-                            <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
-                            <span class="sr-only">返回排单</span>
-                        </button>
-                        <h2 class="schedule-title record-page-title">记录</h2>
-                        <div class="d-flex gap-2 items-center record-page-actions">
-                            <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
-                            <button type="button" class="btn secondary btn--icon" onclick="document.getElementById('recordSyncImportInput').click()" aria-label="导入数据" title="导入 JSON（可选覆盖本机或新增合并）">
-                                <svg class="icon" aria-hidden="true"><use href="#i-import"></use></svg>
-                                <span class="sr-only">导入</span>
-                            </button>
-                            <div class="record-export-wrap" style="position:relative">
-                                <button type="button" class="btn secondary btn--icon" id="recordExportBtn" onclick="toggleRecordExportPopover()" aria-label="导出" title="导出（按当前筛选结果，含时间范围）" aria-expanded="false" aria-haspopup="true">
-                                    <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
-                                    <span class="sr-only">导出</span>
+                    <div class="schedule-toolbar record-page-header">
+                        <div class="record-header-main d-flex justify-between items-center">
+                            <h2 class="schedule-title record-page-title">记录</h2>
+                            <div class="d-flex gap-2 items-center record-page-actions">
+                                <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
+                                <button type="button" class="btn secondary btn--icon" onclick="document.getElementById('recordSyncImportInput').click()" aria-label="导入数据" title="导入 JSON（可选覆盖本机或新增合并）">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-import"></use></svg>
+                                    <span class="sr-only">导入</span>
                                 </button>
-                                <div id="recordExportPopover" class="record-export-popover d-none" aria-hidden="true">
-                                    <p class="record-export-hint">按当前筛选结果（含时间、价格）导出</p>
-                                    <button type="button" class="record-export-opt" onclick="exportSyncData(); closeRecordExportPopover();">导出 JSON（同步）</button>
-                                    <button type="button" class="record-export-opt" onclick="exportRecordToExcel(); closeRecordExportPopover();">导出 Excel</button>
+                                <div class="record-export-wrap" style="position:relative">
+                                    <button type="button" class="btn secondary btn--icon" id="recordExportBtn" onclick="toggleRecordExportPopover()" aria-label="导出" title="导出（按当前筛选结果，含时间范围）" aria-expanded="false" aria-haspopup="true">
+                                        <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
+                                        <span class="sr-only">导出</span>
+                                    </button>
+                                    <div id="recordExportPopover" class="record-export-popover d-none" aria-hidden="true">
+                                        <p class="record-export-hint">按当前筛选结果（含时间、价格）导出</p>
+                                        <button type="button" class="record-export-opt" onclick="exportSyncData(); closeRecordExportPopover();">导出 JSON（同步）</button>
+                                        <button type="button" class="record-export-opt" onclick="exportRecordToExcel(); closeRecordExportPopover();">导出 Excel</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group w-full">
-                            <div class="d-flex gap-2">
-                                <div class="record-search-wrap flex-1" id="recordSearchWrap">
-                                    <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="record-search-input" oninput="applyRecordFilters(); toggleRecordSearchClear();">
-                                    <button type="button" class="record-search-clear" id="recordSearchClearBtn" onclick="clearRecordSearch()" aria-label="清空搜索" title="清空">
-                                        <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
-                                        <span class="sr-only">清空</span>
-                                    </button>
-                                </div>
-                                <select id="recordSortBy" class="d-none" aria-hidden="true">
-                                    <option value="time-desc">时间（最新）</option>
-                                    <option value="time-asc">时间（最早）</option>
-                                    <option value="price-desc">价格（高到低）</option>
-                                    <option value="price-asc">价格（低到高）</option>
-                                    <option value="client-asc">单主ID（A-Z）</option>
-                                    <option value="client-desc">单主ID（Z-A）</option>
-                                </select>
-                                <div class="record-sort-wrap" style="position:relative">
-                                    <button type="button" class="btn secondary btn--icon" id="recordSortBtn" onclick="toggleRecordSortPopover()" aria-label="排序" title="排序" aria-expanded="false" aria-haspopup="true">
-                                        <svg class="icon" aria-hidden="true"><use href="#i-sort-desc"></use></svg>
-                                        <span class="sr-only">排序</span>
-                                    </button>
-                                    <div id="recordSortPopover" class="record-sort-popover d-none" aria-hidden="true">
-                                        <button type="button" class="record-sort-opt" data-sort="time-desc" onclick="setRecordSortValue('time-desc')">时间（最新）</button>
-                                        <button type="button" class="record-sort-opt" data-sort="time-asc" onclick="setRecordSortValue('time-asc')">时间（最早）</button>
-                                        <button type="button" class="record-sort-opt" data-sort="price-desc" onclick="setRecordSortValue('price-desc')">价格（高到低）</button>
-                                        <button type="button" class="record-sort-opt" data-sort="price-asc" onclick="setRecordSortValue('price-asc')">价格（低到高）</button>
-                                        <button type="button" class="record-sort-opt" data-sort="client-asc" onclick="setRecordSortValue('client-asc')">单主ID（A-Z）</button>
-                                        <button type="button" class="record-sort-opt" data-sort="client-desc" onclick="setRecordSortValue('client-desc')">单主ID（Z-A）</button>
+                        <div class="record-header-filter">
+                            <div class="form-row">
+                                <div class="form-group w-full">
+                                    <div class="d-flex gap-2">
+                                        <div class="record-search-wrap flex-1" id="recordSearchWrap">
+                                            <input type="text" id="recordSearchInput" placeholder="输入关键词搜索..." class="record-search-input" oninput="applyRecordFilters(); toggleRecordSearchClear();">
+                                            <button type="button" class="record-search-clear" id="recordSearchClearBtn" onclick="clearRecordSearch()" aria-label="清空搜索" title="清空">
+                                                <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                                                <span class="sr-only">清空</span>
+                                            </button>
+                                        </div>
+                                        <select id="recordSortBy" class="d-none" aria-hidden="true">
+                                            <option value="time-desc">时间（最新）</option>
+                                            <option value="time-asc">时间（最早）</option>
+                                            <option value="price-desc">价格（高到低）</option>
+                                            <option value="price-asc">价格（低到高）</option>
+                                            <option value="client-asc">单主ID（A-Z）</option>
+                                            <option value="client-desc">单主ID（Z-A）</option>
+                                        </select>
+                                        <div class="record-sort-wrap" style="position:relative">
+                                            <button type="button" class="btn secondary btn--icon" id="recordSortBtn" onclick="toggleRecordSortPopover()" aria-label="排序" title="排序" aria-expanded="false" aria-haspopup="true">
+                                                <svg class="icon" aria-hidden="true"><use href="#i-sort-desc"></use></svg>
+                                                <span class="sr-only">排序</span>
+                                            </button>
+                                            <div id="recordSortPopover" class="record-sort-popover d-none" aria-hidden="true">
+                                                <button type="button" class="record-sort-opt" data-sort="time-desc" onclick="setRecordSortValue('time-desc')">时间（最新）</button>
+                                                <button type="button" class="record-sort-opt" data-sort="time-asc" onclick="setRecordSortValue('time-asc')">时间（最早）</button>
+                                                <button type="button" class="record-sort-opt" data-sort="price-desc" onclick="setRecordSortValue('price-desc')">价格（高到低）</button>
+                                                <button type="button" class="record-sort-opt" data-sort="price-asc" onclick="setRecordSortValue('price-asc')">价格（低到高）</button>
+                                                <button type="button" class="record-sort-opt" data-sort="client-asc" onclick="setRecordSortValue('client-asc')">单主ID（A-Z）</button>
+                                                <button type="button" class="record-sort-opt" data-sort="client-desc" onclick="setRecordSortValue('client-desc')">单主ID（Z-A）</button>
+                                            </div>
+                                        </div>
+                                        <button class="btn secondary page-filter-btn-with-label" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
+                                            <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
+                                            <span class="page-action-label" id="recordFilterBtnText">筛选</span>
+                                            <span id="recordFilterBadge" class="filter-badge d-none">0</span>
+                                        </button>
                                     </div>
                                 </div>
-                                <button class="btn secondary page-filter-btn-with-label" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
-                                    <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
-                                    <span class="page-action-label" id="recordFilterBtnText">筛选</span>
-                                    <span id="recordFilterBadge" class="filter-badge d-none">0</span>
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -1464,10 +1518,6 @@
             <div id="stats" class="page">
                 <div class="schedule-section stats-page">
                     <header class="stats-header d-flex justify-between items-center">
-                        <button type="button" class="btn btn-back-flat stats-back" onclick="showPage('quote')" aria-label="返回排单" title="返回排单">
-                            <svg class="icon" aria-hidden="true"><use href="#i-back"></use></svg>
-                            <span class="sr-only">返回排单</span>
-                        </button>
                         <h1 class="stats-title">统计</h1>
                         <div class="stats-actions d-flex gap-2 items-center">
                             <button type="button" class="btn secondary btn--icon" onclick="exportStatsToExcel()" aria-label="导出" title="导出Excel">
@@ -1579,11 +1629,14 @@
                     <div id="statsTrends" class="stats-trends">
                         <!-- 趋势由 JS 渲染 -->
                     </div>
-                    <div id="statsTopLists" class="stats-top-lists">
-                        <!-- Top 榜由 JS 渲染 -->
+                    <div id="statsCategorySummary" class="stats-category-summary">
+                        <!-- 制品类别汇总由 JS 渲染 -->
                     </div>
                     <div id="statsDistribution" class="stats-distribution d-none">
                         <!-- 数据分布：状态/用途/加急/工艺由 JS 渲染 -->
+                    </div>
+                    <div id="statsTopLists" class="stats-top-lists">
+                        <!-- Top 单主由 JS 渲染，默认前3，更多显示全部 -->
                     </div>
                 </div>
             </div>
@@ -2324,29 +2377,32 @@
                                     <label>废稿实收（元，可修改）<input type="number" id="settlementWasteFinalAmount" min="0" step="0.01" value="0"></label>
                                 </div>
                             </div>
-                            <div id="settlementFormNormal" class="settlement-form d-none">
-                                <p class="settlement-step-label">结算优惠</p>
-                                <div class="settlement-cancel-method-row">
-                                    <label class="settlement-cancel-method-opt"><input type="radio" name="settlementDiscountType" value="amount" checked> 减去金额</label>
-                                    <label class="settlement-cancel-method-opt"><input type="radio" name="settlementDiscountType" value="rate"> 结算优惠折扣</label>
+                            <div id="settlementFormNormal" class="settlement-form settlement-form-normal d-none">
+                                <div class="settlement-discount-formula">
+                                    <span class="settlement-discount-formula-text">实收 = (应收 − 减去金额之和) × 折扣系数乘积</span>
                                 </div>
-                                <div id="settlementDiscountAmountWrap">
-                                    <label>减去金额（元）<input type="number" id="settlementDiscountAmount" min="0" step="0.01" value="0"></label>
+                                <div class="settlement-discount-reasons-block">
+                                    <label class="settlement-discount-reasons-label">优惠原因</label>
+                                    <div id="settlementDiscountReasonsWrap" class="settlement-discount-reasons-wrap">
+                                        <!-- 由 JS 填充 -->
+                                    </div>
+                                    <div class="settlement-other-reason-row">
+                                        <div class="settlement-other-reason-head">
+                                            <input type="text" id="settlementDiscountReasonOther" class="settlement-other-input" placeholder="其他原因">
+                                            <div id="settlementOtherTypeToggle" class="settlement-reason-type-toggle" data-active="amount"><input type="hidden" id="settlementOtherType" value="amount"><span class="settlement-reason-type-thumb"></span><button type="button" class="settlement-reason-type-btn active" data-value="amount">减去</button><button type="button" class="settlement-reason-type-btn" data-value="rate">折扣</button></div>
+                                        </div>
+                                        <div class="settlement-other-reason-input">
+                                            <span id="settlementOtherAmountWrap"><input type="number" id="settlementOtherAmount" min="0" step="0.01" value="0" class="settlement-reason-input" placeholder="0"></span>
+                                            <span id="settlementOtherRateWrap" style="display:none"><input type="number" id="settlementOtherRate" min="0" max="0.99" step="0.01" value="0.99" class="settlement-reason-input" placeholder="0.99"></span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div id="settlementDiscountRateWrap" class="d-none">
-                                    <label>优惠系数（0~0.99，如 0.9 表示 9 折）<input type="number" id="settlementDiscountRate" min="0" max="0.99" step="0.01" value="0.99" placeholder="0.99"></label>
-                                    <p class="settlement-hint">实收 = (实付 - 平台费) × 系数，平台费按新实收重新计算</p>
+                                <div class="settlement-final-amount-block">
+                                    <label class="settlement-final-amount-label">实收金额（元）</label>
+                                    <input type="number" id="settlementNormalAmount" class="settlement-final-amount-input" min="0" step="0.01" value="0">
+                                    <p id="settlementReceivableDiffHint" class="settlement-receivable-diff-hint"></p>
+                                    <p id="settlementNewPlatformFeeText" class="settlement-hint settlement-platform-fee-hint d-none"></p>
                                 </div>
-                                <div class="settlement-reason-row">
-                                    <label>优惠原因（可选）</label>
-                                    <select id="settlementDiscountReasonSelect" class="settlement-input">
-                                        <option value="">无</option>
-                                        <!-- 预设由 JS 填充 -->
-                                    </select>
-                                    <input type="text" id="settlementDiscountReason" class="settlement-input d-none" placeholder="如活动、老客等" title="选择「其他」时可填写">
-                                </div>
-                                <label>实收金额（元，可修改）<input type="number" id="settlementNormalAmount" min="0" step="0.01" value="0"></label>
-                                <p id="settlementNewPlatformFeeText" class="settlement-hint d-none"></p>
                             </div>
                         </div>
                     </div>

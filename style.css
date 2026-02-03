@@ -295,7 +295,7 @@ html.theme-dark .nav-btn:focus-visible {
 }
 /* 黑夜下 Today 按钮显式设置颜色，避免首次切黑夜时变量未生效导致不可见 */
 html.theme-dark .schedule-title-today-pill {
-    border-color: var(--border-color);
+    border: none !important;
     background: var(--card-bg);
     color: #e5e5e5;
 }
@@ -584,7 +584,7 @@ body {
     gap: 0.5rem;
 }
 
-/* 四个 Tab：图标 + 底下文字，默认灰色，选中黑色 */
+/* 四个 Tab：图标 + 底下文字，默认灰色，选中黑色；选中时显示实心图标 */
 .nav-btn-tab {
     flex: 1;
     flex-direction: column;
@@ -594,20 +594,43 @@ body {
     color: var(--text-light);
     font-weight: 500;
 }
-.nav-btn-tab .nav-tab-icon {
+.nav-tab-icon-wrap {
+    position: relative;
     width: 22px;
     height: 22px;
     flex-shrink: 0;
-    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
+.nav-btn-tab .nav-tab-icon {
+    width: 22px;
+    height: 22px;
+    color: inherit;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+/* 方案四：未选中细描边，选中加粗描边 + 主题色（thin/bold 两套 symbol 切换） */
 .nav-btn-tab .nav-tab-icon path,
-.nav-btn-tab .nav-tab-icon circle {
+.nav-btn-tab .nav-tab-icon circle,
+.nav-btn-tab .nav-tab-icon rect {
     stroke: currentColor;
     fill: none;
 }
 .nav-btn-tab .nav-tab-icon circle[fill="currentColor"] {
     fill: currentColor;
     stroke: none;
+}
+.nav-btn-tab .nav-tab-icon.bold {
+    display: none;
+}
+.nav-btn-tab.active .nav-tab-icon.thin {
+    display: none;
+}
+.nav-btn-tab.active .nav-tab-icon.bold {
+    display: block;
 }
 .nav-btn-tab .nav-tab-label {
     font-size: 0.7rem;
@@ -5638,13 +5661,27 @@ input:checked + .toggle-slider:before {
     height: 20px;
 }
 .record-page-header .record-page-title {
-    flex: 1;
-    text-align: center;
+    flex: 0 0 auto;
+    text-align: left;
     min-width: 0;
+}
+.record-page-header {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: var(--bg-color);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.record-header-filter .form-row {
+    margin: 0;
 }
 .record-page-header .record-page-actions {
     flex-shrink: 0;
 }
+
+/* 记录页：标题和搜索/筛选整块都固定在顶部（通过 record-page-header sticky 实现） */
 
 .schedule-title-row {
     display: inline-flex;
@@ -5792,7 +5829,7 @@ input:checked + .toggle-slider:before {
     line-height: 1;
     display: inline-flex;
     align-items: center;
-    border: 1px solid var(--border-color);
+    border: none;
     background: var(--bg-color);
     color: var(--text-color);
 }
@@ -6561,6 +6598,250 @@ html.theme-dark .settlement-modal-close:hover {
     margin: 0.25rem 0 0;
     line-height: 1.4;
 }
+.mt-1 { margin-top: 0.25rem; }
+.ml-1 { margin-left: 0.5rem; }
+
+/* 结算优惠 - 优化布局 */
+.settlement-form-normal {
+    padding-top: 0;
+}
+.settlement-discount-formula {
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 1rem;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 8px;
+}
+html.theme-dark .settlement-discount-formula {
+    background: rgba(255, 255, 255, 0.05);
+}
+.settlement-discount-formula-text {
+    font-size: 0.8125rem;
+    color: var(--text-light);
+    line-height: 1.45;
+}
+.settlement-discount-reasons-block {
+    padding: 1rem 1.1rem;
+    margin-bottom: 1.25rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+html.theme-dark .settlement-discount-reasons-block {
+    background: rgba(255, 255, 255, 0.03);
+}
+.settlement-discount-reasons-label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 0.75rem;
+}
+.settlement-discount-reasons-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.settlement-reason-row-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 0.875rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.settlement-reason-row-item:last-of-type {
+    border-bottom: none;
+}
+.settlement-reason-row-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+}
+.settlement-reason-row-item input[type="checkbox"] {
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0;
+    flex-shrink: 0;
+    accent-color: var(--primary-color);
+}
+.settlement-reason-row-item label.settlement-reason-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0;
+    font-size: inherit;
+    min-width: 4.5rem;
+}
+.settlement-reason-row-input {
+    display: flex;
+    align-items: center;
+    padding-left: 1.6rem;
+}
+.settlement-reason-row-input .settlement-reason-amount-wrap,
+.settlement-reason-row-input .settlement-reason-rate-wrap {
+    display: inline-flex;
+}
+/* 结算优惠：滑块式切换（减去 / 折扣）- 参考苹果风格 */
+.settlement-reason-type-toggle {
+    display: inline-flex;
+    position: relative;
+    height: 2rem;
+    min-width: 6.5rem;
+    padding: 3px;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 9999px;
+}
+html.theme-dark .settlement-reason-type-toggle {
+    background: rgba(255, 255, 255, 0.1);
+}
+.settlement-reason-type-btn {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0 0.65rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    transition: color 0.25s ease;
+}
+html.theme-dark .settlement-reason-type-btn {
+    color: rgba(255, 255, 255, 0.5);
+}
+.settlement-reason-type-btn:hover {
+    color: rgba(0, 0, 0, 0.65);
+}
+html.theme-dark .settlement-reason-type-btn:hover {
+    color: rgba(255, 255, 255, 0.75);
+}
+.settlement-reason-type-btn.active {
+    color: var(--primary-color);
+}
+.settlement-reason-type-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    height: calc(100% - 6px);
+    background: #fff;
+    border-radius: 9999px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+html.theme-dark .settlement-reason-type-thumb {
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.settlement-reason-type-toggle[data-active="rate"] .settlement-reason-type-thumb {
+    transform: translateX(calc(100% + 3px));
+}
+.settlement-reason-select-input-row {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.4rem;
+}
+.settlement-reason-row-input .settlement-reason-amount-wrap,
+.settlement-reason-row-input .settlement-reason-rate-wrap {
+    display: inline-flex;
+}
+.settlement-reason-row-input .settlement-reason-amount-wrap input,
+.settlement-reason-row-input .settlement-reason-rate-wrap input {
+    width: 4.5rem !important;
+    min-width: 4.5rem !important;
+    max-width: 4.5rem !important;
+}
+.settlement-reason-row-item input.settlement-reason-input,
+.settlement-other-reason-row input.settlement-reason-input {
+    width: 4.5rem;
+    min-width: 4.5rem;
+    max-width: 4.5rem;
+    min-height: 2rem;
+    margin-top: 0;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    display: inline-block;
+    box-sizing: border-box;
+    text-align: right;
+}
+.settlement-other-reason-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 0.875rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--border-color);
+}
+.settlement-other-reason-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+}
+.settlement-other-reason-row .settlement-other-input {
+    margin: 0;
+    max-width: 7rem;
+    min-height: 2rem;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.875rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+.settlement-other-reason-input {
+    display: flex;
+    align-items: center;
+    padding-left: 0;
+}
+.settlement-other-reason-input .settlement-reason-input,
+#settlementOtherAmountWrap input,
+#settlementOtherRateWrap input {
+    margin-top: 0;
+    width: 4.5rem !important;
+    min-width: 4.5rem !important;
+    max-width: 4.5rem !important;
+}
+.settlement-receivable-diff-hint {
+    font-size: 0.8125rem;
+    color: var(--text-light);
+    margin: 0.5rem 0 0;
+    line-height: 1.4;
+}
+.settlement-final-amount-block {
+    padding: 1rem 0;
+}
+.settlement-final-amount-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
+}
+.settlement-form-normal .settlement-final-amount-input {
+    width: 100%;
+    margin-top: 0;
+    padding: 0.75rem 1rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    border-radius: 10px;
+    border: 2px solid var(--border-color);
+    transition: border-color 0.2s;
+}
+.settlement-form-normal .settlement-final-amount-input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+.settlement-platform-fee-hint {
+    margin-top: 0.5rem;
+}
 .settlement-form label.settlement-checkbox {
     display: flex;
     align-items: center;
@@ -7274,13 +7555,13 @@ html.theme-dark .settlement-preview {
     height: 20px;
 }
 .stats-title {
-    flex: 1;
+    flex: 0 0 auto;
     margin: 0;
     font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--text-color);
-    text-align: center;
+    text-align: left;
     min-width: 0;
 }
 .stats-actions {
@@ -7485,6 +7766,11 @@ html.theme-dark .settlement-preview {
     gap: 0.4rem;
     font-size: 0.85rem;
 }
+/* 数据分布-折扣面板：理由/系数较多时可滚动 */
+#statsDistPaneldiscount .stats-dim-list {
+    max-height: 240px;
+    overflow-y: auto;
+}
 .stats-status-item,
 .stats-dim-item {
     display: flex;
@@ -7492,6 +7778,11 @@ html.theme-dark .settlement-preview {
     align-items: center;
     padding: 0.35rem 0;
     border-bottom: 1px solid var(--border-color);
+}
+.stats-dist-discount-row {
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-color);
 }
 .stats-status-name,
 .stats-dim-item span:first-child {
@@ -7576,6 +7867,100 @@ html.theme-dark .settlement-preview {
 .stats-top-lists .stats-block-title:first-child {
     margin-top: 0;
 }
+.stats-category-summary {
+    margin-bottom: 1.5rem;
+}
+.stats-category-summary-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 0.9rem 0.85rem 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    border: none;
+}
+.stats-category-summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.stats-category-summary-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-light);
+    letter-spacing: 0.02em;
+}
+.stats-category-summary-total {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    white-space: nowrap;
+}
+.stats-category-summary-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+.stats-category-summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    min-width: 260px;
+}
+.stats-category-summary-table th,
+.stats-category-summary-table td {
+    padding: 0.35rem 0.25rem;
+    text-align: right;
+}
+.stats-category-summary-table th:first-child,
+.stats-category-summary-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: var(--card-bg);
+    z-index: 1;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.06);
+}
+.stats-category-summary-table thead th:first-child {
+    z-index: 2;
+}
+.stats-category-summary-table tbody tr:not(.stats-category-summary-row-total):nth-child(even) td {
+    background: rgba(0, 0, 0, 0.02);
+}
+.stats-category-summary-table tbody tr:not(.stats-category-summary-row-total):nth-child(even) td:first-child {
+    background: var(--card-bg);
+}
+html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summary-row-total):nth-child(even) td {
+    background: rgba(255, 255, 255, 0.04);
+}
+html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summary-row-total):nth-child(even) td:first-child {
+    background: var(--card-bg);
+}
+.stats-category-summary-table th {
+    font-weight: 500;
+    color: var(--text-light);
+    border-bottom: 1px solid var(--border-color);
+}
+.stats-category-summary-th-sort {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.stats-category-summary-th-sort:hover {
+    color: var(--text-color);
+}
+.stats-category-summary-th-sort.is-sorted {
+    color: var(--primary-color);
+}
+.stats-category-summary-row td {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+.stats-category-summary-row-total td {
+    font-weight: 600;
+    color: var(--text-color);
+    border-top: 1px solid var(--border-color);
+}
+.stats-category-summary-amount {
+    font-variant-numeric: tabular-nums;
+}
 .stats-top-tabs {
     display: flex;
     gap: 0.35rem;
@@ -7595,10 +7980,16 @@ html.theme-dark .settlement-preview {
     color: #fff;
     border-color: var(--primary-color);
 }
+.stats-top-list-wrap {
+    margin-bottom: 0.5rem;
+}
 .stats-top-list {
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
+}
+.stats-top-more-btn {
+    margin-top: 0.5rem;
 }
 .stats-top-item {
     display: flex;

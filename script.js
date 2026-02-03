@@ -2841,7 +2841,17 @@ function toggleRecordSearchClear() {
 }
 
 // 结算信息（可选）：settlement 无或未设置视为未结算
-// settlement: { type: 'full_refund'|'waste_fee'|'normal', amount, memo, at, wasteFee?, discount?, discountReason? }
+// settlement: { type: 'normal', amount, discountReasons?: [{ name, amount?, rate? }], ... } 或兼容旧 discountReason 字符串
+function getSettlementDiscountReasons(settlement) {
+    if (!settlement) return [];
+    if (Array.isArray(settlement.discountReasons) && settlement.discountReasons.length) {
+        return settlement.discountReasons.map(function (e) {
+            return typeof e === 'object' && e != null && e.name != null ? String(e.name) : String(e);
+        });
+    }
+    if (settlement.discountReason != null && String(settlement.discountReason).trim()) return [String(settlement.discountReason).trim()];
+    return [];
+}
 function getRecordProgressStatus(item) {
     if (!item) return { text: '未开始', className: 'record-status--not-started', pending: false, overdue: false };
     // 已结算：优先显示结算状态
@@ -3539,6 +3549,8 @@ function isStatsOrderEverOverdue(item) {
     return d < today;
 }
 
+var STATS_FILTER_STORAGE_KEY = 'mg_stats_filters_v1';
+
 function getStatsFiltersFromUI() {
     const timeEl = document.getElementById('statsTimeFilter');
     const timeBasisEl = document.getElementById('statsTimeBasis');
@@ -3567,6 +3579,26 @@ function getStatsFiltersFromUI() {
         giftMode: giftMode ? giftMode.value : 'exclude',
         statusFilter: statusFilter ? statusFilter.value : 'all'
     };
+}
+
+function saveStatsFilters(filters) {
+    try {
+        if (typeof localStorage === 'undefined') return;
+        localStorage.setItem(STATS_FILTER_STORAGE_KEY, JSON.stringify(filters));
+    } catch (e) { }
+}
+
+function loadStatsFilters() {
+    try {
+        if (typeof localStorage === 'undefined') return null;
+        var text = localStorage.getItem(STATS_FILTER_STORAGE_KEY);
+        if (!text) return null;
+        var obj = JSON.parse(text);
+        if (!obj || typeof obj !== 'object') return null;
+        return obj;
+    } catch (e) {
+        return null;
+    }
 }
 
 function getStatsDateRange(filters) {
@@ -3608,7 +3640,7 @@ function getStatsDataset(historySource, filters) {
     if (!Array.isArray(historySource) || historySource.length === 0) {
         return {
             filteredRecords: [],
-            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0 },
+            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0, discountAmountTotal: 0, discountByReason: {}, discountTotal: 0 },
             dailyAgg: [],
             weeklyAgg: [],
             monthlyAgg: [],
@@ -3617,7 +3649,17 @@ function getStatsDataset(historySource, filters) {
             byStatus: [],
             byUsage: [],
             byUrgent: [],
-            byProcess: []
+            byProcess: [],
+            // 制品类别汇总：rows + totals
+            categorySummary: {
+                rows: [],
+                totals: {
+                    itemCount: 0,        // 制品数（主模件数）
+                    sameModelCount: 0,   // 同模数
+                    quantityTotal: 0,    // 合计件数（主模+同模）
+                    amountTotal: 0       // 金额合计
+                }
+            }
         };
     }
     const dateRange = getStatsDateRange(filters);
@@ -3664,6 +3706,9 @@ function getStatsDataset(historySource, filters) {
     let wasteAmountTotal = 0;
     let totalOtherFeesSum = 0;
     let totalPlatformFeeSum = 0;
+    let discountAmountTotal = 0;
+    let discountByCoefficientTotal = 0;
+    const discountByReason = {};
     const dailyMap = {};
     const clientMap = {};
     const productMap = {};
@@ -3671,6 +3716,14 @@ function getStatsDataset(historySource, filters) {
     const usageMap = {};
     const urgentMap = {};
     const processMap = {};
+    // 制品类别聚合：按类别统计主模 / 同模 / 合计数量 / 金额
+    const categoryMap = {};
+    let categoryMainCountTotal = 0;
+    let categorySameModelTotal = 0;
+    let categoryQuantityTotal = 0;
+    let categoryMainAmountTotal = 0;
+    let categorySameAmountTotal = 0;
+    let categoryAmountTotal = 0;
 
     list.forEach(item => {
         ensureProductDoneStates(item);
@@ -3696,6 +3749,89 @@ function getStatsDataset(historySource, filters) {
         if (item.settlement && item.settlement.type === 'waste_fee') {
             wasteOrderCount++;
             wasteAmountTotal += (item.settlement.amount != null ? Number(item.settlement.amount) : 0) || 0;
+        }
+        if (item.settlement && item.settlement.type === 'normal') {
+            var receivable = Number(item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
+            var actual = item.settlement.amount != null ? Number(item.settlement.amount) : receivable;
+            if (receivable > actual) {
+                var orderDiscount = receivable - actual;
+                discountAmountTotal += orderDiscount;
+                var reasonAmountSum = 0;
+                if (Array.isArray(item.settlement.discountReasons) && item.settlement.discountReasons.length) {
+                    item.settlement.discountReasons.forEach(function (e) {
+                        var name = (e && typeof e === 'object' && e.name != null) ? String(e.name).trim() : '';
+                        if (!name) return;
+                        var amt = (e.amount != null && isFinite(e.amount)) ? Number(e.amount) : 0;
+                        if (amt > 0) {
+                            if (!discountByReason[name]) discountByReason[name] = 0;
+                            discountByReason[name] += amt;
+                            reasonAmountSum += amt;
+                        }
+                    });
+                }
+                var remainder = orderDiscount - reasonAmountSum;
+                if (remainder > 0) {
+                    var otherLabel = '其他';
+                    if (!discountByReason[otherLabel]) discountByReason[otherLabel] = 0;
+                    discountByReason[otherLabel] += remainder;
+                }
+            }
+        }
+        // 折扣类系数减少的金额（按主折扣、各扩展折扣分别统计，与结单优惠原因分开）
+        var twc = item.totalWithCoefficients != null && isFinite(item.totalWithCoefficients) ? Number(item.totalWithCoefficients) : null;
+        if (twc != null && twc > 0) {
+            var pricingDown = 1;
+            if (item.pricingDownProduct != null && isFinite(item.pricingDownProduct)) pricingDown = Number(item.pricingDownProduct);
+            else if (item.discount != null && isFinite(item.discount)) pricingDown = Number(item.discount);
+            else if (item.discountType != null && defaultSettings.discountCoefficients && defaultSettings.discountCoefficients[item.discountType]) pricingDown = getCoefficientValue(defaultSettings.discountCoefficients[item.discountType]) || 1;
+            if (pricingDown < 1) {
+                var baseBeforeDown = twc / pricingDown;
+                var running = baseBeforeDown;
+                var hadAnyCoeff = false;
+                // 主折扣系数
+                var mainVal = 1;
+                var mainName = '折扣系数';
+                if (item.discountType != null && defaultSettings.discountCoefficients && defaultSettings.discountCoefficients[item.discountType]) {
+                    var mainOpt = defaultSettings.discountCoefficients[item.discountType];
+                    mainVal = getCoefficientValue(mainOpt) || 1;
+                    mainName = (mainOpt && mainOpt.name) ? mainOpt.name : mainName;
+                } else if (item.discount != null && isFinite(item.discount)) {
+                    mainVal = Number(item.discount);
+                }
+                if (mainVal < 1) {
+                    hadAnyCoeff = true;
+                    var mainReduction = running * (1 - mainVal);
+                    if (!discountByReason[mainName]) discountByReason[mainName] = 0;
+                    discountByReason[mainName] += mainReduction;
+                    discountByCoefficientTotal += mainReduction;
+                    running *= mainVal;
+                }
+                // 扩展折扣类系数（顺序与报价一致）
+                (defaultSettings.extraPricingDown || []).forEach(function (e, ei) {
+                    var sel = (item.extraDownSelections && item.extraDownSelections[ei]) ? item.extraDownSelections[ei] : null;
+                    var key = sel && (sel.optionValue != null ? sel.optionValue : sel.selectedKey);
+                    var opt = (e.options && key != null && e.options[key]) ? e.options[key] : null;
+                    var v = opt != null ? (getCoefficientValue(opt) || 1) : (sel && sel.value != null && isFinite(sel.value) ? Number(sel.value) : 1);
+                    var nm = (opt && opt.name) ? opt.name : (sel && sel.optionName) ? sel.optionName : (e && e.name) ? e.name : '扩展折扣';
+                    if (v < 1) {
+                        hadAnyCoeff = true;
+                        var extReduction = running * (1 - v);
+                        if (!discountByReason[nm]) discountByReason[nm] = 0;
+                        discountByReason[nm] += extReduction;
+                        discountByCoefficientTotal += extReduction;
+                        running *= v;
+                    }
+                });
+                // 旧数据无法按系数拆分时，整笔计入「折扣类系数」
+                if (!hadAnyCoeff) {
+                    var fallbackReduction = baseBeforeDown - twc;
+                    if (fallbackReduction > 0) {
+                        if (!discountByReason['折扣类系数']) discountByReason['折扣类系数'] = 0;
+                        discountByReason['折扣类系数'] += fallbackReduction;
+                        discountByCoefficientTotal += fallbackReduction;
+                    }
+                }
+            }
         }
         totalOtherFeesSum += (item.totalOtherFees != null ? Number(item.totalOtherFees) : 0) || 0;
         totalPlatformFeeSum += (item.platformFeeAmount != null ? Number(item.platformFeeAmount) : 0) || 0;
@@ -3754,6 +3890,92 @@ function getStatsDataset(historySource, filters) {
                 processMap[pname].feeTotal += (Number(proc.fee) || 0);
             });
         });
+
+        // ===== 按制品类别汇总 =====
+        // 制品：使用 productPrices 中的 category / quantity / sameModelCount / productTotal
+        products.forEach(p => {
+            const catName = p.category || '其他';
+            if (!categoryMap[catName]) {
+                categoryMap[catName] = {
+                    category: catName,
+                    itemCount: 0,        // 主模件数
+                    sameModelCount: 0,   // 同模件数
+                    quantityTotal: 0,    // 合计件数
+                    mainAmount: 0,       // 主模金额
+                    sameModelAmount: 0,  // 同模金额
+                    amountTotal: 0       // 金额合计
+                };
+            }
+            const qty = Number(p.quantity) || 0;
+            const same = Number(p.sameModelCount) || 0;
+            const main = Math.max(qty - same, 0);
+            const amount = Number(p.productTotal) || 0;
+            // 将整单金额按件数平均拆分为主模金额和同模金额，便于统计
+            let mainAmount = 0;
+            let sameAmount = 0;
+            if (qty > 0 && amount) {
+                const per = amount / qty;
+                mainAmount = per * main;
+                sameAmount = amount - mainAmount;
+            }
+
+            categoryMap[catName].itemCount += main;
+            categoryMap[catName].sameModelCount += same;
+            categoryMap[catName].quantityTotal += qty;
+            categoryMap[catName].mainAmount += mainAmount;
+            categoryMap[catName].sameModelAmount += sameAmount;
+            categoryMap[catName].amountTotal += amount;
+
+            categoryMainCountTotal += main;
+            categorySameModelTotal += same;
+            categoryQuantityTotal += qty;
+            categoryMainAmountTotal += mainAmount;
+            categorySameAmountTotal += sameAmount;
+            categoryAmountTotal += amount;
+        });
+
+        // 赠品：是否计入由 giftMode 决定；金额基于 giftOriginalPrice
+        if (includeGifts) {
+            gifts.forEach(p => {
+                const catName = p.category || '其他';
+                if (!categoryMap[catName]) {
+                    categoryMap[catName] = {
+                        category: catName,
+                        itemCount: 0,
+                        sameModelCount: 0,
+                        quantityTotal: 0,
+                        mainAmount: 0,
+                        sameModelAmount: 0,
+                        amountTotal: 0
+                    };
+                }
+                const qty = Number(p.quantity) || 0;
+                const same = Number(p.sameModelCount) || 0;
+                const main = Math.max(qty - same, 0);
+                const amount = giftRevenueAsZero ? 0 : (Number(p.giftOriginalPrice) || 0);
+                let mainAmount = 0;
+                let sameAmount = 0;
+                if (qty > 0 && amount) {
+                    const per = amount / qty;
+                    mainAmount = per * main;
+                    sameAmount = amount - mainAmount;
+                }
+
+                categoryMap[catName].itemCount += main;
+                categoryMap[catName].sameModelCount += same;
+                categoryMap[catName].quantityTotal += qty;
+                categoryMap[catName].mainAmount += mainAmount;
+                categoryMap[catName].sameModelAmount += sameAmount;
+                categoryMap[catName].amountTotal += amount;
+
+                categoryMainCountTotal += main;
+                categorySameModelTotal += same;
+                categoryQuantityTotal += qty;
+                categoryMainAmountTotal += mainAmount;
+                categorySameAmountTotal += sameAmount;
+                categoryAmountTotal += amount;
+            });
+        }
     });
 
     const orderCount = list.length;
@@ -3794,6 +4016,23 @@ function getStatsDataset(historySource, filters) {
     const byUrgent = Object.values(urgentMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byProcess = Object.values(processMap).sort((a, b) => b.feeTotal - a.feeTotal);
 
+    const categoryRows = Object.values(categoryMap).sort((a, b) => {
+        // 默认按金额从高到低，其次按合计件数
+        if (b.amountTotal !== a.amountTotal) return b.amountTotal - a.amountTotal;
+        return b.quantityTotal - a.quantityTotal;
+    });
+    const categorySummary = {
+        rows: categoryRows,
+        totals: {
+            itemCount: categoryMainCountTotal,
+            sameModelCount: categorySameModelTotal,
+            quantityTotal: categoryQuantityTotal,
+            mainAmount: categoryMainAmountTotal,
+            sameModelAmount: categorySameAmountTotal,
+            amountTotal: categoryAmountTotal
+        }
+    };
+
     return {
         filteredRecords: list,
         totals: {
@@ -3814,7 +4053,10 @@ function getStatsDataset(historySource, filters) {
             wasteOrderCount,
             wasteAmountTotal,
             totalOtherFeesSum,
-            totalPlatformFeeSum
+            totalPlatformFeeSum,
+            discountAmountTotal,
+            discountByReason,
+            discountTotal: discountAmountTotal + discountByCoefficientTotal
         },
         dailyAgg,
         weeklyAgg,
@@ -3824,7 +4066,8 @@ function getStatsDataset(historySource, filters) {
         byStatus,
         byUsage,
         byUrgent,
-        byProcess
+        byProcess,
+        categorySummary
     };
 }
 
@@ -3862,14 +4105,16 @@ function renderStatsComparison(filters, totals) {
     wrap.innerHTML = '<p class="stats-comparison">' + label + '：订单 <span class="' + o.cls + '">' + o.text + '</span>，收入 <span class="' + r.cls + '">' + r.text + '</span></p>';
 }
 
-function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess) {
+function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess, discountByReason) {
     const container = document.getElementById('statsDistribution');
     if (!container) return;
     var hasStatus = byStatus && byStatus.some(function (s) { return s.orderCount > 0 || s.amountTotal > 0; });
     var hasUsage = byUsage && byUsage.length > 0;
     var hasUrgent = byUrgent && byUrgent.length > 0;
     var hasProcess = byProcess && byProcess.length > 0;
-    if (!hasStatus && !hasUsage && !hasUrgent && !hasProcess) { container.innerHTML = ''; container.classList.add('d-none'); return; }
+    var discountReasons = (discountByReason && typeof discountByReason === 'object') ? Object.entries(discountByReason).filter(function (e) { return e[1] > 0; }) : [];
+    var hasDiscount = discountReasons.length > 0;
+    if (!hasStatus && !hasUsage && !hasUrgent && !hasProcess && !hasDiscount) { container.innerHTML = ''; container.classList.add('d-none'); return; }
     container.classList.remove('d-none');
     var tabs = [];
     var panels = [];
@@ -3901,7 +4146,12 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess) {
         byProcess.forEach(function (r) { prhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span></div>'; });
         panels.push({ id: 'process', html: '<div class="stats-dim-list">' + prhtml + '</div>' });
     }
-    var firstId = panels[0].id;
+    if (hasDiscount) {
+        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="discount">折扣</button>');
+        var dhtml = discountReasons.map(function (e) { return '<div class="stats-dim-item"><span>' + (e[0] || '—') + '</span><span>-¥' + (e[1] || 0).toFixed(2) + '</span></div>'; }).join('');
+        panels.push({ id: 'discount', html: '<div class="stats-dim-list">' + dhtml + '</div>' });
+    }
+    var firstId = panels.length ? panels[0].id : null;
     var html = '<h3 class="stats-block-title">数据分布</h3>';
     html += '<div class="stats-top-tabs">' + tabs.join('') + '</div>';
     panels.forEach(function (p, i) {
@@ -3929,6 +4179,8 @@ function renderStatsKpis(totals) {
         if (v === Math.floor(v)) return String(v);
         return v.toFixed(1);
     };
+    const discountTotalVal = totals.discountTotal != null ? totals.discountTotal : (totals.discountAmountTotal || 0);
+    const discountTotalDisplay = discountTotalVal > 0 ? ('-¥' + discountTotalVal.toFixed(2)) : fmt(discountTotalVal, true);
     grid.innerHTML = `
         <div class="kpi-section-title">核心指标</div>
         <div class="kpi-card kpi-card-primary"><div class="kpi-label">订单数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div></div>
@@ -3945,6 +4197,7 @@ function renderStatsKpis(totals) {
         <div class="kpi-section-title">费用</div>
         <div class="kpi-card"><div class="kpi-label">其他费用</div><div class="kpi-value" id="kpiOtherFees">${fmt(totals.totalOtherFeesSum || 0, true)}</div></div>
         <div class="kpi-card"><div class="kpi-label">平台费</div><div class="kpi-value" id="kpiPlatformFee">${fmt(totals.totalPlatformFeeSum || 0, true)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">折扣合计</div><div class="kpi-value kpi-value-small" id="kpiDiscountTotal">${discountTotalDisplay}</div></div>
     `;
     let orderRateEl = document.getElementById('kpiOrderDoneRate');
     if (!orderRateEl) {
@@ -3959,23 +4212,34 @@ function renderStatsKpis(totals) {
 function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     const container = document.getElementById('statsTrends');
     if (!container) return;
-    var currentTab = (window.statsTrendGranularity || 'day');
-    var agg = currentTab === 'week' ? (weeklyAgg || []) : (currentTab === 'month' ? (monthlyAgg || []) : (dailyAgg || []));
+    var currentTab = (window.statsTrendGranularity || 'month');
+    if (currentTab !== 'month' && currentTab !== 'year') currentTab = 'month';
+    var yearlyMap = {};
+    (monthlyAgg || []).forEach(function (d) {
+        var y = d.month ? String(d.month).slice(0, 4) : '';
+        if (!y) return;
+        if (!yearlyMap[y]) yearlyMap[y] = { year: y, revenue: 0, orders: 0, itemTotal: 0, itemDone: 0 };
+        yearlyMap[y].revenue += d.revenue || 0;
+        yearlyMap[y].orders += d.orders || 0;
+        yearlyMap[y].itemTotal += d.itemTotal || 0;
+        yearlyMap[y].itemDone += d.itemDone || 0;
+    });
+    var yearlyAgg = Object.keys(yearlyMap).sort().map(function (k) { return yearlyMap[k]; });
+    var agg = currentTab === 'year' ? yearlyAgg : (monthlyAgg || []);
     if (!agg || agg.length === 0) {
         container.innerHTML = '<p class="text-gray">暂无趋势数据</p>';
         return;
     }
-    var labelKey = currentTab === 'week' ? 'weekStart' : (currentTab === 'month' ? 'month' : 'date');
+    var labelKey = currentTab === 'year' ? 'year' : 'month';
     const maxRev = Math.max(1, ...agg.map(d => d.revenue));
     const maxOrd = Math.max(1, ...agg.map(d => d.orders));
     const maxRate = 100;
-    var tabLabel = currentTab === 'week' ? '按周' : (currentTab === 'month' ? '按月' : '按日');
     var html = '<h3 class="stats-block-title">趋势</h3>';
-    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small' + (currentTab === 'day' ? ' active' : '') + '" data-gran="day">按日</button><button type="button" class="btn secondary small' + (currentTab === 'week' ? ' active' : '') + '" data-gran="week">按周</button><button type="button" class="btn secondary small' + (currentTab === 'month' ? ' active' : '') + '" data-gran="month">按月</button></div>';
+    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small' + (currentTab === 'month' ? ' active' : '') + '" data-gran="month">按月</button><button type="button" class="btn secondary small' + (currentTab === 'year' ? ' active' : '') + '" data-gran="year">按年</button></div>';
     html += '<div class="stats-mini-bars">';
     agg.forEach(function (d) {
         var rate = d.itemTotal > 0 ? (d.itemDone / d.itemTotal) * 100 : 0;
-        var lbl = d[labelKey] || d.date || d.weekStart || d.month || '—';
+        var lbl = d[labelKey] || d.month || d.year || '—';
         html += '<div class="stats-bar-row">';
         html += '<span class="stats-bar-label">' + lbl + '</span>';
         html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-rev" style="width:' + (d.revenue / maxRev * 100) + '%"></div></div><span class="stats-bar-legend">¥' + (d.revenue || 0).toFixed(0) + '</span>';
@@ -3996,40 +4260,150 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
 function renderStatsTopLists(byClient, byProduct) {
     const container = document.getElementById('statsTopLists');
     if (!container) return;
-    const topN = 10;
+    const defaultShow = 3;
+    const clientByOrders = [...byClient].sort((a, b) => b.orderCount - a.orderCount);
+    const clientByRevenue = byClient.slice();
     let html = '<h3 class="stats-block-title">Top 单主</h3>';
     html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small active" data-tab="clientOrders">按订单数</button><button type="button" class="btn secondary small" data-tab="clientRevenue">按金额</button></div>';
-    const clientByOrders = [...byClient].sort((a, b) => b.orderCount - a.orderCount).slice(0, topN);
-    const clientByRevenue = byClient.slice(0, topN);
-    html += '<div id="statsTopClientOrders" class="stats-top-list">';
-    clientByOrders.forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">' + c.orderCount + ' 单</span></div>'; });
+    html += '<div id="statsTopClientOrders" class="stats-top-list-wrap">';
+    html += '<div id="statsTopClientOrdersList" class="stats-top-list">';
+    clientByOrders.slice(0, defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">' + c.orderCount + ' 单</span></div>'; });
     html += '</div>';
-    html += '<div id="statsTopClientRevenue" class="stats-top-list d-none">';
-    clientByRevenue.forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span></div>'; });
+    if (clientByOrders.length > defaultShow) {
+        html += '<button type="button" class="btn secondary small stats-top-more-btn" data-list="clientOrders">更多</button>';
+        html += '<div id="statsTopClientOrdersMore" class="stats-top-list d-none">';
+        clientByOrders.slice(defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (defaultShow + i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">' + c.orderCount + ' 单</span></div>'; });
+        html += '</div>';
+    }
     html += '</div>';
-
-    html += '<h3 class="stats-block-title">Top 制品</h3>';
-    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small active" data-tab="productCount">按次数</button><button type="button" class="btn secondary small" data-tab="productRevenue">按金额</button></div>';
-    const productByCount = [...byProduct].sort((a, b) => b.count - a.count).slice(0, topN);
-    const productByRevenue = byProduct.slice(0, topN);
-    html += '<div id="statsTopProductCount" class="stats-top-list">';
-    productByCount.forEach((p, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (p.productName || '—') + '</span><span class="stats-top-val">' + p.count + ' 次</span></div>'; });
+    html += '<div id="statsTopClientRevenue" class="stats-top-list-wrap d-none">';
+    html += '<div id="statsTopClientRevenueList" class="stats-top-list">';
+    clientByRevenue.slice(0, defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span></div>'; });
     html += '</div>';
-    html += '<div id="statsTopProductRevenue" class="stats-top-list d-none">';
-    productByRevenue.forEach((p, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (p.productName || '—') + '</span><span class="stats-top-val">¥' + (p.revenueTotal || 0).toFixed(2) + '</span></div>'; });
+    if (clientByRevenue.length > defaultShow) {
+        html += '<button type="button" class="btn secondary small stats-top-more-btn" data-list="clientRevenue">更多</button>';
+        html += '<div id="statsTopClientRevenueMore" class="stats-top-list d-none">';
+        clientByRevenue.slice(defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (defaultShow + i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span></div>'; });
+        html += '</div>';
+    }
     html += '</div>';
 
     container.innerHTML = html;
-    container.querySelectorAll('.stats-top-tabs button').forEach(btn => {
+    container.querySelectorAll('.stats-top-tabs button[data-tab]').forEach(btn => {
         btn.addEventListener('click', function() {
-            const tab = this.dataset.tab;
+            var tab = this.dataset.tab;
             container.querySelectorAll('.stats-top-tabs button').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
-            if (tab === 'clientOrders') { document.getElementById('statsTopClientOrders').classList.remove('d-none'); document.getElementById('statsTopClientRevenue').classList.add('d-none'); }
-            else if (tab === 'clientRevenue') { document.getElementById('statsTopClientOrders').classList.add('d-none'); document.getElementById('statsTopClientRevenue').classList.remove('d-none'); }
-            else if (tab === 'productCount') { document.getElementById('statsTopProductCount').classList.remove('d-none'); document.getElementById('statsTopProductRevenue').classList.add('d-none'); }
-            else if (tab === 'productRevenue') { document.getElementById('statsTopProductCount').classList.add('d-none'); document.getElementById('statsTopProductRevenue').classList.remove('d-none'); }
+            if (tab === 'clientOrders') {
+                document.getElementById('statsTopClientOrders').classList.remove('d-none');
+                document.getElementById('statsTopClientRevenue').classList.add('d-none');
+            } else {
+                document.getElementById('statsTopClientOrders').classList.add('d-none');
+                document.getElementById('statsTopClientRevenue').classList.remove('d-none');
+            }
         });
+    });
+    container.querySelectorAll('.stats-top-more-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            var listId = this.dataset.list;
+            var moreEl = document.getElementById('statsTopClient' + (listId === 'clientOrders' ? 'Orders' : 'Revenue') + 'More');
+            if (!moreEl) return;
+            if (moreEl.classList.contains('d-none')) {
+                moreEl.classList.remove('d-none');
+                this.textContent = '收起';
+            } else {
+                moreEl.classList.add('d-none');
+                this.textContent = '更多';
+            }
+        });
+    });
+}
+
+function renderStatsCategorySummary(summary) {
+    const container = document.getElementById('statsCategorySummary');
+    if (!container) return;
+    container._categorySummary = summary;
+    const rows = summary && Array.isArray(summary.rows) ? summary.rows : [];
+    const totals = summary && summary.totals ? summary.totals : null;
+    const fmtInt = (v) => {
+        const n = Number(v);
+        if (!isFinite(n)) return '—';
+        return String(Math.round(n));
+    };
+    const fmtMoney = (v) => {
+        const n = Number(v);
+        if (!isFinite(n)) return '—';
+        return '¥' + n.toFixed(2);
+    };
+
+    if (!rows.length || !totals) {
+        container.innerHTML = '<div class="stats-category-summary-card"><div class="stats-category-summary-header"><div class="stats-category-summary-title">制品类别汇总</div><div class="stats-category-summary-total">暂无数据</div></div></div>';
+        return;
+    }
+
+    var sortState = container._categorySummarySort || { key: 'mainAmount', dir: 'desc' };
+    var sortedRows = rows.slice().sort(function (a, b) {
+        var key = sortState.key;
+        var va = key === 'category' ? (a.category || '') : (Number(a[key]) || 0);
+        var vb = key === 'category' ? (b.category || '') : (Number(b[key]) || 0);
+        if (key === 'category') {
+            var c = (va === vb) ? 0 : (va < vb ? -1 : 1);
+            return sortState.dir === 'asc' ? c : -c;
+        }
+        return sortState.dir === 'asc' ? (va - vb) : (vb - va);
+    });
+
+    var sortLabel = function (label, key) {
+        var active = sortState.key === key;
+        var arrow = active ? (sortState.dir === 'asc' ? ' ↑' : ' ↓') : '';
+        return '<th class="stats-category-summary-th-sort' + (active ? ' is-sorted' : '') + '" data-sort="' + key + '" role="button" tabindex="0">' + label + arrow + '</th>';
+    };
+
+    let html = '<div class="stats-category-summary-card">';
+    html += '<div class="stats-category-summary-header">';
+    html += '<div class="stats-category-summary-title">制品类别汇总</div>';
+    html += '</div>';
+    html += '<div class="stats-category-summary-table-wrap">';
+    html += '<table class="stats-category-summary-table">';
+    html += '<thead><tr>';
+    html += sortLabel('制品类别', 'category');
+    html += sortLabel('主模数', 'itemCount');
+    html += sortLabel('主模金额', 'mainAmount');
+    html += sortLabel('同模数', 'sameModelCount');
+    html += sortLabel('同模金额', 'sameModelAmount');
+    html += '</tr></thead><tbody>';
+    sortedRows.forEach(row => {
+        html += '<tr class="stats-category-summary-row">';
+        html += '<td>' + (row.category || '其他') + '</td>';
+        html += '<td>' + fmtInt(row.itemCount) + '</td>';
+        html += '<td class="stats-category-summary-amount">' + fmtMoney(row.mainAmount ?? 0) + '</td>';
+        html += '<td>' + fmtInt(row.sameModelCount) + '</td>';
+        html += '<td class="stats-category-summary-amount">' + fmtMoney(row.sameModelAmount ?? 0) + '</td>';
+        html += '</tr>';
+    });
+    html += '<tr class="stats-category-summary-row stats-category-summary-row-total">';
+    html += '<td>合计</td>';
+    html += '<td>' + fmtInt(totals.itemCount) + '</td>';
+    html += '<td class="stats-category-summary-amount">' + fmtMoney(totals.mainAmount ?? totals.amountTotal) + '</td>';
+    html += '<td>' + fmtInt(totals.sameModelCount) + '</td>';
+    html += '<td class="stats-category-summary-amount">' + fmtMoney(totals.sameModelAmount ?? 0) + '</td>';
+    html += '</tr>';
+    html += '</tbody></table></div></div>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('.stats-category-summary-th-sort').forEach(function (th) {
+        function applySort() {
+            var key = th.dataset.sort;
+            if (!key) return;
+            var s = container._categorySummarySort || { key: 'mainAmount', dir: 'desc' };
+            container._categorySummarySort = {
+                key: key,
+                dir: (s.key === key && s.dir === 'desc') ? 'asc' : 'desc'
+            };
+            renderStatsCategorySummary(container._categorySummary);
+        }
+        th.addEventListener('click', applySort);
+        th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applySort(); } });
     });
 }
 
@@ -4197,15 +4571,49 @@ function applyStatsFilters() {
         }
     }
     if (customWrap) customWrap.classList.toggle('d-none', f.timeRange !== 'custom');
+    // 持久化当前筛选到 localStorage，刷新后继续沿用
+    saveStatsFilters(f);
     const dataset = getStatsDataset(history, f);
     renderStatsKpis(dataset.totals);
     renderStatsComparison(f, dataset.totals);
     renderStatsTrends(dataset.dailyAgg, dataset.weeklyAgg, dataset.monthlyAgg);
     renderStatsTopLists(dataset.byClient, dataset.byProduct);
-    renderStatsDistribution(dataset.byStatus, dataset.byUsage, dataset.byUrgent, dataset.byProcess);
+    renderStatsCategorySummary(dataset.categorySummary);
+    renderStatsDistribution(dataset.byStatus, dataset.byUsage, dataset.byUrgent, dataset.byProcess, dataset.totals.discountByReason);
 }
 
 function renderStatsPage() {
+    // 若存在上次的筛选配置，优先还原到 UI
+    const saved = loadStatsFilters();
+    if (saved) {
+        const timeEl = document.getElementById('statsTimeFilter');
+        const timeBasisEl = document.getElementById('statsTimeBasis');
+        const amountEl = document.getElementById('statsAmountBasis');
+        const giftEl = document.getElementById('statsGiftMode');
+        const statusEl = document.getElementById('statsStatusFilter');
+        const customStart = document.getElementById('statsCustomStart');
+        const customEnd = document.getElementById('statsCustomEnd');
+        const quickStart = document.getElementById('statsStartDate');
+        const quickEnd = document.getElementById('statsEndDate');
+        const viewYearEl = document.getElementById('statsViewYear');
+        const viewMonthEl = document.getElementById('statsViewMonth');
+        if (timeEl && saved.timeRange) timeEl.value = saved.timeRange;
+        if (timeBasisEl && saved.timeBasis) timeBasisEl.value = saved.timeBasis;
+        if (amountEl && saved.amountBasis) amountEl.value = saved.amountBasis;
+        if (giftEl && saved.giftMode) giftEl.value = saved.giftMode;
+        if (statusEl && saved.statusFilter) statusEl.value = saved.statusFilter;
+        if (viewYearEl && typeof saved.viewYear === 'number') viewYearEl.value = String(saved.viewYear);
+        if (viewMonthEl && typeof saved.viewMonth === 'number') viewMonthEl.value = String(saved.viewMonth);
+        if (saved.startDate) {
+            if (customStart) customStart.value = saved.startDate;
+            if (quickStart) quickStart.value = saved.startDate;
+        }
+        if (saved.endDate) {
+            if (customEnd) customEnd.value = saved.endDate;
+            if (quickEnd) quickEnd.value = saved.endDate;
+        }
+        onStatsFilterChange();
+    }
     updateStatsFilterBadge();
     applyStatsFilters();
 }
@@ -4576,9 +4984,13 @@ function updateProductForm(productId) {
                             return `
                                 <div class="incremental-config-item">
                                     <span class="incremental-config-label">+${config.name} (¥${config.price})</span>
-                                    <input type="number" id="${configKey}" value="${currentValue}" min="0" step="1" 
-                                           onchange="updateProductAdditionalConfig(${productId}, '${configKey}', parseInt(this.value))" 
-                                           class="incremental-config-input">
+                                    <div class="process-layers-stepper-wrap">
+                                        <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustProductAdditionalConfig(${productId}, '${configKey}', -1)">−</button>
+                                        <input type="number" id="${configKey}" value="${currentValue}" min="0" step="1" 
+                                               onchange="var v = Math.max(0, parseInt(this.value) || 0); this.value = v; updateProductAdditionalConfig(${productId}, '${configKey}', v)" 
+                                               class="process-layers-stepper-input">
+                                        <button type="button" class="process-layers-stepper-btn" aria-label="加一" onclick="adjustProductAdditionalConfig(${productId}, '${configKey}', 1)">+</button>
+                                    </div>
                                     <span class="incremental-config-unit">${config.unit}</span>
                                 </div>
                             `;
@@ -4728,6 +5140,17 @@ function updateProductAdditionalConfig(productId, configKey, value) {
         }
         product.additionalConfigs[configKey] = value || 0;
     }
+}
+
+// 快捷增减递增数量（基础+递增价）
+function adjustProductAdditionalConfig(productId, configKey, delta) {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    const current = (product.additionalConfigs && product.additionalConfigs[configKey]) ? product.additionalConfigs[configKey] : 0;
+    const next = Math.max(0, current + delta);
+    updateProductAdditionalConfig(productId, configKey, next);
+    const input = document.getElementById(configKey);
+    if (input) input.value = next;
 }
 
 // 更新制品类型
@@ -7981,81 +8404,119 @@ function settlementUpdateWasteByPiecePreview() {
 function settlementRenderNormalForm() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
-    var amountWrap = document.getElementById('settlementDiscountAmountWrap');
-    var rateWrap = document.getElementById('settlementDiscountRateWrap');
-    document.getElementById('settlementDiscountAmount').value = '0';
-    document.getElementById('settlementDiscountRate').value = '0.99';
-    var reasonInput = document.getElementById('settlementDiscountReason');
-    var reasonSelect = document.getElementById('settlementDiscountReasonSelect');
-    if (reasonInput) reasonInput.value = '';
-    // 优惠原因下拉：无 + 预设 + 其他
-    if (reasonSelect) {
+    var reasonOtherInput = document.getElementById('settlementDiscountReasonOther');
+    if (reasonOtherInput) reasonOtherInput.value = '';
+    var otherAmountEl = document.getElementById('settlementOtherAmount');
+    if (otherAmountEl) otherAmountEl.value = '0';
+    var otherRateEl = document.getElementById('settlementOtherRate');
+    if (otherRateEl) otherRateEl.value = '';
+    var reasonsWrap = document.getElementById('settlementDiscountReasonsWrap');
+    if (reasonsWrap) {
         var reasons = getDiscountReasons();
-        reasonSelect.innerHTML = '<option value="">无</option>';
+        var html = '';
         reasons.forEach(function (r) {
-            reasonSelect.innerHTML += '<option value="' + r.id + '">' + (r.name || '') + '</option>';
+            var preferType = (r.preferType === 'amount') ? 'amount' : 'rate';
+            var defaultAmt = (r.defaultAmount != null && !isNaN(r.defaultAmount)) ? r.defaultAmount : 0;
+            var defaultRate = (r.defaultRate != null && !isNaN(r.defaultRate)) ? Math.min(0.99, r.defaultRate) : 0.99;
+            var nameEsc = (r.name || '').replace(/"/g, '&quot;');
+            var amountOpt = preferType === 'amount' ? ' selected' : '';
+            var rateOpt = preferType === 'rate' ? ' selected' : '';
+            var amountWrapShow = preferType === 'amount' ? '' : ' style="display:none"';
+            var rateWrapShow = preferType === 'rate' ? '' : ' style="display:none"';
+            html += '<div class="settlement-reason-row-item"><div class="settlement-reason-row-head"><label class="settlement-reason-inline"><input type="checkbox" class="settlement-discount-reason-cb" data-id="' + r.id + '" data-name="' + nameEsc + '">' + (r.name || '') + '</label><div class="settlement-reason-type-toggle" data-active="' + preferType + '"><input type="hidden" class="settlement-reason-type" value="' + preferType + '"><span class="settlement-reason-type-thumb"></span><button type="button" class="settlement-reason-type-btn' + (preferType === 'amount' ? ' active' : '') + '" data-value="amount">减去</button><button type="button" class="settlement-reason-type-btn' + (preferType === 'rate' ? ' active' : '') + '" data-value="rate">折扣</button></div></div><div class="settlement-reason-row-input"><span class="settlement-reason-amount-wrap"' + amountWrapShow + '><input type="number" class="settlement-reason-amount settlement-reason-input" data-id="' + r.id + '" min="0" step="0.01" value="' + defaultAmt + '" placeholder="0"></span><span class="settlement-reason-rate-wrap"' + rateWrapShow + '><input type="number" class="settlement-reason-rate settlement-reason-input" data-id="' + r.id + '" min="0" max="0.99" step="0.01" value="' + defaultRate + '" placeholder="0.99"></span></div></div>';
         });
-        reasonSelect.innerHTML += '<option value="other">其他</option>';
-        reasonSelect.value = '';
-        reasonSelect.onchange = function () {
-            var val = reasonSelect.value;
-            if (val === '') {
-                if (reasonInput) { reasonInput.value = ''; reasonInput.classList.add('d-none'); }
-                return;
-            }
-            if (val === 'other') {
-                if (reasonInput) { reasonInput.value = ''; reasonInput.classList.remove('d-none'); }
-                return;
-            }
-            var preset = getDiscountReasons().find(function (x) { return String(x.id) === String(val); });
-            if (preset && reasonInput) {
-                reasonInput.value = preset.name || '';
-                reasonInput.classList.remove('d-none');
-            }
-            if (preset) {
-                var preferType = preset.preferType || 'rate';
-                var radioAmount = document.querySelector('input[name="settlementDiscountType"][value="amount"]');
-                var radioRate = document.querySelector('input[name="settlementDiscountType"][value="rate"]');
-                if (radioAmount) radioAmount.checked = (preferType === 'amount');
-                if (radioRate) radioRate.checked = (preferType === 'rate');
-                if (amountWrap) amountWrap.classList.toggle('d-none', preferType !== 'amount');
-                if (rateWrap) rateWrap.classList.toggle('d-none', preferType !== 'rate');
-                if (preferType === 'amount') {
-                    document.getElementById('settlementDiscountAmount').value = (preset.defaultAmount != null && !isNaN(preset.defaultAmount)) ? preset.defaultAmount : '0';
-                } else {
-                    var rateVal = (preset.defaultRate != null && !isNaN(preset.defaultRate)) ? preset.defaultRate : 0.99;
-                    if (rateVal > 0.99) rateVal = 0.99;
-                    document.getElementById('settlementDiscountRate').value = rateVal;
+        reasonsWrap.innerHTML = html || '<span class="text-gray" style="font-size:0.85rem;">暂无预设优惠原因，可在设置页添加</span>';
+        reasonsWrap.querySelectorAll('.settlement-discount-reason-cb').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                var row = this.closest('.settlement-reason-row-item');
+                if (row && this.checked) {
+                    var preset = getDiscountReasons().find(function (x) { return String(x.id) === String(cb.dataset.id); });
+                        if (preset) {
+                        var preferType = (preset.preferType === 'amount') ? 'amount' : 'rate';
+                        var typeInp = row.querySelector('input.settlement-reason-type');
+                        var toggleEl = row.querySelector('.settlement-reason-type-toggle');
+                        var amountInp = row.querySelector('.settlement-reason-amount');
+                        var rateInp = row.querySelector('.settlement-reason-rate');
+                        if (typeInp) typeInp.value = preferType;
+                        if (toggleEl) toggleEl.setAttribute('data-active', preferType);
+                        row.querySelectorAll('.settlement-reason-type-btn').forEach(function (btn) {
+                            btn.classList.toggle('active', btn.dataset.value === preferType);
+                        });
+                        if (amountInp) amountInp.value = (preset.defaultAmount != null && !isNaN(preset.defaultAmount)) ? preset.defaultAmount : '0';
+                        if (rateInp) rateInp.value = (preset.defaultRate != null && !isNaN(preset.defaultRate)) ? (preset.defaultRate > 0.99 ? 0.99 : preset.defaultRate) : '0.99';
+                        var amWrap = row.querySelector('.settlement-reason-amount-wrap');
+                        var rtWrap = row.querySelector('.settlement-reason-rate-wrap');
+                        if (amWrap) amWrap.style.display = preferType === 'amount' ? '' : 'none';
+                        if (rtWrap) rtWrap.style.display = preferType === 'rate' ? '' : 'none';
+                    }
                 }
                 settlementUpdateNormalPreview();
-            }
-        };
-        if (reasonInput) reasonInput.classList.add('d-none');
-    }
-    document.querySelectorAll('input[name="settlementDiscountType"]').forEach(function (r) {
-        r.addEventListener('change', function () {
-            var isAmount = document.querySelector('input[name="settlementDiscountType"]:checked').value === 'amount';
-            amountWrap.classList.toggle('d-none', !isAmount);
-            rateWrap.classList.toggle('d-none', isAmount);
-            settlementUpdateNormalPreview();
+            });
         });
-    });
-    amountWrap.classList.remove('d-none');
-    rateWrap.classList.add('d-none');
-    document.getElementById('settlementDiscountAmount').addEventListener('input', settlementUpdateNormalPreview);
-    document.getElementById('settlementDiscountRate').addEventListener('input', settlementUpdateNormalPreview);
+        reasonsWrap.querySelectorAll('.settlement-reason-type-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var row = this.closest('.settlement-reason-row-item');
+                if (!row) return;
+                var v = this.dataset.value || 'amount';
+                row.querySelectorAll('.settlement-reason-type-btn').forEach(function (b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                var toggleEl = row.querySelector('.settlement-reason-type-toggle');
+                if (toggleEl) toggleEl.setAttribute('data-active', v);
+                var typeInp = row.querySelector('input.settlement-reason-type');
+                if (typeInp) typeInp.value = v;
+                var amWrap = row.querySelector('.settlement-reason-amount-wrap');
+                var rtWrap = row.querySelector('.settlement-reason-rate-wrap');
+                if (amWrap) amWrap.style.display = (v === 'amount') ? '' : 'none';
+                if (rtWrap) rtWrap.style.display = (v === 'rate') ? '' : 'none';
+                settlementUpdateNormalPreview();
+            });
+        });
+        reasonsWrap.querySelectorAll('.settlement-reason-amount, .settlement-reason-rate').forEach(function (inp) {
+            inp.addEventListener('input', settlementUpdateNormalPreview);
+        });
+    }
+    otherAmountEl = document.getElementById('settlementOtherAmount');
+    otherRateEl = document.getElementById('settlementOtherRate');
+    var otherToggleEl = document.getElementById('settlementOtherTypeToggle');
+    if (otherToggleEl) {
+        otherToggleEl.querySelectorAll('.settlement-reason-type-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var v = this.dataset.value || 'amount';
+                otherToggleEl.querySelectorAll('.settlement-reason-type-btn').forEach(function (b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                otherToggleEl.setAttribute('data-active', v);
+                var typeInp = document.getElementById('settlementOtherType');
+                if (typeInp) typeInp.value = v;
+                var amWrap = document.getElementById('settlementOtherAmountWrap');
+                var rtWrap = document.getElementById('settlementOtherRateWrap');
+                if (amWrap) amWrap.style.display = (v === 'amount') ? '' : 'none';
+                if (rtWrap) rtWrap.style.display = (v === 'rate') ? '' : 'none';
+                settlementUpdateNormalPreview();
+            });
+        });
+    }
+    if (otherAmountEl) otherAmountEl.addEventListener('input', settlementUpdateNormalPreview);
+    if (otherRateEl) otherRateEl.addEventListener('input', settlementUpdateNormalPreview);
     var normalAmountEl = document.getElementById('settlementNormalAmount');
-    if (normalAmountEl) normalAmountEl.addEventListener('input', function () {
-        var item = history.find(function (h) { return h.id === settlementModalRecordId; });
-        if (!item || (document.querySelector('input[name="settlementDiscountType"]:checked') || {}).value !== 'rate') return;
-        var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
-        if (!hasPlatformFee) return;
-        var receipt = parseFloat(normalAmountEl.value) || 0;
-        var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
-        var newPlatformFee = Math.round(receipt * platformFeePct);
-        var newPlatformEl = document.getElementById('settlementNewPlatformFeeText');
-        if (newPlatformEl) { newPlatformEl.textContent = '新平台费：¥' + newPlatformFee.toFixed(2); newPlatformEl.classList.remove('d-none'); }
-    });
+    if (normalAmountEl) {
+        normalAmountEl.addEventListener('input', function () {
+            var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+            if (!item) return;
+            var receivable = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
+            var receipt = parseFloat(normalAmountEl.value) || 0;
+            var receivableDiffEl = document.getElementById('settlementReceivableDiffHint');
+            if (receivableDiffEl) {
+                var diff = Math.max(0, receivable - receipt);
+                receivableDiffEl.textContent = '实付金额 ¥' + receivable.toFixed(2) + '，差额 ¥' + diff.toFixed(2);
+            }
+            var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
+            if (!hasPlatformFee) return;
+            var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
+            var newPlatformFee = Math.round(receipt * platformFeePct);
+            var newPlatformEl = document.getElementById('settlementNewPlatformFeeText');
+            if (newPlatformEl) { newPlatformEl.textContent = '新平台费：¥' + newPlatformFee.toFixed(2); newPlatformEl.classList.remove('d-none'); }
+        });
+    }
     settlementUpdateNormalPreview();
 }
 
@@ -8064,32 +8525,53 @@ function settlementUpdateNormalPreview() {
     if (!item) return;
     var amountEl = document.getElementById('settlementNormalAmount');
     var newPlatformEl = document.getElementById('settlementNewPlatformFeeText');
-    var discountType = (document.querySelector('input[name="settlementDiscountType"]:checked') || {}).value || 'amount';
-    var totalBeforePlatformFee = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
+    var receivable = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
     var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
     var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
 
-    if (discountType === 'amount') {
-        var base = (item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
-        var discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
-        var receipt = Math.max(0, base - discount);
-        if (amountEl) amountEl.value = receipt.toFixed(2);
-        if (newPlatformEl) { newPlatformEl.classList.add('d-none'); newPlatformEl.textContent = ''; }
-    } else {
-        var rate = parseFloat(document.getElementById('settlementDiscountRate').value);
-        if (isNaN(rate) || rate <= 0) rate = 0.99;
-        if (rate > 0.99) rate = 0.99;
-        var receipt = Math.max(0, totalBeforePlatformFee * rate);
-        var newPlatformFee = hasPlatformFee ? Math.round(receipt * platformFeePct) : 0;
-        if (amountEl) amountEl.value = receipt.toFixed(2);
-        if (newPlatformEl) {
-            if (hasPlatformFee) {
-                newPlatformEl.textContent = '新平台费：¥' + newPlatformFee.toFixed(2);
-                newPlatformEl.classList.remove('d-none');
-            } else {
-                newPlatformEl.classList.add('d-none');
-                newPlatformEl.textContent = '';
+    var totalSubtract = 0;
+    var productRate = 1;
+    document.querySelectorAll('.settlement-discount-reason-cb:checked').forEach(function (cb) {
+        var row = cb.closest('.settlement-reason-row-item');
+        if (!row) return;
+        var typeSel = row.querySelector('.settlement-reason-type');
+        var typeVal = typeSel ? typeSel.value : 'amount';
+        if (typeVal === 'amount') {
+            var amtInp = row.querySelector('.settlement-reason-amount');
+            if (amtInp) totalSubtract += parseFloat(amtInp.value) || 0;
+        } else {
+            var rateInp = row.querySelector('.settlement-reason-rate');
+            if (rateInp) {
+                var r = parseFloat(rateInp.value);
+                if (!isNaN(r) && r > 0) productRate *= (r > 0.99 ? 0.99 : r);
             }
+        }
+    });
+    var otherTypeEl = document.getElementById('settlementOtherType');
+    var otherTypeVal = otherTypeEl ? otherTypeEl.value : 'amount';
+    var otherAmtEl = document.getElementById('settlementOtherAmount');
+    var otherRateEl = document.getElementById('settlementOtherRate');
+    if (otherTypeVal === 'amount' && otherAmtEl) totalSubtract += parseFloat(otherAmtEl.value) || 0;
+    if (otherTypeVal === 'rate' && otherRateEl) {
+        var or_ = parseFloat(otherRateEl.value);
+        if (!isNaN(or_) && or_ > 0) productRate *= (or_ > 0.99 ? 0.99 : or_);
+    }
+
+    var receipt = Math.max(0, (receivable - totalSubtract) * productRate);
+    if (amountEl) amountEl.value = receipt.toFixed(2);
+    var receivableDiffEl = document.getElementById('settlementReceivableDiffHint');
+    if (receivableDiffEl) {
+        var diff = Math.max(0, receivable - receipt);
+        receivableDiffEl.textContent = '实付金额 ¥' + receivable.toFixed(2) + '，差额 ¥' + diff.toFixed(2);
+        receivableDiffEl.classList.remove('d-none');
+    }
+    if (newPlatformEl) {
+        if (hasPlatformFee) {
+            newPlatformEl.textContent = '新平台费：¥' + Math.round(receipt * platformFeePct).toFixed(2);
+            newPlatformEl.classList.remove('d-none');
+        } else {
+            newPlatformEl.classList.add('d-none');
+            newPlatformEl.textContent = '';
         }
     }
 }
@@ -8361,38 +8843,60 @@ function settlementConfirm() {
             };
         }
     } else {
-        var reasonEl = document.getElementById('settlementDiscountReason');
-        var discountReason = reasonEl ? (reasonEl.value || '').trim() : '';
-        var discountTypeEl = document.querySelector('input[name="settlementDiscountType"]:checked');
-        var discountType = discountTypeEl ? discountTypeEl.value : 'amount';
-        var totalBeforePlatformFee = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
-        var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
-        var receipt, discount, discountRate, newPlatformFee;
-        if (discountType === 'amount') {
-            var base = (item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
-            discount = parseFloat(document.getElementById('settlementDiscountAmount').value) || 0;
-            receipt = Math.max(0, base - discount);
-            discountRate = undefined;
-            newPlatformFee = undefined;
-        } else {
-            var rate = parseFloat(document.getElementById('settlementDiscountRate').value);
-            if (isNaN(rate) || rate <= 0) rate = 0.99;
-            if (rate > 0.99) rate = 0.99;
-            receipt = Math.max(0, totalBeforePlatformFee * rate);
-            newPlatformFee = (item.platformFeeAmount || 0) > 0 ? Math.round(receipt * platformFeePct) : undefined;
-            discount = undefined;
-            discountRate = rate;
+        // 收集多选优惠原因及每项的金额/系数：实收 = (应收 - Σ减去金额) × Π系数
+        var discountReasons = [];
+        document.querySelectorAll('.settlement-discount-reason-cb:checked').forEach(function (cb) {
+            var name = (cb.dataset.name || '').trim();
+            if (!name) return;
+            var row = cb.closest('.settlement-reason-row-item');
+            var typeSel = row ? row.querySelector('.settlement-reason-type') : null;
+            var typeVal = typeSel ? typeSel.value : 'amount';
+            var entry = { name: name };
+            if (typeVal === 'amount') {
+                var amtInp = row ? row.querySelector('.settlement-reason-amount') : null;
+                var amt = amtInp ? (parseFloat(amtInp.value) || 0) : 0;
+                if (amt > 0) entry.amount = amt;
+            } else {
+                var rateInp = row ? row.querySelector('.settlement-reason-rate') : null;
+                var r = rateInp ? parseFloat(rateInp.value) : NaN;
+                if (!isNaN(r) && r > 0) entry.rate = r > 0.99 ? 0.99 : r;
+            }
+            discountReasons.push(entry);
+        });
+        var otherText = (document.getElementById('settlementDiscountReasonOther') && document.getElementById('settlementDiscountReasonOther').value || '').trim();
+        if (otherText) {
+            var otherEntry = { name: otherText };
+            var oTypeEl = document.getElementById('settlementOtherType');
+            var oTypeVal = oTypeEl ? oTypeEl.value : 'amount';
+            if (oTypeVal === 'amount') {
+                var oAmt = document.getElementById('settlementOtherAmount');
+                var oa = oAmt ? parseFloat(oAmt.value) : 0;
+                if (oa > 0) otherEntry.amount = oa;
+            } else {
+                var oRate = document.getElementById('settlementOtherRate');
+                var or_ = oRate ? parseFloat(oRate.value) : NaN;
+                if (!isNaN(or_) && or_ > 0) otherEntry.rate = or_ > 0.99 ? 0.99 : or_;
+            }
+            discountReasons.push(otherEntry);
         }
+        var receivable = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
+        var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
+        var totalSubtract = 0;
+        var productRate = 1;
+        discountReasons.forEach(function (e) {
+            if (e.amount != null) totalSubtract += e.amount;
+            if (e.rate != null) productRate *= e.rate;
+        });
+        var receipt = Math.max(0, (receivable - totalSubtract) * productRate);
         var amountEl = document.getElementById('settlementNormalAmount');
-        receipt = amountEl ? (parseFloat(amountEl.value) || 0) : receipt;
+        receipt = amountEl ? (parseFloat(amountEl.value) || receipt) : receipt;
         receipt = Math.max(0, receipt);
+        var newPlatformFee = (item.platformFeeAmount || 0) > 0 ? Math.round(receipt * platformFeePct) : undefined;
         item.settlement = {
             type: 'normal',
             amount: receipt,
-            discount: discount,
-            discountRate: discountRate,
             newPlatformFee: newPlatformFee,
-            discountReason: discountReason,
+            discountReasons: discountReasons,
             at: at
         };
     }
