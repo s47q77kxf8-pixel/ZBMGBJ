@@ -427,20 +427,29 @@
     </svg>
 
     <div class="app-container">
-        <!-- 导航栏：报价 | + | 设置 -->
+        <!-- 导航栏：排单/记录/计算/统计/设置（图标+底下文字，灰/黑） -->
         <nav class="navbar">
             <div class="nav-buttons">
-                <!-- 左侧：报价（主业务） -->
-                <button class="nav-btn nav-btn-main nav-btn-quote active" onclick="showPage('quote')">排单</button>
-
-                <!-- 中间：开始计算（打开计算抽屉） -->
+                <button class="nav-btn nav-btn-tab nav-btn-quote active" onclick="showPage('quote')" aria-label="排单" title="排单">
+                    <svg class="nav-tab-icon" aria-hidden="true"><use href="#i-today-calendar-dot"></use></svg>
+                    <span class="nav-tab-label">排单</span>
+                </button>
+                <button class="nav-btn nav-btn-tab nav-btn-record" onclick="showPage('record')" aria-label="记录" title="记录">
+                    <svg class="nav-tab-icon" aria-hidden="true"><use href="#i-receipt-list"></use></svg>
+                    <span class="nav-tab-label">记录</span>
+                </button>
                 <button class="nav-btn nav-btn-plus" id="openCalculatorBtn" type="button" onclick="openCalculatorDrawer()" aria-label="开始计算" title="开始计算">
                     <svg class="icon lg" aria-hidden="true"><use href="#i-plus"></use></svg>
                     <span class="sr-only">开始计算</span>
                 </button>
-
-                <!-- 右侧：设置（辅助配置） -->
-                <button class="nav-btn nav-btn-main nav-btn-settings" onclick="showPage('settings')">设置</button>
+                <button class="nav-btn nav-btn-tab nav-btn-stats" onclick="showPage('stats')" aria-label="统计" title="统计">
+                    <svg class="nav-tab-icon" aria-hidden="true"><use href="#i-stats-e"></use></svg>
+                    <span class="nav-tab-label">统计</span>
+                </button>
+                <button class="nav-btn nav-btn-tab nav-btn-settings" onclick="showPage('settings')" aria-label="设置" title="设置">
+                    <svg class="nav-tab-icon" aria-hidden="true"><use href="#i-settings-line-c3a"></use></svg>
+                    <span class="nav-tab-label">设置</span>
+                </button>
             </div>
         </nav>
 
@@ -650,14 +659,6 @@
                             <button type="button" class="btn secondary btn--icon schedule-title-icon-btn" id="themeToggleBtn" onclick="toggleThemeOnClick()" oncontextmenu="toggleThemeLongPress(event); return false;" aria-label="切换昼夜模式" title="点击切换昼夜，长按跟随系统">
                                 <svg class="icon theme-icon-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
                                 <svg class="icon theme-icon-moon d-none" aria-hidden="true"><use href="#i-moon"></use></svg>
-                            </button>
-                            <button type="button" class="btn secondary schedule-title-icon-btn schedule-title-icon-btn-with-label" id="openHistoryRecordBtn" onclick="openRecordPage()" aria-label="记录" title="记录">
-                                <svg class="icon" aria-hidden="true"><use href="#i-record-c"></use></svg>
-                                <span class="schedule-title-action-label">记录</span>
-                            </button>
-                            <button type="button" class="btn secondary schedule-title-icon-btn schedule-title-icon-btn-with-label schedule-title-icon-btn--stats" id="openStatsBtn" onclick="openStatsPage()" aria-label="统计" title="统计">
-                                <svg class="icon" aria-hidden="true"><use href="#i-stats-e"></use></svg>
-                                <span class="schedule-title-action-label">统计</span>
                             </button>
                         </div>
                     </div>

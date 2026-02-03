@@ -2735,7 +2735,7 @@ function clearReceiptCustomization() {
 }
 
 // ===== 页面与计算 / 小票抽屉切换状态 =====
-let activeTab = 'quote';              // 'quote' | 'settings'
+let activeTab = 'quote';              // 'quote' | 'record' | 'stats' | 'settings'
 let isCalculatorOpen = false;         // 计算抽屉是否打开
 let isReceiptDrawerOpen = false;      // 小票抽屉是否打开
 let isCurrentQuoteScheduled = false;  // 当前报价是否已排单保存（用于小票页关闭确认）
@@ -2753,20 +2753,28 @@ function showPage(pageId) {
         pageEl.classList.add('active');
     }
     
-    // 更新导航按钮状态（只高亮左右主 Tab）
-    document.querySelectorAll('.nav-btn-main').forEach(btn => {
+    // 更新导航按钮状态（排单/记录/计算/统计/设置 对应高亮）
+    document.querySelectorAll('.nav-btn-tab').forEach(btn => {
         btn.classList.remove('active');
     });
-
-    if (pageId === 'quote' || pageId === 'record' || pageId === 'stats') {
+    if (pageId === 'quote') {
         activeTab = 'quote';
         const quoteBtn = document.querySelector('.nav-btn-quote');
         if (quoteBtn) quoteBtn.classList.add('active');
+    } else if (pageId === 'record') {
+        activeTab = 'record';
+        const recordBtn = document.querySelector('.nav-btn-record');
+        if (recordBtn) recordBtn.classList.add('active');
+    } else if (pageId === 'stats') {
+        activeTab = 'stats';
+        const statsBtn = document.querySelector('.nav-btn-stats');
+        if (statsBtn) statsBtn.classList.add('active');
     } else if (pageId === 'settings') {
         activeTab = 'settings';
         const settingsBtn = document.querySelector('.nav-btn-settings');
         if (settingsBtn) settingsBtn.classList.add('active');
     }
+    // 计算：仅打开抽屉，不高亮
     
     if (pageId === 'quote') {
         renderScheduleCalendar();
@@ -6664,51 +6672,40 @@ function getScheduleBarsForCalendar(year, month) {
     return bars;
 }
 
-// 排单日历条带色板（日程颜色 17 色：小圆点用实色，彩条用半透明）
+// 彩条色板（共 12 色）：青、蓝、浅粉、绿、紫、黄、茶、橙、薄荷、棕、浅灰、红
 var SCHEDULE_BAR_COLORS = [
-    'rgba(109, 204, 67, 0.38)',   // 0 翠绿
-    'rgba(239, 83, 80, 0.38)',    // 1 红
-    'rgba(236, 64, 122, 0.38)',   // 2 玫红
-    'rgba(244, 143, 177, 0.38)',  // 3 浅粉
-    'rgba(156, 39, 176, 0.38)',   // 4 紫
-    'rgba(103, 58, 183, 0.38)',   // 5 蓝紫
-    'rgba(33, 150, 243, 0.38)',   // 6 蓝
-    'rgba(0, 188, 212, 0.38)',    // 7 青
-    'rgba(139, 195, 74, 0.38)',   // 8 黄绿
-    'rgba(128, 203, 196, 0.38)',  // 9 薄荷
-    'rgba(255, 235, 59, 0.38)',   // 10 黄
-    'rgba(255, 152, 0, 0.38)',    // 11 橙
-    'rgba(255, 87, 34, 0.38)',    // 12 深橙
-    'rgba(121, 85, 72, 0.38)',    // 13 棕
-    'rgba(189, 189, 189, 0.38)',  // 14 浅灰
-    'rgba(96, 125, 139, 0.38)',   // 15 蓝灰
-    'rgba(178, 223, 219, 0.38)'   // 16 浅青
+    'rgba(135, 205, 250, 0.38)',
+    'rgba(190, 215, 250, 0.38)',
+    'rgba(244, 143, 177, 0.38)',
+    'rgba(195, 245, 225, 0.38)',
+    'rgba(218, 200, 245, 0.38)',
+    'rgba(255, 235, 100, 0.38)',
+    'rgba(210, 180, 140, 0.38)',
+    'rgba(255, 150, 100, 0.38)',
+    'rgba(128, 203, 196, 0.38)',
+    'rgba(121, 85, 72, 0.38)',
+    'rgba(189, 189, 189, 0.38)',
+    'rgba(245, 195, 195, 0.38)'
 ];
-var SCHEDULE_BAR_TEXT_COLORS = ['#2d5c1a', '#8b2020', '#8b2048', '#8b4058', '#4a1858', '#2d1858', '#0d47a1', '#006064', '#33691e', '#00695c', '#f9a825', '#e65100', '#bf360c', '#3e2723', '#424242', '#263238', '#004d40'];
-var SCHEDULE_BAR_DOT_COLORS = ['#6DC043', '#EF5350', '#EC407A', '#F48FB1', '#9C27B0', '#673AB7', '#2196F3', '#00BCD4', '#8BC34A', '#80CBC4', '#FFEB3B', '#FF9800', '#FF5722', '#795548', '#BDBDBD', '#607D8B', '#B2DFDB'];
+var SCHEDULE_BAR_TEXT_COLORS = ['#1e5a7a', '#2d4a6b', '#8b4058', '#2d6850', '#3d2d5c', '#5c4d10', '#5c4a28', '#5c2810', '#00695c', '#3e2723', '#424242', '#5c2828'];
+var SCHEDULE_BAR_DOT_COLORS = ['#5eb8e8', '#7eb0e8', '#F48FB1', '#6dc49a', '#9d7ec9', '#e6c83d', '#d2b48c', '#e88a5c', '#80CBC4', '#795548', '#BDBDBD', '#c47a7a'];
 
-// 黑夜模式彩条色板（与白天一一对应，共17色）
 var SCHEDULE_BAR_COLORS_DARK = [
-    'rgba(109, 204, 67, 0.5)',    // 0 翠绿
-    'rgba(239, 83, 80, 0.5)',     // 1 红
-    'rgba(236, 64, 122, 0.5)',    // 2 玫红
-    'rgba(244, 143, 177, 0.5)',   // 3 浅粉
-    'rgba(156, 39, 176, 0.5)',    // 4 紫
-    'rgba(103, 58, 183, 0.5)',    // 5 蓝紫
-    'rgba(33, 150, 243, 0.5)',    // 6 蓝
-    'rgba(0, 188, 212, 0.5)',     // 7 青
-    'rgba(139, 195, 74, 0.5)',    // 8 黄绿
-    'rgba(128, 203, 196, 0.5)',   // 9 薄荷
-    'rgba(255, 235, 59, 0.5)',    // 10 黄
-    'rgba(255, 152, 0, 0.5)',     // 11 橙
-    'rgba(255, 87, 34, 0.5)',     // 12 深橙
-    'rgba(121, 85, 72, 0.5)',     // 13 棕
-    'rgba(189, 189, 189, 0.5)',   // 14 浅灰
-    'rgba(96, 125, 139, 0.5)',    // 15 蓝灰
-    'rgba(178, 223, 219, 0.5)'    // 16 浅青
+    'rgba(56, 189, 248, 0.5)',
+    'rgba(96, 165, 250, 0.5)',
+    'rgba(244, 143, 177, 0.5)',
+    'rgba(74, 222, 128, 0.5)',
+    'rgba(192, 132, 252, 0.5)',
+    'rgba(254, 230, 50, 0.5)',
+    'rgba(217, 119, 6, 0.5)',
+    'rgba(251, 106, 54, 0.5)',
+    'rgba(128, 203, 196, 0.5)',
+    'rgba(121, 85, 72, 0.5)',
+    'rgba(189, 189, 189, 0.5)',
+    'rgba(248, 113, 113, 0.5)'
 ];
-var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#86efac', '#fca5a5', '#f9a8d4', '#fbcfe8', '#e9d5ff', '#c4b5fd', '#93c5fd', '#67e8f9', '#bbf7d0', '#99f6e4', '#fde047', '#fdba74', '#fd8a5c', '#d6d3d1', '#e5e5e5', '#94a3b8', '#99f6e4'];
-var SCHEDULE_BAR_DOT_COLORS_DARK = ['#4ade80', '#f87171', '#f472b6', '#f9a8d4', '#c084fc', '#a78bfa', '#60a5fa', '#22d3ee', '#86efac', '#5eead4', '#facc15', '#f97316', '#fb7185', '#a8a29e', '#d4d4d4', '#64748b', '#5eead4'];
+var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#93c5fd', '#fbcfe8', '#86efac', '#c4b5fd', '#fde047', '#fcd34d', '#fd8a5c', '#99f6e4', '#d6d3d1', '#e5e5e5', '#fca5a5'];
+var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#60a5fa', '#f9a8d4', '#4ade80', '#c084fc', '#facc15', '#f59e0b', '#f97316', '#5eead4', '#a8a29e', '#d4d4d4', '#f87171'];
 
 // 根据屏幕宽度返回日历彩条最大轨道数
 function getScheduleMaxTracks() {
@@ -10409,7 +10406,7 @@ function updateOrderRemarkPreview() {
     }
 }
 
-// 智能解析订单备注
+// 智能解析订单备注：能提取什么提取什么，支持多种顺序和写法
 function smartParseOrderRemark() {
     var el = document.getElementById('orderRemarkText');
     if (!el) return;
@@ -10434,7 +10431,83 @@ function smartParseOrderRemark() {
     
     var lines = text.split('\n');
     var isGiftSection = false;
-    var parsedCount = 0;
+    var parsedProductCount = 0;
+    var parsedGiftCount = 0;
+    
+    // 从一行中解析出一项：先尝试多种固定格式，再尝试“行内含类型名+数字”
+    function parseOneLine(ln) {
+        var typeName = null;
+        var sides = 'single';
+        var quantity = 1;
+        var hasBackground = false;
+        var matchedSetting = null;
+        // 中文数字
+        var cnNum = ln.match(/([一二两三四五六七八九十百千\d]+)\s*个?\s*张?/);
+        var numFromCn = cnNum ? (function(n) {
+            var map = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10 };
+            if (/^\d+$/.test(n)) return parseInt(n, 10);
+            if (n === '两') return 2;
+            for (var k in map) { if (n === k) return map[k]; }
+            return null;
+        })(cnNum[1].replace(/个|张/g, '').trim()) : null;
+        var numMatch = ln.match(/\d+/);
+        var num = numMatch ? parseInt(numMatch[0], 10) : (numFromCn || 1);
+        if (num > 0) quantity = num;
+        if (/双面/.test(ln)) sides = 'double';
+        if (/带背景/.test(ln)) hasBackground = true;
+        // 格式1：类型 单面/双面? 数字 个/张? 带背景?
+        var m1 = ln.match(/^([^\s\d]+?)\s*(单面|双面)?\s*(\d+)\s*(个|张)?\s*(带背景)?/i);
+        if (m1) {
+            typeName = m1[1];
+            if (m1[2]) sides = m1[2] === '双面' ? 'double' : 'single';
+            quantity = parseInt(m1[3], 10) || quantity;
+            hasBackground = !!m1[5];
+        }
+        // 格式2：数字 个/张? 类型 单面/双面? 带背景?
+        if (!typeName) {
+            var m2 = ln.match(/^(\d+)\s*(个|张)?\s+([^\s\d]+?)(?:\s*(单面|双面))?(?:\s*(带背景))?/i);
+            if (m2) {
+                typeName = m2[3];
+                quantity = parseInt(m2[1], 10) || quantity;
+                if (m2[4]) sides = m2[4] === '双面' ? 'double' : 'single';
+                hasBackground = !!m2[5];
+            }
+        }
+        // 格式3：类型 数字 或 类型 中文数 个
+        if (!typeName) {
+            var m3 = ln.match(/^([^\s\d]+?)\s*(\d+)\s*(个|张)?/);
+            if (m3) {
+                typeName = m3[1];
+                quantity = parseInt(m3[2], 10) || quantity;
+            }
+        }
+        if (!typeName && cnNum) {
+            var m3b = ln.match(/^([^\s\d一二三四五六七八九十两]+?)\s*[一二三四五六七八九十两]+\s*个?/);
+            if (m3b) {
+                typeName = m3b[1];
+                if (numFromCn) quantity = numFromCn;
+            }
+        }
+        // 格式4：行内任意位置含“类型名+数字”，用设置名去匹配（按名称长度从长到短，优先长匹配）
+        if (!typeName && productSettings.length) {
+            var sorted = productSettings.slice().sort(function(a, b) { return (b.name.length - a.name.length); });
+            for (var si = 0; si < sorted.length; si++) {
+                var s = sorted[si];
+                if (ln.indexOf(s.name) !== -1) {
+                    typeName = s.name;
+                    matchedSetting = s;
+                    break;
+                }
+            }
+        }
+        if (typeName && !matchedSetting) {
+            matchedSetting = productSettings.find(function(s) {
+                return s.name === typeName || s.name.includes(typeName) || typeName.includes(s.name);
+            });
+        }
+        if (!matchedSetting) return null;
+        return { typeId: matchedSetting.id.toString(), sides: sides, quantity: quantity, hasBackground: hasBackground };
+    }
     
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i].trim();
@@ -10447,48 +10520,28 @@ function smartParseOrderRemark() {
             if (!line) continue;
         }
         
-        // 尝试解析制品/赠品信息
-        // 支持格式：立绘 单面 2个、Q版 双面 1个 带背景、头像 3个
-        var match = line.match(/^([^\s]+)\s*(单面|双面)?\s*(\d+)\s*(个|张)?\s*(带背景)?/i);
-        
-        if (match) {
-            var typeName = match[1];
-            var sides = match[2] ? (match[2] === '双面' ? 'double' : 'single') : 'single';
-            var quantity = parseInt(match[3]) || 1;
-            var hasBackground = !!match[5];
-            
-            // 查找匹配的制品类型
-            var matchedSetting = productSettings.find(function(s) {
-                return s.name === typeName || s.name.includes(typeName) || typeName.includes(s.name);
-            });
-            
-            if (matchedSetting) {
-                if (isGiftSection) {
-                    // 添加赠品
-                    giftIdCounter++;
-                    var gift = {
-                        id: giftIdCounter,
-                        type: matchedSetting.id.toString(),
-                        quantity: quantity
-                    };
-                    gifts.push(gift);
-                    renderGift(gift);
-                } else {
-                    // 添加制品
-                    productIdCounter++;
-                    var product = {
-                        id: productIdCounter,
-                        type: matchedSetting.id.toString(),
-                        sides: sides,
-                        quantity: quantity,
-                        sameModel: true,
-                        hasBackground: hasBackground,
-                        processes: {}
-                    };
-                    products.push(product);
-                    renderProduct(product);
-                }
-                parsedCount++;
+        var parsed = parseOneLine(line);
+        if (parsed) {
+            if (isGiftSection) {
+                giftIdCounter++;
+                var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity };
+                gifts.push(gift);
+                renderGift(gift);
+                parsedGiftCount++;
+            } else {
+                productIdCounter++;
+                var product = {
+                    id: productIdCounter,
+                    type: parsed.typeId,
+                    sides: parsed.sides,
+                    quantity: parsed.quantity,
+                    sameModel: true,
+                    hasBackground: parsed.hasBackground,
+                    processes: {}
+                };
+                products.push(product);
+                renderProduct(product);
+                parsedProductCount++;
             }
         }
     }
@@ -10496,8 +10549,12 @@ function smartParseOrderRemark() {
     // 重新计算
     calculate();
     
-    if (parsedCount > 0) {
-        showGlobalToast('已识别 ' + parsedCount + ' 项');
+    // 智能提取后提示：制品/赠品分别统计
+    if (parsedProductCount > 0 || parsedGiftCount > 0) {
+        var parts = [];
+        if (parsedProductCount > 0) parts.push('制品 ' + parsedProductCount + ' 项');
+        if (parsedGiftCount > 0) parts.push('赠品 ' + parsedGiftCount + ' 项');
+        showGlobalToast('已识别 ' + parts.join('、'));
     } else {
         showGlobalToast('未识别到有效内容');
     }

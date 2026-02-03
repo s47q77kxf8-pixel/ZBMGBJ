@@ -111,7 +111,7 @@ html.theme-dark .navbar {
     border-bottom-color: #3f3f46;
 }
 
-/* ① 排单页：主题切换及统计/记录图标在黑夜模式下无底框、确保可见 */
+/* ① 排单页：主题切换在黑夜模式下无底框、确保可见 */
 html.theme-dark .schedule-title-actions .schedule-title-icon-btn {
     color: #e5e5e5 !important;
     background: transparent !important;
@@ -268,15 +268,17 @@ html.theme-dark .schedule-title-next:hover {
 html.theme-dark .nav-btn {
     color: var(--text-color);
 }
-html.theme-dark .nav-btn-main {
-    color: var(--text-color);
+html.theme-dark .nav-btn-tab {
+    color: var(--text-light);
 }
-html.theme-dark .nav-btn-main:hover {
-    background: rgba(255, 255, 255, 0.1);
+html.theme-dark .nav-btn-tab:hover {
+    color: #e5e5e5;
+}
+html.theme-dark .nav-btn-tab.active {
     color: #fff;
 }
-html.theme-dark .nav-btn-main.active {
-    background: rgba(255, 255, 255, 0.18);
+html.theme-dark .nav-btn-tab.active .nav-tab-icon,
+html.theme-dark .nav-btn-tab.active .nav-tab-label {
     color: #fff;
 }
 html.theme-dark .nav-btn-plus {
@@ -562,9 +564,11 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 1rem;
-    max-width: 600px;
+    gap: 0.25rem;
+    flex: 1;
+    max-width: 100%;
     margin: 0 auto;
+    padding: 0 0.5rem;
 }
 
 .nav-btn {
@@ -580,14 +584,49 @@ body {
     gap: 0.5rem;
 }
 
-/* 左右两侧主 Tab：报价 / 设置 */
-.nav-btn-main {
+/* 四个 Tab：图标 + 底下文字，默认灰色，选中黑色 */
+.nav-btn-tab {
     flex: 1;
-    padding: 0.6rem;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.4rem 0.25rem;
     border-radius: var(--radius-md);
+    color: var(--text-light);
+    font-weight: 500;
+}
+.nav-btn-tab .nav-tab-icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    color: inherit;
+}
+.nav-btn-tab .nav-tab-icon path,
+.nav-btn-tab .nav-tab-icon circle {
+    stroke: currentColor;
+    fill: none;
+}
+.nav-btn-tab .nav-tab-icon circle[fill="currentColor"] {
+    fill: currentColor;
+    stroke: none;
+}
+.nav-btn-tab .nav-tab-label {
+    font-size: 0.7rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    color: inherit;
+}
+.nav-btn-tab:hover {
+    color: var(--text-color);
+}
+.nav-btn-tab.active {
+    color: var(--primary-color);
+}
+.nav-btn-tab.active .nav-tab-icon,
+.nav-btn-tab.active .nav-tab-label {
+    color: var(--primary-color);
 }
 
-/* 中间圆形 + 按钮 */
+/* 中间圆形 + 按钮（计算） */
 .nav-btn-plus {
     flex: 0 0 auto;
     width: 40px;
@@ -606,15 +645,6 @@ body {
     top: -1px;
 }
 
-.nav-btn-main:hover {
-    background-color: var(--primary-light);
-    color: var(--primary-color);
-}
-
-.nav-btn-main.active {
-    background-color: var(--primary-light);
-    color: var(--primary-color);
-}
 
 .nav-btn-plus:hover {
     background-color: var(--primary-hover);
