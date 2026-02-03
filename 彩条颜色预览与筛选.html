@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>彩条颜色预览与筛选</title>
+    <style>
+        :root { --bg: #f8fafc; --card: #fff; --text: #1e293b; --border: #e2e8f0; }
+        .dark { --bg: #1e293b; --card: #334155; --text: #e2e8f0; --border: #475569; }
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1rem; line-height: 1.5; }
+        h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+        h2 { font-size: 1rem; margin: 1rem 0 0.5rem; color: var(--text); opacity: 0.9; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 1rem; }
+        .toolbar label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+        .toolbar input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .toolbar select { padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+        .color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem; }
+        .color-item { display: flex; flex-direction: column; gap: 0.35rem; }
+        .color-item.candidate { position: relative; }
+        .color-item.candidate .tick { position: absolute; top: 4px; right: 4px; z-index: 2; }
+        .color-item.candidate .tick input { width: 18px; height: 18px; cursor: pointer; accent-color: #0ea5e9; }
+        .bar-strip { height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; min-width: 0; }
+        .dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+        .row-dot-bar { display: flex; align-items: center; gap: 0.5rem; }
+        .row-dot-bar .dot { width: 12px; height: 12px; }
+        .row-dot-bar .bar-strip { flex: 1; min-width: 60px; }
+        .name { font-size: 0.8rem; color: var(--text); opacity: 0.9; }
+        .hex { font-size: 0.7rem; opacity: 0.7; font-family: ui-monospace, monospace; }
+        .filter-hide { display: none; }
+        .summary { font-size: 0.85rem; margin-top: 0.5rem; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>彩条颜色预览与筛选</h1>
+        <p style="margin: 0 0 0.5rem; font-size: 0.9rem; opacity: 0.85;">在「原有 10 色」和「新候选 17 色」中勾选要<strong>保留</strong>的颜色，选好后可把结果交给开发写入 script.js。</p>
+        <div class="toolbar">
+            <label><input type="checkbox" id="themeDark"> 黑夜模式</label>
+            <label><input type="checkbox" id="filterSelected"> 只显示已保留</label>
+            <span class="summary" id="selectedCount">已保留：原有 0 个 + 新候选 0 个，共 0 个</span>
+            <button type="button" id="copyCodeBtn" style="padding: 0.4rem 0.75rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; font-size: 0.9rem;">复制选中色板代码</button>
+            <span id="copyHint" style="font-size: 0.85rem; opacity: 0.8;"></span>
+        </div>
+        <p style="margin: 0.25rem 0 0; font-size: 0.8rem; opacity: 0.75;">复制后粘贴到对话里发给我，我会据此更新 script.js。</p>
+        <textarea id="exportCodeBox" readonly style="display:none; width:100%; height:140px; margin-top:0.5rem; font-size:0.75rem; font-family:ui-monospace,monospace; padding:0.5rem; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text); box-sizing:border-box;"></textarea>
+    </div>
+
+    <h2>原有 10 色（勾选要保留的）</h2>
+    <div class="card">
+        <div class="color-grid" id="currentGrid"></div>
+        <div style="margin-top: 0.75rem; font-size: 0.8rem; opacity: 0.8;">模拟条带</div>
+        <div class="color-grid" id="currentBars" style="margin-top: 0.35rem;"></div>
+    </div>
+
+    <h2>新候选 17 色（勾选要保留的）</h2>
+    <div class="card">
+        <div class="color-grid" id="candidateGrid"></div>
+        <div style="margin-top: 0.75rem; font-size: 0.8rem; opacity: 0.8;">模拟条带</div>
+        <div class="color-grid" id="candidateBars" style="margin-top: 0.35rem;"></div>
+    </div>
+
+    <script>
+        (function () {
+            var current = {
+                names: ['青', '红', '蓝', '橙', '绿', '紫', '黄', '品红', '茶', '珊瑚'],
+                bar: [
+                    'rgba(135, 205, 250, 0.38)', 'rgba(245, 195, 195, 0.38)', 'rgba(190, 215, 250, 0.38)', 'rgba(255, 150, 100, 0.38)', 'rgba(195, 245, 225, 0.38)',
+                    'rgba(218, 200, 245, 0.38)', 'rgba(255, 235, 100, 0.38)', 'rgba(240, 140, 210, 0.38)', 'rgba(210, 180, 140, 0.38)', 'rgba(255, 160, 150, 0.38)'
+                ],
+                barDark: [
+                    'rgba(56, 189, 248, 0.5)', 'rgba(248, 113, 113, 0.5)', 'rgba(96, 165, 250, 0.5)', 'rgba(251, 106, 54, 0.5)', 'rgba(74, 222, 128, 0.5)',
+                    'rgba(192, 132, 252, 0.5)', 'rgba(254, 230, 50, 0.5)', 'rgba(236, 72, 153, 0.5)', 'rgba(217, 119, 6, 0.5)', 'rgba(244, 63, 94, 0.5)'
+                ],
+                text: ['#1e5a7a', '#5c2828', '#2d4a6b', '#5c2810', '#2d6850', '#3d2d5c', '#5c4d10', '#6b2d5c', '#5c4a28', '#6b2d35'],
+                textDark: ['#7dd3fc', '#fca5a5', '#93c5fd', '#fd8a5c', '#86efac', '#c4b5fd', '#fde047', '#f472b6', '#fcd34d', '#fda4af'],
+                dot: ['#5eb8e8', '#c47a7a', '#7eb0e8', '#e88a5c', '#6dc49a', '#9d7ec9', '#e6c83d', '#d97eb8', '#d2b48c', '#ffa096'],
+                dotDark: ['#38bdf8', '#f87171', '#60a5fa', '#f97316', '#4ade80', '#c084fc', '#facc15', '#ec4899', '#f59e0b', '#fb7185']
+            };
+            var candidates = {
+                names: ['翠绿', '红', '玫红', '浅粉', '紫', '蓝紫', '蓝', '青', '黄绿', '薄荷', '黄', '橙', '深橙', '棕', '浅灰', '蓝灰', '浅青'],
+                ids: ['A1','A2','A3','A4','A5','A6','A7','A8','A9','A10','A11','A12','A13','A14','A15','A16','A17'],
+                hex: ['#6DC043','#EF5350','#EC407A','#F48FB1','#9C27B0','#673AB7','#2196F3','#00BCD4','#8BC34A','#80CBC4','#FFEB3B','#FF9800','#FF5722','#795548','#BDBDBD','#607D8B','#B2DFDB'],
+                bar: [
+                    'rgba(109, 204, 67, 0.38)', 'rgba(239, 83, 80, 0.38)', 'rgba(236, 64, 122, 0.38)', 'rgba(244, 143, 177, 0.38)', 'rgba(156, 39, 176, 0.38)',
+                    'rgba(103, 58, 183, 0.38)', 'rgba(33, 150, 243, 0.38)', 'rgba(0, 188, 212, 0.38)', 'rgba(139, 195, 74, 0.38)', 'rgba(128, 203, 196, 0.38)',
+                    'rgba(255, 235, 59, 0.38)', 'rgba(255, 152, 0, 0.38)', 'rgba(255, 87, 34, 0.38)', 'rgba(121, 85, 72, 0.38)', 'rgba(189, 189, 189, 0.38)',
+                    'rgba(96, 125, 139, 0.38)', 'rgba(178, 223, 219, 0.38)'
+                ],
+                barDark: [
+                    'rgba(109, 204, 67, 0.5)', 'rgba(239, 83, 80, 0.5)', 'rgba(236, 64, 122, 0.5)', 'rgba(244, 143, 177, 0.5)', 'rgba(156, 39, 176, 0.5)',
+                    'rgba(103, 58, 183, 0.5)', 'rgba(33, 150, 243, 0.5)', 'rgba(0, 188, 212, 0.5)', 'rgba(139, 195, 74, 0.5)', 'rgba(128, 203, 196, 0.5)',
+                    'rgba(255, 235, 59, 0.5)', 'rgba(255, 152, 0, 0.5)', 'rgba(255, 87, 34, 0.5)', 'rgba(121, 85, 72, 0.5)', 'rgba(189, 189, 189, 0.5)',
+                    'rgba(96, 125, 139, 0.5)', 'rgba(178, 223, 219, 0.5)'
+                ],
+                text: ['#2d5c1a','#8b2020','#8b2048','#8b4058','#4a1858','#2d1858','#0d47a1','#006064','#33691e','#00695c','#f9a825','#e65100','#bf360c','#3e2723','#424242','#263238','#004d40'],
+                textDark: ['#86efac','#fca5a5','#f9a8d4','#fbcfe8','#e9d5ff','#c4b5fd','#93c5fd','#67e8f9','#bbf7d0','#99f6e4','#fde047','#fdba74','#fd8a5c','#d6d3d1','#e5e5e5','#94a3b8','#99f6e4'],
+                dot: ['#6DC043','#EF5350','#EC407A','#F48FB1','#9C27B0','#673AB7','#2196F3','#00BCD4','#8BC34A','#80CBC4','#FFEB3B','#FF9800','#FF5722','#795548','#BDBDBD','#607D8B','#B2DFDB'],
+                dotDark: ['#4ade80','#f87171','#f472b6','#f9a8d4','#c084fc','#a78bfa','#60a5fa','#22d3ee','#86efac','#5eead4','#facc15','#f97316','#fb7185','#a8a29e','#d4d4d4','#64748b','#5eead4']
+            };
+
+            function isDark() { return document.getElementById('themeDark').checked; }
+            function onlySelected() { return document.getElementById('filterSelected').checked; }
+            function isOrigKept(i) { return localStorage.getItem('schedule_color_keep_orig_' + i) !== '0'; }
+
+            function renderCurrent() {
+                var dark = isDark();
+                var bar = dark ? current.barDark : current.bar;
+                var text = dark ? current.textDark : current.text;
+                var dot = dark ? current.dotDark : current.dot;
+                var onlySel = onlySelected();
+                var html = '', barHtml = '';
+                for (var i = 0; i < current.names.length; i++) {
+                    var kept = isOrigKept(i);
+                    if (onlySel && !kept) continue;
+                    var strip = '<div class="bar-strip" style="background:' + bar[i] + ';color:' + text[i] + '">' + current.names[i] + '</div>' +
+                        '<div class="row-dot-bar"><span class="dot" style="background:' + dot[i] + '"></span><span class="bar-strip" style="background:' + bar[i] + ';color:' + text[i] + '">条带</span></div>' +
+                        '<span class="name">' + (i + 1) + ' ' + current.names[i] + '</span>';
+                    html += '<div class="color-item candidate" data-orig-index="' + i + '">' +
+                        '<label class="tick"><input type="checkbox" ' + (kept ? 'checked' : '') + ' data-orig-index="' + i + '"> 保留</label>' + strip + '</div>';
+                    barHtml += '<div class="color-item" data-orig-index="' + i + '"><div class="row-dot-bar"><span class="dot" style="background:' + dot[i] + '"></span><div class="bar-strip" style="background:' + bar[i] + ';color:' + text[i] + '">' + (i + 1) + '</div></div></div>';
+                }
+                document.getElementById('currentGrid').innerHTML = html;
+                document.getElementById('currentBars').innerHTML = barHtml;
+                bindOriginalCheckboxes();
+            }
+
+            function bindOriginalCheckboxes() {
+                document.querySelectorAll('#currentGrid input[type="checkbox"][data-orig-index]').forEach(function (cb) {
+                    var i = parseInt(cb.getAttribute('data-orig-index'), 10);
+                    cb.onchange = function () {
+                        localStorage.setItem('schedule_color_keep_orig_' + i, this.checked ? '1' : '0');
+                        updateCount();
+                        if (onlySelected()) renderCurrent();
+                    };
+                });
+            }
+
+            function renderCandidates() {
+                var dark = isDark();
+                var bar = dark ? candidates.barDark : candidates.bar;
+                var text = dark ? candidates.textDark : candidates.text;
+                var dot = dark ? candidates.dotDark : candidates.dot;
+                var onlySel = onlySelected();
+                var html = '', barHtml = '';
+                var n = 0;
+                for (var i = 0; i < candidates.names.length; i++) {
+                    var checked = localStorage.getItem('schedule_color_sel_' + candidates.ids[i]) === '1';
+                    if (onlySel && !checked) { continue; }
+                    n++;
+                    var strip = '<div class="bar-strip" style="background:' + bar[i] + ';color:' + text[i] + '">' + candidates.names[i] + '</div>' +
+                        '<div class="row-dot-bar"><span class="dot" style="background:' + dot[i] + '"></span><span class="bar-strip" style="background:' + bar[i] + ';color:' + text[i] + '">条带</span></div>' +
+                        '<span class="name">' + candidates.ids[i] + ' ' + candidates.names[i] + '</span><span class="hex">' + candidates.hex[i] + '</span>';
+                    html += '<div class="color-item candidate" data-id="' + candidates.ids[i] + '" data-index="' + i + '">' +
+                        '<label class="tick"><input type="checkbox" ' + (checked ? 'checked' : '') + ' data-id="' + candidates.ids[i] + '"> 保留</label>' +
+                        strip + '</div>';
+                    barHtml += '<div class="color-item candidate" data-id="' + candidates.ids[i] + '" data-index="' + i + '">' +
+                        '<div class="row-dot-bar"><span class="dot" style="background:' + dot[i] + '"></span><div class="bar-strip" style="background:' + bar[i] + ';color:' + text[i] + '">' + candidates.ids[i] + '</div></div></div>';
+                }
+                document.getElementById('candidateGrid').innerHTML = html;
+                document.getElementById('candidateBars').innerHTML = barHtml;
+                updateCount();
+                bindCandidateCheckboxes();
+            }
+
+            function updateCount() {
+                var origCount = 0;
+                for (var i = 0; i < current.names.length; i++) { if (isOrigKept(i)) origCount++; }
+                var newCount = 0;
+                candidates.ids.forEach(function (id) {
+                    if (localStorage.getItem('schedule_color_sel_' + id) === '1') newCount++;
+                });
+                document.getElementById('selectedCount').textContent = '已保留：原有 ' + origCount + ' 个 + 新候选 ' + newCount + ' 个，共 ' + (origCount + newCount) + ' 个';
+            }
+
+            function bindCandidateCheckboxes() {
+                document.querySelectorAll('#candidateGrid input[type="checkbox"][data-id]').forEach(function (cb) {
+                    cb.onchange = function () {
+                        var id = this.getAttribute('data-id');
+                        localStorage.setItem('schedule_color_sel_' + id, this.checked ? '1' : '0');
+                        updateCount();
+                        if (onlySelected()) {
+                            if (this.checked) {
+                                renderCandidates();
+                            } else {
+                                var item = document.querySelector('#candidateGrid .color-item.candidate[data-id="' + id + '"]');
+                                var barItem = document.querySelector('#candidateBars .color-item.candidate[data-id="' + id + '"]');
+                                if (item) item.classList.add('filter-hide');
+                                if (barItem) barItem.classList.add('filter-hide');
+                            }
+                        }
+                    };
+                });
+            }
+
+            document.getElementById('themeDark').onchange = function () {
+                document.body.classList.toggle('dark', this.checked);
+                renderCurrent();
+                renderCandidates();
+            };
+            document.getElementById('filterSelected').onchange = function () {
+                renderCurrent();
+                renderCandidates();
+            };
+
+            function getSelectedColorArrays() {
+                var bar = [], text = [], dot = [], barDark = [], textDark = [], dotDark = [], names = [];
+                for (var i = 0; i < current.names.length; i++) {
+                    if (!isOrigKept(i)) continue;
+                    bar.push(current.bar[i]);
+                    text.push(current.text[i]);
+                    dot.push(current.dot[i]);
+                    barDark.push(current.barDark[i]);
+                    textDark.push(current.textDark[i]);
+                    dotDark.push(current.dotDark[i]);
+                    names.push(current.names[i]);
+                }
+                for (var j = 0; j < candidates.ids.length; j++) {
+                    if (localStorage.getItem('schedule_color_sel_' + candidates.ids[j]) !== '1') continue;
+                    bar.push(candidates.bar[j]);
+                    text.push(candidates.text[j]);
+                    dot.push(candidates.dot[j]);
+                    barDark.push(candidates.barDark[j]);
+                    textDark.push(candidates.textDark[j]);
+                    dotDark.push(candidates.dotDark[j]);
+                    names.push(candidates.names[j]);
+                }
+                return { bar: bar, text: text, dot: dot, barDark: barDark, textDark: textDark, dotDark: dotDark, names: names };
+            }
+
+            function buildCodeString() {
+                var arr = getSelectedColorArrays();
+                if (arr.bar.length === 0) return '// 请至少保留一种颜色';
+                var barStr = arr.bar.map(function (c) { return "    '" + c + "'"; }).join(',\n');
+                var barDarkStr = arr.barDark.map(function (c) { return "    '" + c + "'"; }).join(',\n');
+                var textStr = "['" + arr.text.join("', '") + "']";
+                var textDarkStr = "['" + arr.textDark.join("', '") + "']";
+                var dotStr = "['" + arr.dot.join("', '") + "']";
+                var dotDarkStr = "['" + arr.dotDark.join("', '") + "']";
+                return "// 彩条色板（共 " + arr.bar.length + " 色）：" + arr.names.join('、') + "\n" +
+                    "var SCHEDULE_BAR_COLORS = [\n" + barStr + "\n];\n" +
+                    "var SCHEDULE_BAR_TEXT_COLORS = " + textStr + ";\n" +
+                    "var SCHEDULE_BAR_DOT_COLORS = " + dotStr + ";\n\n" +
+                    "var SCHEDULE_BAR_COLORS_DARK = [\n" + barDarkStr + "\n];\n" +
+                    "var SCHEDULE_BAR_TEXT_COLORS_DARK = " + textDarkStr + ";\n" +
+                    "var SCHEDULE_BAR_DOT_COLORS_DARK = " + dotDarkStr + ";";
+            }
+
+            document.getElementById('copyCodeBtn').onclick = function () {
+                var code = buildCodeString();
+                var hint = document.getElementById('copyHint');
+                var box = document.getElementById('exportCodeBox');
+                box.style.display = 'none';
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(code).then(function () {
+                        hint.textContent = '已复制到剪贴板，请粘贴到对话里发给我';
+                        setTimeout(function () { hint.textContent = ''; }, 3000);
+                    }).catch(function () {
+                        hint.textContent = '复制失败，请手动复制下方代码';
+                        box.value = code;
+                        box.style.display = 'block';
+                    });
+                } else {
+                    hint.textContent = '请手动复制下方代码';
+                    box.value = code;
+                    box.style.display = 'block';
+                }
+            };
+
+            document.body.classList.toggle('dark', document.getElementById('themeDark').checked);
+            renderCurrent();
+            renderCandidates();
+            updateCount();
+        })();
+    </script>
+</body>
+</html>
