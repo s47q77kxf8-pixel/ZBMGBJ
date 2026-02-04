@@ -4274,13 +4274,22 @@ function renderStatsTopLists(byClient, byProduct) {
     const clientByOrders = [...byClient].sort((a, b) => b.orderCount - a.orderCount);
     const clientByRevenue = byClient.slice();
     let html = '<h3 class="stats-block-title">Top 单主</h3>';
+    html += '<div class="stats-top-header">';
     html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small active" data-tab="clientOrders">按订单数</button><button type="button" class="btn secondary small" data-tab="clientRevenue">按金额</button></div>';
+    html += '<div class="stats-top-more-wrap">';
+    if (clientByOrders.length > defaultShow) {
+        html += '<button type="button" class="btn secondary small stats-top-more-btn" data-list="clientOrders" id="statsTopMoreBtnOrders">更多</button>';
+    }
+    if (clientByRevenue.length > defaultShow) {
+        html += '<button type="button" class="btn secondary small stats-top-more-btn" data-list="clientRevenue" id="statsTopMoreBtnRevenue">更多</button>';
+    }
+    html += '</div>';
+    html += '</div>';
     html += '<div id="statsTopClientOrders" class="stats-top-list-wrap">';
     html += '<div id="statsTopClientOrdersList" class="stats-top-list">';
     clientByOrders.slice(0, defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">' + c.orderCount + ' 单</span></div>'; });
     html += '</div>';
     if (clientByOrders.length > defaultShow) {
-        html += '<button type="button" class="btn secondary small stats-top-more-btn" data-list="clientOrders">更多</button>';
         html += '<div id="statsTopClientOrdersMore" class="stats-top-list d-none">';
         clientByOrders.slice(defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (defaultShow + i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">' + c.orderCount + ' 单</span></div>'; });
         html += '</div>';
@@ -4291,7 +4300,6 @@ function renderStatsTopLists(byClient, byProduct) {
     clientByRevenue.slice(0, defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span></div>'; });
     html += '</div>';
     if (clientByRevenue.length > defaultShow) {
-        html += '<button type="button" class="btn secondary small stats-top-more-btn" data-list="clientRevenue">更多</button>';
         html += '<div id="statsTopClientRevenueMore" class="stats-top-list d-none">';
         clientByRevenue.slice(defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (defaultShow + i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span></div>'; });
         html += '</div>';
@@ -4304,15 +4312,32 @@ function renderStatsTopLists(byClient, byProduct) {
             var tab = this.dataset.tab;
             container.querySelectorAll('.stats-top-tabs button').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
+            var ordersBtn = document.getElementById('statsTopMoreBtnOrders');
+            var revenueBtn = document.getElementById('statsTopMoreBtnRevenue');
             if (tab === 'clientOrders') {
                 document.getElementById('statsTopClientOrders').classList.remove('d-none');
                 document.getElementById('statsTopClientRevenue').classList.add('d-none');
+                if (ordersBtn) ordersBtn.classList.remove('d-none');
+                if (revenueBtn) revenueBtn.classList.add('d-none');
+                if (ordersBtn) {
+                    var moreEl = document.getElementById('statsTopClientOrdersMore');
+                    ordersBtn.textContent = moreEl && !moreEl.classList.contains('d-none') ? '收起' : '更多';
+                }
             } else {
                 document.getElementById('statsTopClientOrders').classList.add('d-none');
                 document.getElementById('statsTopClientRevenue').classList.remove('d-none');
+                if (ordersBtn) ordersBtn.classList.add('d-none');
+                if (revenueBtn) revenueBtn.classList.remove('d-none');
+                if (revenueBtn) {
+                    var moreEl = document.getElementById('statsTopClientRevenueMore');
+                    revenueBtn.textContent = moreEl && !moreEl.classList.contains('d-none') ? '收起' : '更多';
+                }
             }
         });
     });
+    // 初始只显示「按订单数」对应的更多按钮，「按金额」的更多按钮先隐藏
+    var revenueBtn = document.getElementById('statsTopMoreBtnRevenue');
+    if (revenueBtn) revenueBtn.classList.add('d-none');
     container.querySelectorAll('.stats-top-more-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             var listId = this.dataset.list;
