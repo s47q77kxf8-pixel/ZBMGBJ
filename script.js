@@ -2884,9 +2884,14 @@ function getRecordProgressStatus(item) {
         return { text: '待排单', className: 'record-status--pending', pending, overdue };
     }
     
-    // 判断时间
+    // 判断时间（截止日按当天 24 点：2.4 截稿则 2.4 未逾期，2.5 才逾期）
     const startTime = item.startTime ? new Date(item.startTime).getTime() : null;
-    const deadline = item.deadline ? new Date(item.deadline).getTime() : null;
+    let deadline = null;
+    if (item.deadline) {
+        const d = new Date(item.deadline);
+        d.setHours(23, 59, 59, 999);
+        deadline = d.getTime();
+    }
     const nowTime = now.getTime();
     
     // 2. 已完成：所有制品已完成
@@ -2901,8 +2906,8 @@ function getRecordProgressStatus(item) {
         return { text: '未开始', className: 'record-status--not-started', pending, overdue };
     }
     
-    // 4. 已逾期：结束时间已到未完成
-    if (deadline && nowTime >= deadline && (total === 0 || doneCount < total)) {
+    // 4. 已逾期：截止日按当天 24 点，超过该时刻未完成才算逾期
+    if (deadline && nowTime > deadline && (total === 0 || doneCount < total)) {
         const overdue = true;
         return { text: '已逾期', className: 'record-status--overdue', pending, overdue };
     }
@@ -3510,11 +3515,16 @@ function getStatsOrderStatus(item) {
     const now = new Date();
     now.setHours(23, 59, 59, 999);
     const startTime = item.startTime ? new Date(item.startTime).getTime() : null;
-    const deadline = item.deadline ? new Date(item.deadline).getTime() : null;
+    let deadline = null;
+    if (item.deadline) {
+        const d = new Date(item.deadline);
+        d.setHours(23, 59, 59, 999);
+        deadline = d.getTime();
+    }
     const nowTime = now.getTime();
     if (total > 0 && doneCount === total) return '已完成';
     if (startTime && nowTime < startTime) return '未开始';
-    if (deadline && nowTime >= deadline && (total === 0 || doneCount < total)) return '已逾期';
+    if (deadline && nowTime > deadline && (total === 0 || doneCount < total)) return '已逾期';
     return '进行中';
 }
 
@@ -3650,13 +3660,13 @@ function getStatsDataset(historySource, filters) {
             byUsage: [],
             byUrgent: [],
             byProcess: [],
-            // 制品类别汇总：rows + totals
+            // 制品小类汇总：rows + totals
             categorySummary: {
                 rows: [],
                 totals: {
-                    itemCount: 0,        // 制品数（主模件数）
+                    itemCount: 0,        // 制品数（主设件数）
                     sameModelCount: 0,   // 同模数
-                    quantityTotal: 0,    // 合计件数（主模+同模）
+                    quantityTotal: 0,    // 合计件数（主设+同模）
                     amountTotal: 0       // 金额合计
                 }
             }
@@ -3716,7 +3726,7 @@ function getStatsDataset(historySource, filters) {
     const usageMap = {};
     const urgentMap = {};
     const processMap = {};
-    // 制品类别聚合：按类别统计主模 / 同模 / 合计数量 / 金额
+    // 制品小类聚合：按制品名（小类）统计主设 / 同模 / 合计数量 / 金额
     const categoryMap = {};
     let categoryMainCountTotal = 0;
     let categorySameModelTotal = 0;
@@ -3891,17 +3901,17 @@ function getStatsDataset(historySource, filters) {
             });
         });
 
-        // ===== 按制品类别汇总 =====
-        // 制品：使用 productPrices 中的 category / quantity / sameModelCount / productTotal
+        // ===== 按制品小类汇总（如拍立得） =====
+        // 制品：使用 productPrices 中的 product（制品名）/ quantity / sameModelCount / productTotal
         products.forEach(p => {
-            const catName = p.category || '其他';
-            if (!categoryMap[catName]) {
-                categoryMap[catName] = {
-                    category: catName,
-                    itemCount: 0,        // 主模件数
+            const subCatName = p.product || '其他';
+            if (!categoryMap[subCatName]) {
+                categoryMap[subCatName] = {
+                    category: subCatName,
+                    itemCount: 0,        // 主设件数
                     sameModelCount: 0,   // 同模件数
-                    quantityTotal: 0,    // 合计件数
-                    mainAmount: 0,       // 主模金额
+                    quantityTotal: 0,   // 合计件数
+                    mainAmount: 0,      // 主设金额
                     sameModelAmount: 0,  // 同模金额
                     amountTotal: 0       // 金额合计
                 };
@@ -3910,7 +3920,7 @@ function getStatsDataset(historySource, filters) {
             const same = Number(p.sameModelCount) || 0;
             const main = Math.max(qty - same, 0);
             const amount = Number(p.productTotal) || 0;
-            // 将整单金额按件数平均拆分为主模金额和同模金额，便于统计
+            // 将整单金额按件数平均拆分为主设金额和同模金额，便于统计
             let mainAmount = 0;
             let sameAmount = 0;
             if (qty > 0 && amount) {
@@ -3919,12 +3929,12 @@ function getStatsDataset(historySource, filters) {
                 sameAmount = amount - mainAmount;
             }
 
-            categoryMap[catName].itemCount += main;
-            categoryMap[catName].sameModelCount += same;
-            categoryMap[catName].quantityTotal += qty;
-            categoryMap[catName].mainAmount += mainAmount;
-            categoryMap[catName].sameModelAmount += sameAmount;
-            categoryMap[catName].amountTotal += amount;
+            categoryMap[subCatName].itemCount += main;
+            categoryMap[subCatName].sameModelCount += same;
+            categoryMap[subCatName].quantityTotal += qty;
+            categoryMap[subCatName].mainAmount += mainAmount;
+            categoryMap[subCatName].sameModelAmount += sameAmount;
+            categoryMap[subCatName].amountTotal += amount;
 
             categoryMainCountTotal += main;
             categorySameModelTotal += same;
@@ -3937,10 +3947,10 @@ function getStatsDataset(historySource, filters) {
         // 赠品：是否计入由 giftMode 决定；金额基于 giftOriginalPrice
         if (includeGifts) {
             gifts.forEach(p => {
-                const catName = p.category || '其他';
-                if (!categoryMap[catName]) {
-                    categoryMap[catName] = {
-                        category: catName,
+                const subCatName = p.product || '其他';
+                if (!categoryMap[subCatName]) {
+                    categoryMap[subCatName] = {
+                        category: subCatName,
                         itemCount: 0,
                         sameModelCount: 0,
                         quantityTotal: 0,
@@ -3961,12 +3971,12 @@ function getStatsDataset(historySource, filters) {
                     sameAmount = amount - mainAmount;
                 }
 
-                categoryMap[catName].itemCount += main;
-                categoryMap[catName].sameModelCount += same;
-                categoryMap[catName].quantityTotal += qty;
-                categoryMap[catName].mainAmount += mainAmount;
-                categoryMap[catName].sameModelAmount += sameAmount;
-                categoryMap[catName].amountTotal += amount;
+                categoryMap[subCatName].itemCount += main;
+                categoryMap[subCatName].sameModelCount += same;
+                categoryMap[subCatName].quantityTotal += qty;
+                categoryMap[subCatName].mainAmount += mainAmount;
+                categoryMap[subCatName].sameModelAmount += sameAmount;
+                categoryMap[subCatName].amountTotal += amount;
 
                 categoryMainCountTotal += main;
                 categorySameModelTotal += same;
@@ -4337,7 +4347,7 @@ function renderStatsCategorySummary(summary) {
     };
 
     if (!rows.length || !totals) {
-        container.innerHTML = '<div class="stats-category-summary-card"><div class="stats-category-summary-header"><div class="stats-category-summary-title">制品类别汇总</div><div class="stats-category-summary-total">暂无数据</div></div></div>';
+        container.innerHTML = '<div class="stats-category-summary-card"><div class="stats-category-summary-header"><div class="stats-category-summary-title">制品小类汇总</div><div class="stats-category-summary-total">暂无数据</div></div></div>';
         return;
     }
 
@@ -4361,14 +4371,14 @@ function renderStatsCategorySummary(summary) {
 
     let html = '<div class="stats-category-summary-card">';
     html += '<div class="stats-category-summary-header">';
-    html += '<div class="stats-category-summary-title">制品类别汇总</div>';
+    html += '<div class="stats-category-summary-title">制品小类汇总</div>';
     html += '</div>';
     html += '<div class="stats-category-summary-table-wrap">';
     html += '<table class="stats-category-summary-table">';
     html += '<thead><tr>';
-    html += sortLabel('制品类别', 'category');
-    html += sortLabel('主模数', 'itemCount');
-    html += sortLabel('主模金额', 'mainAmount');
+    html += sortLabel('制品小类', 'category');
+    html += sortLabel('主设数', 'itemCount');
+    html += sortLabel('主设金额', 'mainAmount');
     html += sortLabel('同模数', 'sameModelCount');
     html += sortLabel('同模金额', 'sameModelAmount');
     html += '</tr></thead><tbody>';
@@ -7554,6 +7564,93 @@ function toggleOrderPlatformClear() {
     else wrap.classList.remove('has-value');
 }
 
+// 单主ID智能填充：根据关键字模糊匹配历史，显示下拉列表；选中后填充 ID、接单平台、联系方式
+function getClientIdMatchList(keyword) {
+    if (!keyword || !Array.isArray(history) || history.length === 0) return [];
+    var keyLower = String(keyword).trim().toLowerCase();
+    if (!keyLower) return [];
+    var seen = {};
+    var list = [];
+    for (var i = history.length - 1; i >= 0; i--) {
+        var item = history[i];
+        if (!item) continue;
+        var cid = (item.clientId != null) ? String(item.clientId).trim() : '';
+        if (!cid || seen[cid]) continue;
+        var cidLower = cid.toLowerCase();
+        var contact = (item.contact != null) ? String(item.contact).trim() : '';
+        var contactLower = contact.toLowerCase();
+        var contactInfo = (item.contactInfo != null) ? String(item.contactInfo).trim() : '';
+        var contactInfoLower = contactInfo.toLowerCase();
+        var match = cidLower.indexOf(keyLower) >= 0 || contactLower.indexOf(keyLower) >= 0 || contactInfoLower.indexOf(keyLower) >= 0;
+        if (match) {
+            seen[cid] = true;
+            list.push({ clientId: cid, contact: contact, contactInfo: contactInfo });
+        }
+    }
+    return list;
+}
+
+function showClientIdMatches() {
+    var clientIdEl = document.getElementById('clientId');
+    var wrap = document.getElementById('clientIdMatchWrap');
+    var listEl = document.getElementById('clientIdMatchList');
+    if (!clientIdEl || !wrap || !listEl) return;
+    var keyword = (clientIdEl.value || '').trim();
+    var matches = getClientIdMatchList(keyword);
+    if (matches.length === 0) {
+        wrap.classList.add('d-none');
+        listEl.innerHTML = '';
+        return;
+    }
+    listEl.innerHTML = matches.map(function (m) {
+        var label = m.clientId;
+        if (m.contact || m.contactInfo) label += ' · ' + [m.contact, m.contactInfo].filter(Boolean).join(' ');
+        var labelEsc = (label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        var cidAttr = (m.clientId || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        var contactAttr = (m.contact || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        var contactInfoAttr = (m.contactInfo || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        return '<li class="client-id-match-item" role="button" tabindex="0" data-client-id="' + cidAttr + '" data-contact="' + contactAttr + '" data-contact-info="' + contactInfoAttr + '">' + labelEsc + '</li>';
+    }).join('');
+    wrap.classList.remove('d-none');
+    listEl.querySelectorAll('.client-id-match-item').forEach(function (li) {
+        li.addEventListener('click', function () {
+            var id = li.getAttribute('data-client-id') || '';
+            var contact = li.getAttribute('data-contact') || '';
+            var contactInfo = li.getAttribute('data-contact-info') || '';
+            id = id.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+            contact = contact.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+            contactInfo = contactInfo.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+            if (clientIdEl) clientIdEl.value = id;
+            var orderPlatformEl = document.getElementById('orderPlatform');
+            var contactInfoEl = document.getElementById('contactInfo');
+            if (orderPlatformEl) orderPlatformEl.value = contact;
+            if (contactInfoEl) contactInfoEl.value = contactInfo;
+            if (typeof syncOrderPlatformToPlatform === 'function') syncOrderPlatformToPlatform();
+            if (typeof toggleOrderPlatformClear === 'function') toggleOrderPlatformClear();
+            hideClientIdMatchList();
+        });
+    });
+}
+
+var clientIdMatchDebounceTimer = null;
+function debouncedShowClientIdMatches() {
+    if (clientIdMatchDebounceTimer) clearTimeout(clientIdMatchDebounceTimer);
+    clientIdMatchDebounceTimer = setTimeout(showClientIdMatches, 200);
+}
+
+var hideClientIdMatchTimer = null;
+function scheduleHideClientIdMatchList() {
+    if (hideClientIdMatchTimer) clearTimeout(hideClientIdMatchTimer);
+    hideClientIdMatchTimer = setTimeout(hideClientIdMatchList, 150);
+}
+function hideClientIdMatchList() {
+    if (hideClientIdMatchTimer) clearTimeout(hideClientIdMatchTimer);
+    hideClientIdMatchTimer = null;
+    var wrap = document.getElementById('clientIdMatchWrap');
+    if (wrap) wrap.classList.add('d-none');
+}
+
+// 选中一项时填充单主ID、接单平台、联系方式后，不再自动覆盖；仅当用户输入关键字并选择时填充
 // 根据单主 ID（或关键字）从历史记录自动填充接单平台和联系方式（先精确匹配，再关键字包含匹配，取最近一条）
 function fillOrderPlatformAndContactFromHistory() {
     var clientIdEl = document.getElementById('clientId');
@@ -8887,6 +8984,20 @@ function settlementConfirm() {
             if (e.amount != null) totalSubtract += e.amount;
             if (e.rate != null) productRate *= e.rate;
         });
+        // 折扣模式的原因保存时补算金额，便于统计页按名称归类显示
+        var rateReasons = discountReasons.filter(function (e) { return e.rate != null && (e.amount == null || e.amount === 0); });
+        if (rateReasons.length > 0) {
+            var baseForRate = Math.max(0, receivable - totalSubtract);
+            var totalRateDiscount = baseForRate * (1 - productRate);
+            var sumOneMinusRate = 0;
+            rateReasons.forEach(function (e) { sumOneMinusRate += (1 - (e.rate || 0)); });
+            if (sumOneMinusRate > 0 && totalRateDiscount > 0) {
+                rateReasons.forEach(function (e) {
+                    var part = totalRateDiscount * (1 - (e.rate || 0)) / sumOneMinusRate;
+                    e.amount = Math.round(part * 100) / 100;
+                });
+            }
+        }
         var receipt = Math.max(0, (receivable - totalSubtract) * productRate);
         var amountEl = document.getElementById('settlementNormalAmount');
         receipt = amountEl ? (parseFloat(amountEl.value) || receipt) : receipt;
@@ -9584,12 +9695,18 @@ function editHistoryItem(id) {
                 
                 // 恢复基础+递增价的配置
                 if (productPrice.productType === 'config' && productPrice.additionalConfigDetails) {
-                    // 对于基础+递增价，需要根据配置恢复sides值
-                    // 这里简化处理，如果有additionalConfigDetails，使用配置数量+1作为sides
+                    // 对于基础+递增价，需要根据配置恢复 sides 与各递增项数量 additionalConfigs
                     const totalConfig = productPrice.additionalConfigDetails.reduce((sum, c) => sum + (c.count || 0), 0);
                     if (totalConfig > 0) {
                         product.sides = (totalConfig + 1).toString();
                     }
+                    // 恢复各递增项数量，供 updateProductForm 中显示
+                    if (!product.additionalConfigs) product.additionalConfigs = {};
+                    const addConfigs = productSetting.additionalConfigs || [];
+                    productPrice.additionalConfigDetails.forEach((detail, index) => {
+                        const configKey = 'config_' + product.id + '_' + index;
+                        product.additionalConfigs[configKey] = detail.count || 0;
+                    });
                 } else if (productPrice.productType === 'config' && productPrice.totalAdditionalCount !== undefined) {
                     product.sides = (productPrice.totalAdditionalCount + 1).toString();
                 }
@@ -9644,6 +9761,11 @@ function editHistoryItem(id) {
                     if (totalConfig > 0) {
                         gift.sides = (totalConfig + 1).toString();
                     }
+                    if (!gift.additionalConfigs) gift.additionalConfigs = {};
+                    giftPrice.additionalConfigDetails.forEach((detail, index) => {
+                        const configKey = 'config_' + gift.id + '_' + index;
+                        gift.additionalConfigs[configKey] = detail.count || 0;
+                    });
                 } else if (giftPrice.productType === 'config' && giftPrice.totalAdditionalCount !== undefined) {
                     gift.sides = (giftPrice.totalAdditionalCount + 1).toString();
                 }

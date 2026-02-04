@@ -1388,7 +1388,7 @@ body {
 
 .input-row-with-icon {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 0.5rem;
 }
 
@@ -1399,6 +1399,50 @@ body {
 
 .input-row-with-icon .btn-icon-only {
     flex-shrink: 0;
+    width: 32px;
+    min-width: 32px;
+    height: auto;
+    min-height: 0;
+    align-self: stretch;
+}
+
+/* 单主ID 智能填充下拉 */
+.client-id-input-wrap {
+    position: relative;
+}
+.client-id-match-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+.client-id-match-dropdown ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.client-id-match-item {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+}
+.client-id-match-item:last-child {
+    border-bottom: none;
+}
+.client-id-match-item:hover,
+.client-id-match-item:focus {
+    background: var(--primary-light, rgba(0, 0, 0, 0.04));
+    outline: none;
 }
 
 /* 接单平台：清空键在框内（参考制品类型选择框） */
@@ -1490,6 +1534,11 @@ body {
 
 .btn-icon-only:active {
     background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* 备注图标增加边框，便于识别 */
+.btn-remark-icon.btn-icon-only {
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
 }
 
 input, select {

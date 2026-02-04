@@ -542,7 +542,7 @@
                             </div>
                             <div class="input-row-with-icon client-id-input-wrap">
                                 <input type="text" id="clientId" placeholder="请输入单主ID" title="输入单主ID或关键字，匹配到历史单主后点击一项填充" oninput="debouncedShowClientIdMatches()" onblur="scheduleHideClientIdMatchList()">
-                                <button class="btn-icon-only" onclick="openOrderRemarkModal()" type="button" title="添加备注">
+                                <button class="btn-icon-only btn-remark-icon" onclick="openOrderRemarkModal()" type="button" title="添加备注">
                                     <svg class="icon sm" aria-hidden="true"><use href="#i-note"></use></svg>
                                 </button>
                                 <div id="clientIdMatchWrap" class="client-id-match-dropdown d-none">
@@ -1630,7 +1630,7 @@
                         <!-- 趋势由 JS 渲染 -->
                     </div>
                     <div id="statsCategorySummary" class="stats-category-summary">
-                        <!-- 制品类别汇总由 JS 渲染 -->
+                        <!-- 制品小类汇总由 JS 渲染 -->
                     </div>
                     <div id="statsDistribution" class="stats-distribution d-none">
                         <!-- 数据分布：状态/用途/加急/工艺由 JS 渲染 -->
