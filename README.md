@@ -65,15 +65,7 @@ MGbaojia/
 ├── README.md               # 本说明
 ├── 操作指南.html           # 操作指南（应用内可打开，推荐）
 ├── 操作指南.md             # 操作指南 Markdown 版
-├── .gitignore              # Git 忽略配置
-├── 制品排单-完整方案.md     # 每个制品排单功能方案与实现步骤
-├── 彩条新颜色候选.md        # 彩条颜色候选
-├── 彩条颜色预览与筛选.html  # 彩条颜色预览
-├── button-preview.html     # 计算页按钮布局预览
-├── nav-icon-preview.html   # 导航图标预览
-├── nav-icons-schemes-preview.html  # 导航图标方案预览
-├── receipt-icon-preview.html       # 小票图标预览
-└── schedule-bar-preview.html       # 分段彩条预览
+└── .gitignore              # Git 忽略配置
 ```
 
 ---
