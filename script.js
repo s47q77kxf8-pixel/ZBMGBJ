@@ -1,5 +1,5 @@
 // ========== 文件版本标识 ==========
-console.log('🔧🔧🔧 script.js 文件版本: 2025-01-27-fix-preview-update-v18 🔧🔧🔧');
+console.log('🔧🔧🔧 script.js 文件版本: 2025-02-04-deposit-display 🔧🔧🔧');
 console.log('🔧 如果看不到这条日志，说明浏览器加载的是旧版本！');
 // ========== 文件版本标识结束 ==========
 
@@ -3140,12 +3140,19 @@ function applyRecordFilters() {
         const clientDisplay = platformLabel ? (platformLabel + ' ' + clientId) : clientId;
         const shortDate = formatRecordShortDate(item && item.timestamp);
         const receivableAmount = item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal);
-        const actualAmount = (item && item.settlement && item.settlement.amount != null) ? Number(item.settlement.amount) : receivableAmount;
+        var actualAmount = receivableAmount;
+        if (item && item.settlement && item.settlement.amount != null) {
+            actualAmount = (item.settlement.type === 'normal' && item.depositReceived != null)
+                ? Number(item.depositReceived) + Number(item.settlement.amount)
+                : Number(item.settlement.amount);
+        }
         const hasSettlementWithDiff = item && item.settlement && (receivableAmount == null || Math.abs((actualAmount || 0) - (receivableAmount || 0)) > 0.001);
         const amountHtml = hasSettlementWithDiff
             ? `<div class="record-item-amount-wrap"><span class="record-item-amount">${formatMoney(actualAmount)}</span><span class="record-item-date">${formatMoney(receivableAmount)}</span></div>`
             : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`;
         const status = getRecordProgressStatus(item);
+        const hasDeposit = item && item.depositReceived != null && Number(item.depositReceived) > 0;
+        const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
         const isSelected = selectedHistoryIds.has(item.id);
         return `
             <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}">
@@ -3156,6 +3163,7 @@ function applyRecordFilters() {
                 </div>
                 <div class="record-item-right">
                     ${amountHtml}
+                    ${depositTagHtml}
                     <span class="record-status ${status.className}">${status.text}</span>
                     <button type="button" class="icon-action-btn delete record-item-delete" onclick="event.stopPropagation(); if(confirm('确定删除该记录？')) deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
                         <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
@@ -3193,35 +3201,157 @@ function applyRecordFilters() {
 }
 
 // ===== 记录页：同步数据导出/导入（跨端手动同步） =====
+function getExportSyncPayload() {
+    const { list } = getFilteredHistoryForRecord();
+    if (!list || list.length === 0) return null;
+    return {
+        quoteHistory: list,
+        calculatorSettings: defaultSettings,
+        productSettings: productSettings,
+        processSettings: processSettings,
+        templates: templates,
+        exportDate: new Date().toISOString()
+    };
+}
+
 function exportSyncData() {
     try {
-        const { list } = getFilteredHistoryForRecord();
-        if (!list || list.length === 0) {
+        const exportPayload = getExportSyncPayload();
+        if (!exportPayload) {
             alert('当前筛选下无记录，请调整筛选后再导出 JSON，或使用导出 Excel。');
             return;
         }
-        const exportPayload = {
-            quoteHistory: list,
-            calculatorSettings: defaultSettings,
-            productSettings: productSettings,
-            processSettings: processSettings,
-            templates: templates,
-            exportDate: new Date().toISOString()
-        };
         const json = JSON.stringify(exportPayload, null, 2);
+        const filename = 'sync-data-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.json';
         const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'sync-data-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        alert('数据已导出，可在另一端使用「导入」同步。');
+        const file = new File([blob], filename, { type: 'application/json' });
+        
+        // 手机端优先使用 Web Share API：通过系统分享菜单保存或发送，用户可明确选择存储位置
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file], title: '报价数据同步', text: '含历史记录与全局设置' }).then(function () {
+                alert('分享完成。若已保存到文件，可在另一设备选择该文件导入；或使用「复制到剪贴板」方式同步。');
+            }).catch(function (err) {
+                if (err.name !== 'AbortError') {
+                    doExportSyncDownload(json, filename);
+                }
+            });
+        } else {
+            doExportSyncDownload(json, filename);
+        }
     } catch (e) {
         console.error('导出同步数据失败:', e);
         alert('导出失败，请重试');
+    }
+}
+
+function doExportSyncDownload(json, filename) {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert('数据已导出（含历史记录与全局设置）。\n\n电脑端：文件已保存到「下载」文件夹。\n手机端：若未弹出分享菜单，请使用「复制到剪贴板」后到另一设备粘贴导入。');
+}
+
+function exportSyncDataToClipboard() {
+    try {
+        const exportPayload = getExportSyncPayload();
+        if (!exportPayload) {
+            alert('当前筛选下无记录，请调整筛选后再导出。');
+            return;
+        }
+        const json = JSON.stringify(exportPayload, null, 2);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(json).then(function () {
+                alert('已复制到剪贴板！\n\n到另一设备打开本页面，点击「导入」→「从剪贴板导入」即可同步。');
+            }).catch(function () {
+                fallbackCopyToClipboard(json);
+            });
+        } else {
+            fallbackCopyToClipboard(json);
+        }
+    } catch (e) {
+        console.error('复制失败:', e);
+        alert('复制失败，请重试');
+    }
+}
+
+function fallbackCopyToClipboard(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        alert('已复制到剪贴板！\n\n到另一设备打开本页面，点击「导入」→「从剪贴板导入」即可同步。');
+    } catch (e) {
+        alert('复制失败，请使用「导出 JSON」通过分享菜单保存文件后，在另一设备选择文件导入。');
+    }
+    document.body.removeChild(ta);
+}
+
+function toggleRecordImportPopover() {
+    const pop = document.getElementById('recordImportPopover');
+    const btn = document.getElementById('recordImportBtn');
+    if (!pop || !btn) return;
+    const isHidden = pop.classList.contains('d-none');
+    pop.classList.toggle('d-none', !isHidden);
+    pop.setAttribute('aria-hidden', isHidden ? 'false' : 'true');
+    btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+    if (isHidden) {
+        setTimeout(function () {
+            document.addEventListener('click', function closeRecordImport(e) {
+                if (!pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                    closeRecordImportPopover();
+                    document.removeEventListener('click', closeRecordImport);
+                }
+            });
+        }, 0);
+    }
+}
+
+function closeRecordImportPopover() {
+    const pop = document.getElementById('recordImportPopover');
+    const btn = document.getElementById('recordImportBtn');
+    if (pop) pop.classList.add('d-none');
+    if (pop) pop.setAttribute('aria-hidden', 'true');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function importSyncDataFromClipboard() {
+    function tryParseAndImport(text) {
+        try {
+            const data = JSON.parse(text);
+            if (!data || typeof data !== 'object') {
+                alert('剪贴板内容不是有效的 JSON');
+                return;
+            }
+            const hasHistory = Array.isArray(data.quoteHistory);
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null;
+            if (!hasHistory && !hasSettings) {
+                alert('剪贴板中未包含可导入的数据（需要 quoteHistory 或设置项）');
+                return;
+            }
+            showRecordImportModeModal(data, null);
+        } catch (e) {
+            alert('剪贴板内容不是有效的 JSON，请确保已复制导出的完整数据');
+        }
+    }
+    if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(function (text) {
+            tryParseAndImport(text);
+        }).catch(function () {
+            alert('无法读取剪贴板，请检查浏览器权限或使用「选择 JSON 文件」导入');
+        });
+    } else {
+        var text = prompt('请粘贴导出的 JSON 数据（可先在另一设备复制后粘贴）');
+        if (text && text.trim()) tryParseAndImport(text.trim());
     }
 }
 
@@ -3530,7 +3660,11 @@ function getStatsOrderStatus(item) {
 
 function getStatsAmount(item, amountBasis, giftMode) {
     if (!item) return 0;
-    if (item.settlement && item.settlement.amount != null) return Number(item.settlement.amount) || 0;
+    if (item.settlement && item.settlement.amount != null) {
+        if (item.settlement.type === 'normal' && item.depositReceived != null)
+            return (Number(item.depositReceived) || 0) + (Number(item.settlement.amount) || 0);
+        return Number(item.settlement.amount) || 0;
+    }
     if (amountBasis === 'totalProductsPrice') return Number(item.totalProductsPrice) || 0;
     return Number(item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
 }
@@ -3758,11 +3892,21 @@ function getStatsDataset(historySource, filters) {
         }
         if (item.settlement && item.settlement.type === 'waste_fee') {
             wasteOrderCount++;
-            wasteAmountTotal += (item.settlement.amount != null ? Number(item.settlement.amount) : 0) || 0;
+            var wf = item.settlement.wasteFee || {};
+            var wasteFeeAmt = (wf.feeAmount != null && isFinite(wf.feeAmount)) ? Number(wf.feeAmount) : (wf.totalReceivable != null && isFinite(wf.totalReceivable)) ? Number(wf.totalReceivable) : (wf.totalWasteReceivable != null && isFinite(wf.totalWasteReceivable)) ? Number(wf.totalWasteReceivable) : null;
+            if (wasteFeeAmt == null || !isFinite(wasteFeeAmt)) {
+                var depW = Number(item.depositReceived || 0);
+                if (!isFinite(depW) || depW < 0) depW = 0;
+                var amtW = item.settlement.amount != null ? Number(item.settlement.amount) : 0;
+                wasteFeeAmt = amtW + depW;
+            }
+            wasteAmountTotal += wasteFeeAmt || 0;
         }
         if (item.settlement && item.settlement.type === 'normal') {
             var receivable = Number(item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
-            var actual = item.settlement.amount != null ? Number(item.settlement.amount) : receivable;
+            var actual = receivable;
+            if (item.settlement.amount != null)
+                actual = (Number(item.depositReceived || 0)) + Number(item.settlement.amount);
             if (receivable > actual) {
                 var orderDiscount = receivable - actual;
                 discountAmountTotal += orderDiscount;
@@ -5644,6 +5788,37 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
     const startTimeValue = document.getElementById('startTime')?.value;
     
     // 生成报价数据（contact 存接单平台名称，contactInfo 存联系方式）
+    // 1）是否需付定金：来自计算页下拉
+    var needDepositFlag = !!(typeof needDepositChecked === 'function'
+        ? needDepositChecked()
+        : (function () { var el = document.getElementById('needDeposit'); return el && el.value === 'yes'; })());
+    // 2）建议定金 = 实付金额 × 定金比例（仅作默认值提示）
+    var suggestedDeposit = 0;
+    if (needDepositFlag) {
+        var baseForDeposit = finalTotal != null ? finalTotal : totalBeforePlatformFee;
+        if (defaultSettings && defaultSettings.depositRate != null) {
+            var depRate = Number(defaultSettings.depositRate);
+            if (isFinite(depRate) && depRate > 0) {
+                suggestedDeposit = Math.round(baseForDeposit * depRate * 100) / 100;
+            }
+        } else {
+            suggestedDeposit = Math.round(baseForDeposit * 0.3 * 100) / 100;
+        }
+    }
+    // 3）已收定金从小票页输入框读取；若为空且选了“是否付定金=是”，则默认等于建议定金，可再手动修改
+    var depositInputEl = document.getElementById('receiptDepositInput');
+    var depositReceived = 0;
+    if (depositInputEl) {
+        var dv = parseFloat(depositInputEl.value);
+        if (!isNaN(dv) && dv > 0) {
+            depositReceived = dv;
+        } else if (needDepositFlag && suggestedDeposit > 0) {
+            depositReceived = suggestedDeposit;
+            depositInputEl.value = suggestedDeposit.toFixed(2);
+        }
+    } else if (needDepositFlag && suggestedDeposit > 0) {
+        depositReceived = suggestedDeposit;
+    }
     quoteData = {
         clientId: clientId,
         contact: contactDisplay,
@@ -5674,7 +5849,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
         totalBeforePlatformFee: totalBeforePlatformFee,
         finalTotal: finalTotal,
         agreedAmount: agreedAmount,
-        needDeposit: !!(typeof needDepositChecked === 'function' ? needDepositChecked() : (function(){ var el = document.getElementById('needDeposit'); return el && el.value === 'yes'; })()),
+        needDeposit: needDepositFlag,
+        depositReceived: depositReceived,
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
@@ -6346,12 +6522,168 @@ function generateQuote() {
     } else {
         html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${finalPay.toFixed(2)}</div></div>`;
     }
-    // 定金选是时：小票显示需付定金 = 实付金额 × 定金比例
+    // 定金选是时：小票显示需付定金 = 实付金额 × 定金比例（提示值）
     if (quoteData.needDeposit) {
         var finalPays = quoteData.finalTotal != null ? quoteData.finalTotal : (quoteData.platformFeeAmount > 0 ? (agreed + quoteData.platformFeeAmount) : agreed);
         var rate = (defaultSettings && defaultSettings.depositRate != null) ? Number(defaultSettings.depositRate) : 0.3;
         var depositAmount = Math.round(finalPays * rate * 100) / 100;
         html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label">需付定金</div><div class="receipt-summary-value">¥${depositAmount.toFixed(2)}</div></div>`;
+    }
+    // 如已填写实际已收定金，则在金额小结中单独展示一行“已收定金”
+    var depSummary = Number(quoteData.depositReceived || 0);
+    if (isFinite(depSummary) && depSummary > 0) {
+        html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label"><strong>已收定金</strong></div><div class="receipt-summary-value"><strong>¥${depSummary.toFixed(2)}</strong></div></div>`;
+    }
+
+    // -------- 结算信息（撤单 / 废稿 / 正常结单）--------
+    if (quoteData.settlement && quoteData.settlement.type) {
+        var st = quoteData.settlement;
+        var dep = Number(quoteData.depositReceived || 0);
+        if (!isFinite(dep) || dep < 0) dep = 0;
+        var receivable = Number(quoteData.agreedAmount != null ? quoteData.agreedAmount : (quoteData.finalTotal || 0)) || 0;
+        var actual = st.amount != null ? Number(st.amount) : 0;
+        if (!isFinite(actual) || actual < 0) actual = 0;
+        var totalReceived = dep + actual;
+        
+        html += `<div class="receipt-settlement-block" style="margin-top:0.75rem;padding-top:0.5rem;border-top:1px dotted #ccc;">`;
+        html += `<div class="receipt-settlement-title" style="font-weight:bold;text-align:center;margin-bottom:0.25rem;">───────── 结算结果 ─────────</div>`;
+        html += `<div class="receipt-settlement-subtitle" style="font-size:0.8em;color:#888;text-align:center;margin-bottom:0.35rem;">（以下为结算结果，收费/退款以撤单·废稿·结算页确认为准）</div>`;
+
+        // 结算类型与基础行
+        var typeText = '';
+        if (st.type === 'full_refund') typeText = '撤单（退全款）';
+        else if (st.type === 'cancel_with_fee') typeText = '撤单（收跑单费）';
+        else if (st.type === 'waste_fee') typeText = '废稿结算';
+        else if (st.type === 'normal') typeText = '正常结单';
+        else typeText = st.type;
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算类型：</strong>${typeText}</div></div>`;
+
+        if (st.type === 'full_refund') {
+            // 撤单退全款：强调本单作废与“需退金额”
+            var refundShould = dep; // 当前模型下视为退回全部定金
+            html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本单状态：</strong>已撤销，本单作废</div></div>`;
+            if (dep > 0) {
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>原已收定金：</strong></div><div class="receipt-summary-value">¥${dep.toFixed(2)}</div></div>`;
+            }
+            html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>需退金额：</strong></div><div class="receipt-summary-value"><strong>¥${refundShould.toFixed(2)}</strong></div></div>`;
+            html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>已退款金额：</strong></div><div class="receipt-summary-value">¥${actual.toFixed(2)}</div></div>`;
+            var refundDiff = actual - refundShould;
+            html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">`;
+            if (Math.abs(refundDiff) < 0.005) {
+                html += `已全额退还定金。`;
+            } else if (refundDiff < 0) {
+                html += `尚未退足，还应退 ¥${Math.abs(refundDiff).toFixed(2)}。`;
+            } else {
+                html += `已多退 ¥${refundDiff.toFixed(2)}，请注意核对。`;
+            }
+            html += `</div></div>`;
+        } else {
+            // 非退全款场景：cancel_with_fee、waste_fee 单独输出（定金抵扣逻辑），其余先输出已收定金+本次收款
+            // 小票结算区不重复上方已展示的「已收定金」，仅展示与本次结算相关的金额
+            if (st.type !== 'cancel_with_fee' && st.type !== 'waste_fee') {
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">¥${actual.toFixed(2)}</div></div>`;
+            }
+
+            if (st.type === 'cancel_with_fee') {
+                // 撤单收跑单费：小票不展示已收定金、定金抵扣，结算结果只写金额
+                var feeAmount = (st.cancelFee && st.cancelFee.feeAmount != null && isFinite(st.cancelFee.feeAmount)) ? Number(st.cancelFee.feeAmount) : (actual + dep);
+                var depositUsed = Math.min(dep, feeAmount);
+                var actualReceive = st.amount != null ? Number(st.amount) : (feeAmount - depositUsed);
+                if (!isFinite(actualReceive) || actualReceive < 0) actualReceive = feeAmount - depositUsed;
+                var totalReceivedFee = feeAmount;
+                var refundExcess = Math.max(0, dep - feeAmount);
+                var feePercentText = '';
+                if (st.cancelFee && st.cancelFee.rule === 'percent' && st.cancelFee.rate != null && isFinite(st.cancelFee.rate)) {
+                    var pct = st.cancelFee.rate * 100;
+                    feePercentText = (pct > 0 ? pct.toFixed(0) : '0') + '%';
+                }
+                if (feePercentText) {
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>跑单费（${feePercentText}）：</strong></div><div class="receipt-summary-value">¥${feeAmount.toFixed(2)}</div></div>`;
+                } else {
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>跑单费（应收）：</strong></div><div class="receipt-summary-value">¥${feeAmount.toFixed(2)}</div></div>`;
+                }
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">¥${actualReceive.toFixed(2)}</div></div>`;
+                if (refundExcess > 0) {
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>多余定金待退：</strong></div><div class="receipt-summary-value">¥${refundExcess.toFixed(2)}</div></div>`;
+                }
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalReceivedFee.toFixed(2)}</div></div>`;
+                var resultLine = '跑单费 ¥' + feeAmount.toFixed(2);
+                if (st.memo) resultLine += '；备注：' + st.memo;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">${resultLine}</div></div>`;
+            } else if (st.type === 'normal') {
+                // 正常结单：结算优惠块
+                var drs = Array.isArray(st.discountReasons) ? st.discountReasons : [];
+                if (drs.length > 0) {
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算优惠：</strong></div></div>`;
+                    drs.forEach(function (e) {
+                        if (!e || !e.name) return;
+                        var nm = String(e.name);
+                        var amt = e.amount != null && isFinite(e.amount) ? Number(e.amount) : 0;
+                        var rateText = '';
+                        if (e.rate != null && isFinite(e.rate) && e.rate > 0) {
+                            var rShow = e.rate;
+                            if (rShow > 0.99) rShow = 0.99;
+                            // 显示为 0.8× 这种形式
+                            var rStr = rShow.toFixed(2);
+                            if (rStr.endsWith('0')) rStr = rShow.toFixed(1);
+                            if (rStr.endsWith('.0')) rStr = rStr.slice(0, -2);
+                            rateText = rStr + '×';
+                        }
+                        var leftText = rateText ? (nm + '：' + rateText) : (nm + '：');
+                        var rightText = amt > 0 ? ('-¥' + amt.toFixed(2)) : '';
+                        if (!rightText) return;
+                        html += `<div class="receipt-summary-coefficient-detail receipt-summary-row receipt-discount-row"><div class="receipt-summary-label">${leftText}</div><div class="receipt-summary-value">` +
+                                `<span class="receipt-discount-amount">${rightText}</span></div></div>`;
+                    });
+                }
+
+                // 合计实收与结算结果（正常结单：订单金额=应收，定金抵扣应收，本次收款，合计实收）
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>订单金额（应收）：</strong></div><div class="receipt-summary-value">¥${receivable.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalReceived.toFixed(2)}</div></div>`;
+
+                var diff = totalReceived - receivable;
+                var discountTotal = 0;
+                if (Array.isArray(st.discountReasons)) {
+                    st.discountReasons.forEach(function (e) {
+                        var a = e && e.amount != null && isFinite(e.amount) ? Number(e.amount) : 0;
+                        if (a > 0) discountTotal += a;
+                    });
+                }
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">`;
+                if (Math.abs(diff) < 0.005) {
+                    html += `已结清。`;
+                } else if (diff < 0) {
+                    // 少收（有优惠）
+                    var totalDiscount = discountTotal > 0 ? discountTotal : (receivable - totalReceived);
+                    html += `本次共减免 ¥${totalDiscount.toFixed(2)}。`;
+                } else {
+                    // 多收
+                    html += `多收 ¥${diff.toFixed(2)}，应找零/退款给客户。`;
+                }
+                html += `</div></div>`;
+            } else if (st.type === 'waste_fee') {
+                // 废稿结算：小票不展示已收定金、定金抵扣废稿费，结算结果只写金额
+                var wf = st.wasteFee || {};
+                var baseWaste = (wf.feeAmount != null && isFinite(wf.feeAmount)) ? Number(wf.feeAmount) : (wf.totalReceivable != null && isFinite(wf.totalReceivable)) ? Number(wf.totalReceivable) : (wf.totalWasteReceivable != null && isFinite(wf.totalWasteReceivable)) ? Number(wf.totalWasteReceivable) : (actual + dep);
+                var usedDeposit = Math.min(dep, baseWaste);
+                var actualReceive = st.amount != null ? Number(st.amount) : (baseWaste - usedDeposit);
+                if (!isFinite(actualReceive) || actualReceive < 0) actualReceive = baseWaste - usedDeposit;
+                var totalWasteReceived = baseWaste;
+                var refundExcess = Math.max(0, dep - baseWaste);
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>废稿费（应收）：</strong></div><div class="receipt-summary-value">¥${baseWaste.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">¥${actualReceive.toFixed(2)}</div></div>`;
+                if (refundExcess > 0) {
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>多余定金待退：</strong></div><div class="receipt-summary-value">¥${refundExcess.toFixed(2)}</div></div>`;
+                }
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalWasteReceived.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">废稿费 ¥${baseWaste.toFixed(2)}</div></div>`;
+            } else if (st.type !== 'normal' && st.type !== 'waste_fee') {
+                // 其他类型统一展示合计与简单结果
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalReceived.toFixed(2)}</div></div>`;
+            }
+        }
+
+        html += `</div>`; // end of settlement block
     }
 
             // 添加底部内容
@@ -6401,6 +6733,25 @@ function syncReceiptDrawerContent() {
     drawerContainer.innerHTML = mainContainer.innerHTML;
 }
 
+// 已收定：向下取整并更新
+function roundDepositAmount(mode) {
+    var inputEl = document.getElementById('receiptDepositInput');
+    if (!inputEl) return;
+    var base = parseFloat(inputEl.value) || 0;
+    var val;
+    if (mode === 'floor') val = Math.floor(base);
+    else if (mode === 'ten') val = Math.floor(base / 10) * 10;
+    else if (mode === 'hundred') val = Math.floor(base / 100) * 100;
+    else return;
+    val = Math.max(0, val);
+    inputEl.value = val.toFixed(2);
+    if (quoteData) {
+        quoteData.depositReceived = val;
+        generateQuote();
+        syncReceiptDrawerContent();
+    }
+}
+
 // 约定实收：取整并更新（报价金额=我要收取的，平台费=约定实收×费率）
 function roundAgreedAmount(mode) {
     if (!quoteData) return;
@@ -6436,6 +6787,12 @@ function updateAgreedAmountBar() {
     var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : calc;
     calcEl.textContent = '¥' + calc.toFixed(2);
     inputEl.value = agreed;
+    // 已收定输入框：有定金时显示实际金额，无定金时清空（不显示 0）
+    var depositInputEl = document.getElementById('receiptDepositInput');
+    if (depositInputEl) {
+        var dep = Number(quoteData.depositReceived || 0);
+        depositInputEl.value = (isFinite(dep) && dep > 0) ? dep.toFixed(2) : '';
+    }
     inputEl.onchange = inputEl.oninput = function () {
         var v = parseFloat(inputEl.value);
         if (!isNaN(v) && v >= 0) {
@@ -6747,6 +7104,23 @@ function saveToHistory() {
     if (!quoteData) {
         alert('请先生成报价单！');
         return;
+    }
+    
+    // 从小票页同步当前输入到 quoteData，避免仅在小票页修改「已收定」「约定实收」后点保存未生效
+    var depositEl = document.getElementById('receiptDepositInput');
+    if (depositEl) {
+        var dv = parseFloat(depositEl.value);
+        if (!isNaN(dv) && dv >= 0) quoteData.depositReceived = dv;
+    }
+    var agreedEl = document.getElementById('agreedAmountInput');
+    if (agreedEl) {
+        var av = parseFloat(agreedEl.value);
+        if (!isNaN(av) && av >= 0) {
+            quoteData.agreedAmount = av;
+            var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
+            quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
+            quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
+        }
     }
     
     // 检查是否在编辑模式下
@@ -7724,7 +8098,35 @@ function openSettlementModal(recordId, preSelectedType) {
         if (btnBack) btnBack.classList.add('d-none');
         if (btnNext) btnNext.classList.add('d-none');
         if (btnConfirm) btnConfirm.classList.remove('d-none');
+        var origType = preSelectedType;
+        if (preSelectedType === 'cancel') {
+            // 需要判断是退全款还是收跑单费
+            var existingSettlement = item.settlement;
+            if (existingSettlement && existingSettlement.type === 'cancel_with_fee') {
+                preSelectedType = 'cancel';
+            } else if (existingSettlement && existingSettlement.type === 'full_refund') {
+                preSelectedType = 'cancel';
+            }
+        }
         showSettlementForm(preSelectedType);
+        if (preSelectedType === 'cancel' && origType === 'cancel') {
+            var existingSettlement = item.settlement;
+            if (existingSettlement && existingSettlement.type === 'cancel_with_fee') {
+                document.querySelector('input[name="cancelSubType"][value="cancel_with_fee"]').checked = true;
+                document.getElementById('settlementFullRefundPanel').classList.add('d-none');
+                document.getElementById('settlementCancelWithFee').classList.remove('d-none');
+                settlementFillCancelFeeDefaults();
+                settlementUpdateCancelFeePreview();
+                var feeAmt = (existingSettlement.cancelFee && existingSettlement.cancelFee.feeAmount != null) ? Number(existingSettlement.cancelFee.feeAmount) : null;
+                if (feeAmt == null || !isFinite(feeAmt)) {
+                    var dep = Number(item.depositReceived || 0);
+                    if (!isFinite(dep) || dep < 0) dep = 0;
+                    feeAmt = (existingSettlement.amount != null ? Number(existingSettlement.amount) : 0) + dep;
+                }
+                var amountEl = document.getElementById('settlementCancelFeeAmount');
+                if (amountEl && feeAmt >= 0) { amountEl.value = feeAmt.toFixed(2); settlementUpdatePreview(); }
+            }
+        }
     } else {
         settlementCurrentStep = 1;
         if (step1) step1.classList.remove('d-none');
@@ -7751,8 +8153,16 @@ function showSettlementForm(type) {
         document.getElementById('settlementCancelWithFee').classList.add('d-none');
         document.getElementById('settlementMemoRefund').value = '';
         var fullRefundAmountEl = document.getElementById('settlementFullRefundAmount');
-        if (fullRefundAmountEl) fullRefundAmountEl.value = '0';
+        if (fullRefundAmountEl) {
+            var refItem = history.find(function (h) { return h.id === settlementModalRecordId; });
+            var deposit = refItem ? Number(refItem.depositReceived || 0) : 0;
+            if (!isFinite(deposit) || deposit < 0) deposit = 0;
+            fullRefundAmountEl.value = deposit > 0 ? deposit.toFixed(2) : '0';
+            fullRefundAmountEl.addEventListener('input', settlementUpdatePreview);
+        }
         document.querySelector('input[name="cancelSubType"][value="full_refund"]').checked = true;
+        var cancelFeeAmountEl = document.getElementById('settlementCancelFeeAmount');
+        if (cancelFeeAmountEl) cancelFeeAmountEl.addEventListener('input', settlementUpdatePreview);
         document.querySelectorAll('input[name="cancelSubType"]').forEach(function (r) {
             r.onclick = function () {
                 var isFee = document.querySelector('input[name="cancelSubType"]:checked').value === 'cancel_with_fee';
@@ -7767,18 +8177,40 @@ function showSettlementForm(type) {
                     if (ruleEl) ruleEl.addEventListener('change', function () { settlementUpdateCancelFeePreview(); settlementToggleCancelFeeFields(); });
                     if (rateEl) rateEl.addEventListener('input', settlementUpdateCancelFeePreview);
                     if (fixedEl) fixedEl.addEventListener('input', settlementUpdateCancelFeePreview);
+                } else {
+                    settlementUpdatePreview();
                 }
             };
         });
+        settlementUpdatePreview();
     } else if (type === 'waste_fee') {
         settlementCurrentFormType = 'waste_fee';
         document.getElementById('settlementFormWasteFee').classList.remove('d-none');
         settlementRenderWasteFeeForm();
+        var wasteFinalAmountEl = document.getElementById('settlementWasteFinalAmount');
+        if (wasteFinalAmountEl) {
+            wasteFinalAmountEl.addEventListener('input', settlementUpdatePreview);
+            // 编辑已有废稿记录时，预填废稿费应收（定金抵扣逻辑下 amount=本次收款，输入框=废稿费应收）
+            var refItem = history.find(function (h) { return h.id === settlementModalRecordId; });
+            if (refItem && refItem.settlement && refItem.settlement.type === 'waste_fee' && refItem.settlement.wasteFee) {
+                var wf = refItem.settlement.wasteFee;
+                var feeAmt = (wf.feeAmount != null && isFinite(wf.feeAmount)) ? Number(wf.feeAmount) : (wf.totalReceivable != null && isFinite(wf.totalReceivable)) ? Number(wf.totalReceivable) : (wf.totalWasteReceivable != null && isFinite(wf.totalWasteReceivable)) ? Number(wf.totalWasteReceivable) : null;
+                if (feeAmt != null && isFinite(feeAmt)) {
+                    wasteFinalAmountEl.value = feeAmt.toFixed(2);
+                }
+            }
+        }
+        settlementUpdatePreview();
     } else if (type === 'normal') {
         settlementCurrentFormType = 'normal';
         document.getElementById('settlementFormNormal').classList.remove('d-none');
         settlementRenderNormalForm();
         settlementUpdateNormalPreview();
+        var normalAmountEl = document.getElementById('settlementNormalAmount');
+        if (normalAmountEl) {
+            normalAmountEl.addEventListener('input', settlementUpdatePreview);
+        }
+        settlementUpdatePreview();
     }
 }
 function getEffectiveSettlementType() {
@@ -7829,9 +8261,11 @@ function settlementStepNext() {
         var ruleEl = document.getElementById('settlementCancelFeeRule');
         var rateEl = document.getElementById('settlementCancelFeeRate');
         var fixedEl = document.getElementById('settlementCancelFeeFixed');
+        var cancelFeeAmountEl = document.getElementById('settlementCancelFeeAmount');
         if (ruleEl) ruleEl.addEventListener('change', function () { settlementUpdateCancelFeePreview(); settlementToggleCancelFeeFields(); });
         if (rateEl) rateEl.addEventListener('input', settlementUpdateCancelFeePreview);
         if (fixedEl) fixedEl.addEventListener('input', settlementUpdateCancelFeePreview);
+        if (cancelFeeAmountEl) cancelFeeAmountEl.addEventListener('input', settlementUpdatePreview);
     }
 }
 
@@ -7842,6 +8276,8 @@ function settlementStepBack() {
     document.getElementById('settlementBtnBack').classList.add('d-none');
     document.getElementById('settlementBtnNext').classList.remove('d-none');
     document.getElementById('settlementBtnConfirm').classList.add('d-none');
+    var previewPanel = document.getElementById('settlementPreviewPanel');
+    if (previewPanel) previewPanel.classList.add('d-none');
 }
 
 function settlementFillCancelFeeDefaults() {
@@ -7885,6 +8321,252 @@ function settlementUpdateCancelFeePreview() {
     var amount = computeCancelFeeAmount(item, rule, rate, fixed);
     var amountEl = document.getElementById('settlementCancelFeeAmount');
     if (amountEl) amountEl.value = Math.max(0, amount).toFixed(2);
+    settlementUpdatePreview();
+}
+
+// 更新结算预览面板（实时显示关键金额信息）
+function settlementUpdatePreview() {
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    if (!item) return;
+    var previewPanel = document.getElementById('settlementPreviewPanel');
+    var previewContent = document.getElementById('settlementPreviewContent');
+    if (!previewPanel || !previewContent) return;
+    
+    var effectiveType = getEffectiveSettlementType();
+    if (!effectiveType) {
+        previewPanel.classList.add('d-none');
+        return;
+    }
+    previewPanel.classList.remove('d-none');
+    
+    // 基础数据
+    var receivable = Number(item.agreedAmount != null ? item.agreedAmount : (item.finalTotal || 0)) || 0;
+    var deposit = Number(item.depositReceived || 0);
+    if (!isFinite(deposit) || deposit < 0) deposit = 0;
+    
+    var html = '';
+    
+    if (effectiveType === 'full_refund') {
+        // 撤单退全款：计算过程 + 本次确定
+        var refundAmountEl = document.getElementById('settlementFullRefundAmount');
+        var refundAmount = refundAmountEl ? (parseFloat(refundAmountEl.value) || 0) : 0;
+        var refundShould = deposit; // 需退金额 = 已收定金
+        html += '<div class="settlement-preview-calc-note">计算：需退金额 = 已收定金。请在「已退款金额」填写实际已退金额，用于核对。</div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">订单金额（应收）：</span><span class="settlement-preview-value">¥' + receivable.toFixed(2) + '</span></div>';
+        if (deposit > 0) {
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
+        }
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>需退金额：</strong></span><span class="settlement-preview-value"><strong>¥' + refundShould.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已退款金额（您填写）：</span><span class="settlement-preview-value">¥' + refundAmount.toFixed(2) + '</span></div>';
+        var refundDiff = refundAmount - refundShould;
+        html += '<div class="settlement-preview-row settlement-preview-result">';
+        if (Math.abs(refundDiff) < 0.005) {
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">已全额退还定金</span>';
+        } else if (refundDiff < 0) {
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">还应退 ¥' + Math.abs(refundDiff).toFixed(2) + '</span>';
+        } else {
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">已多退 ¥' + refundDiff.toFixed(2) + '，请注意核对</span>';
+        }
+        html += '</div>';
+        html += '<div class="settlement-preview-determine">本次确定：已退 ¥' + refundAmount.toFixed(2) + '</div>';
+    } else if (effectiveType === 'cancel_with_fee') {
+        // 撤单收跑单费：计算过程 + 本次确定
+        var amountEl = document.getElementById('settlementCancelFeeAmount');
+        var feeAmount = amountEl ? (parseFloat(amountEl.value) || 0) : 0;
+        feeAmount = Math.max(0, feeAmount);
+        var depositUsed = Math.min(deposit, feeAmount);
+        var actual = feeAmount - depositUsed;
+        var totalReceived = feeAmount;
+        var refundExcess = Math.max(0, deposit - feeAmount);
+        var ruleEl = document.getElementById('settlementCancelFeeRule');
+        var rateEl = document.getElementById('settlementCancelFeeRate');
+        var feePercentText = '';
+        if (ruleEl && ruleEl.value === 'percent' && rateEl) {
+            var pct = parseFloat(rateEl.value) || 0;
+            feePercentText = pct.toFixed(0) + '%';
+        }
+        html += '<div class="settlement-preview-calc-note">计算：定金抵扣 = min(已收定金, 跑单费)，本次收款 = 跑单费 − 定金抵扣；合计实收 = 跑单费。可修改「跑单费（应收）」后查看变化。</div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">订单金额（应收）：</span><span class="settlement-preview-value">¥' + receivable.toFixed(2) + '</span></div>';
+        if (feePercentText) {
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">跑单费（' + feePercentText + '）：</span><span class="settlement-preview-value">¥' + feeAmount.toFixed(2) + '</span></div>';
+        } else {
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">跑单费（应收）：</span><span class="settlement-preview-value">¥' + feeAmount.toFixed(2) + '</span></div>';
+        }
+        if (deposit > 0) {
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">定金抵扣跑单费：</span><span class="settlement-preview-value">¥' + depositUsed.toFixed(2) + '</span></div>';
+        }
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次收款：</span><span class="settlement-preview-value">¥' + actual.toFixed(2) + '</span></div>';
+        if (refundExcess > 0) {
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">多余定金待退：</span><span class="settlement-preview-value">¥' + refundExcess.toFixed(2) + '</span></div>';
+        }
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>¥' + totalReceived.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row settlement-preview-result">';
+        var resultText = '跑单费 ¥' + feeAmount.toFixed(2) + '（定金抵扣 ¥' + depositUsed.toFixed(2) + '，本次收款 ¥' + actual.toFixed(2) + '）';
+        var memoEl = document.getElementById('settlementMemoCancelFee');
+        var memoText = memoEl && memoEl.value ? String(memoEl.value).trim() : '';
+        if (memoText) resultText += '；备注：' + memoText;
+        html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">' + resultText + '</span>';
+        html += '</div>';
+        html += '<div class="settlement-preview-determine">本次确定：本次收款 ¥' + actual.toFixed(2) + '，合计实收 ¥' + totalReceived.toFixed(2) + (refundExcess > 0 ? '；待退定金 ¥' + refundExcess.toFixed(2) : '') + '</div>';
+    } else if (effectiveType === 'waste_fee') {
+        // 废稿结算：计算过程 + 本次确定（同跑单费逻辑）
+        var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
+        var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || 0) : 0;
+        feeAmount = Math.max(0, feeAmount);
+        var depositUsed = Math.min(deposit, feeAmount);
+        var actual = feeAmount - depositUsed;
+        var totalReceived = feeAmount;
+        var refundExcess = Math.max(0, deposit - feeAmount);
+        html += '<div class="settlement-preview-calc-note">计算：定金抵扣 = min(已收定金, 废稿费)，本次收款 = 废稿费 − 定金抵扣；合计实收 = 废稿费。可修改「废稿费（应收）」后查看变化。</div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">废稿费（应收）：</span><span class="settlement-preview-value">¥' + feeAmount.toFixed(2) + '</span></div>';
+        if (deposit > 0) {
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">定金抵扣废稿费：</span><span class="settlement-preview-value">¥' + depositUsed.toFixed(2) + '</span></div>';
+        }
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次收款：</span><span class="settlement-preview-value">¥' + actual.toFixed(2) + '</span></div>';
+        if (refundExcess > 0) {
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">多余定金待退：</span><span class="settlement-preview-value">¥' + refundExcess.toFixed(2) + '</span></div>';
+        }
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>¥' + totalReceived.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row settlement-preview-result">';
+        var resultText = '废稿费 ¥' + feeAmount.toFixed(2) + '（定金抵扣 ¥' + depositUsed.toFixed(2) + '，本次收款 ¥' + actual.toFixed(2) + '）';
+        html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">' + resultText + '</span>';
+        html += '</div>';
+        html += '<div class="settlement-preview-determine">本次确定：本次收款 ¥' + actual.toFixed(2) + '，合计实收 ¥' + totalReceived.toFixed(2) + (refundExcess > 0 ? '；待退定金 ¥' + refundExcess.toFixed(2) : '') + '</div>';
+    } else if (effectiveType === 'normal') {
+        // 正常结单
+        var amountEl = document.getElementById('settlementNormalAmount');
+        var actual = amountEl ? (parseFloat(amountEl.value) || 0) : 0;
+        var totalReceived = deposit + actual;
+        
+        // 计算结算优惠合计
+        var discountTotal = 0;
+        var discountReasons = [];
+        document.querySelectorAll('.settlement-discount-reason-cb:checked').forEach(function (cb) {
+            var row = cb.closest('.settlement-reason-row-item');
+            if (!row) return;
+            var name = (cb.dataset.name || '').trim();
+            if (!name) return;
+            var typeInp = row.querySelector('input.settlement-reason-type');
+            var toggleEl = row.querySelector('.settlement-reason-type-toggle');
+            var typeVal = (typeInp && typeInp.value) ? typeInp.value : (toggleEl ? toggleEl.getAttribute('data-active') : null) || 'amount';
+            var entry = { name: name };
+            if (typeVal === 'amount') {
+                var amtInp = row.querySelector('.settlement-reason-amount');
+                var amt = amtInp ? (parseFloat(amtInp.value) || 0) : 0;
+                if (amt > 0) {
+                    entry.amount = amt;
+                    discountTotal += amt;
+                }
+            } else {
+                var rateInp = row.querySelector('input.settlement-reason-rate');
+                var r = rateInp ? normalizeDiscountRate(parseFloat(rateInp.value)) : NaN;
+                if (!isNaN(r)) {
+                    entry.rate = r;
+                }
+            }
+            if (entry.amount || entry.rate) discountReasons.push(entry);
+        });
+        // 其他原因
+        var otherText = (document.getElementById('settlementDiscountReasonOther') && document.getElementById('settlementDiscountReasonOther').value || '').trim();
+        if (otherText) {
+            var otherEntry = { name: otherText };
+            var oTypeEl = document.getElementById('settlementOtherType');
+            var oTypeVal = oTypeEl ? oTypeEl.value : 'amount';
+            if (oTypeVal === 'amount') {
+                var oAmt = document.getElementById('settlementOtherAmount');
+                var oa = oAmt ? parseFloat(oAmt.value) : 0;
+                if (oa > 0) {
+                    otherEntry.amount = oa;
+                    discountTotal += oa;
+                }
+            } else {
+                var oRate = document.getElementById('settlementOtherRate');
+                var or_ = oRate ? normalizeDiscountRate(parseFloat(oRate.value)) : NaN;
+                if (!isNaN(or_)) {
+                    otherEntry.rate = or_;
+                }
+            }
+            if (otherEntry.amount || otherEntry.rate) discountReasons.push(otherEntry);
+        }
+        
+        // 结单计算逻辑：订单金额（应收）→ 已收定金 → 本次应收 → 结算优惠 → 合计实收 → 本次收款
+        html += '<div class="settlement-preview-calc-note">计算：合计实收 = 已收定金 + 本次收款；本次收款默认本次应收，可在此处直接修改。</div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>订单金额（应收）：</strong></span><span class="settlement-preview-value"><strong>¥' + receivable.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
+        if (deposit > 0) {
+            var tailBeforeDiscount = Math.max(0, receivable - deposit);
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次应收：</span><span class="settlement-preview-value">¥' + tailBeforeDiscount.toFixed(2) + '</span></div>';
+        }
+        // 结算优惠
+        if (discountReasons.length > 0) {
+            var totalAmtOnly = 0;
+            var productRateOnly = 1;
+            var rateOnlyEntries = [];
+            discountReasons.forEach(function (e) {
+                if (e.amount != null && isFinite(e.amount) && e.amount > 0) totalAmtOnly += e.amount;
+                if (e.rate != null && isFinite(e.rate) && e.rate > 0) {
+                    productRateOnly *= e.rate;
+                    rateOnlyEntries.push(e);
+                }
+            });
+            var baseForRate = Math.max(0, receivable - totalAmtOnly);
+            var totalRateDiscount = baseForRate * (1 - productRateOnly);
+            var sumOneMinusRate = 0;
+            rateOnlyEntries.forEach(function (e) { sumOneMinusRate += (1 - (e.rate || 0)); });
+            html += '<div class="settlement-preview-discounts">';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>结算优惠：</strong></span></div>';
+            discountReasons.forEach(function (e) {
+                var nm = String(e.name);
+                var amt = e.amount != null && isFinite(e.amount) ? Number(e.amount) : 0;
+                var rateText = '';
+                if (e.rate != null && isFinite(e.rate) && e.rate > 0) {
+                    var rShow = e.rate;
+                    if (rShow > 0.99) rShow = 0.99;
+                    var rStr = rShow.toFixed(2);
+                    if (rStr.endsWith('0')) rStr = rShow.toFixed(1);
+                    if (rStr.endsWith('.0')) rStr = rStr.slice(0, -2);
+                    rateText = rStr + '×';
+                }
+                var leftText = rateText ? (nm + '：' + rateText) : (nm + '：');
+                var rightText = '';
+                if (amt > 0) {
+                    rightText = '-¥' + amt.toFixed(2);
+                } else if (rateText && sumOneMinusRate > 0 && totalRateDiscount > 0) {
+                    var share = totalRateDiscount * (1 - (e.rate || 0)) / sumOneMinusRate;
+                    rightText = '折扣减去金额 -¥' + share.toFixed(2);
+                } else if (rateText) {
+                    rightText = '折扣减去金额';
+                }
+                if (leftText) {
+                    html += '<div class="settlement-preview-row settlement-preview-discount-item"><span class="settlement-preview-label">' + leftText + '</span><span class="settlement-preview-value">' + rightText + '</span></div>';
+                }
+            });
+            var totalDiscountAmount = Math.max(0, receivable - totalReceived);
+            if (totalDiscountAmount > 0) {
+                html += '<div class="settlement-preview-row settlement-preview-discount-item"><span class="settlement-preview-label">共减免：</span><span class="settlement-preview-value">-¥' + totalDiscountAmount.toFixed(2) + '</span></div>';
+            }
+            html += '</div>';
+        }
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>¥' + totalReceived.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>本次收款：</strong></span><span class="settlement-preview-value"><strong>¥' + actual.toFixed(2) + '</strong></span></div>';
+        
+        var diff = totalReceived - receivable;
+        html += '<div class="settlement-preview-row settlement-preview-result">';
+        if (Math.abs(diff) < 0.005) {
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">已结清</span>';
+        } else if (diff < 0) {
+            var totalDiscount = discountTotal > 0 ? discountTotal : (receivable - totalReceived);
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">本次共减免 ¥' + totalDiscount.toFixed(2) + '</span>';
+        } else {
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">多收 ¥' + diff.toFixed(2) + '，应找零/退款给客户</span>';
+        }
+        html += '</div>';
+        html += '<div class="settlement-preview-determine">本次确定：本次收款 ¥' + actual.toFixed(2) + '，合计实收 ¥' + totalReceived.toFixed(2) + '</div>';
+    }
+    
+    previewContent.innerHTML = html;
 }
 
 function settlementRenderWasteFeeForm() {
@@ -8385,6 +9067,7 @@ function settlementUpdatePercentTotalPreview() {
     var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+    settlementUpdatePreview();
 }
 
 // 按件固定：更新预览
@@ -8408,6 +9091,7 @@ function settlementUpdateFixedPerItemPreview() {
     var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+    settlementUpdatePreview();
 }
 
 // 按固定金额：更新预览
@@ -8422,6 +9106,7 @@ function settlementUpdateFixedAmountPreview() {
     var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+    settlementUpdatePreview();
 }
 
 function settlementUpdateWasteByPiecePreview() {
@@ -8521,6 +9206,7 @@ function settlementUpdateWasteByPiecePreview() {
     if (otherAmountEl) otherAmountEl.textContent = '¥' + otherFeesAmount.toFixed(2);
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+    settlementUpdatePreview();
 }
 
 function settlementRenderNormalForm() {
@@ -8573,6 +9259,7 @@ function settlementRenderNormalForm() {
                     }
                 }
                 settlementUpdateNormalPreview();
+                settlementUpdatePreview();
             });
         });
         reasonsWrap.querySelectorAll('.settlement-reason-type-btn').forEach(function (btn) {
@@ -8588,13 +9275,31 @@ function settlementRenderNormalForm() {
                 if (typeInp) typeInp.value = v;
                 var amWrap = row.querySelector('.settlement-reason-amount-wrap');
                 var rtWrap = row.querySelector('.settlement-reason-rate-wrap');
+                var amountInp = row.querySelector('.settlement-reason-amount');
+                var rateInp = row.querySelector('.settlement-reason-rate');
                 if (amWrap) amWrap.style.display = (v === 'amount') ? '' : 'none';
                 if (rtWrap) rtWrap.style.display = (v === 'rate') ? '' : 'none';
+                var preset = getDiscountReasons().find(function (x) { return String(x.id) === String(row.querySelector('.settlement-discount-reason-cb').dataset.id); });
+                if (v === 'rate' && rateInp && preset) {
+                    var raw = parseFloat(rateInp.value);
+                    if (raw > 1 || !isFinite(raw) || raw <= 0) {
+                        rateInp.value = (preset.defaultRate != null && !isNaN(preset.defaultRate)) ? (preset.defaultRate > 0.99 ? 0.99 : preset.defaultRate) : 0.95;
+                    }
+                } else if (v === 'amount' && amountInp && preset) {
+                    var amRaw = parseFloat(amountInp.value);
+                    if (!isFinite(amRaw) || amRaw < 0) {
+                        amountInp.value = (preset.defaultAmount != null && !isNaN(preset.defaultAmount)) ? preset.defaultAmount : '0';
+                    }
+                }
                 settlementUpdateNormalPreview();
+                settlementUpdatePreview();
             });
         });
         reasonsWrap.querySelectorAll('.settlement-reason-amount, .settlement-reason-rate').forEach(function (inp) {
-            inp.addEventListener('input', settlementUpdateNormalPreview);
+            inp.addEventListener('input', function () {
+                settlementUpdateNormalPreview();
+                settlementUpdatePreview();
+            });
         });
     }
     otherAmountEl = document.getElementById('settlementOtherAmount');
@@ -8614,58 +9319,66 @@ function settlementRenderNormalForm() {
                 if (amWrap) amWrap.style.display = (v === 'amount') ? '' : 'none';
                 if (rtWrap) rtWrap.style.display = (v === 'rate') ? '' : 'none';
                 settlementUpdateNormalPreview();
+                settlementUpdatePreview();
             });
         });
     }
-    if (otherAmountEl) otherAmountEl.addEventListener('input', settlementUpdateNormalPreview);
-    if (otherRateEl) otherRateEl.addEventListener('input', settlementUpdateNormalPreview);
+    if (otherAmountEl) otherAmountEl.addEventListener('input', function () {
+        settlementUpdateNormalPreview();
+        settlementUpdatePreview();
+    });
+    if (otherRateEl) otherRateEl.addEventListener('input', function () {
+        settlementUpdateNormalPreview();
+        settlementUpdatePreview();
+    });
     var normalAmountEl = document.getElementById('settlementNormalAmount');
     if (normalAmountEl) {
         normalAmountEl.addEventListener('input', function () {
-            var item = history.find(function (h) { return h.id === settlementModalRecordId; });
-            if (!item) return;
-            var receivable = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
-            var receipt = parseFloat(normalAmountEl.value) || 0;
-            var receivableDiffEl = document.getElementById('settlementReceivableDiffHint');
-            if (receivableDiffEl) {
-                var diff = Math.max(0, receivable - receipt);
-                receivableDiffEl.textContent = '实付金额 ¥' + receivable.toFixed(2) + '，差额 ¥' + diff.toFixed(2);
-            }
-            var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
-            if (!hasPlatformFee) return;
-            var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
-            var newPlatformFee = Math.round(receipt * platformFeePct);
-            var newPlatformEl = document.getElementById('settlementNewPlatformFeeText');
-            if (newPlatformEl) { newPlatformEl.textContent = '新平台费：¥' + newPlatformFee.toFixed(2); newPlatformEl.classList.remove('d-none'); }
+            settlementUpdateNormalPreview(true);
         });
     }
     settlementUpdateNormalPreview();
 }
 
-function settlementUpdateNormalPreview() {
+// 折扣系数标准化：输入 0.01~0.99 为系数，>1 按百分比解读（如 10 表示 10%  off → 0.9）
+function normalizeDiscountRate(r) {
+    if (r == null || !isFinite(r) || r <= 0) return NaN;
+    if (r > 1) return Math.max(0.01, Math.min(0.99, 1 - r / 100));
+    return r > 0.99 ? 0.99 : r;
+}
+
+function settlementUpdateNormalPreview(skipAmountUpdate) {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
     var amountEl = document.getElementById('settlementNormalAmount');
     var newPlatformEl = document.getElementById('settlementNewPlatformFeeText');
+    var ownerPayEl = document.getElementById('settlementOwnerPayText');
     var receivable = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
     var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
     var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
+    var deposit = Number(item.depositReceived || 0);
+    if (!isFinite(deposit) || deposit < 0) deposit = 0;
 
     var totalSubtract = 0;
     var productRate = 1;
     document.querySelectorAll('.settlement-discount-reason-cb:checked').forEach(function (cb) {
         var row = cb.closest('.settlement-reason-row-item');
         if (!row) return;
-        var typeSel = row.querySelector('.settlement-reason-type');
-        var typeVal = typeSel ? typeSel.value : 'amount';
+        var typeInp = row.querySelector('input.settlement-reason-type');
+        var toggleEl = row.querySelector('.settlement-reason-type-toggle');
+        var typeVal = (typeInp && typeInp.value) ? typeInp.value : (toggleEl ? toggleEl.getAttribute('data-active') : null) || 'amount';
         if (typeVal === 'amount') {
             var amtInp = row.querySelector('.settlement-reason-amount');
             if (amtInp) totalSubtract += parseFloat(amtInp.value) || 0;
         } else {
-            var rateInp = row.querySelector('.settlement-reason-rate');
+            var rateInp = row.querySelector('input.settlement-reason-rate');
             if (rateInp) {
-                var r = parseFloat(rateInp.value);
-                if (!isNaN(r) && r > 0) productRate *= (r > 0.99 ? 0.99 : r);
+                var raw = parseFloat(rateInp.value);
+                var r = normalizeDiscountRate(raw);
+                if (!isNaN(r)) {
+                    productRate *= r;
+                    if (raw > 1) rateInp.value = r.toFixed(2);
+                }
             }
         }
     });
@@ -8675,26 +9388,31 @@ function settlementUpdateNormalPreview() {
     var otherRateEl = document.getElementById('settlementOtherRate');
     if (otherTypeVal === 'amount' && otherAmtEl) totalSubtract += parseFloat(otherAmtEl.value) || 0;
     if (otherTypeVal === 'rate' && otherRateEl) {
-        var or_ = parseFloat(otherRateEl.value);
-        if (!isNaN(or_) && or_ > 0) productRate *= (or_ > 0.99 ? 0.99 : or_);
+        var oRaw = parseFloat(otherRateEl.value);
+        var or_ = normalizeDiscountRate(oRaw);
+        if (!isNaN(or_)) {
+            productRate *= or_;
+            if (oRaw > 1) otherRateEl.value = or_.toFixed(2);
+        }
     }
 
     var receipt = Math.max(0, (receivable - totalSubtract) * productRate);
-    if (amountEl) amountEl.value = receipt.toFixed(2);
-    var receivableDiffEl = document.getElementById('settlementReceivableDiffHint');
-    if (receivableDiffEl) {
-        var diff = Math.max(0, receivable - receipt);
-        receivableDiffEl.textContent = '实付金额 ¥' + receivable.toFixed(2) + '，差额 ¥' + diff.toFixed(2);
-        receivableDiffEl.classList.remove('d-none');
-    }
+    var receivableThisTime = Math.max(0, receipt - deposit);
+    if (amountEl && !skipAmountUpdate) amountEl.value = receivableThisTime.toFixed(2);
+    var currentReceipt = amountEl ? (parseFloat(amountEl.value) || receivableThisTime) : receivableThisTime;
+    var newPlatformFee = hasPlatformFee ? Math.round(currentReceipt * platformFeePct * 100) / 100 : 0;
     if (newPlatformEl) {
         if (hasPlatformFee) {
-            newPlatformEl.textContent = '新平台费：¥' + Math.round(receipt * platformFeePct).toFixed(2);
+            newPlatformEl.textContent = '新平台费：¥' + newPlatformFee.toFixed(2);
             newPlatformEl.classList.remove('d-none');
         } else {
             newPlatformEl.classList.add('d-none');
             newPlatformEl.textContent = '';
         }
+    }
+    if (ownerPayEl) {
+        ownerPayEl.textContent = '实际单主支付：¥' + (receipt + newPlatformFee).toFixed(2);
+        ownerPayEl.classList.remove('d-none');
     }
 }
 
@@ -8718,14 +9436,18 @@ function settlementConfirm() {
         var rule = ruleEl ? ruleEl.value : 'percent';
         var rate = parseFloat(rateEl ? rateEl.value : 0) / 100;
         var fixedAmount = parseFloat(fixedEl ? fixedEl.value : 0) || 0;
-        var amount = amountEl ? (parseFloat(amountEl.value) || 0) : 0;
-        amount = Math.max(0, amount);
+        var feeAmount = amountEl ? (parseFloat(amountEl.value) || 0) : 0;
+        feeAmount = Math.max(0, feeAmount);
+        var dep = Number(item.depositReceived || 0);
+        if (!isFinite(dep) || dep < 0) dep = 0;
+        var depositUsed = Math.min(dep, feeAmount);
+        var actualReceive = feeAmount - depositUsed;
         item.settlement = {
             type: 'cancel_with_fee',
-            amount: amount,
+            amount: actualReceive,
             memo: memoEl ? (memoEl.value || '').trim() : '',
             at: at,
-            cancelFee: { rule: rule, rate: rate, fixedAmount: fixedAmount }
+            cancelFee: { rule: rule, rate: rate, fixedAmount: fixedAmount, feeAmount: feeAmount }
         };
     } else if (type === 'waste_fee') {
         var rule = document.getElementById('settlementWasteRule').value;
@@ -8793,14 +9515,19 @@ function settlementConfirm() {
             });
             var totalWasteReceivable = wasteFeeAmount + otherFeesAmount;
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalWasteReceivable) : totalWasteReceivable;
-            finalAmount = Math.max(0, finalAmount);
+            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalWasteReceivable) : totalWasteReceivable;
+            feeAmount = Math.max(0, feeAmount);
+            var dep = Number(item.depositReceived || 0);
+            if (!isFinite(dep) || dep < 0) dep = 0;
+            var depositUsed = Math.min(dep, feeAmount);
+            var actualReceive = feeAmount - depositUsed;
             item.settlement = {
                 type: 'waste_fee',
-                amount: finalAmount,
+                amount: actualReceive,
                 at: at,
                 wasteFee: {
                     rule: 'percent_charged_only',
+                    feeAmount: feeAmount,
                     detailAmount: detailAmount,
                     wasteRatio: wasteRatio,
                     rows: rows,
@@ -8836,15 +9563,19 @@ function settlementConfirm() {
             
             var totalReceivable = wasteFee + otherFeesAmount;
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
-            finalAmount = Math.max(0, finalAmount);
-            
+            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            feeAmount = Math.max(0, feeAmount);
+            var dep = Number(item.depositReceived || 0);
+            if (!isFinite(dep) || dep < 0) dep = 0;
+            var depositUsed = Math.min(dep, feeAmount);
+            var actualReceive = feeAmount - depositUsed;
             item.settlement = {
                 type: 'waste_fee',
-                amount: finalAmount,
+                amount: actualReceive,
                 at: at,
                 wasteFee: {
                     rule: 'percent_total',
+                    feeAmount: feeAmount,
                     rate: defaultRate / 100,
                     baseAmount: baseAmount,
                     wasteFeeAmount: wasteFee,
@@ -8881,15 +9612,19 @@ function settlementConfirm() {
             
             var totalReceivable = wasteFee + otherFeesAmount;
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
-            finalAmount = Math.max(0, finalAmount);
-            
+            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            feeAmount = Math.max(0, feeAmount);
+            var dep = Number(item.depositReceived || 0);
+            if (!isFinite(dep) || dep < 0) dep = 0;
+            var depositUsed = Math.min(dep, feeAmount);
+            var actualReceive = feeAmount - depositUsed;
             item.settlement = {
                 type: 'waste_fee',
-                amount: finalAmount,
+                amount: actualReceive,
                 at: at,
                 wasteFee: {
                     rule: 'fixed_per_item',
+                    feeAmount: feeAmount,
                     fixedPerItem: fixedPerItem,
                     chargedIndices: chargedIndices,
                     count: count,
@@ -8920,15 +9655,19 @@ function settlementConfirm() {
             
             var totalReceivable = wasteFee + otherFeesAmount;
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
-            finalAmount = Math.max(0, finalAmount);
-            
+            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            feeAmount = Math.max(0, feeAmount);
+            var dep = Number(item.depositReceived || 0);
+            if (!isFinite(dep) || dep < 0) dep = 0;
+            var depositUsed = Math.min(dep, feeAmount);
+            var actualReceive = feeAmount - depositUsed;
             item.settlement = {
                 type: 'waste_fee',
-                amount: finalAmount,
+                amount: actualReceive,
                 at: at,
                 wasteFee: {
                     rule: 'fixed_amount',
+                    feeAmount: feeAmount,
                     fixedAmount: wasteFee,
                     otherFeesEntries: otherFeesEntries,
                     otherFeesWasteRatio: otherFeesWasteRatio,
@@ -8947,14 +9686,19 @@ function settlementConfirm() {
             document.querySelectorAll('.settlement-process-done-item').forEach(function (cb) { processDone[parseInt(cb.dataset.idx, 10)] = cb.checked; });
             var amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var finalAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || amount) : amount;
-            finalAmount = Math.max(0, finalAmount);
+            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || amount) : amount;
+            feeAmount = Math.max(0, feeAmount);
+            var dep = Number(item.depositReceived || 0);
+            if (!isFinite(dep) || dep < 0) dep = 0;
+            var depositUsed = Math.min(dep, feeAmount);
+            var actualReceive = feeAmount - depositUsed;
             item.settlement = {
                 type: 'waste_fee',
-                amount: finalAmount,
+                amount: actualReceive,
                 at: at,
                 wasteFee: {
                     rule: rule,
+                    feeAmount: feeAmount,
                     rate: rate,
                     chargedIndices: charged,
                     processDoneFlags: processDone,
@@ -8971,17 +9715,18 @@ function settlementConfirm() {
             var name = (cb.dataset.name || '').trim();
             if (!name) return;
             var row = cb.closest('.settlement-reason-row-item');
-            var typeSel = row ? row.querySelector('.settlement-reason-type') : null;
-            var typeVal = typeSel ? typeSel.value : 'amount';
+            var typeInp = row ? row.querySelector('input.settlement-reason-type') : null;
+            var toggleEl = row ? row.querySelector('.settlement-reason-type-toggle') : null;
+            var typeVal = (typeInp && typeInp.value) ? typeInp.value : (toggleEl ? toggleEl.getAttribute('data-active') : null) || 'amount';
             var entry = { name: name };
             if (typeVal === 'amount') {
                 var amtInp = row ? row.querySelector('.settlement-reason-amount') : null;
                 var amt = amtInp ? (parseFloat(amtInp.value) || 0) : 0;
                 if (amt > 0) entry.amount = amt;
             } else {
-                var rateInp = row ? row.querySelector('.settlement-reason-rate') : null;
-                var r = rateInp ? parseFloat(rateInp.value) : NaN;
-                if (!isNaN(r) && r > 0) entry.rate = r > 0.99 ? 0.99 : r;
+                var rateInp = row ? row.querySelector('input.settlement-reason-rate') : null;
+                var r = rateInp ? normalizeDiscountRate(parseFloat(rateInp.value)) : NaN;
+                if (!isNaN(r)) entry.rate = r;
             }
             discountReasons.push(entry);
         });
@@ -8996,8 +9741,8 @@ function settlementConfirm() {
                 if (oa > 0) otherEntry.amount = oa;
             } else {
                 var oRate = document.getElementById('settlementOtherRate');
-                var or_ = oRate ? parseFloat(oRate.value) : NaN;
-                if (!isNaN(or_) && or_ > 0) otherEntry.rate = or_ > 0.99 ? 0.99 : or_;
+                var or_ = oRate ? normalizeDiscountRate(parseFloat(oRate.value)) : NaN;
+                if (!isNaN(or_)) otherEntry.rate = or_;
             }
             discountReasons.push(otherEntry);
         }
@@ -9023,14 +9768,16 @@ function settlementConfirm() {
                 });
             }
         }
-        var receipt = Math.max(0, (receivable - totalSubtract) * productRate);
+        var receiptTotal = Math.max(0, (receivable - totalSubtract) * productRate);
         var amountEl = document.getElementById('settlementNormalAmount');
-        receipt = amountEl ? (parseFloat(amountEl.value) || receipt) : receipt;
-        receipt = Math.max(0, receipt);
-        var newPlatformFee = (item.platformFeeAmount || 0) > 0 ? Math.round(receipt * platformFeePct) : undefined;
+        var deposit = Number(item.depositReceived || 0);
+        if (!isFinite(deposit) || deposit < 0) deposit = 0;
+        var receiptThisTime = amountEl ? (parseFloat(amountEl.value) || Math.max(0, receiptTotal - deposit)) : Math.max(0, receiptTotal - deposit);
+        receiptThisTime = Math.max(0, receiptThisTime);
+        var newPlatformFee = (item.platformFeeAmount || 0) > 0 ? Math.round(receiptThisTime * platformFeePct * 100) / 100 : undefined;
         item.settlement = {
             type: 'normal',
-            amount: receipt,
+            amount: receiptThisTime,
             newPlatformFee: newPlatformFee,
             discountReasons: discountReasons,
             at: at
@@ -10113,7 +10860,9 @@ function loadQuoteFromHistory(id) {
             otherFees: quote.otherFees || [],
             totalOtherFees: quote.totalOtherFees || 0,
             platformFee: quote.platformFee || 0,
-            giftPrices: quote.giftPrices || []
+            giftPrices: quote.giftPrices || [],
+            // 兼容旧数据：已收定金默认为 0
+            depositReceived: quote.depositReceived != null ? quote.depositReceived : 0
         };
         
         // 为兼容旧版本历史数据，确保productPrices和giftPrices中的每个项目都有sides和productId字段
@@ -10272,24 +11021,105 @@ function exportHistoryToExcel() {
         return;
     }
     
+    // 格式化结算信息（用于 Excel 导出）
+    function formatSettlementForExcel(item) {
+        var st = item.settlement;
+        var dep = Number(item.depositReceived || 0);
+        if (!isFinite(dep) || dep < 0) dep = 0;
+        var receivable = Number(item.agreedAmount != null ? item.agreedAmount : (item.finalTotal || 0)) || 0;
+        var actual = st && st.amount != null ? Number(st.amount) : 0;
+        if (!isFinite(actual) || actual < 0) actual = 0;
+        var totalReceived = dep + actual;
+        var typeText = '';
+        var detailText = '';
+        if (st && st.type) {
+            if (st.type === 'full_refund') {
+                typeText = '撤单（退全款）';
+                detailText = '需退金额¥' + dep.toFixed(2) + '；已退款¥' + actual.toFixed(2);
+            } else if (st.type === 'cancel_with_fee') {
+                typeText = '撤单（收跑单费）';
+                var cf = st.cancelFee || {};
+                var feeAmt = (cf.feeAmount != null && isFinite(cf.feeAmount)) ? Number(cf.feeAmount) : (actual + dep);
+                var depositUsed = Math.min(dep, feeAmt);
+                totalReceived = feeAmt;
+                if (cf.rule === 'percent' && cf.rate != null) {
+                    detailText = '跑单费' + (cf.rate * 100).toFixed(0) + '%：¥' + feeAmt.toFixed(2);
+                } else if (cf.rule === 'fixed' && cf.fixedAmount != null) {
+                    detailText = '跑单费¥' + feeAmt.toFixed(2);
+                } else {
+                    detailText = '跑单费¥' + feeAmt.toFixed(2);
+                }
+                if (dep > 0) detailText += '；定金抵扣¥' + depositUsed.toFixed(2) + '；本次收¥' + actual.toFixed(2);
+            } else if (st.type === 'waste_fee') {
+                typeText = '废稿结算';
+                var wf = st.wasteFee || {};
+                var feeAmtWaste = (wf.feeAmount != null && isFinite(wf.feeAmount)) ? Number(wf.feeAmount) : (wf.totalReceivable != null && isFinite(wf.totalReceivable)) ? Number(wf.totalReceivable) : (wf.totalWasteReceivable != null && isFinite(wf.totalWasteReceivable)) ? Number(wf.totalWasteReceivable) : (actual + dep);
+                totalReceived = feeAmtWaste;
+                var depositUsedWaste = Math.min(dep, feeAmtWaste);
+                detailText = '废稿费¥' + feeAmtWaste.toFixed(2);
+                if (dep > 0) detailText += '；定金抵扣¥' + depositUsedWaste.toFixed(2) + '；本次收款¥' + actual.toFixed(2);
+            } else if (st.type === 'normal') {
+                typeText = '正常结单';
+                var drs = Array.isArray(st.discountReasons) ? st.discountReasons : [];
+                if (drs.length > 0) {
+                    var parts = drs.map(function (e) {
+                        if (!e || !e.name) return '';
+                        var a = e.amount != null && isFinite(e.amount) ? e.amount : 0;
+                        var r = e.rate != null && isFinite(e.rate) ? e.rate : 0;
+                        if (a > 0) return e.name + '-¥' + a.toFixed(2);
+                        if (r > 0) return e.name + '×' + r.toFixed(2);
+                        return e.name;
+                    }).filter(Boolean);
+                    detailText = '结算优惠：' + parts.join('；');
+                } else {
+                    detailText = '本次收款¥' + actual.toFixed(2);
+                }
+            } else {
+                typeText = st.type;
+                detailText = '本次¥' + actual.toFixed(2);
+            }
+        }
+        return { typeText: typeText, detailText: detailText, totalReceived: totalReceived, actual: actual };
+    }
+    
     // 准备汇总表数据
-    const summaryData = exportData.map(item => ({
-        '时间': new Date(item.timestamp).toLocaleString('zh-CN'),
-        '单主ID': item.clientId || '',
-        '接单平台': item.contact || '',
-        '联系方式': item.contactInfo || '',
-        '开始时间': item.startTime || '',
-        '截稿时间': item.deadline || '',
-        '制品总价': item.totalProductsPrice || 0,
-        '其他费用': item.totalOtherFees || 0,
-        '平台费': item.platformFeeAmount || 0,
-        '实收金额': (item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0,
-        '用途系数': item.usage || 1,
-        '加急系数': item.urgent || 1,
-        '折扣系数': item.discount || 1,
-        '制品数量': item.productPrices ? item.productPrices.length : 0,
-        '赠品数量': item.giftPrices ? item.giftPrices.length : 0
-    }));
+    const summaryData = exportData.map(item => {
+        var settlementInfo = formatSettlementForExcel(item);
+        var receivable = (item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
+        var dep = Number(item.depositReceived || 0);
+        if (!isFinite(dep) || dep < 0) dep = 0;
+        var needDep = item.needDeposit ? 1 : 0;
+        var suggestedDep = 0;
+        if (needDep && item.finalTotal) {
+            var rate = (defaultSettings && defaultSettings.depositRate != null) ? Number(defaultSettings.depositRate) : 0.3;
+            suggestedDep = Math.round((item.finalTotal || 0) * rate * 100) / 100;
+        }
+        return {
+            '时间': new Date(item.timestamp).toLocaleString('zh-CN'),
+            '单主ID': item.clientId || '',
+            '接单平台': item.contact || '',
+            '联系方式': item.contactInfo || '',
+            '开始时间': item.startTime || '',
+            '截稿时间': item.deadline || '',
+            '制品总价': item.totalProductsPrice || 0,
+            '其他费用': item.totalOtherFees || 0,
+            '平台费': item.platformFeeAmount || 0,
+            '约定实收': receivable,
+            '需付定金': needDep ? suggestedDep : '',
+            '已收定金': dep > 0 ? dep : '',
+            '结算类型': settlementInfo.typeText || '',
+            '本次收款/退款': (item.settlement && item.settlement.amount != null) ? Number(item.settlement.amount) : '',
+            '合计实收': settlementInfo.typeText ? settlementInfo.totalReceived : (dep > 0 ? dep : ''),
+            '结算明细': settlementInfo.detailText || '',
+            '结算时间': (item.settlement && item.settlement.at) ? new Date(item.settlement.at).toLocaleString('zh-CN') : '',
+            '结算备注': (item.settlement && item.settlement.memo) ? item.settlement.memo : '',
+            '用途系数': item.usage || 1,
+            '加急系数': item.urgent || 1,
+            '折扣系数': item.discount || 1,
+            '制品数量': item.productPrices ? item.productPrices.length : 0,
+            '赠品数量': item.giftPrices ? item.giftPrices.length : 0
+        };
+    });
     
     // 准备制品明细数据
     const productDetailData = [];
@@ -10396,7 +11226,15 @@ function exportHistoryToExcel() {
         { wch: 12 }, // 制品总价
         { wch: 12 }, // 其他费用
         { wch: 12 }, // 平台费
-        { wch: 12 }, // 最终总价
+        { wch: 12 }, // 约定实收
+        { wch: 10 }, // 需付定金
+        { wch: 10 }, // 已收定金
+        { wch: 14 }, // 结算类型
+        { wch: 12 }, // 本次收款/退款
+        { wch: 12 }, // 合计实收
+        { wch: 35 }, // 结算明细
+        { wch: 20 }, // 结算时间
+        { wch: 20 }, // 结算备注
         { wch: 10 }, // 用途系数
         { wch: 10 }, // 加急系数
         { wch: 10 }, // 折扣系数

@@ -777,6 +777,18 @@
                                         </div>
                                     </div>
                                 </div>
+                                <!-- 约定实收下方：已收定金录入 -->
+                                <div class="receipt-agreed-row receipt-deposit-row-inline">
+                                    <span class="receipt-agreed-label">已收定金</span>
+                                    <div class="receipt-agreed-controls-inline">
+                                        <input type="number" id="receiptDepositInput" class="receipt-deposit-field" min="0" step="0.01" placeholder="0.00">
+                                        <div class="receipt-agreed-btns">
+                                            <button type="button" class="btn secondary small" onclick="roundDepositAmount('floor')" title="向下取整">向下</button>
+                                            <button type="button" class="btn secondary small" onclick="roundDepositAmount('ten')" title="取整到十位">取整到十</button>
+                                            <button type="button" class="btn secondary small" onclick="roundDepositAmount('hundred')" title="取整到百位">取整到百</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="receipt-drawer-toolbar d-flex justify-between items-center">
                                 <div class="receipt-drawer-toolbar-left">
@@ -1364,10 +1376,17 @@
                             <h2 class="schedule-title record-page-title">记录</h2>
                             <div class="d-flex gap-2 items-center record-page-actions">
                                 <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
-                                <button type="button" class="btn secondary btn--icon" onclick="document.getElementById('recordSyncImportInput').click()" aria-label="导入数据" title="导入 JSON（可选覆盖本机或新增合并）">
-                                    <svg class="icon" aria-hidden="true"><use href="#i-import"></use></svg>
-                                    <span class="sr-only">导入</span>
-                                </button>
+                                <div class="record-export-wrap" style="position:relative">
+                                    <button type="button" class="btn secondary btn--icon" id="recordImportBtn" onclick="toggleRecordImportPopover()" aria-label="导入数据" title="导入（文件或剪贴板）" aria-expanded="false" aria-haspopup="true">
+                                        <svg class="icon" aria-hidden="true"><use href="#i-import"></use></svg>
+                                        <span class="sr-only">导入</span>
+                                    </button>
+                                    <div id="recordImportPopover" class="record-export-popover d-none" aria-hidden="true">
+                                        <p class="record-export-hint">手机端建议用剪贴板：导出时复制，另一设备粘贴导入</p>
+                                        <button type="button" class="record-export-opt" onclick="document.getElementById('recordSyncImportInput').click(); closeRecordImportPopover();">选择 JSON 文件</button>
+                                        <button type="button" class="record-export-opt" onclick="importSyncDataFromClipboard(); closeRecordImportPopover();">从剪贴板导入</button>
+                                    </div>
+                                </div>
                                 <div class="record-export-wrap" style="position:relative">
                                     <button type="button" class="btn secondary btn--icon" id="recordExportBtn" onclick="toggleRecordExportPopover()" aria-label="导出" title="导出（按当前筛选结果，含时间范围）" aria-expanded="false" aria-haspopup="true">
                                         <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
@@ -1375,7 +1394,8 @@
                                     </button>
                                     <div id="recordExportPopover" class="record-export-popover d-none" aria-hidden="true">
                                         <p class="record-export-hint">按当前筛选结果（含时间、价格）导出</p>
-                                        <button type="button" class="record-export-opt" onclick="exportSyncData(); closeRecordExportPopover();">导出 JSON（同步）</button>
+                                        <button type="button" class="record-export-opt" onclick="exportSyncData(); closeRecordExportPopover();">导出 JSON（同步，含全局设置）</button>
+                                        <button type="button" class="record-export-opt" onclick="exportSyncDataToClipboard(); closeRecordExportPopover();">复制到剪贴板</button>
                                         <button type="button" class="record-export-opt" onclick="exportRecordToExcel(); closeRecordExportPopover();">导出 Excel</button>
                                     </div>
                                 </div>
@@ -2278,7 +2298,7 @@
                                     <label class="settlement-cancel-method-opt"><input type="radio" name="cancelSubType" value="cancel_with_fee"> 收跑单费</label>
                                 </div>
                                 <div id="settlementFullRefundPanel" class="settlement-cancel-panel">
-                                    <label>实收金额（元，可修改）<input type="number" id="settlementFullRefundAmount" min="0" step="0.01" value="0"></label>
+                                    <label>已退款金额（元）<input type="number" id="settlementFullRefundAmount" min="0" step="0.01" value="0" placeholder="与需退金额一致即已退清"></label>
                                     <label>备注（可选）<input type="text" id="settlementMemoRefund" class="settlement-input" placeholder="如撤单原因"></label>
                                 </div>
                                 <div id="settlementCancelWithFee" class="settlement-cancel-panel d-none">
@@ -2294,7 +2314,7 @@
                                         <label>固定金额（元）<input type="number" id="settlementCancelFeeFixed" min="0" step="1" placeholder="0"></label>
                                     </div>
                                     <label>备注（可选）<input type="text" id="settlementMemoCancelFee" class="settlement-input" placeholder="如撤单原因"></label>
-                                    <label>实收金额（元，可修改）<input type="number" id="settlementCancelFeeAmount" min="0" step="0.01" value="0"></label>
+                                    <label>跑单费（应收，元）<input type="number" id="settlementCancelFeeAmount" min="0" step="0.01" value="0" placeholder="定金可抵扣，抵扣后为本次收款"></label>
                                 </div>
                             </div>
                             <div id="settlementFormWasteFee" class="settlement-form settlement-form-waste d-none">
@@ -2374,7 +2394,7 @@
                                     </div>
                                 </div>
                                 <div class="settlement-preview settlement-waste-final">
-                                    <label>废稿实收（元，可修改）<input type="number" id="settlementWasteFinalAmount" min="0" step="0.01" value="0"></label>
+                                    <label>废稿费（应收，元）<input type="number" id="settlementWasteFinalAmount" min="0" step="0.01" value="0"></label>
                                 </div>
                             </div>
                             <div id="settlementFormNormal" class="settlement-form settlement-form-normal d-none">
@@ -2398,12 +2418,18 @@
                                     </div>
                                 </div>
                                 <div class="settlement-final-amount-block">
-                                    <label class="settlement-final-amount-label">实收金额（元）</label>
+                                    <label class="settlement-final-amount-label">本次收款（元）</label>
                                     <input type="number" id="settlementNormalAmount" class="settlement-final-amount-input" min="0" step="0.01" value="0">
-                                    <p id="settlementReceivableDiffHint" class="settlement-receivable-diff-hint"></p>
                                     <p id="settlementNewPlatformFeeText" class="settlement-hint settlement-platform-fee-hint d-none"></p>
+                                    <p id="settlementOwnerPayText" class="settlement-hint settlement-owner-pay-hint">实际单主支付：¥0.00</p>
                                 </div>
                             </div>
+                        </div>
+                        <!-- 结算参考面板（展示计算过程，用于确定已收/已退金额） -->
+                        <div id="settlementPreviewPanel" class="settlement-preview-panel d-none">
+                            <div class="settlement-preview-title">结算参考（计算过程）</div>
+                            <p class="settlement-preview-hint">以下为计算过程，用于确定收费与退款；已收多少、已退多少请在此处填写或核对，确认后小票将展示结算结果。</p>
+                            <div id="settlementPreviewContent" class="settlement-preview-content"></div>
                         </div>
                     </div>
                     <div class="settlement-modal-footer">
@@ -2513,6 +2539,6 @@
 
     <div id="globalToast" class="global-toast d-none"></div>
 
-    <script src="script.js?v=20250130-todo-grid"></script>
+    <script src="script.js?v=20250204-deposit-display"></script>
 </body>
 </html>
