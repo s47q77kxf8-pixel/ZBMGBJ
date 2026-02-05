@@ -538,11 +538,11 @@
                         <div class="form-group">
                             <div class="label-row-with-remark">
                                 <label for="clientId">单主ID</label>
-                                <span class="label-remark-text">备注</span>
+                                <span class="label-remark-text">备注<span class="remark-smart-hint">（智能提取）</span></span>
                             </div>
                             <div class="input-row-with-icon client-id-input-wrap">
                                 <input type="text" id="clientId" placeholder="请输入单主ID" title="输入单主ID或关键字，匹配到历史单主后点击一项填充" oninput="debouncedShowClientIdMatches()" onblur="scheduleHideClientIdMatchList()">
-                                <button class="btn-icon-only btn-remark-icon" onclick="openOrderRemarkModal()" type="button" title="添加备注">
+                                <button class="btn-icon-only btn-remark-icon" onclick="openOrderRemarkModal()" type="button" title="添加备注；点开后粘贴单主备注可智能提取制品与赠品">
                                     <svg class="icon sm" aria-hidden="true"><use href="#i-note"></use></svg>
                                 </button>
                                 <div id="clientIdMatchWrap" class="client-id-match-dropdown d-none">
@@ -1493,6 +1493,14 @@
                                     </div>
                                 </div>
                                 <div class="filter-section">
+                                    <label class="filter-label">显示方式</label>
+                                    <select id="recordGroupBy" class="filter-select" onchange="onRecordFilterChange(); applyRecordFilters();">
+                                        <option value="month">按月分组</option>
+                                        <option value="list">全部排序</option>
+                                    </select>
+                                    <small class="text-gray">全部排序时按当前排序规则整列表显示，不按月份分组</small>
+                                </div>
+                                <div class="filter-section">
                                     <label class="filter-label">批量操作</label>
                                     <div class="d-flex gap-2">
                                         <button class="btn secondary flex-1" onclick="selectAllHistory()">全选</button>
@@ -1569,6 +1577,12 @@
                         <span class="stats-quick-sep">至</span>
                         <input type="date" id="statsEndDate" class="filter-input" aria-label="结束日期" onchange="onStatsQuickCustomChange()" placeholder="yyyy/mm/dd">
                     </div>
+                    <select id="statsTimeFilter" class="d-none" aria-hidden="true">
+                        <option value="thisMonth">本月</option>
+                        <option value="thisYear">本年</option>
+                        <option value="all">全部</option>
+                        <option value="custom">自定义</option>
+                    </select>
                     <div id="statsFilterDrawer" class="history-filter-drawer">
                         <div class="filter-drawer-overlay" onclick="closeStatsFilterDrawer()"></div>
                         <div class="filter-drawer-content">
@@ -1577,20 +1591,6 @@
                                 <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeStatsFilterDrawer()" aria-label="关闭" title="关闭"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg><span class="sr-only">关闭</span></button>
                             </div>
                             <div class="filter-drawer-body">
-                                <div class="filter-section">
-                                    <label class="filter-label">时间范围</label>
-                                    <select id="statsTimeFilter" class="filter-select" onchange="onStatsFilterChange()">
-                                        <option value="thisMonth">本月</option>
-                                        <option value="thisYear">本年</option>
-                                        <option value="all">全部</option>
-                                        <option value="custom">自定义</option>
-                                    </select>
-                                    <div id="statsCustomDateRange" class="d-none mt-2">
-                                        <input type="date" id="statsCustomStart" class="filter-input" onchange="onStatsFilterChange()" placeholder="yyyy/mm/dd">
-                                        <span class="mx-2">至</span>
-                                        <input type="date" id="statsCustomEnd" class="filter-input" onchange="onStatsFilterChange()" placeholder="yyyy/mm/dd">
-                                    </div>
-                                </div>
                                 <div class="filter-section">
                                     <label class="filter-label">时间口径</label>
                                     <select id="statsTimeBasis" class="filter-select" onchange="onStatsFilterChange()">
@@ -1638,8 +1638,11 @@
                     </div>
                     <details class="stats-note-details">
                         <summary class="stats-note-summary">说明</summary>
-                        <p class="stats-note text-gray">时间口径可选「按记录时间」或「按截稿日」；选截稿日时时间范围与趋势均按截稿日统计。赠品「按0元/按原价」仅影响制品项与金额贡献，不代表实收。已结算订单按 settlement 实际金额统计。Top 制品金额为报价明细，非实收。</p>
+                        <p class="stats-note text-gray">时间口径可选「按记录时间」或「按截稿日」；选截稿日时时间范围与趋势均按截稿日统计。选择本月/本年时显示环比上月/去年。赠品「按0元/按原价」仅影响制品项与金额贡献，不代表实收。已结算订单按 settlement 实际金额统计。Top 制品金额为报价明细，非实收。</p>
                     </details>
+                    <div id="statsEmptyHint" class="stats-empty-hint d-none" role="status">
+                        <!-- 无数据时由 JS 显示 -->
+                    </div>
                     <div id="statsKpiGrid" class="stats-kpi-grid">
                         <!-- KPI 卡片由 JS 渲染 -->
                     </div>
@@ -2215,9 +2218,9 @@
                     </div>
                 </div>
                 
-                <div class="d-flex gap-2">
-                    <button class="btn save-settings" onclick="saveSettings()">保存设置</button>
-                    <button class="btn secondary" onclick="resetToDefaultSettings()">恢复默认设置</button>
+                <div class="d-flex gap-2 flex-wrap items-center">
+                    <button type="button" class="btn save-settings" onclick="saveSettings()">立即保存</button>
+                    <button type="button" class="btn secondary" onclick="resetToDefaultSettings()">恢复默认设置</button>
                 </div>
             </div>
             
@@ -2464,12 +2467,13 @@
                 <span class="close" onclick="closeOrderRemarkModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <textarea id="orderRemarkText" rows="10" placeholder="请输入订单备注内容...&#10;&#10;支持智能识别格式示例：&#10;立绘 单面 2个&#10;Q版 双面 1个 带背景&#10;赠品：头像 3个"></textarea>
+                <p class="order-remark-hint text-gray">输入或粘贴单主发的备注后，点击下方<strong>「智能提取」</strong>，可自动识别制品与赠品并填入报价表。</p>
+                <textarea id="orderRemarkText" rows="10" placeholder="粘贴订单备注，再点下方「智能提取」自动识别&#10;&#10;示例：&#10;拍立得 单面 2个&#10;吧唧 10个 双面 带背景&#10;赠品：头像 3个"></textarea>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-compact secondary" onclick="smartParseOrderRemark()">智能读取</button>
-                <button class="btn btn-compact secondary" onclick="copyOrderRemark()">复制</button>
-                <button class="btn btn-compact" onclick="closeOrderRemarkModal()">确定</button>
+                <button type="button" class="btn btn-compact primary" onclick="smartParseOrderRemark()" title="根据备注内容自动识别制品、赠品并填入计算表">智能提取</button>
+                <button type="button" class="btn btn-compact secondary" onclick="copyOrderRemark()">复制</button>
+                <button type="button" class="btn btn-compact" onclick="closeOrderRemarkModal()">确定</button>
             </div>
         </div>
     </div>

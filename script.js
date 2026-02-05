@@ -834,7 +834,8 @@ function exportSettings() {
             URL.revokeObjectURL(url);
         }, 100);
         
-        alert('设置导出成功！');
+        if (typeof showGlobalToast === 'function') showGlobalToast('设置已导出');
+        else alert('设置导出成功！');
     } catch (e) {
         console.error('导出设置失败:', e);
         alert('导出设置失败，请重试');
@@ -3003,6 +3004,7 @@ function resetRecordFilters() {
     const statusFilter = document.getElementById('recordStatusFilter');
     const minPrice = document.getElementById('recordMinPrice');
     const maxPrice = document.getElementById('recordMaxPrice');
+    const groupByEl = document.getElementById('recordGroupBy');
     const customDateRange = document.getElementById('recordCustomDateRange');
     if (timeFilter) timeFilter.value = 'all';
     if (startDate) startDate.value = '';
@@ -3010,6 +3012,7 @@ function resetRecordFilters() {
     if (statusFilter) statusFilter.value = 'all';
     if (minPrice) minPrice.value = '';
     if (maxPrice) maxPrice.value = '';
+    if (groupByEl) groupByEl.value = 'month';
     if (customDateRange) customDateRange.classList.add('d-none');
     selectedHistoryIds.clear();
     updateRecordFilterBadge();
@@ -3698,8 +3701,6 @@ var STATS_FILTER_STORAGE_KEY = 'mg_stats_filters_v1';
 function getStatsFiltersFromUI() {
     const timeEl = document.getElementById('statsTimeFilter');
     const timeBasisEl = document.getElementById('statsTimeBasis');
-    const customStart = document.getElementById('statsCustomStart');
-    const customEnd = document.getElementById('statsCustomEnd');
     const amountBasis = document.getElementById('statsAmountBasis');
     const giftMode = document.getElementById('statsGiftMode');
     const statusFilter = document.getElementById('statsStatusFilter');
@@ -3717,8 +3718,8 @@ function getStatsFiltersFromUI() {
         timeBasis: timeBasis === 'deadline' ? 'deadline' : 'timestamp',
         viewYear: isFinite(viewYear) ? viewYear : now.getFullYear(),
         viewMonth: isFinite(viewMonth) && viewMonth >= 0 && viewMonth <= 11 ? viewMonth : now.getMonth(),
-        startDate: (customStart && customStart.value) || (quickStart && quickStart.value) || '',
-        endDate: (customEnd && customEnd.value) || (quickEnd && quickEnd.value) || '',
+        startDate: (quickStart && quickStart.value) ? quickStart.value : '',
+        endDate: (quickEnd && quickEnd.value) ? quickEnd.value : '',
         amountBasis: amountBasis ? amountBasis.value : 'finalTotal',
         giftMode: giftMode ? giftMode.value : 'exclude',
         statusFilter: statusFilter ? statusFilter.value : 'all'
@@ -3852,6 +3853,7 @@ function getStatsDataset(historySource, filters) {
     let totalPlatformFeeSum = 0;
     let discountAmountTotal = 0;
     let discountByCoefficientTotal = 0;
+    // 折扣原因聚合：记录每个原因对应的「出现单数」和「优惠金额」
     const discountByReason = {};
     const dailyMap = {};
     const clientMap = {};
@@ -3917,8 +3919,11 @@ function getStatsDataset(historySource, filters) {
                         if (!name) return;
                         var amt = (e.amount != null && isFinite(e.amount)) ? Number(e.amount) : 0;
                         if (amt > 0) {
-                            if (!discountByReason[name]) discountByReason[name] = 0;
-                            discountByReason[name] += amt;
+                            if (!discountByReason[name]) {
+                                discountByReason[name] = { name: name, orderCount: 0, amountTotal: 0 };
+                            }
+                            discountByReason[name].orderCount += 1;
+                            discountByReason[name].amountTotal += amt;
                             reasonAmountSum += amt;
                         }
                     });
@@ -3926,8 +3931,11 @@ function getStatsDataset(historySource, filters) {
                 var remainder = orderDiscount - reasonAmountSum;
                 if (remainder > 0) {
                     var otherLabel = '其他';
-                    if (!discountByReason[otherLabel]) discountByReason[otherLabel] = 0;
-                    discountByReason[otherLabel] += remainder;
+                    if (!discountByReason[otherLabel]) {
+                        discountByReason[otherLabel] = { name: otherLabel, orderCount: 0, amountTotal: 0 };
+                    }
+                    discountByReason[otherLabel].orderCount += 1;
+                    discountByReason[otherLabel].amountTotal += remainder;
                 }
             }
         }
@@ -3955,8 +3963,11 @@ function getStatsDataset(historySource, filters) {
                 if (mainVal < 1) {
                     hadAnyCoeff = true;
                     var mainReduction = running * (1 - mainVal);
-                    if (!discountByReason[mainName]) discountByReason[mainName] = 0;
-                    discountByReason[mainName] += mainReduction;
+                    if (!discountByReason[mainName]) {
+                        discountByReason[mainName] = { name: mainName, orderCount: 0, amountTotal: 0 };
+                    }
+                    discountByReason[mainName].orderCount += 1;
+                    discountByReason[mainName].amountTotal += mainReduction;
                     discountByCoefficientTotal += mainReduction;
                     running *= mainVal;
                 }
@@ -3970,8 +3981,11 @@ function getStatsDataset(historySource, filters) {
                     if (v < 1) {
                         hadAnyCoeff = true;
                         var extReduction = running * (1 - v);
-                        if (!discountByReason[nm]) discountByReason[nm] = 0;
-                        discountByReason[nm] += extReduction;
+                        if (!discountByReason[nm]) {
+                            discountByReason[nm] = { name: nm, orderCount: 0, amountTotal: 0 };
+                        }
+                        discountByReason[nm].orderCount += 1;
+                        discountByReason[nm].amountTotal += extReduction;
                         discountByCoefficientTotal += extReduction;
                         running *= v;
                     }
@@ -3980,8 +3994,12 @@ function getStatsDataset(historySource, filters) {
                 if (!hadAnyCoeff) {
                     var fallbackReduction = baseBeforeDown - twc;
                     if (fallbackReduction > 0) {
-                        if (!discountByReason['折扣类系数']) discountByReason['折扣类系数'] = 0;
-                        discountByReason['折扣类系数'] += fallbackReduction;
+                        var fallbackName = '折扣类系数';
+                        if (!discountByReason[fallbackName]) {
+                            discountByReason[fallbackName] = { name: fallbackName, orderCount: 0, amountTotal: 0 };
+                        }
+                        discountByReason[fallbackName].orderCount += 1;
+                        discountByReason[fallbackName].amountTotal += fallbackReduction;
                         discountByCoefficientTotal += fallbackReduction;
                     }
                 }
@@ -4266,7 +4284,12 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess, discoun
     var hasUsage = byUsage && byUsage.length > 0;
     var hasUrgent = byUrgent && byUrgent.length > 0;
     var hasProcess = byProcess && byProcess.length > 0;
-    var discountReasons = (discountByReason && typeof discountByReason === 'object') ? Object.entries(discountByReason).filter(function (e) { return e[1] > 0; }) : [];
+    // 折扣原因：与「用途」「加急」类似，按「单数 / 金额」展示
+    var discountReasons = (discountByReason && typeof discountByReason === 'object')
+        ? Object.values(discountByReason).filter(function (r) {
+            return r && (r.orderCount > 0 || r.amountTotal > 0);
+        })
+        : [];
     var hasDiscount = discountReasons.length > 0;
     if (!hasStatus && !hasUsage && !hasUrgent && !hasProcess && !hasDiscount) { container.innerHTML = ''; container.classList.add('d-none'); return; }
     container.classList.remove('d-none');
@@ -4302,7 +4325,12 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess, discoun
     }
     if (hasDiscount) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="discount">折扣</button>');
-        var dhtml = discountReasons.map(function (e) { return '<div class="stats-dim-item"><span>' + (e[0] || '—') + '</span><span>-¥' + (e[1] || 0).toFixed(2) + '</span></div>'; }).join('');
+        var dhtml = discountReasons.map(function (r) {
+            var name = (r && r.name) ? r.name : '—';
+            var count = (r && r.orderCount) ? r.orderCount : 0;
+            var amt = (r && r.amountTotal != null && isFinite(r.amountTotal)) ? Number(r.amountTotal) : 0;
+            return '<div class="stats-dim-item"><span>' + name + '</span><span>' + count + ' 单 / -¥' + amt.toFixed(2) + '</span></div>';
+        }).join('');
         panels.push({ id: 'discount', html: '<div class="stats-dim-list">' + dhtml + '</div>' });
     }
     var firstId = panels.length ? panels[0].id : null;
@@ -4414,7 +4442,7 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
 function renderStatsTopLists(byClient, byProduct) {
     const container = document.getElementById('statsTopLists');
     if (!container) return;
-    const defaultShow = 3;
+    const defaultShow = 10;
     const clientByOrders = [...byClient].sort((a, b) => b.orderCount - a.orderCount);
     const clientByRevenue = byClient.slice();
     let html = '<h3 class="stats-block-title">Top 单主</h3>';
@@ -4617,10 +4645,6 @@ function closeStatsFilterDrawer() {
 }
 
 function onStatsFilterChange() {
-    const timeEl = document.getElementById('statsTimeFilter');
-    const customRange = document.getElementById('statsCustomDateRange');
-    if (timeEl && timeEl.value === 'custom' && customRange) customRange.classList.remove('d-none');
-    else if (customRange) customRange.classList.add('d-none');
     updateStatsFilterBadge();
 }
 
@@ -4630,8 +4654,6 @@ function resetStatsFilters() {
     const amountEl = document.getElementById('statsAmountBasis');
     const giftEl = document.getElementById('statsGiftMode');
     const statusEl = document.getElementById('statsStatusFilter');
-    const customStart = document.getElementById('statsCustomStart');
-    const customEnd = document.getElementById('statsCustomEnd');
     const quickStart = document.getElementById('statsStartDate');
     const quickEnd = document.getElementById('statsEndDate');
     const viewYearEl = document.getElementById('statsViewYear');
@@ -4644,12 +4666,8 @@ function resetStatsFilters() {
     if (amountEl) amountEl.value = 'finalTotal';
     if (giftEl) giftEl.value = 'exclude';
     if (statusEl) statusEl.value = 'all';
-    if (customStart) customStart.value = '';
-    if (customEnd) customEnd.value = '';
     if (quickStart) quickStart.value = '';
     if (quickEnd) quickEnd.value = '';
-    const customRange = document.getElementById('statsCustomDateRange');
-    if (customRange) customRange.classList.add('d-none');
     updateStatsFilterBadge();
     applyStatsFilters();
 }
@@ -4726,12 +4744,6 @@ function applyStatsFilters() {
     const dateNavWrap = document.getElementById('statsDateNavWrap');
     const customWrap = document.getElementById('statsCustomDateWrap');
     const dateNavLabel = document.getElementById('statsDateNavLabel');
-    if (f.timeRange === 'custom' && f.startDate) {
-        const customStart = document.getElementById('statsCustomStart');
-        const customEnd = document.getElementById('statsCustomEnd');
-        if (customStart) customStart.value = f.startDate;
-        if (customEnd) customEnd.value = f.endDate;
-    }
     document.querySelectorAll('.stats-quick-btn').forEach(function (btn) {
         btn.classList.toggle('active', btn.dataset.range === f.timeRange);
     });
@@ -4753,6 +4765,16 @@ function applyStatsFilters() {
     // 持久化当前筛选到 localStorage，刷新后继续沿用
     saveStatsFilters(f);
     const dataset = getStatsDataset(history, f);
+    var emptyHint = document.getElementById('statsEmptyHint');
+    if (emptyHint) {
+        if (dataset.filteredRecords.length === 0) {
+            emptyHint.textContent = '当前筛选条件下暂无订单数据';
+            emptyHint.classList.remove('d-none');
+        } else {
+            emptyHint.textContent = '';
+            emptyHint.classList.add('d-none');
+        }
+    }
     renderStatsKpis(dataset.totals);
     renderStatsComparison(f, dataset.totals);
     renderStatsTrends(dataset.dailyAgg, dataset.weeklyAgg, dataset.monthlyAgg);
@@ -4770,8 +4792,6 @@ function renderStatsPage() {
         const amountEl = document.getElementById('statsAmountBasis');
         const giftEl = document.getElementById('statsGiftMode');
         const statusEl = document.getElementById('statsStatusFilter');
-        const customStart = document.getElementById('statsCustomStart');
-        const customEnd = document.getElementById('statsCustomEnd');
         const quickStart = document.getElementById('statsStartDate');
         const quickEnd = document.getElementById('statsEndDate');
         const viewYearEl = document.getElementById('statsViewYear');
@@ -4783,14 +4803,8 @@ function renderStatsPage() {
         if (statusEl && saved.statusFilter) statusEl.value = saved.statusFilter;
         if (viewYearEl && typeof saved.viewYear === 'number') viewYearEl.value = String(saved.viewYear);
         if (viewMonthEl && typeof saved.viewMonth === 'number') viewMonthEl.value = String(saved.viewMonth);
-        if (saved.startDate) {
-            if (customStart) customStart.value = saved.startDate;
-            if (quickStart) quickStart.value = saved.startDate;
-        }
-        if (saved.endDate) {
-            if (customEnd) customEnd.value = saved.endDate;
-            if (quickEnd) quickEnd.value = saved.endDate;
-        }
+        if (saved.startDate && quickStart) quickStart.value = saved.startDate;
+        if (saved.endDate && quickEnd) quickEnd.value = saved.endDate;
         onStatsFilterChange();
     }
     updateStatsFilterBadge();
@@ -4856,6 +4870,13 @@ function exportStatsToExcel() {
         const productData = [['制品名', '次数', '金额贡献']];
         dataset.byProduct.forEach(p => { productData.push([p.productName, p.count, p.revenueTotal]); });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(productData), 'Top制品');
+        var discountByReason = dataset.totals && dataset.totals.discountByReason && typeof dataset.totals.discountByReason === 'object' ? dataset.totals.discountByReason : {};
+        var discountRows = Object.values(discountByReason).filter(function (r) { return r && (r.orderCount > 0 || r.amountTotal > 0); });
+        if (discountRows.length > 0) {
+            var discountData = [['折扣原因', '单数', '优惠金额']];
+            discountRows.forEach(function (r) { discountData.push([r.name || '—', r.orderCount || 0, r.amountTotal != null ? Number(r.amountTotal) : 0]); });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(discountData), '按折扣原因');
+        }
         const date = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, '统计_' + date + '.xlsx');
     } catch (e) {
@@ -5355,8 +5376,8 @@ function removeProduct(id) {
     if (el) el.remove();
 }
 
-// 计算价格；saveAsNew 为 true 时：另存新单（不覆盖原记录）；skipReceipt 为 true 时：覆盖保存原订单，均不打开小票；openSaveChoiceModal 为 true 时：仅计算并弹出保存方式选择弹窗
-function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
+// 计算价格；saveAsNew 为 true 时：另存新单（不覆盖原记录）；skipReceipt 为 true 时：覆盖保存原订单，均不打开小票；openSaveChoiceModal 为 true 时：仅计算并弹出保存方式选择弹窗；onlyRefreshDisplay 为 true 时：仅刷新报价显示（不关抽屉、不打开小票）
+function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefreshDisplay) {
     // 获取单主信息（支持自动生成单主ID：YYYYMMDDXNN）
     const clientIdInputEl = document.getElementById('clientId');
     let clientIdValue = clientIdInputEl ? clientIdInputEl.value.trim() : '';
@@ -5862,6 +5883,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal) {
     if (typeof isReceiptDrawerOpen !== 'undefined' && isReceiptDrawerOpen) {
         syncReceiptDrawerContent();
     }
+    
+    // 仅刷新显示（智能提取等）：不关抽屉、不打开小票
+    if (onlyRefreshDisplay) return;
     
     // 打开保存方式选择弹窗（编辑模式下点「保存」时，不直接保存）
     if (openSaveChoiceModal && window.editingHistoryId) {
@@ -8125,6 +8149,8 @@ function openSettlementModal(recordId, preSelectedType) {
                 }
                 var amountEl = document.getElementById('settlementCancelFeeAmount');
                 if (amountEl && feeAmt >= 0) { amountEl.value = feeAmt.toFixed(2); settlementUpdatePreview(); }
+                var memoEl = document.getElementById('settlementMemoCancelFee');
+                if (memoEl) memoEl.value = (existingSettlement.memo || '') || '';
             }
         }
     } else {
@@ -8151,15 +8177,23 @@ function showSettlementForm(type) {
         form.classList.remove('d-none');
         document.getElementById('settlementFullRefundPanel').classList.remove('d-none');
         document.getElementById('settlementCancelWithFee').classList.add('d-none');
-        document.getElementById('settlementMemoRefund').value = '';
-        var fullRefundAmountEl = document.getElementById('settlementFullRefundAmount');
-        if (fullRefundAmountEl) {
-            var refItem = history.find(function (h) { return h.id === settlementModalRecordId; });
-            var deposit = refItem ? Number(refItem.depositReceived || 0) : 0;
-            if (!isFinite(deposit) || deposit < 0) deposit = 0;
-            fullRefundAmountEl.value = deposit > 0 ? deposit.toFixed(2) : '0';
-            fullRefundAmountEl.addEventListener('input', settlementUpdatePreview);
+        var refItem = history.find(function (h) { return h.id === settlementModalRecordId; });
+        if (refItem && refItem.settlement && refItem.settlement.type === 'full_refund') {
+            document.getElementById('settlementMemoRefund').value = (refItem.settlement.memo || '') || '';
+            var fullRefundAmountEl = document.getElementById('settlementFullRefundAmount');
+            if (fullRefundAmountEl && refItem.settlement.amount != null && isFinite(refItem.settlement.amount))
+                fullRefundAmountEl.value = Number(refItem.settlement.amount).toFixed(2);
+        } else {
+            document.getElementById('settlementMemoRefund').value = '';
+            var fullRefundAmountEl = document.getElementById('settlementFullRefundAmount');
+            if (fullRefundAmountEl) {
+                var deposit = refItem ? Number(refItem.depositReceived || 0) : 0;
+                if (!isFinite(deposit) || deposit < 0) deposit = 0;
+                fullRefundAmountEl.value = deposit > 0 ? deposit.toFixed(2) : '0';
+            }
         }
+        var fullRefundAmountEl = document.getElementById('settlementFullRefundAmount');
+        if (fullRefundAmountEl) fullRefundAmountEl.addEventListener('input', settlementUpdatePreview);
         document.querySelector('input[name="cancelSubType"][value="full_refund"]').checked = true;
         var cancelFeeAmountEl = document.getElementById('settlementCancelFeeAmount');
         if (cancelFeeAmountEl) cancelFeeAmountEl.addEventListener('input', settlementUpdatePreview);
@@ -8206,6 +8240,70 @@ function showSettlementForm(type) {
         document.getElementById('settlementFormNormal').classList.remove('d-none');
         settlementRenderNormalForm();
         settlementUpdateNormalPreview();
+        var refItem = history.find(function (h) { return h.id === settlementModalRecordId; });
+        if (refItem && refItem.settlement && refItem.settlement.type === 'normal') {
+            var amtEl = document.getElementById('settlementNormalAmount');
+            if (amtEl && refItem.settlement.amount != null && isFinite(refItem.settlement.amount))
+                amtEl.value = Number(refItem.settlement.amount).toFixed(2);
+            var drs = Array.isArray(refItem.settlement.discountReasons) ? refItem.settlement.discountReasons : [];
+            var reasonsWrap = document.getElementById('settlementDiscountReasonsWrap');
+            var presetList = getDiscountReasons();
+            drs.forEach(function (entry) {
+                var name = (entry && entry.name) ? String(entry.name).trim() : '';
+                if (!name) return;
+                var isRate = entry.rate != null && (entry.amount == null || entry.amount === 0);
+                var presetIdx = -1;
+                for (var p = 0; p < presetList.length; p++) {
+                    if ((presetList[p].name || '').trim() === name) { presetIdx = p; break; }
+                }
+                if (presetIdx >= 0 && reasonsWrap) {
+                    var rows = reasonsWrap.querySelectorAll('.settlement-reason-row-item');
+                    var row = rows[presetIdx];
+                    if (row) {
+                        var cb = row.querySelector('.settlement-discount-reason-cb');
+                        if (cb) cb.checked = true;
+                        var typeInp = row.querySelector('input.settlement-reason-type');
+                        if (typeInp) typeInp.value = isRate ? 'rate' : 'amount';
+                        var toggleEl = row.querySelector('.settlement-reason-type-toggle');
+                        if (toggleEl) toggleEl.setAttribute('data-active', isRate ? 'rate' : 'amount');
+                        row.querySelectorAll('.settlement-reason-type-btn').forEach(function (b) {
+                            b.classList.toggle('active', b.dataset.value === (isRate ? 'rate' : 'amount'));
+                        });
+                        var amWrap = row.querySelector('.settlement-reason-amount-wrap');
+                        var rtWrap = row.querySelector('.settlement-reason-rate-wrap');
+                        if (amWrap) amWrap.style.display = isRate ? 'none' : '';
+                        if (rtWrap) rtWrap.style.display = isRate ? '' : 'none';
+                        var amountInp = row.querySelector('.settlement-reason-amount');
+                        var rateInp = row.querySelector('.settlement-reason-rate');
+                        if (amountInp) amountInp.value = (entry.amount != null && isFinite(entry.amount)) ? entry.amount : '0';
+                        if (rateInp) rateInp.value = (entry.rate != null && isFinite(entry.rate)) ? entry.rate : '0.99';
+                    }
+                } else {
+                    var otherInput = document.getElementById('settlementDiscountReasonOther');
+                    var otherAmount = document.getElementById('settlementOtherAmount');
+                    var otherRate = document.getElementById('settlementOtherRate');
+                    var otherTypeEl = document.getElementById('settlementOtherType');
+                    var otherToggleEl = document.getElementById('settlementOtherTypeToggle');
+                    var otherAmWrap = document.getElementById('settlementOtherAmountWrap');
+                    var otherRtWrap = document.getElementById('settlementOtherRateWrap');
+                    if (otherInput) otherInput.value = name;
+                    if (isRate) {
+                        if (otherTypeEl) otherTypeEl.value = 'rate';
+                        if (otherToggleEl) otherToggleEl.setAttribute('data-active', 'rate');
+                        if (otherAmWrap) otherAmWrap.style.display = 'none';
+                        if (otherRtWrap) otherRtWrap.style.display = '';
+                        if (otherRate) otherRate.value = (entry.rate != null && isFinite(entry.rate)) ? entry.rate : '0.99';
+                    } else {
+                        if (otherTypeEl) otherTypeEl.value = 'amount';
+                        if (otherToggleEl) otherToggleEl.setAttribute('data-active', 'amount');
+                        if (otherAmWrap) otherAmWrap.style.display = '';
+                        if (otherRtWrap) otherRtWrap.style.display = 'none';
+                        if (otherAmount) otherAmount.value = (entry.amount != null && isFinite(entry.amount)) ? entry.amount : '0';
+                    }
+                }
+            });
+            settlementUpdateNormalPreview(true);
+        }
         var normalAmountEl = document.getElementById('settlementNormalAmount');
         if (normalAmountEl) {
             normalAmountEl.addEventListener('input', settlementUpdatePreview);
@@ -11989,6 +12087,20 @@ function smartParseOrderRemark() {
                 }
             }
         }
+        // 格式4b：备注里写简称（如“吧唧”）能匹配到设置里包含该词的制品名（如“普通吧唧”），优先长词匹配
+        if (!matchedSetting && productSettings.length) {
+            var hanParts = ln.match(/[\u4e00-\u9fff]{2,}/g) || [];
+            var tokens = ln.split(/\s+/).filter(function(t) { return t.length >= 2 && !/^\d+$/.test(t); });
+            var candidates = [];
+            hanParts.forEach(function(p) { if (candidates.indexOf(p) === -1) candidates.push(p); });
+            tokens.forEach(function(t) { if (candidates.indexOf(t) === -1) candidates.push(t); });
+            candidates.sort(function(a, b) { return b.length - a.length; });
+            for (var ci = 0; ci < candidates.length; ci++) {
+                var cand = candidates[ci];
+                var found = productSettings.find(function(s) { return s.name.indexOf(cand) !== -1; });
+                if (found) { matchedSetting = found; typeName = cand; break; }
+            }
+        }
         if (typeName && !matchedSetting) {
             matchedSetting = productSettings.find(function(s) {
                 return s.name === typeName || s.name.includes(typeName) || typeName.includes(s.name);
@@ -12035,8 +12147,10 @@ function smartParseOrderRemark() {
         }
     }
     
-    // 重新计算
-    calculate();
+    // 重新计算并刷新报价显示（不关闭抽屉、不打开小票）
+    if (typeof calculatePrice === 'function') {
+        calculatePrice(undefined, undefined, undefined, true);
+    }
     
     // 智能提取后提示：制品/赠品分别统计
     if (parsedProductCount > 0 || parsedGiftCount > 0) {
@@ -12070,9 +12184,9 @@ function copyOrderRemark() {
 
 // 保存设置
 function saveSettings() {
-    // 无需手动保存，因为每个输入框的onchange事件已经更新了defaultSettings
     saveData();
-    alert('设置已保存！');
+    if (typeof showGlobalToast === 'function') showGlobalToast('已保存');
+    else alert('设置已保存！');
 }
 
 // 管理递增配置项
@@ -14271,15 +14385,11 @@ function removeGift(giftId) {
 
 // 恢复默认设置
 function resetToDefaultSettings() {
-    if (confirm('确定要恢复默认设置吗？此操作将清除所有自定义设置！')) {
-        // 恢复默认设置
-        localStorage.removeItem('calculatorSettings');
-        localStorage.removeItem('productSettings');
-        localStorage.removeItem('processSettings');
-        
-        // 重新初始化应用
-        location.reload(); // 刷新页面以应用默认设置
-    }
+    if (!confirm('将恢复为初始模板，当前制品、系数、结算等配置会被覆盖，是否继续？')) return;
+    localStorage.removeItem('calculatorSettings');
+    localStorage.removeItem('productSettings');
+    localStorage.removeItem('processSettings');
+    location.reload();
 }
 
 // 排单日历功能
