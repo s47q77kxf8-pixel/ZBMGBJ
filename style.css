@@ -1422,6 +1422,56 @@ body {
     color: var(--text-light, #6b7280);
 }
 
+/* 备注·智能提取：图标+文字同一框，一个完整按钮 */
+.btn-remark-full {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+    border-radius: var(--radius-md);
+    background: var(--card-bg, #fff);
+    padding: 0 0.5rem 0 0.4rem;
+    min-height: 44px;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+.btn-remark-full:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+.btn-remark-full:active {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+.btn-remark-full .remark-btn-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    line-height: 1.2;
+}
+.btn-remark-full .remark-label-line1 {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-color);
+}
+.btn-remark-full .remark-label-line2 {
+    font-size: 0.6rem;
+    font-weight: 400;
+    color: var(--text-light, #6b7280);
+}
+.input-row-with-icon .btn-remark-full {
+    height: auto;
+    align-self: stretch;
+}
+html.theme-dark .btn-remark-full:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+html.theme-dark .btn-remark-full:active {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
 .input-row-with-icon {
     display: flex;
     align-items: stretch;

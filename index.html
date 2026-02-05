@@ -538,12 +538,15 @@
                         <div class="form-group">
                             <div class="label-row-with-remark">
                                 <label for="clientId">单主ID</label>
-                                <span class="label-remark-text">备注<span class="remark-smart-hint">（智能提取）</span></span>
                             </div>
                             <div class="input-row-with-icon client-id-input-wrap">
                                 <input type="text" id="clientId" placeholder="请输入单主ID" title="输入单主ID或关键字，匹配到历史单主后点击一项填充" oninput="debouncedShowClientIdMatches()" onblur="scheduleHideClientIdMatchList()">
-                                <button class="btn-icon-only btn-remark-icon" onclick="openOrderRemarkModal()" type="button" title="添加备注；点开后粘贴单主备注可智能提取制品与赠品">
+                                <button class="btn-remark-full" onclick="openOrderRemarkModal()" type="button" title="添加备注；点开后粘贴单主备注可智能提取制品与赠品">
                                     <svg class="icon sm" aria-hidden="true"><use href="#i-note"></use></svg>
+                                    <span class="remark-btn-label">
+                                        <span class="remark-label-line1">备注</span>
+                                        <span class="remark-label-line2">智能提取</span>
+                                    </span>
                                 </button>
                                 <div id="clientIdMatchWrap" class="client-id-match-dropdown d-none">
                                     <ul id="clientIdMatchList"></ul>
