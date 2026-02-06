@@ -256,40 +256,41 @@ function getSearchableSelectValue(containerId) {
 
 
 
-// 默认设置
+// 默认设置（开放使用模板：用途拆分为自用/无盈利、同人商用，买断*3、企业*5，其余默认值偏保守）
 const defaultSettings = {
     // 基础详细信息
     artistInfo: {
         id: '',           // 美工ID
         contact: '',      // 联系方式
-        defaultDuration: 10               // 默认工期（天）
+        defaultDuration: 7                // 默认工期（天）
     },
     orderRemark: '',      // 订单备注（设置页增加备注弹窗内容）
-    // 用途系数（存储格式：{value: 数值, name: 显示名称}）
+    // 用途系数：自用/无盈利 1，同人商用 2，买断 3，企业/书店 5
     usageCoefficients: {
-        personal: { value: 1, name: '自用/无盈利/同人商用' },
-        buyout: { value: 2, name: '买断（可要求不公开）' },
-        enterprise: { value: 3, name: '企业/书店/出版社等' }
+        personal: { value: 1, name: '自用/无盈利' },
+        doujin: { value: 2, name: '同人商用' },
+        buyout: { value: 3, name: '买断（可要求不公开）' },
+        enterprise: { value: 5, name: '企业/书店/出版社等' }
     },
-    // 加急系数
+    // 加急系数（默认偏保守）
     urgentCoefficients: {
         normal: { value: 1, name: '无' },
-        oneWeek: { value: 1.5, name: '一周加急' },
-        seventyTwoHours: { value: 2, name: '72H加急' },
-        fortyEightHours: { value: 2.5, name: '48H加急' },
-        twentyFourHours: { value: 3, name: '24H加急' }
+        oneWeek: { value: 1.2, name: '一周加急' },
+        seventyTwoHours: { value: 1.5, name: '72H加急' },
+        fortyEightHours: { value: 1.8, name: '48H加急' },
+        twentyFourHours: { value: 2, name: '24H加急' }
     },
     // 同模系数
     sameModelCoefficients: {
-        basic: { value: 0.5, name: '改字、色、柄图' },
-        advanced: { value: 0.8, name: '改字、色、柄图、元素' }
+        basic: { value: 0.4, name: '改字、色、柄图' },
+        advanced: { value: 0.6, name: '改字、色、柄图、元素' }
     },
     // 折扣系数
     discountCoefficients: {
         none: { value: 1, name: '无' },
-        sample: { value: 0.9, name: '上次合作寄样' }
+        sample: { value: 0.95, name: '上次合作寄样' }
     },
-    // 平台手续费
+    // 平台手续费（%，约稿平台比例固定）
     platformFees: {
         none: { value: 0, name: '无' },
         mihua: { value: 5, name: '米画师' },
@@ -303,41 +304,40 @@ const defaultSettings = {
     settlementRules: {
         cancelFee: {
             defaultRule: 'percent',
-            defaultRate: 0.1,
-            defaultFixedAmount: 50,
+            defaultRate: 0.05,      // 默认 5%
+            defaultFixedAmount: 30,
             minAmount: 0,
             maxAmount: null
         },
         wasteFee: {
-            mode: 'percent_total',  // 废稿费模式（设置页选定后废稿页只显示此模式）
-            defaultRate: 30,        // 默认比例（%，0~100）
-            defaultFixedPerItem: 20, // 默认按件金额（元）
-            minAmount: null,        // 保底金额（元，null 表示无保底）
-            maxAmount: null,        // 封顶金额（元，null 表示不封顶）
+            mode: 'percent_total',
+            defaultRate: 20,       // 默认 20%
+            defaultFixedPerItem: 10,
+            minAmount: null,
+            maxAmount: null,
             defaultPartialProducts: false,
             defaultExcludeNoProcess: false
         },
-        // 优惠原因（结单时可选，每项可设默认金额和/或默认折扣）
         discountReasons: [
-            { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.95, preferType: 'rate' },
-            { id: 2, name: '老客优惠', defaultAmount: 10, defaultRate: null, preferType: 'amount' }
+            { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.97, preferType: 'rate' },
+            { id: 2, name: '老客优惠', defaultAmount: 5, defaultRate: null, preferType: 'amount' }
         ]
     },
-    // 定金比例（0~1，如 0.5 = 50%）
-    depositRate: 0.3,
-    // 可扩展的加价类系数（用途、加急为内置；此处为后期添加的，如 VIP系数）
+    // 定金比例（0~1）
+    depositRate: 0.2,
+    // 可扩展的加价类系数
     extraPricingUp: [
         {
             id: 1,
             name: "不公开展示系数",
             options: {
                 none: { value: 1, name: '无' },
-                private: { value: 1.5, name: '不公开展示' }
+                private: { value: 1.2, name: '不公开展示' }
             }
         }
     ],
-    // 背景费设置
-    backgroundFee: 10,
+    // 背景费（元）
+    backgroundFee: 5,
     // 可扩展的折扣类系数（折扣为内置；此处为后期添加的）
     extraPricingDown: [],
     // 小票自定义设置
@@ -544,18 +544,18 @@ function init() {
     // 确保结算规则与定金存在（旧数据兼容）
     if (!defaultSettings.settlementRules) {
         defaultSettings.settlementRules = {
-            cancelFee: { defaultRule: 'percent', defaultRate: 0.1, defaultFixedAmount: 50, minAmount: 0, maxAmount: null },
-            wasteFee: { mode: 'percent_total', defaultRate: 30, defaultFixedPerItem: 20, defaultFixedAmount: 50, minAmount: null, maxAmount: null, defaultPartialProducts: false, defaultExcludeNoProcess: false },
+            cancelFee: { defaultRule: 'percent', defaultRate: 0.05, defaultFixedAmount: 30, minAmount: 0, maxAmount: null },
+            wasteFee: { mode: 'percent_total', defaultRate: 20, defaultFixedPerItem: 10, defaultFixedAmount: 30, minAmount: null, maxAmount: null, defaultPartialProducts: false, defaultExcludeNoProcess: false },
             discountReasons: [
-                { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.95, preferType: 'rate' },
-                { id: 2, name: '老客优惠', defaultAmount: 10, defaultRate: null, preferType: 'amount' }
+                { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.97, preferType: 'rate' },
+                { id: 2, name: '老客优惠', defaultAmount: 5, defaultRate: null, preferType: 'amount' }
             ]
         };
     }
     if (!defaultSettings.settlementRules.discountReasons || !Array.isArray(defaultSettings.settlementRules.discountReasons)) {
         defaultSettings.settlementRules.discountReasons = [
-            { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.95, preferType: 'rate' },
-            { id: 2, name: '老客优惠', defaultAmount: 10, defaultRate: null, preferType: 'amount' }
+            { id: 1, name: '延期补偿', defaultAmount: 0, defaultRate: 0.97, preferType: 'rate' },
+            { id: 2, name: '老客优惠', defaultAmount: 5, defaultRate: null, preferType: 'amount' }
         ];
     }
     // 旧数据迁移：wasteFee.defaultRule → mode，defaultRate 从 0~1 → 0~100
@@ -571,7 +571,7 @@ function init() {
         if (wf.minAmount === 0) wf.minAmount = null;
     }
     if (defaultSettings.depositRate == null || defaultSettings.depositRate === undefined) {
-        defaultSettings.depositRate = 0.3;
+        defaultSettings.depositRate = 0.2;
     }
     
     // 应用当前主题样式（如果是自定义主题）
@@ -842,31 +842,31 @@ function exportSettings() {
     }
 }
 
-// 添加默认制品设置
+// 添加默认制品设置（统一：固定价50，单面50双面80，基础50递增30）
 function addDefaultProductSettings() {
     if (productSettings.length === 0) {
         productSettings = [
-            { id: 1, name: '普通吧唧', category: '吧唧类', priceType: 'fixed', price: 70 },
-            { id: 2, name: '异形吧唧', category: '吧唧类', priceType: 'fixed', price: 80 },
-            { id: 3, name: '背卡', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 70 },
-            { id: 4, name: '卡头', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 70 },
-            { id: 5, name: '方卡', category: '纸片类', priceType: 'double', priceSingle: 70, priceDouble: 110 },
-            { id: 6, name: '小卡', category: '纸片类', priceType: 'double', priceSingle: 70, priceDouble: 110 },
-            { id: 7, name: '透卡', category: '纸片类', priceType: 'double', priceSingle: 70, priceDouble: 110 },
-            { id: 8, name: '邮票', category: '纸片类', priceType: 'double', priceSingle: 70, priceDouble: 110 },
-            { id: 9, name: '色纸', category: '纸片类', priceType: 'double', priceSingle: 70, priceDouble: 110 },
-            { id: 10, name: '拍立得', category: '纸片类', priceType: 'double', priceSingle: 80, priceDouble: 120 },
-            { id: 11, name: '明信片', category: '纸片类', priceType: 'double', priceSingle: 80, priceDouble: 120 },
-            { id: 12, name: '票根', category: '纸片类', priceType: 'double', priceSingle: 80, priceDouble: 120 },
-            { id: 13, name: '纸夹相卡', category: '纸片类', priceType: 'double', priceSingle: 80, priceDouble: 120 },
-            { id: 14, name: '立牌', category: '亚克力类', priceType: 'config', basePrice: 110, baseConfig: '立牌+底座', additionalConfigs: [
-                { name: '底座', price: 20, unit: '个' },
-                { name: '插件', price: 40, unit: '个' }
+            { id: 1, name: '普通吧唧', category: '吧唧类', priceType: 'fixed', price: 50 },
+            { id: 2, name: '异形吧唧', category: '吧唧类', priceType: 'fixed', price: 50 },
+            { id: 3, name: '背卡', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 4, name: '卡头', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 5, name: '方卡', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 6, name: '小卡', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 7, name: '透卡', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 8, name: '邮票', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 9, name: '色纸', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 10, name: '拍立得', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 11, name: '明信片', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 12, name: '票根', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 13, name: '纸夹相卡', category: '纸片类', priceType: 'double', priceSingle: 50, priceDouble: 80 },
+            { id: 14, name: '立牌', category: '亚克力类', priceType: 'config', basePrice: 50, baseConfig: '立牌+底座', additionalConfigs: [
+                { name: '底座', price: 30, unit: '个' },
+                { name: '插件', price: 30, unit: '个' }
             ]},
-            { id: 15, name: '麻将', category: '亚克力类', priceType: 'config', basePrice: 110, baseConfig: '1面', additionalConfigs: [
+            { id: 15, name: '麻将', category: '亚克力类', priceType: 'config', basePrice: 50, baseConfig: '1面', additionalConfigs: [
                 { name: '面', price: 30, unit: '面' }
             ]},
-            { id: 16, name: '头像', category: '绘制类', priceType: 'nodes', price: 300, nodes: [
+            { id: 16, name: '头像', category: '绘制类', priceType: 'nodes', price: 140, nodes: [
                 { name: '草稿', percent: 30 },
                 { name: '色稿', percent: 40 },
                 { name: '成图', percent: 30 }
@@ -8384,8 +8384,8 @@ function settlementFillCancelFeeDefaults() {
     var rateEl = document.getElementById('settlementCancelFeeRate');
     var fixedEl = document.getElementById('settlementCancelFeeFixed');
     if (ruleEl) ruleEl.value = rules.defaultRule || 'percent';
-    if (rateEl) rateEl.value = (rules.defaultRate != null ? rules.defaultRate * 100 : 10);
-    if (fixedEl) fixedEl.value = rules.defaultFixedAmount != null ? rules.defaultFixedAmount : 50;
+    if (rateEl) rateEl.value = (rules.defaultRate != null ? rules.defaultRate * 100 : 5);
+    if (fixedEl) fixedEl.value = rules.defaultFixedAmount != null ? rules.defaultFixedAmount : 30;
     settlementToggleCancelFeeFields();
 }
 
