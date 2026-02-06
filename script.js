@@ -7563,13 +7563,30 @@ var SCHEDULE_BAR_COLORS_DARK = [
 var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#93c5fd', '#fbcfe8', '#86efac', '#c4b5fd', '#fde047', '#fcd34d', '#fd8a5c', '#99f6e4', '#d6d3d1', '#e5e5e5', '#fca5a5'];
 var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#60a5fa', '#f9a8d4', '#4ade80', '#c084fc', '#facc15', '#f59e0b', '#f97316', '#5eead4', '#a8a29e', '#d4d4d4', '#f87171'];
 
-// 根据屏幕宽度返回日历彩条最大轨道数
+// 根据屏幕宽度和日历单元格高度动态计算彩条最大轨道数（尽量多显示）
 function getScheduleMaxTracks() {
     var w = typeof window !== 'undefined' ? window.innerWidth : 768;
-    if (w >= 1024) return 5;
-    if (w >= 768) return 4;
-    if (w >= 480) return 3;
-    return 2;
+    
+    // 尝试获取实际日历单元格高度来计算
+    var container = document.getElementById('scheduleCalendar');
+    if (container) {
+        var cell = container.querySelector('.schedule-calendar-cell');
+        if (cell) {
+            var cellHeight = cell.offsetHeight || (w >= 768 ? 72 : 60);
+            var barTop = w >= 768 ? 22 : 18; // CSS中彩条起始位置
+            var barHeight = w >= 768 ? 12.5 : 11; // 彩条高度 + margin
+            var availableHeight = cellHeight - barTop;
+            var maxTracks = Math.floor(availableHeight / barHeight);
+            // 至少3条，最多不超过12条（色板数量）
+            return Math.max(3, Math.min(maxTracks, 12));
+        }
+    }
+    
+    // 回退：根据屏幕宽度返回固定值（已提高上限）
+    if (w >= 1024) return 8;
+    if (w >= 768) return 6;
+    if (w >= 480) return 5;
+    return 4; // 最小显示4条（之前是3条）
 }
 
 // 按星期视图：同周内条带轨道分配，maxTracks 随屏幕宽度动态调整
@@ -7723,6 +7740,55 @@ function renderScheduleCalendar() {
             }
         });
     });
+
+    // 触摸滑动切换月份：左右滑动切换上下月
+    (function() {
+        let touchStartX = null;
+        let touchStartY = null;
+        const minSwipeDistance = 50; // 最小滑动距离（像素）
+        const maxVerticalDistance = 100; // 最大垂直偏移（避免与页面滚动冲突）
+
+        container.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 1) {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+
+        container.addEventListener('touchmove', function(e) {
+            // 允许默认滚动行为
+        }, { passive: true });
+
+        container.addEventListener('touchend', function(e) {
+            if (touchStartX === null || touchStartY === null || e.changedTouches.length !== 1) {
+                touchStartX = null;
+                touchStartY = null;
+                return;
+            }
+
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            const absDeltaX = Math.abs(deltaX);
+            const absDeltaY = Math.abs(deltaY);
+
+            // 确保是水平滑动（水平距离 > 垂直距离，且垂直偏移不超过阈值）
+            if (absDeltaX > minSwipeDistance && absDeltaX > absDeltaY && absDeltaY < maxVerticalDistance) {
+                if (deltaX > 0) {
+                    // 向右滑动 → 上一月
+                    scheduleCalendarPrevMonth();
+                } else {
+                    // 向左滑动 → 下一月
+                    scheduleCalendarNextMonth();
+                }
+                e.preventDefault();
+            }
+
+            touchStartX = null;
+            touchStartY = null;
+        }, { passive: false });
+    })();
 }
 
 // 月份/日期切换防抖：快速连续操作只触发一次重绘
