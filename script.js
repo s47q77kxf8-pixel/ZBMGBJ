@@ -7566,27 +7566,32 @@ var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#60a5fa', '#f9a8d4', '#4ade80', 
 // 根据屏幕宽度和日历单元格高度动态计算彩条最大轨道数（尽量多显示）
 function getScheduleMaxTracks() {
     var w = typeof window !== 'undefined' ? window.innerWidth : 768;
+    var isMobile = w < 768;
     
-    // 尝试获取实际日历单元格高度来计算
+    // 根据屏幕尺寸确定单元格和彩条参数
+    var cellHeight = isMobile ? 60 : 72;
+    var barTop = isMobile ? 18 : 22;
+    // 彩条高度：桌面端 12px + margin-bottom 0.2px ≈ 12.2px，移动端 10px + margin-bottom 0.5px ≈ 10.5px
+    // 优化：减小间距以显示更多条
+    var barHeight = isMobile ? 10.5 : 12.2;
+    
+    // 尝试获取实际日历单元格高度（如果日历已渲染）
     var container = document.getElementById('scheduleCalendar');
     if (container) {
         var cell = container.querySelector('.schedule-calendar-cell');
-        if (cell) {
-            var cellHeight = cell.offsetHeight || (w >= 768 ? 72 : 60);
-            var barTop = w >= 768 ? 22 : 18; // CSS中彩条起始位置
-            var barHeight = w >= 768 ? 12.5 : 11; // 彩条高度 + margin
-            var availableHeight = cellHeight - barTop;
-            var maxTracks = Math.floor(availableHeight / barHeight);
-            // 至少3条，最多不超过12条（色板数量）
-            return Math.max(3, Math.min(maxTracks, 12));
+        if (cell && cell.offsetHeight > 0) {
+            cellHeight = cell.offsetHeight;
         }
     }
     
-    // 回退：根据屏幕宽度返回固定值（已提高上限）
-    if (w >= 1024) return 8;
-    if (w >= 768) return 6;
-    if (w >= 480) return 5;
-    return 4; // 最小显示4条（之前是3条）
+    // 计算可用高度（单元格高度 - 彩条起始位置 - 底部留白）
+    var bottomPadding = 0.5; // 底部留一点空间，避免贴边
+    var availableHeight = cellHeight - barTop - bottomPadding;
+    var maxTracks = Math.floor(availableHeight / barHeight);
+    
+    // 至少3条，最多不超过12条（色板数量），完全根据可用空间计算，不设屏幕宽度上限
+    var minTracks = 3;
+    return Math.max(minTracks, Math.min(maxTracks, 12));
 }
 
 // 按星期视图：同周内条带轨道分配，maxTracks 随屏幕宽度动态调整

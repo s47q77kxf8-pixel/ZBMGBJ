@@ -6301,7 +6301,7 @@ input:checked + .toggle-slider:before {
     height: 12px;
     letter-spacing: 0.01em;
     pointer-events: auto;
-    margin-bottom: 0.5px;
+    margin-bottom: 0.2px; /* 减小间距以显示更多彩条 */
 }
 .schedule-bar-strip:hover {
     filter: brightness(0.92);
@@ -8557,7 +8557,7 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
         line-height: 10px;
         height: 10px;
         border-radius: 6px;
-        margin-bottom: 1px;
+        margin-bottom: 0.5px; /* 减小间距以显示更多彩条 */
     }
     .schedule-bar-chip {
         font-size: 0.6rem;
