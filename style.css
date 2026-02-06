@@ -3899,6 +3899,13 @@ input:checked + .toggle-slider:before {
     justify-content: flex-end;
     align-items: center;
 }
+
+/* 小票总览行：数量、小计加粗 */
+.receipt-details .receipt-row:not(.receipt-header) > .receipt-col-1:nth-child(3),
+.receipt-details .receipt-row:not(.receipt-header) > .receipt-col-1:nth-child(4) {
+    font-weight: bold;
+}
+
 .receipt-sub-row {
     display: flex;
     color: var(--receipt-text, #333);
