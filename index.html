@@ -535,6 +535,17 @@
                 <div class="section">
                     <h2>单主信息</h2>
                     <div class="form-row">
+                        <div class="form-group schedule-color-picker-group">
+                            <button type="button" id="scheduleColorPickerBtn" class="schedule-color-picker-trigger" onclick="openScheduleColorPicker(event)" title="彩条配色">
+                                <span class="schedule-color-preview-dot" id="scheduleColorPreviewDot"></span>
+                            </button>
+                            <div id="scheduleColorPickerPopover" class="schedule-color-popover d-none">
+                                <div class="schedule-color-popover-overlay" onclick="closeScheduleColorPicker()"></div>
+                                <div class="schedule-color-popover-panel">
+                                    <div class="schedule-color-popover-grid" id="scheduleColorPopoverGrid"></div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="form-group flex-1">
                             <div class="input-row-with-icon client-id-input-wrap">
                                 <input type="text" id="clientId" placeholder="单主ID (可匹配历史)" title="输入单主ID或关键字，匹配到历史单主后点击一项填充" oninput="debouncedShowClientIdMatches()" onblur="scheduleHideClientIdMatchList()">
@@ -550,40 +561,22 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="order-platform-contact-row flex-1">
-                            <div class="form-group">
-                                <label for="orderPlatform">接单平台</label>
-                                <div id="orderPlatformWrap" class="order-platform-input-wrap">
-                                    <input type="text" id="orderPlatform" list="orderPlatformList" placeholder="可直接输入或选QQ/微信/小红书等" title="可直接输入或选择候选；与设置中平台名称一致时自动匹配手续费；框内清空键" oninput="syncOrderPlatformToPlatform(); toggleOrderPlatformClear();" onchange="toggleOrderPlatformClear();">
-                                    <button type="button" class="order-platform-clear" onclick="clearOrderPlatformInput()" aria-label="一键清空" title="一键清空">
-                                        <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
-                                        <span class="sr-only">清空</span>
-                                    </button>
-                                </div>
-                                <datalist id="orderPlatformList"><option value="QQ"><option value="微信"><option value="小红书"></datalist>
-                            </div>
-                            <div class="form-group">
-                                <label for="contactInfo">联系方式</label>
-                                <input type="text" id="contactInfo" placeholder="QQ号/微信号/手机号等" title="单主联系方式，如QQ号、微信号、手机号">
-                            </div>
-                        </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group flex-1">
-                            <label>彩条配色</label>
-                            <button type="button" id="scheduleColorPickerBtn" class="schedule-color-picker-trigger" onclick="openScheduleColorPicker(event)">
-                                <span class="schedule-color-preview-bar" id="scheduleColorPreviewBar"></span>
-                            </button>
-                            <div id="scheduleColorPickerPopover" class="schedule-color-popover d-none">
-                                <div class="schedule-color-popover-overlay" onclick="closeScheduleColorPicker()"></div>
-                                <div class="schedule-color-popover-panel">
-                                    <div class="schedule-color-popover-grid" id="scheduleColorPopoverGrid"></div>
-                                </div>
+                            <label for="orderPlatform">接单平台</label>
+                            <div id="orderPlatformWrap" class="order-platform-input-wrap">
+                                <input type="text" id="orderPlatform" list="orderPlatformList" placeholder="可直接输入或选QQ/微信/小红书等" title="可直接输入或选择候选；与设置中平台名称一致时自动匹配手续费；框内清空键" oninput="syncOrderPlatformToPlatform(); toggleOrderPlatformClear();" onchange="toggleOrderPlatformClear();">
+                                <button type="button" class="order-platform-clear" onclick="clearOrderPlatformInput()" aria-label="一键清空" title="一键清空">
+                                    <svg class="icon sm" aria-hidden="true"><use href="#i-close"></use></svg>
+                                    <span class="sr-only">清空</span>
+                                </button>
                             </div>
+                            <datalist id="orderPlatformList"><option value="QQ"><option value="微信"><option value="小红书"></datalist>
                         </div>
                         <div class="form-group flex-1">
-                            <label for="orderTimeInput">下单时间</label>
-                            <input type="date" id="orderTimeInput" class="order-time-input" aria-label="下单时间" placeholder="yyyy-mm-dd">
+                            <label for="contactInfo">联系方式</label>
+                            <input type="text" id="contactInfo" placeholder="QQ号/微信号/手机号等" title="单主联系方式，如QQ号、微信号、手机号">
                         </div>
                     </div>
                     <div class="form-row">
@@ -594,6 +587,10 @@
                         <div class="form-group">
                             <label for="deadline">截稿时间</label>
                             <input type="date" id="deadline" placeholder="yyyy/mm/dd">
+                        </div>
+                        <div class="form-group">
+                            <label for="orderTimeInput">下单时间</label>
+                            <input type="date" id="orderTimeInput" class="order-time-input" aria-label="下单时间" placeholder="yyyy-mm-dd">
                         </div>
                     </div>
                 </div>

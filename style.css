@@ -242,29 +242,73 @@ html.theme-dark .theme-dot-item {
     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
-/* 彩条配色选择：横向彩条预览 + 名称 + 弹出色板 */
+/* 彩条配色选择：圆形颜色预览 + 弹出色板 */
+.schedule-color-picker-group {
+    flex: 0 0 auto !important;
+    min-width: 44px;
+    max-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.5rem;
+}
+
+/* 确保单主ID输入框占满剩余空间 */
+#calculator .section:first-of-type .form-row:first-of-type .form-group {
+    flex: 1 !important;
+}
+
+/* 确保颜色选择和单主ID在同一行 */
+#calculator .section:first-of-type .form-row:first-of-type {
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 0.75rem !important;
+}
+
+#calculator .section:first-of-type .form-row:first-of-type .schedule-color-picker-group {
+    flex: 0 0 auto !important;
+    margin-right: 0 !important;
+}
+
+#calculator .section:first-of-type .form-row:first-of-type .form-group {
+    flex: 1 !important;
+    min-width: 0 !important;
+}
 .schedule-color-picker-trigger {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     padding: 0;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
     background: var(--bg-color);
     cursor: pointer;
-    width: 100%;
-    max-width: 180px;
-    height: 38px; /* 与输入框高度一致 */
+    width: 32px;
+    height: 32px;
     overflow: hidden;
-    transition: transform 0.2s;
+    transition: transform 0.2s, border-color 0.2s;
+    box-shadow: none !important;
 }
-.schedule-color-picker-trigger:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-}
-.schedule-color-preview-bar {
+
+.schedule-color-preview-dot {
     width: 100%;
     height: 100%;
-    flex-shrink: 0;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+    box-shadow: none !important;
+}
+.schedule-color-picker-trigger:hover {
+    transform: scale(1.1);
+    border-color: var(--primary-color);
+    box-shadow: none;
+}
+.schedule-color-preview-dot {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+    box-shadow: none;
 }
 
 /* 弹出色板面板 */
@@ -296,21 +340,22 @@ html.theme-dark .theme-dot-item {
     gap: 10px;
 }
 .theme-dot-item {
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     cursor: pointer;
-    border: 2px solid transparent;
-    transition: transform 0.15s ease, border-color 0.15s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border: 3px solid transparent;
+    transition: all 0.2s ease;
+    box-shadow: none;
 }
 .theme-dot-item:hover {
-    transform: scale(1.2);
+    transform: scale(1.1);
+    border-color: rgba(0,0,0,0.1);
 }
 .theme-dot-item.active {
     border-color: var(--primary-color);
-    transform: scale(1.1);
-    box-shadow: 0 0 0 2px var(--bg-color), 0 0 0 4px var(--primary-color);
+    transform: scale(1.15);
+    box-shadow: none;
 }
 
 /* todo 列表：黑夜模式下卡片与筛选栏 */
@@ -1172,10 +1217,14 @@ body {
     .calculator-content .section {
         padding: 1rem 1.125rem;
     }
-    /* 单主ID、联系方式各占一整行，更符合 App 表单单列 */
+    /* 确保颜色选择和单主ID在同一行 */
     #calculator .section:first-of-type .form-row:first-of-type {
-        flex-direction: column !important;
+        flex-direction: row !important;
+        align-items: center !important;
         gap: 0.75rem !important;
+    }
+    #calculator .section:first-of-type .form-row:first-of-type .schedule-color-picker-group {
+        flex: 0 0 auto !important;
     }
     #calculator .section:first-of-type .form-row:first-of-type .form-group {
         flex: 1 1 100% !important;
@@ -1636,6 +1685,15 @@ html.theme-dark .btn-remark-full:active {
 /* 单主ID 智能填充下拉 */
 .client-id-input-wrap {
     position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.client-id-input-wrap input {
+    flex: 1;
+    min-width: 0;
 }
 .client-id-match-dropdown {
     position: absolute;
@@ -2384,7 +2442,15 @@ input:focus, select:focus {
         flex-wrap: wrap;
     }
     
-    #calculator .section:first-of-type .form-row .form-group,
+    /* 确保第一个form-row中的颜色选择按钮不占50%宽度 */
+    #calculator .section:first-of-type .form-row:first-of-type .schedule-color-picker-group {
+        flex: 0 0 auto !important;
+        min-width: 50px;
+        margin-right: 0.75rem;
+    }
+    
+    /* 其他form-group保持50%宽度 */
+    #calculator .section:first-of-type .form-row .form-group:not(.schedule-color-picker-group),
     #calculator .section:first-of-type .form-row:first-of-type .order-platform-contact-row {
         flex: 1 1 calc(50% - 0.25rem) !important;
         min-width: 0;
@@ -2465,18 +2531,28 @@ input:focus, select:focus {
 
 /* 超小屏下单主信息：单主ID 单独一行，接单平台+联系方式 同一行并排 */
 @media (max-width: 480px) {
+    /* 确保颜色选择和单主ID在同一行 */
     #calculator .section:first-of-type .form-row:first-of-type {
-        flex-direction: column !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.75rem !important;
     }
     
+    /* 颜色选择按钮只占自己的宽度 */
+    #calculator .section:first-of-type .form-row:first-of-type .schedule-color-picker-group {
+        flex: 0 0 auto !important;
+        min-width: 50px;
+        margin-right: 0.5rem;
+    }
+    
+    /* 单主ID输入框占满剩余空间 */
     #calculator .section:first-of-type .form-row:first-of-type .form-group {
         flex: 1 1 100% !important;
-        width: 100%;
+        min-width: 0;
     }
     
     #calculator .section:first-of-type .form-row:first-of-type .order-platform-contact-row {
         flex: 1 1 100% !important;
-        width: 100% !important;
         min-width: 0;
     }
     #calculator .order-platform-contact-row .form-group input {

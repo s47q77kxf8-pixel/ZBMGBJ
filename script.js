@@ -7596,10 +7596,9 @@ function initScheduleColorPreview() {
 function updateScheduleColorPreviewUI(idx) {
     var isDark = document.documentElement.classList.contains('theme-dark');
     var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
-    var barEl = document.getElementById('scheduleColorPreviewBar');
-    var labelEl = document.getElementById('scheduleColorPreviewLabel');
-    if (barEl) barEl.style.backgroundColor = colors[idx];
-    if (labelEl) labelEl.textContent = SCHEDULE_COLOR_NAMES[idx] || ('第 ' + (idx + 1) + ' 色');
+    var dotColors = SCHEDULE_BAR_DOT_COLORS;
+    var dotEl = document.getElementById('scheduleColorPreviewDot');
+    if (dotEl) dotEl.style.backgroundColor = dotColors[idx] || colors[idx];
 }
 
 // 打开/关闭彩条色板
@@ -7615,16 +7614,16 @@ function openScheduleColorPicker(event) {
     }
 
     var isDark = document.documentElement.classList.contains('theme-dark');
-    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    var dotColors = SCHEDULE_BAR_DOT_COLORS;
     
     var currentIdx = typeof window.currentScheduleColorIndex === 'number'
         ? window.currentScheduleColorIndex
         : 0;
 
     var html = '';
-    for (var i = 0; i < colors.length; i++) {
+    for (var i = 0; i < dotColors.length; i++) {
         var active = i === currentIdx ? ' active' : '';
-        html += '<div class="theme-dot-item' + active + '" data-color-idx="' + i + '" title="' + SCHEDULE_COLOR_NAMES[i] + '" style="background-color:' + colors[i] + '"></div>';
+        html += '<div class="theme-dot-item' + active + '" data-color-idx="' + i + '" title="' + SCHEDULE_COLOR_NAMES[i] + '" style="background-color:' + dotColors[i] + '"></div>';
     }
     grid.innerHTML = html;
 
@@ -7711,10 +7710,8 @@ function initScheduleColorPreview() {
 function updateScheduleColorPreviewUI(idx) {
     var isDark = document.documentElement.classList.contains('theme-dark');
     var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
-    var barEl = document.getElementById('scheduleColorPreviewBar');
-    var labelEl = document.getElementById('scheduleColorPreviewLabel');
-    if (barEl) barEl.style.backgroundColor = colors[idx];
-    if (labelEl) labelEl.textContent = SCHEDULE_COLOR_NAMES[idx] || ('第 ' + (idx + 1) + ' 色');
+    var dotEl = document.getElementById('scheduleColorPreviewDot');
+    if (dotEl) dotEl.style.backgroundColor = colors[idx];
 }
 
 // 打开/关闭彩条色板
