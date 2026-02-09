@@ -170,7 +170,148 @@ html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend 
     color: #fff !important;
 }
 
-/* 彩条：黑夜模式使用 JS 中 SCHEDULE_BAR_COLORS_DARK 色板，无需 filter */
+/* 彩条配色选择：当前色 + 名称 + 弹出色板 */
+.schedule-color-picker-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.schedule-color-preview-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+html.theme-dark .schedule-color-preview-dot {
+    border-color: rgba(255,255,255,0.2);
+}
+.schedule-color-preview-label {
+    color: var(--text-light);
+}
+
+/* 弹出色板 */
+.schedule-color-popover {
+    position: relative;
+}
+.schedule-color-popover-overlay {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 40;
+}
+.schedule-color-popover-panel {
+    position: absolute;
+    z-index: 41;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--bg-color);
+    box-shadow: 0 10px 25px rgba(15,23,42,0.12);
+}
+.schedule-color-popover-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 22px);
+    gap: 8px;
+}
+.theme-dot-item {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+.theme-dot-item:hover {
+    transform: scale(1.15);
+}
+.theme-dot-item.active {
+    border-color: var(--primary-color);
+    transform: scale(1.08);
+    box-shadow: 0 0 0 2px var(--bg-color), 0 0 0 4px var(--primary-color);
+}
+html.theme-dark .theme-dot-item {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* 彩条配色选择：横向彩条预览 + 名称 + 弹出色板 */
+.schedule-color-picker-trigger {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    cursor: pointer;
+    width: 100%;
+    max-width: 180px;
+    height: 38px; /* 与输入框高度一致 */
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+.schedule-color-picker-trigger:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.schedule-color-preview-bar {
+    width: 100%;
+    height: 100%;
+    flex-shrink: 0;
+}
+
+/* 弹出色板面板 */
+.schedule-color-popover {
+    position: relative;
+    width: 0;
+    height: 0;
+}
+.schedule-color-popover-overlay {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 1000;
+}
+.schedule-color-popover-panel {
+    position: absolute;
+    z-index: 1001;
+    top: 4px;
+    left: 0;
+    padding: 10px;
+    border-radius: 10px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+.schedule-color-popover-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* 4列显示，更方正 */
+    gap: 10px;
+}
+.theme-dot-item {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.theme-dot-item:hover {
+    transform: scale(1.2);
+}
+.theme-dot-item.active {
+    border-color: var(--primary-color);
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px var(--bg-color), 0 0 0 4px var(--primary-color);
+}
 
 /* todo 列表：黑夜模式下卡片与筛选栏 */
 html.theme-dark .schedule-todo-filters {

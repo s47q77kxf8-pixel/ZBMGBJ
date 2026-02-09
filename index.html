@@ -535,12 +535,9 @@
                 <div class="section">
                     <h2>单主信息</h2>
                     <div class="form-row">
-                        <div class="form-group">
-                            <div class="label-row-with-remark">
-                                <label for="clientId">单主ID</label>
-                            </div>
+                        <div class="form-group flex-1">
                             <div class="input-row-with-icon client-id-input-wrap">
-                                <input type="text" id="clientId" placeholder="请输入单主ID" title="输入单主ID或关键字，匹配到历史单主后点击一项填充" oninput="debouncedShowClientIdMatches()" onblur="scheduleHideClientIdMatchList()">
+                                <input type="text" id="clientId" placeholder="单主ID (可匹配历史)" title="输入单主ID或关键字，匹配到历史单主后点击一项填充" oninput="debouncedShowClientIdMatches()" onblur="scheduleHideClientIdMatchList()">
                                 <button class="btn-remark-full" onclick="openOrderRemarkModal()" type="button" title="添加备注；点开后粘贴单主备注可智能提取制品与赠品">
                                     <svg class="icon sm" aria-hidden="true"><use href="#i-note"></use></svg>
                                     <span class="remark-btn-label">
@@ -553,7 +550,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="order-platform-contact-row">
+                        <div class="order-platform-contact-row flex-1">
                             <div class="form-group">
                                 <label for="orderPlatform">接单平台</label>
                                 <div id="orderPlatformWrap" class="order-platform-input-wrap">
@@ -572,10 +569,24 @@
                         </div>
                     </div>
                     <div class="form-row">
-                        <div class="form-group">
+                        <div class="form-group flex-1">
+                            <label>彩条配色</label>
+                            <button type="button" id="scheduleColorPickerBtn" class="schedule-color-picker-trigger" onclick="openScheduleColorPicker(event)">
+                                <span class="schedule-color-preview-bar" id="scheduleColorPreviewBar"></span>
+                            </button>
+                            <div id="scheduleColorPickerPopover" class="schedule-color-popover d-none">
+                                <div class="schedule-color-popover-overlay" onclick="closeScheduleColorPicker()"></div>
+                                <div class="schedule-color-popover-panel">
+                                    <div class="schedule-color-popover-grid" id="scheduleColorPopoverGrid"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group flex-1">
                             <label for="orderTimeInput">下单时间</label>
                             <input type="date" id="orderTimeInput" class="order-time-input" aria-label="下单时间" placeholder="yyyy-mm-dd">
                         </div>
+                    </div>
+                    <div class="form-row">
                         <div class="form-group">
                             <label for="startTime">开始时间</label>
                             <input type="date" id="startTime" onchange="calculateDeadline()" placeholder="yyyy/mm/dd">

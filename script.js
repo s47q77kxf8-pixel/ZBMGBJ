@@ -598,9 +598,19 @@ function init() {
     // 初始化其他费用类型选项
     initOtherFeeTypeOptions();
     
+    // 初始化计算页彩条颜色预览
+    if (typeof initScheduleColorPreview === 'function') {
+        initScheduleColorPreview();
+    }
+    
     // 更新显示
     updateDisplay();
     
+    // 初始化计算页彩条颜色预览
+    if (typeof initScheduleColorPreview === 'function') {
+        initScheduleColorPreview();
+    }
+
     // 总是渲染制品设置和工艺设置，确保数据被渲染到页面上
     renderProductSettings();
     renderProcessSettings();
@@ -5896,6 +5906,11 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     // 另存新单：清除编辑 ID 后保存为新记录，关闭抽屉，不打开小票
     if (saveAsNew && window.editingHistoryId) {
         window.editingHistoryId = null;
+        // 新排单：记住本单选择的颜色索引，并让下一单默认选“下一色”
+        if (typeof window.currentScheduleColorIndex === 'number') {
+            quoteData.scheduleColorIndex = window.currentScheduleColorIndex;
+            setLastScheduleColorIndex(window.currentScheduleColorIndex);
+        }
         saveToHistory();
         if (typeof closeCalculatorDrawer === 'function') closeCalculatorDrawer();
         showPage('quote');
@@ -5913,6 +5928,12 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     // 默认：关闭计算抽屉并打开小票
     if (typeof closeCalculatorDrawer === 'function') {
         closeCalculatorDrawer();
+    }
+
+    // 如果不是在编辑旧订单（即新排单），则记录本单颜色索引并更新“最后使用索引”
+    if (!window.editingHistoryId && typeof window.currentScheduleColorIndex === 'number') {
+        quoteData.scheduleColorIndex = window.currentScheduleColorIndex;
+        setLastScheduleColorIndex(window.currentScheduleColorIndex);
     }
     
     // 切换到报价/排单页
@@ -7528,6 +7549,235 @@ function getScheduleBarsForCalendar(year, month) {
     return bars;
 }
 
+// 彩条配色名称（与 12 色基础色一一对应）
+var SCHEDULE_COLOR_NAMES = [
+    '晨光青', '雾霁蓝', '樱桃粉', '薄荷绿',
+    '薰衣紫', '向日黄', '暖茶棕', '蜜橙',
+    '海玻青', '可可棕', '云雾灰', '石榴红'
+];
+
+var SCHEDULE_COLOR_LAST_INDEX_KEY = 'scheduleBarColorLastIndex';
+
+function getLastScheduleColorIndex() {
+    try {
+        var v = localStorage.getItem(SCHEDULE_COLOR_LAST_INDEX_KEY);
+        var n = parseInt(v, 10);
+        if (isNaN(n) || n < 0) return -1;
+        return n;
+    } catch (e) {
+        return -1;
+    }
+}
+
+function setLastScheduleColorIndex(idx) {
+    try {
+        localStorage.setItem(SCHEDULE_COLOR_LAST_INDEX_KEY, String(idx));
+    } catch (e) {}
+}
+
+// 初始化计算页当前颜色预览
+function initScheduleColorPreview() {
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    if (!colors || !colors.length) return;
+
+    var lastIdx = getLastScheduleColorIndex();
+    var defaultIdx = (lastIdx + 1 + colors.length) % colors.length;
+    if (isNaN(defaultIdx) || defaultIdx < 0 || defaultIdx >= colors.length) defaultIdx = 0;
+
+    var currentIdx = typeof window.currentScheduleColorIndex === 'number'
+        ? window.currentScheduleColorIndex
+        : defaultIdx;
+    window.currentScheduleColorIndex = currentIdx;
+
+    updateScheduleColorPreviewUI(currentIdx);
+}
+
+function updateScheduleColorPreviewUI(idx) {
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    var barEl = document.getElementById('scheduleColorPreviewBar');
+    var labelEl = document.getElementById('scheduleColorPreviewLabel');
+    if (barEl) barEl.style.backgroundColor = colors[idx];
+    if (labelEl) labelEl.textContent = SCHEDULE_COLOR_NAMES[idx] || ('第 ' + (idx + 1) + ' 色');
+}
+
+// 打开/关闭彩条色板
+function openScheduleColorPicker(event) {
+    if (event) event.stopPropagation();
+    var pop = document.getElementById('scheduleColorPickerPopover');
+    var grid = document.getElementById('scheduleColorPopoverGrid');
+    if (!pop || !grid) return;
+
+    if (!pop.classList.contains('d-none')) {
+        closeScheduleColorPicker();
+        return;
+    }
+
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    
+    var currentIdx = typeof window.currentScheduleColorIndex === 'number'
+        ? window.currentScheduleColorIndex
+        : 0;
+
+    var html = '';
+    for (var i = 0; i < colors.length; i++) {
+        var active = i === currentIdx ? ' active' : '';
+        html += '<div class="theme-dot-item' + active + '" data-color-idx="' + i + '" title="' + SCHEDULE_COLOR_NAMES[i] + '" style="background-color:' + colors[i] + '"></div>';
+    }
+    grid.innerHTML = html;
+
+    grid.onclick = function (e) {
+        var dot = e.target.closest('.theme-dot-item');
+        if (!dot) return;
+        var idx = parseInt(dot.getAttribute('data-color-idx'), 10);
+        if (isNaN(idx)) return;
+        
+        window.currentScheduleColorIndex = idx;
+        updateScheduleColorPreviewUI(idx);
+        closeScheduleColorPicker();
+    };
+
+    pop.classList.remove('d-none');
+}
+
+function closeScheduleColorPicker() {
+    var pop = document.getElementById('scheduleColorPickerPopover');
+    if (pop) pop.classList.add('d-none');
+}
+
+// 根据索引与昼夜模式获取具体彩条颜色/文字/圆点色
+function getScheduleColorByIndex(idx) {
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    var textColors = isDark ? SCHEDULE_BAR_TEXT_COLORS_DARK : SCHEDULE_BAR_TEXT_COLORS;
+    var dotColors = isDark ? SCHEDULE_BAR_DOT_COLORS_DARK : SCHEDULE_BAR_DOT_COLORS;
+    var len = colors.length;
+    if (!len) return { bar: '', text: '', dot: '' };
+    var i = ((idx % len) + len) % len;
+    return {
+        bar: colors[i],
+        text: textColors[i] || '#333',
+        dot: dotColors[i] || textColors[i] || '#333'
+    };
+}
+
+// 彩条配色名称（与 12 色基础色一一对应）
+var SCHEDULE_COLOR_NAMES = [
+    '晨光青', '雾霁蓝', '樱桃粉', '薄荷绿',
+    '薰衣紫', '向日黄', '暖茶棕', '蜜橙',
+    '海玻青', '可可棕', '云雾灰', '石榴红'
+];
+
+var SCHEDULE_COLOR_LAST_INDEX_KEY = 'scheduleBarColorLastIndex';
+
+function getLastScheduleColorIndex() {
+    try {
+        var v = localStorage.getItem(SCHEDULE_COLOR_LAST_INDEX_KEY);
+        var n = parseInt(v, 10);
+        if (isNaN(n) || n < 0) return -1;
+        return n;
+    } catch (e) {
+        return -1;
+    }
+}
+
+function setLastScheduleColorIndex(idx) {
+    try {
+        localStorage.setItem(SCHEDULE_COLOR_LAST_INDEX_KEY, String(idx));
+    } catch (e) {}
+}
+
+// 初始化计算页当前颜色预览
+function initScheduleColorPreview() {
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    if (!colors || !colors.length) return;
+
+    var lastIdx = getLastScheduleColorIndex();
+    var defaultIdx = (lastIdx + 1 + colors.length) % colors.length;
+    if (isNaN(defaultIdx) || defaultIdx < 0 || defaultIdx >= colors.length) defaultIdx = 0;
+
+    // 如果当前单已有选中的索引（编辑模式），优先使用它
+    var currentIdx = typeof window.currentScheduleColorIndex === 'number'
+        ? window.currentScheduleColorIndex
+        : defaultIdx;
+    window.currentScheduleColorIndex = currentIdx;
+
+    updateScheduleColorPreviewUI(currentIdx);
+}
+
+function updateScheduleColorPreviewUI(idx) {
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    var barEl = document.getElementById('scheduleColorPreviewBar');
+    var labelEl = document.getElementById('scheduleColorPreviewLabel');
+    if (barEl) barEl.style.backgroundColor = colors[idx];
+    if (labelEl) labelEl.textContent = SCHEDULE_COLOR_NAMES[idx] || ('第 ' + (idx + 1) + ' 色');
+}
+
+// 打开/关闭彩条色板
+function openScheduleColorPicker(event) {
+    if (event) event.stopPropagation();
+    var pop = document.getElementById('scheduleColorPickerPopover');
+    var grid = document.getElementById('scheduleColorPopoverGrid');
+    if (!pop || !grid) return;
+
+    if (!pop.classList.contains('d-none')) {
+        closeScheduleColorPicker();
+        return;
+    }
+
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    
+    var currentIdx = typeof window.currentScheduleColorIndex === 'number'
+        ? window.currentScheduleColorIndex
+        : 0;
+
+    var html = '';
+    for (var i = 0; i < colors.length; i++) {
+        var active = i === currentIdx ? ' active' : '';
+        html += '<div class="theme-dot-item' + active + '" data-color-idx="' + i + '" title="' + SCHEDULE_COLOR_NAMES[i] + '" style="background-color:' + colors[i] + '"></div>';
+    }
+    grid.innerHTML = html;
+
+    grid.onclick = function (e) {
+        var dot = e.target.closest('.theme-dot-item');
+        if (!dot) return;
+        var idx = parseInt(dot.getAttribute('data-color-idx'), 10);
+        if (isNaN(idx)) return;
+        
+        window.currentScheduleColorIndex = idx;
+        updateScheduleColorPreviewUI(idx);
+        closeScheduleColorPicker();
+    };
+
+    pop.classList.remove('d-none');
+}
+
+function closeScheduleColorPicker() {
+    var pop = document.getElementById('scheduleColorPickerPopover');
+    if (pop) pop.classList.add('d-none');
+}
+
+// 根据索引与昼夜模式获取具体彩条颜色/文字/圆点色
+function getScheduleColorByIndex(idx) {
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var colors = isDark ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
+    var textColors = isDark ? SCHEDULE_BAR_TEXT_COLORS_DARK : SCHEDULE_BAR_TEXT_COLORS;
+    var dotColors = isDark ? SCHEDULE_BAR_DOT_COLORS_DARK : SCHEDULE_BAR_DOT_COLORS;
+    var len = colors.length;
+    if (!len) return { bar: '', text: '', dot: '' };
+    var i = ((idx % len) + len) % len;
+    return {
+        bar: colors[i],
+        text: textColors[i] || '#333',
+        dot: dotColors[i] || textColors[i] || '#333'
+    };
+}
+
 // 彩条色板（共 12 色）：青、蓝、浅粉、绿、紫、黄、茶、橙、薄荷、棕、浅灰、红
 var SCHEDULE_BAR_COLORS = [
     'rgba(135, 205, 250, 0.38)',
@@ -7631,7 +7881,13 @@ function renderScheduleCalendar() {
     const startPad = (first.getDay() + 6) % 7;
     const totalCells = Math.ceil((startPad + daysInMonth) / 7) * 7;
     const numRows = totalCells / 7;
-    const bars = getScheduleBarsForCalendar(y, m);
+    const bars = getScheduleBarsForCalendar(y, m).map(function (b) {
+        var full = history.find(function (h) { return h.id === b.id; });
+        if (full && typeof full.scheduleColorIndex === 'number') {
+            b.scheduleColorIndex = full.scheduleColorIndex;
+        }
+        return b;
+    });
     const todayYmd = toYmd(now);
 
     // 本月内条带起止日（1-based）
@@ -7702,7 +7958,12 @@ function renderScheduleCalendar() {
             weekTracks.forEach(function (track, ti) {
                 track.forEach(function (s) {
                     const b = s.bar;
-                    const idx = Math.abs(b.id) % barColors.length;
+                    var idx;
+                    if (typeof b.scheduleColorIndex === 'number') {
+                        idx = ((b.scheduleColorIndex % barColors.length) + barColors.length) % barColors.length;
+                    } else {
+                        idx = Math.abs(b.id) % barColors.length;
+                    }
                     const color = barColors[idx];
                     const label = (b.clientId || '—') + '  ' + b.productCount + '制品';
                     var textColor = barTextColors[idx];
