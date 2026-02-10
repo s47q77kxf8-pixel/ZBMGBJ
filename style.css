@@ -346,16 +346,17 @@ html.theme-dark .theme-dot-item {
     cursor: pointer;
     border: 3px solid transparent;
     transition: all 0.2s ease;
-    box-shadow: none;
+    box-shadow: none !important;
 }
 .theme-dot-item:hover {
     transform: scale(1.1);
     border-color: rgba(0,0,0,0.1);
+    box-shadow: none !important;
 }
 .theme-dot-item.active {
     border-color: var(--primary-color);
     transform: scale(1.15);
-    box-shadow: none;
+    box-shadow: none !important;
 }
 
 /* todo 列表：黑夜模式下卡片与筛选栏 */

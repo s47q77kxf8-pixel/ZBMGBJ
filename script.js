@@ -5930,8 +5930,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         closeCalculatorDrawer();
     }
 
-    // 如果不是在编辑旧订单（即新排单），则记录本单颜色索引并更新“最后使用索引”
-    if (!window.editingHistoryId && typeof window.currentScheduleColorIndex === 'number') {
+    // 记录本单颜色索引并更新“最后使用索引”
+    if (typeof window.currentScheduleColorIndex === 'number') {
         quoteData.scheduleColorIndex = window.currentScheduleColorIndex;
         setLastScheduleColorIndex(window.currentScheduleColorIndex);
     }
@@ -11341,6 +11341,12 @@ function loadQuoteFromHistory(id) {
                 };
             });
         }
+        
+        // 设置当前排单颜色索引为订单的颜色索引
+        if (typeof quote.scheduleColorIndex === 'number') {
+            window.currentScheduleColorIndex = quote.scheduleColorIndex;
+        }
+        
         // 从排单卡片点「小票」进入时，记下原订单 ID，使小票页内点「排单」时覆盖原订单并轻提示
         if (window.receiptOpenedFromRecord) {
             window.editingHistoryId = id;
