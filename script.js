@@ -7371,7 +7371,7 @@ function getScheduleItemsForMonth(year, month) {
     const monthEnd = new Date(year, month, 0);
     monthEnd.setHours(23, 59, 59, 999);
     return history.filter(function (h) {
-        if (isOrderSettled(h)) return false;
+        // 不再过滤已归档的排单，统计当月所有排单数据
         ensureProductDoneStates(h);
         const start = h.startTime ? new Date(h.startTime) : new Date(h.timestamp);
         const end = h.deadline ? new Date(h.deadline) : start;
@@ -7635,6 +7635,11 @@ function openScheduleColorPicker(event) {
         
         window.currentScheduleColorIndex = idx;
         updateScheduleColorPreviewUI(idx);
+        
+        // 更新排单页的彩条颜色
+        if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+        if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
+        
         closeScheduleColorPicker();
     };
 
