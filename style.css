@@ -9167,3 +9167,32 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
     max-height: none !important;
     min-height: 100% !important;
 }
+
+/* 时间输入框行样式 - 优化小屏幕显示 */
+.time-inputs-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* 时间输入框组样式 */
+.time-input-group {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* 针对iPhone 12等小屏幕设备的优化 */
+@media (max-width: 414px) {
+    .time-inputs-row {
+        flex-direction: column;
+    }
+    
+    .time-input-group {
+        min-width: 100%;
+    }
+    
+    .time-input-group input[type="date"] {
+        width: 100%;
+        box-sizing: border-box;
+    }
+}

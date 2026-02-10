@@ -7354,11 +7354,16 @@ function setScheduleTodoFilter(f) {
 function getScheduleItemsByFilter() {
     const f = window.scheduleTodoFilter || 'today';
     const now = new Date();
+    if (f === 'all') return getScheduleItemsAll();
+    if (f === 'month') {
+        // 使用日历当前显示的年月，而不是系统当前时间
+        const y = window.scheduleCalendarYear || now.getFullYear();
+        const m = window.scheduleCalendarMonth || now.getMonth() + 1;
+        return getScheduleItemsForMonth(y, m);
+    }
+    if (f === 'pending') return getScheduleItemsPending();
     const y = now.getFullYear();
     const m = now.getMonth() + 1;
-    if (f === 'all') return getScheduleItemsAll();
-    if (f === 'month') return getScheduleItemsForMonth(y, m);
-    if (f === 'pending') return getScheduleItemsPending();
     const today = y + '-' + String(m).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
     if (!window.scheduleSelectedDate) window.scheduleSelectedDate = today;
     return getScheduleItemsForDate(window.scheduleSelectedDate);
@@ -8009,54 +8014,135 @@ function renderScheduleCalendar() {
         });
     });
 
-    // 触摸滑动切换月份：左右滑动切换上下月
+    // 触摸滑动切换月份：左右滑动切换上下月，双指缩放显示所有彩条
     (function() {
         let touchStartX = null;
         let touchStartY = null;
+        let touchDistance = 0;
+        let isMultiTouch = false;
         const minSwipeDistance = 50; // 最小滑动距离（像素）
         const maxVerticalDistance = 100; // 最大垂直偏移（避免与页面滚动冲突）
+        const zoomThreshold = 30; // 双指缩放阈值（像素）
 
         container.addEventListener('touchstart', function(e) {
             if (e.touches.length === 1) {
+                // 单指触摸：准备滑动
                 touchStartX = e.touches[0].clientX;
                 touchStartY = e.touches[0].clientY;
+                isMultiTouch = false;
+            } else if (e.touches.length === 2) {
+                // 双指触摸：准备缩放
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                touchDistance = Math.sqrt(dx * dx + dy * dy);
+                isMultiTouch = true;
             }
         }, { passive: true });
 
         container.addEventListener('touchmove', function(e) {
-            // 允许默认滚动行为
+            if (e.touches.length === 2) {
+                // 双指触摸：检测缩放
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const currentDistance = Math.sqrt(dx * dx + dy * dy);
+                
+                // 如果双指距离增加了一定阈值，认为是缩放操作
+                if (touchDistance > 0 && currentDistance > touchDistance + zoomThreshold) {
+                    // 调整日历高度以显示所有彩条
+                    adjustCalendarHeightForAllBars(y, m);
+                    touchDistance = currentDistance;
+                }
+            }
         }, { passive: true });
 
         container.addEventListener('touchend', function(e) {
-            if (touchStartX === null || touchStartY === null || e.changedTouches.length !== 1) {
+            if (!isMultiTouch && e.changedTouches.length === 1) {
+                // 单指触摸结束：检测滑动
+                if (touchStartX === null || touchStartY === null) {
+                    touchStartX = null;
+                    touchStartY = null;
+                    return;
+                }
+
+                const touchEndX = e.changedTouches[0].clientX;
+                const touchEndY = e.changedTouches[0].clientY;
+                const deltaX = touchEndX - touchStartX;
+                const deltaY = touchEndY - touchStartY;
+                const absDeltaX = Math.abs(deltaX);
+                const absDeltaY = Math.abs(deltaY);
+
+                // 确保是水平滑动（水平距离 > 垂直距离，且垂直偏移不超过阈值）
+                if (absDeltaX > minSwipeDistance && absDeltaX > absDeltaY && absDeltaY < maxVerticalDistance) {
+                    if (deltaX > 0) {
+                        // 向右滑动 → 上一月
+                        scheduleCalendarPrevMonth();
+                    } else {
+                        // 向左滑动 → 下一月
+                        scheduleCalendarNextMonth();
+                    }
+                    e.preventDefault();
+                }
+
                 touchStartX = null;
                 touchStartY = null;
-                return;
             }
-
-            const touchEndX = e.changedTouches[0].clientX;
-            const touchEndY = e.changedTouches[0].clientY;
-            const deltaX = touchEndX - touchStartX;
-            const deltaY = touchEndY - touchStartY;
-            const absDeltaX = Math.abs(deltaX);
-            const absDeltaY = Math.abs(deltaY);
-
-            // 确保是水平滑动（水平距离 > 垂直距离，且垂直偏移不超过阈值）
-            if (absDeltaX > minSwipeDistance && absDeltaX > absDeltaY && absDeltaY < maxVerticalDistance) {
-                if (deltaX > 0) {
-                    // 向右滑动 → 上一月
-                    scheduleCalendarPrevMonth();
-                } else {
-                    // 向左滑动 → 下一月
-                    scheduleCalendarNextMonth();
-                }
-                e.preventDefault();
-            }
-
-            touchStartX = null;
-            touchStartY = null;
         }, { passive: false });
     })();
+}
+
+// 调整日历高度以显示所有彩条
+function adjustCalendarHeightForAllBars(year, month) {
+    const container = document.getElementById('scheduleCalendar');
+    if (!container) return;
+    
+    // 获取该月的所有排单条带
+    const bars = getScheduleBarsForCalendar(year, month);
+    
+    // 计算需要的最大轨道数
+    let maxTracks = 0;
+    const first = new Date(year, month - 1, 1);
+    const last = new Date(year, month, 0);
+    const daysInMonth = last.getDate();
+    const startPad = (first.getDay() + 6) % 7;
+    const numRows = Math.ceil((startPad + daysInMonth) / 7);
+    
+    // 计算每个星期的轨道数
+    for (let row = 0; row < numRows; row++) {
+        const weekFirstDay = row * 7 - startPad + 1;
+        const weekLastDay = row * 7 + 6 - startPad + 1;
+        const segments = [];
+        
+        // 本月内条带起止日（1-based）
+        bars.forEach(function (b) {
+            const startParts = b.startDate.split('-').map(Number);
+            const endParts = b.endDate.split('-').map(Number);
+            let startDay = (startParts[0] === year && startParts[1] === month) ? startParts[2] : 1;
+            let endDay = (endParts[0] === year && endParts[1] === month) ? endParts[2] : daysInMonth;
+            if (startParts[0] !== year || startParts[1] !== month) startDay = 1;
+            if (endParts[0] !== year || endParts[1] !== month) endDay = daysInMonth;
+            if (startDay > endDay) return;
+            
+            if (endDay < weekFirstDay || startDay > weekLastDay) return;
+            const startCol = Math.max(0, b.startDay - weekFirstDay);
+            const endCol = Math.min(6, b.endDay - weekFirstDay);
+            if (startCol > endCol) return;
+            segments.push({ startCol: startCol, endCol: endCol, bar: b });
+        });
+        
+        // 计算该星期需要的轨道数
+        const weekTracks = assignWeekBarsToTracks(segments, 999); // 使用很大的数字以获取实际需要的轨道数
+        maxTracks = Math.max(maxTracks, weekTracks.length);
+    }
+    
+    // 如果需要更多轨道，调整日历容器高度
+    if (maxTracks > 0) {
+        const calendarInner = container.querySelector('.schedule-calendar-inner');
+        if (calendarInner) {
+            // 为每个轨道分配至少40px高度
+            const minHeight = 200 + (maxTracks * 40);
+            calendarInner.style.minHeight = minHeight + 'px';
+        }
+    }
 }
 
 // 月份/日期切换防抖：快速连续操作只触发一次重绘

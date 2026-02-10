@@ -579,18 +579,18 @@
                             <input type="text" id="contactInfo" placeholder="QQ号/微信号/手机号等" title="单主联系方式，如QQ号、微信号、手机号">
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
+                    <div class="form-row time-inputs-row">
+                        <div class="form-group time-input-group">
+                            <label for="orderTimeInput">下单时间</label>
+                            <input type="date" id="orderTimeInput" class="order-time-input" aria-label="下单时间" placeholder="yyyy-mm-dd">
+                        </div>
+                        <div class="form-group time-input-group">
                             <label for="startTime">开始时间</label>
                             <input type="date" id="startTime" onchange="calculateDeadline()" placeholder="yyyy/mm/dd">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group time-input-group">
                             <label for="deadline">截稿时间</label>
                             <input type="date" id="deadline" placeholder="yyyy/mm/dd">
-                        </div>
-                        <div class="form-group">
-                            <label for="orderTimeInput">下单时间</label>
-                            <input type="date" id="orderTimeInput" class="order-time-input" aria-label="下单时间" placeholder="yyyy-mm-dd">
                         </div>
                     </div>
                 </div>
