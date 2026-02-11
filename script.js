@@ -5882,6 +5882,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         agreedAmount: agreedAmount,
         needDeposit: needDepositFlag,
         depositReceived: depositReceived,
+        scheduleColorIndex: window.currentScheduleColorIndex,
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
@@ -10856,6 +10857,13 @@ function editHistoryItem(id) {
     }
     if (quote.deadline) {
         document.getElementById('deadline').value = quote.deadline;
+    }
+    // 恢复配色索引
+    if (typeof quote.scheduleColorIndex === 'number') {
+        window.currentScheduleColorIndex = quote.scheduleColorIndex;
+        if (typeof updateScheduleColorPreviewUI === 'function') {
+            updateScheduleColorPreviewUI(window.currentScheduleColorIndex);
+        }
     }
     // 恢复订单备注（编辑时显示该条记录的备注，新建时已在 openCalculatorDrawer 中清空）
     if (defaultSettings) defaultSettings.orderRemark = (quote.orderRemark != null) ? String(quote.orderRemark) : '';
