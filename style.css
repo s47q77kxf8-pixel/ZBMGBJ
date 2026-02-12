@@ -170,77 +170,7 @@ html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend 
     color: #fff !important;
 }
 
-/* 彩条配色选择：当前色 + 名称 + 弹出色板 */
-.schedule-color-picker-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-color);
-    cursor: pointer;
-    font-size: 0.85rem;
-}
-.schedule-color-preview-dot {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    border: 1px solid rgba(0,0,0,0.1);
-}
-html.theme-dark .schedule-color-preview-dot {
-    border-color: rgba(255,255,255,0.2);
-}
-.schedule-color-preview-label {
-    color: var(--text-light);
-}
-
-/* 弹出色板 */
-.schedule-color-popover {
-    position: relative;
-}
-.schedule-color-popover-overlay {
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    z-index: 40;
-}
-.schedule-color-popover-panel {
-    position: absolute;
-    z-index: 41;
-    top: 100%;
-    left: 0;
-    margin-top: 4px;
-    padding: 8px;
-    border-radius: 8px;
-    background: var(--bg-color);
-    box-shadow: 0 10px 25px rgba(15,23,42,0.12);
-}
-.schedule-color-popover-grid {
-    display: grid;
-    grid-template-columns: repeat(6, 22px);
-    gap: 8px;
-}
-.theme-dot-item {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: all 0.15s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-}
-.theme-dot-item:hover {
-    transform: scale(1.15);
-}
-.theme-dot-item.active {
-    border-color: var(--primary-color);
-    transform: scale(1.08);
-    box-shadow: 0 0 0 2px var(--bg-color), 0 0 0 4px var(--primary-color);
-}
-html.theme-dark .theme-dot-item {
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-}
+/* 彩条配色选择（旧版样式已停用，避免与计算页圆点触发器样式冲突） */
 
 /* 彩条配色选择：圆形颜色预览 + 弹出色板 */
 .schedule-color-picker-group {
@@ -311,22 +241,28 @@ html.theme-dark .theme-dot-item {
     box-shadow: none;
 }
 
-/* 弹出色板面板 */
-.schedule-color-popover {
+/* 弹出色板面板（以圆点按钮为锚点） */
+#calculator .client-id-input-wrap {
     position: relative;
-    width: 0;
-    height: 0;
 }
-.schedule-color-popover-overlay {
+#calculator #scheduleColorPickerPopover.schedule-color-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: auto;
+    height: auto;
+    z-index: 1000;
+}
+#calculator #scheduleColorPickerPopover .schedule-color-popover-overlay {
     position: fixed;
     inset: 0;
     background: transparent;
     z-index: 1000;
 }
-.schedule-color-popover-panel {
+#calculator #scheduleColorPickerPopover .schedule-color-popover-panel {
     position: absolute;
     z-index: 1001;
-    top: 4px;
+    top: 0;
     left: 0;
     padding: 10px;
     border-radius: 10px;
@@ -334,12 +270,12 @@ html.theme-dark .theme-dot-item {
     border: 1px solid var(--border-color);
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
 }
-.schedule-color-popover-grid {
+#calculator #scheduleColorPickerPopover .schedule-color-popover-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr); /* 4列显示，更方正 */
+    grid-template-columns: repeat(4, 1fr);
     gap: 10px;
 }
-.theme-dot-item {
+#calculator #scheduleColorPickerPopover .theme-dot-item {
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -348,12 +284,12 @@ html.theme-dark .theme-dot-item {
     transition: all 0.2s ease;
     box-shadow: none !important;
 }
-.theme-dot-item:hover {
+#calculator #scheduleColorPickerPopover .theme-dot-item:hover {
     transform: scale(1.1);
     border-color: rgba(0,0,0,0.1);
     box-shadow: none !important;
 }
-.theme-dot-item.active {
+#calculator #scheduleColorPickerPopover .theme-dot-item.active {
     border-color: var(--primary-color);
     transform: scale(1.15);
     box-shadow: none !important;
@@ -1154,21 +1090,60 @@ body {
     font-size: 0.875rem;
     padding: 0.5rem 0.6rem;
 }
-/* 接单平台 + 联系方式同一行（桌面与手机端均并排） */
-#calculator .order-platform-contact-row {
+/* 第一行：彩条 + 单主ID + 备注 强制同一行，允许横向滚动 */
+#calculator .calculator-client-row-1 .client-id-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+#calculator .calculator-client-row-1 .schedule-color-picker-dot-trigger {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    background: var(--bg-color);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin-right: 2px;
+}
+
+#calculator .calculator-client-row-1 .schedule-color-preview-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: block;
+}
+#calculator .calculator-client-row-1 #clientId {
+    flex: 1 1 0%;
+    min-width: 0;
+}
+#calculator .calculator-client-row-1 .btn-remark-full {
+    flex: 0 0 auto;
+}
+
+/* 第二行：接单平台 + 联系方式 强制同一行，不滚动；输入框可收缩 */
+#calculator .calculator-client-row-2 .order-platform-contact-row {
     display: flex;
     flex: 1;
     min-width: 0;
     gap: 0.5rem;
     flex-wrap: nowrap;
 }
-#calculator .order-platform-contact-row .form-group {
-    flex: 1;
+#calculator .calculator-client-row-2 .order-platform-contact-row .form-group {
+    flex: 1 1 0%;
     min-width: 0;
 }
-#calculator .order-platform-contact-row .form-group input {
+#calculator .calculator-client-row-2 .order-platform-contact-row .form-group input {
     width: 100%;
     box-sizing: border-box;
+    min-width: 0;
 }
 
 @media (max-width: 768px) {
@@ -6670,16 +6645,44 @@ input:checked + .toggle-slider:before {
     flex-shrink: 0;
 }
 .schedule-todo-card-products {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 0.15rem 0.35rem;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
+    display: block;
     min-width: 0;
     padding-left: 0.7rem;
 }
+
+.schedule-todo-chips-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    align-items: center;
+}
+
+.schedule-todo-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+    font-size: 0.88rem;
+    line-height: 1.05;
+    padding: 0.04rem 0.35rem;
+    border-radius: 999px;
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+
+/* 子节点 chip：更紧凑、更弱化（紧跟父节点同一行） */
+.schedule-todo-chip-node {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.82rem;
+    line-height: 1.05;
+    padding: 0.02rem 0.28rem;
+    border-radius: 999px;
+    cursor: pointer;
+    flex: 0 0 auto;
+    opacity: 0.9;
+}
+
 .schedule-todo-row {
     display: flex;
     align-items: center;
@@ -6687,11 +6690,6 @@ input:checked + .toggle-slider:before {
     font-size: 0.88rem;
     flex-shrink: 0;
     line-height: 1.05;
-}
-.schedule-todo-chip {
-    padding: 0.04rem 0.24rem;
-    border-radius: 999px;
-    cursor: pointer;
 }
 .schedule-todo-row.schedule-todo-done .schedule-todo-label {
     text-decoration: line-through;
