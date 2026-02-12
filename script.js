@@ -3952,6 +3952,26 @@ function getStatsDataset(historySource, filters) {
         }
         // 折扣类系数减少的金额（按主折扣、各扩展折扣分别统计，与结单优惠原因分开）
         var twc = item.totalWithCoefficients != null && isFinite(item.totalWithCoefficients) ? Number(item.totalWithCoefficients) : null;
+        
+        // --- 新增：手动改动约定实收产生的优惠统计 ---
+        // 这里的逻辑是：(系统计算原价 totalBeforePlatformFee) - (你手动改后的约定实收 agreedAmount)
+        // 只要这个差额 > 0，就说明你手动给了优惠，计入统计
+        var baseBeforePlat = item.totalBeforePlatformFee != null && isFinite(item.totalBeforePlatformFee) ? Number(item.totalBeforePlatformFee) : null;
+        var finalAgreed = item.agreedAmount != null && isFinite(item.agreedAmount) ? Number(item.agreedAmount) : null;
+        if (baseBeforePlat != null && finalAgreed != null) {
+            var manualDiff = baseBeforePlat - finalAgreed;
+            if (manualDiff >= 0.005) { // 超过 0.5 分钱视作有效差额
+                var manualLabel = '手动调价/抹零';
+                if (!discountByReason[manualLabel]) {
+                    discountByReason[manualLabel] = { name: manualLabel, orderCount: 0, amountTotal: 0 };
+                }
+                discountByReason[manualLabel].orderCount += 1;
+                discountByReason[manualLabel].amountTotal += manualDiff;
+                discountByCoefficientTotal += manualDiff;
+            }
+        }
+        // --- 手动优惠统计结束 ---
+
         if (twc != null && twc > 0) {
             var pricingDown = 1;
             if (item.pricingDownProduct != null && isFinite(item.pricingDownProduct)) pricingDown = Number(item.pricingDownProduct);
