@@ -7679,8 +7679,20 @@ function getScheduleBarsForCalendar(year, month) {
         const doneCount = states.filter(Boolean).length;
         if (totalLen > 0 && doneCount >= totalLen) return;
 
-        const start = item.startTime ? new Date(item.startTime) : new Date(item.timestamp);
-        const end = item.deadline ? new Date(item.deadline) : start;
+        const hasStart = item.startTime && String(item.startTime).trim();
+        const hasDeadline = item.deadline && String(item.deadline).trim();
+        if (!hasStart && !hasDeadline) return;
+
+        let start, end;
+        if (hasStart && hasDeadline) {
+            start = new Date(item.startTime);
+            end = new Date(item.deadline);
+        } else if (hasStart) {
+            start = end = new Date(item.startTime);
+        } else { // 仅 deadline
+            start = end = new Date(item.deadline);
+        }
+
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
         start.setHours(0, 0, 0, 0);
         end.setHours(23, 59, 59, 999);
@@ -7690,6 +7702,41 @@ function getScheduleBarsForCalendar(year, month) {
         const productCount = getOrderItemQuantityTotal(item);
         bars.push({ id: item.id, clientId: item.clientId || '', productCount, startDate, endDate });
     });
+
+    // 排序逻辑：完全复刻 Todo 卡片排序 (方案 A)
+    bars.sort((a_bar, b_bar) => {
+        const a = history.find(h => h.id === a_bar.id);
+        const b = history.find(h => h.id === b_bar.id);
+        if (!a || !b) return 0;
+
+        function pickSortTime(it) {
+            // 优先级：deadline -> startTime -> timestamp
+            const cands = [it.deadline, it.startTime, it.timestamp];
+            for (let i = 0; i < cands.length; i++) {
+                const v = cands[i];
+                if (!v) continue;
+                const d = new Date(v);
+                const t = d.getTime();
+                if (isFinite(t)) return t;
+            }
+            return Number.POSITIVE_INFINITY;
+        }
+
+        const ta = pickSortTime(a);
+        const tb = pickSortTime(b);
+        if (ta !== tb) return ta - tb;
+
+        // 同时间：未完成排前
+        const aTotal = (Array.isArray(a.productPrices) ? a.productPrices.length : 0) + (Array.isArray(a.giftPrices) ? a.giftPrices.length : 0);
+        const bTotal = (Array.isArray(b.productPrices) ? b.productPrices.length : 0) + (Array.isArray(b.giftPrices) ? b.giftPrices.length : 0);
+        const aDone = aTotal > 0 && (a.productDoneStates || []).filter(Boolean).length === aTotal;
+        const bDone = bTotal > 0 && (b.productDoneStates || []).filter(Boolean).length === bTotal;
+        
+        if (aDone !== bDone) return Number(aDone) - Number(bDone);
+
+        return a.id - b.id; // 稳定排序
+    });
+
     return bars;
 }
 
