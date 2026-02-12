@@ -59,3 +59,7 @@ font-preview.html
 schedule-chip-options.html
 schedule-todo-ui-options.html
 image-processor-worker.js
+
+# Windows 临时新建文件（避免误提交）
+新建 文本文档*.txt
+新建 文本文档*.html
