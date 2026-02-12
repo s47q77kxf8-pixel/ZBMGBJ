@@ -8395,24 +8395,30 @@ function renderScheduleTodoSection() {
             const productLabel = (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : '');
             const isDone = !!doneStates[i];
             
-            // 父节点 chip
+            // 父节点（制品）
             allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}">
                                 <input type="checkbox" class="schedule-todo-checkbox" ${isDone ? 'checked' : ''} 
                                        data-id="${item.id}" data-idx="${i}" onchange="toggleScheduleTodoDone(this)">
                                 <span class="schedule-todo-label">#${productNum} ${productLabel}</span>
                              </div>`;
 
-            if (p.productType === 'nodes' && Array.isArray(p.nodeDetails)) {
-                // 子节点直接紧跟在后面 (作为更小的 chip)
+            // 子节点（工序/节点）：改为“共享一根竖线”的分组容器，突出层级
+            if (p.productType === 'nodes' && Array.isArray(p.nodeDetails) && p.nodeDetails.length) {
                 const nodeStates = (item.productNodeDoneStates && item.productNodeDoneStates[i]) ? item.productNodeDoneStates[i] : [];
+                let nodeHtml = '';
                 p.nodeDetails.forEach((node, ni) => {
                     const nodeDone = !!nodeStates[ni];
-                    allChipsHtml += `<div class="schedule-todo-chip-node${nodeDone ? ' schedule-todo-done' : ''}">
-                                        <input type="checkbox" class="schedule-todo-checkbox" ${nodeDone ? 'checked' : ''} 
-                                               data-id="${item.id}" data-idx="${i}" onchange="toggleScheduleNodeDone(this, ${ni})">
-                                        <span class="schedule-todo-label">${node.name || '节点'}</span>
-                                     </div>`;
+                    nodeHtml += `<div class="schedule-todo-chip-node${nodeDone ? ' schedule-todo-done' : ''}">
+                                    <input type="checkbox" class="schedule-todo-checkbox" ${nodeDone ? 'checked' : ''} 
+                                           data-id="${item.id}" data-idx="${i}" onchange="toggleScheduleNodeDone(this, ${ni})">
+                                    <span class="schedule-todo-label">${node.name || '节点'}</span>
+                                 </div>`;
                 });
+
+                allChipsHtml += `<div class="schedule-todo-node-group">
+                                    <span class="schedule-todo-node-bar" aria-hidden="true"></span>
+                                    <div class="schedule-todo-node-list">${nodeHtml}</div>
+                                 </div>`;
             }
         });
 
@@ -8483,7 +8489,14 @@ function toggleScheduleTodoDone(checkbox) {
 
 // 点击 todo 卡片：弹出操作菜单；仅点击制品行（芯片）时不弹窗，点击卡片或制品区空白处均弹窗
 function handleScheduleTodoCardClick(id, event) {
-    if (event && event.target.closest('.schedule-todo-row')) return;
+    if (!event) {
+        openScheduleTodoCardModal(id);
+        return;
+    }
+
+    // 点击 todo 区的任何内容（复选框/文字/竖线/节点组等）都不弹窗，只允许点击卡片空白处或头部弹窗
+    if (event.target.closest('.schedule-todo-card-products')) return;
+
     openScheduleTodoCardModal(id);
 }
 

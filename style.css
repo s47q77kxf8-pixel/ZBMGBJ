@@ -6652,35 +6652,79 @@ input:checked + .toggle-slider:before {
 
 .schedule-todo-chips-wrap {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem 0.5rem;
+    flex-wrap: nowrap;
+    gap: 0 12px;
     align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 2px 0;
+}
+
+.schedule-todo-chips-wrap::-webkit-scrollbar {
+    display: none;
+}
+
+/* 子节点分组容器：共享一根竖线 */
+.schedule-todo-node-group {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.schedule-todo-node-bar {
+    width: 2px;
+    height: 12px; /* 与复选框高度一致 */
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 2px;
+    margin: 0;
+    align-self: center; /* 居中对齐 */
+    flex: 0 0 auto;
+}
+
+.schedule-todo-node-list {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
 }
 
 .schedule-todo-chip {
-    display: inline-flex;
-    align-items: center;
+    display: inline-flex !important;
+    align-items: center !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
     gap: 0.22rem;
     font-size: 0.88rem;
     line-height: 1.05;
-    padding: 0.04rem 0.35rem;
-    border-radius: 999px;
+    padding: 0.1rem 0;
     cursor: pointer;
     flex: 0 0 auto;
 }
 
-/* 子节点 chip：更紧凑、更弱化（紧跟父节点同一行） */
+.schedule-todo-chip .schedule-todo-label {
+    font-weight: 700; /* 父节点文字加粗 */
+    color: var(--text-color);
+}
+
+.schedule-todo-chip-node .schedule-todo-label {
+    font-weight: normal; /* 子节点保持常规 */
+}
+
+/* 子节点 chip：更紧凑、去掉边框背景 */
 .schedule-todo-chip-node {
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
     font-size: 0.82rem;
     line-height: 1.05;
-    padding: 0.02rem 0.28rem;
-    border-radius: 999px;
+    padding: 0.1rem 0;
     cursor: pointer;
     flex: 0 0 auto;
-    opacity: 0.9;
+    color: var(--text-light); /* 子节点弱化颜色 */
 }
 
 .schedule-todo-row {
@@ -6704,7 +6748,7 @@ input:checked + .toggle-slider:before {
     accent-color: #111111;
 }
 .schedule-todo-label {
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

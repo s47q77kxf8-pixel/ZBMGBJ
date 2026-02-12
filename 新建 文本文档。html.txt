@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>排单 Todo 父子层级 Demo</title>
+  <style>
+    :root{
+      --bg:#f5f6f8;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --border:rgba(17,24,39,.14);
+      --border-soft:rgba(17,24,39,.10);
+      --chip:#ffffff;
+      --chip-sub:#f3f4f6;
+      --accent:#111827;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC","Microsoft YaHei", sans-serif;
+      padding:22px;
+    }
+
+    .card{
+      max-width: 780px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 1px 0 rgba(0,0,0,.03);
+    }
+
+    .head{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:13px;
+      line-height:1;
+      padding: 2px 2px 10px;
+    }
+    .dot{
+      width:6px;height:6px;border-radius:50%;
+      background:#3b82f6;
+      flex:0 0 auto;
+    }
+    .date{font-weight:700;}
+    .range{color:var(--muted);}
+    .sep{width:1px;height:10px;background:rgba(0,0,0,.12)}
+    .client{font-weight:650;}
+    .progress{color:var(--muted);}
+    .status{
+      margin-left:auto;
+      font-size:12px;
+      font-weight:700;
+      color:#b45309;
+      background:#fff7ed;
+      border:1px solid rgba(180,83,9,.25);
+      padding:2px 8px;
+      border-radius:999px;
+      white-space:nowrap;
+    }
+
+    /* 核心：chips 单行横向滚动 */
+    .chips{
+      display:flex;
+      flex-wrap:nowrap;
+      align-items:center;
+      gap:10px;
+      overflow-x:auto;
+      overflow-y:hidden;
+      max-width:100%;
+      padding: 6px 4px;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width:none;
+    }
+    .chips::-webkit-scrollbar{display:none;}
+
+    /* 行（类似你截图的“复选框 + 文本”） */
+    .row{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid transparent; /* 默认不明显 */
+      background: transparent;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+
+    .ck{
+      width:12px;height:12px;
+      margin:0;
+      accent-color:#111827;
+      flex:0 0 auto;
+    }
+
+    /* 父：更重一些（轻描边 + 白底 + 字重） */
+    .row.parent{
+      background: var(--chip);
+      border-color: var(--border-soft);
+      box-shadow: 0 1px 0 rgba(0,0,0,.02);
+    }
+    .row.parent .label{
+      font-weight: 750;
+      letter-spacing: .1px;
+    }
+    .badge{
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+    }
+
+    /* 子：更轻（浅灰底 + 细边框 + 略小字号 + ↳ 前缀） */
+    .row.child{
+      background: var(--chip-sub);
+      border-color: rgba(17,24,39,.08);
+      padding-left: 6px;
+    }
+    .row.child .label{
+      font-size: 12.5px;
+      color: rgba(17,24,39,.86);
+      font-weight: 650;
+    }
+    .prefix{
+      color: rgba(17,24,39,.55);
+      font-weight: 900;
+      margin-right: 2px;
+    }
+
+    /* 可选：用一条很轻的竖线增强“从属”感（不占太多空间） */
+    .row.child{
+      position: relative;
+    }
+    .row.child::before{
+      content:"";
+      width: 2px;
+      height: 10px;
+      background: rgba(17,24,39,.14);
+      border-radius: 2px;
+      margin-right: 6px;
+      display:inline-block;
+    }
+
+    /* 为了演示：不同父制品的“编号点”可不同色（可不做） */
+    .p2dot{ background:#16a34a; }
+    .p3dot{ background:#f97316; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="head">
+      <span class="dot"></span>
+      <span class="date">01.28</span>
+      <span class="range">1.29 → 2.28</span>
+      <span class="sep"></span>
+      <span class="client">试着排单</span>
+      <span class="progress">· 2/3</span>
+      <span class="status">进行中</span>
+    </div>
+
+    <div class="chips" aria-label="制品与工序">
+      <!-- 父：制品 -->
+      <label class="row parent">
+        <input class="ck" type="checkbox" checked />
+        <span class="label"><span class="badge">#1</span> 异形吧唧</span>
+      </label>
+
+      <!-- 子：工序 -->
+      <label class="row child">
+        <input class="ck" type="checkbox" />
+        <span class="label"><span class="prefix">↳</span>下料</span>
+      </label>
+      <label class="row child">
+        <input class="ck" type="checkbox" checked />
+        <span class="label"><span class="prefix">↳</span>覆膜</span>
+      </label>
+      <label class="row child">
+        <input class="ck" type="checkbox" />
+        <span class="label"><span class="prefix">↳</span>装订</span>
+      </label>
+
+      <!-- 另一个父：制品 -->
+      <label class="row parent">
+        <input class="ck" type="checkbox" />
+        <span class="label"><span class="badge">#2</span> 普通吧唧</span>
+      </label>
+
+      <!-- 它的子：工序 -->
+      <label class="row child">
+        <input class="ck" type="checkbox" />
+        <span class="label"><span class="prefix">↳</span>喷绘</span>
+      </label>
+      <label class="row child">
+        <input class="ck" type="checkbox" />
+        <span class="label"><span class="prefix">↳</span>裁切</span>
+      </label>
+    </div>
+  </div>
+</body>
+</html>

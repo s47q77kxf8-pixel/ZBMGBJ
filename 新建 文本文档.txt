@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>父子节点层级展示 Demo</title>
+  <style>
+    :root{
+      --bg:#f6f7f9;
+      --card:#fff;
+      --text:#111;
+      --muted:#6b7280;
+      --border:rgba(0,0,0,.12);
+      --accent:#111;
+    }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px;}
+    .demo{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:14px 14px 10px;
+      margin:12px 0;
+      box-shadow: 0 1px 0 rgba(0,0,0,.03);
+    }
+    .title{font-weight:700;font-size:14px;margin:0 0 10px;}
+    .desc{margin:0 0 10px;color:var(--muted);font-size:12px;}
+
+    /* 模拟你的 chips 区：单行 + 横向滚动 */
+    .chips{
+      display:flex;
+      flex-wrap:nowrap;
+      gap:8px;
+      align-items:center;
+      overflow-x:auto;
+      overflow-y:hidden;
+      max-width:100%;
+      padding:8px;
+      border-radius:10px;
+      background: #fafafa;
+      border: 1px dashed rgba(0,0,0,.12);
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width:none;
+    }
+    .chips::-webkit-scrollbar{display:none;}
+
+    /* chip 基础 */
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#fff;
+      font-size:13px;
+      line-height:1;
+      white-space:nowrap;
+      flex:0 0 auto;
+    }
+    .chip .dot{
+      width:8px;height:8px;border-radius:50%;
+      background:#111;flex:0 0 auto;
+    }
+    .chip small{color:var(--muted);font-size:12px;}
+
+    /* A：缩进 + 连线 */
+    .chip.child-a{
+      position:relative;
+      padding-left:22px;
+      background: #fff;
+      opacity:.95;
+    }
+    .chip.child-a::before{
+      content:"";
+      position:absolute;
+      left:10px; top:50%;
+      width:10px; height:10px;
+      transform: translateY(-50%);
+      border-left:2px solid rgba(0,0,0,.22);
+      border-bottom:2px solid rgba(0,0,0,.22);
+      border-bottom-left-radius:2px;
+    }
+
+    /* B：父重子轻 + ↳ 前缀 */
+    .chip.parent-b{
+      background:#111;
+      border-color:#111;
+      color:#fff;
+      font-weight:650;
+    }
+    .chip.parent-b .dot{background:#fff;}
+    .chip.child-b{
+      background:#f3f4f6;
+      border-color: rgba(0,0,0,.10);
+      color:#111;
+    }
+    .chip.child-b .prefix{
+      font-weight:800;
+      color:rgba(0,0,0,.55);
+      margin-right:2px;
+    }
+
+    /* C：分组容器（父=组头，子在组内） */
+    .group{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding:6px;
+      border-radius:999px;
+      background:#eef2ff;
+      border:1px solid rgba(79,70,229,.18);
+      flex:0 0 auto;
+    }
+    .group .chip.parent-c{
+      background:#fff;
+      border-color: rgba(79,70,229,.25);
+      font-weight:700;
+    }
+    .group .chip.child-c{
+      background: rgba(255,255,255,.7);
+      border-color: rgba(79,70,229,.18);
+      font-size:12.5px;
+      padding:5px 9px;
+    }
+    .chip.parent-c .dot{background:#4f46e5;}
+    .chip.child-c .dot{background:rgba(79,70,229,.45);}
+
+    /* 仅做视觉区分：不同父节点颜色 */
+    .p2 .dot{background:#16a34a;}
+    .p3 .dot{background:#f97316;}
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="demo">
+      <p class="title">方案 A：缩进 + 连接线（树状语义最直观）</p>
+      <p class="desc">子节点 chip 带轻微缩进，并通过 L 形连接线表达“从属”。</p>
+      <div class="chips">
+        <span class="chip"><span class="dot"></span>父：制品 #12 画册</span>
+        <span class="chip child-a"><span class="dot" style="background:rgba(0,0,0,.35)"></span>子：下料</span>
+        <span class="chip child-a"><span class="dot" style="background:rgba(0,0,0,.35)"></span>子：覆膜</span>
+        <span class="chip child-a"><span class="dot" style="background:rgba(0,0,0,.35)"></span>子：装订</span>
+
+        <span class="chip p2"><span class="dot"></span>父：制品 #13 海报</span>
+        <span class="chip child-a"><span class="dot" style="background:rgba(0,0,0,.35)"></span>子：喷绘</span>
+        <span class="chip child-a"><span class="dot" style="background:rgba(0,0,0,.35)"></span>子：裁切</span>
+      </div>
+    </div>
+
+    <div class="demo">
+      <p class="title">方案 B：父重子轻 + ↳ 前缀（改动最小但区分强）</p>
+      <p class="desc">父节点用“实心/高对比”，子节点用“浅底/低对比”，并加 ↳ 明确层级。</p>
+      <div class="chips">
+        <span class="chip parent-b"><span class="dot"></span>制品 #12 画册</span>
+        <span class="chip child-b"><span class="prefix">↳</span>下料</span>
+        <span class="chip child-b"><span class="prefix">↳</span>覆膜</span>
+        <span class="chip child-b"><span class="prefix">↳</span>装订</span>
+
+        <span class="chip parent-b p3"><span class="dot"></span>制品 #13 海报</span>
+        <span class="chip child-b"><span class="prefix">↳</span>喷绘</span>
+        <span class="chip child-b"><span class="prefix">↳</span>裁切</span>
+        <span class="chip child-b"><span class="prefix">↳</span>打包</span>
+      </div>
+    </div>
+
+    <div class="demo">
+      <p class="title">方案 C：分组容器（父=组头，子=组内条目）</p>
+      <p class="desc">把“父 + 子们”包在一个轻容器里，更像一个“节点组”，层级最清晰。</p>
+      <div class="chips">
+        <span class="group">
+          <span class="chip parent-c"><span class="dot"></span>制品 #12 画册</span>
+          <span class="chip child-c"><span class="dot"></span>下料</span>
+          <span class="chip child-c"><span class="dot"></span>覆膜</span>
+          <span class="chip child-c"><span class="dot"></span>装订</span>
+        </span>
+
+        <span class="group">
+          <span class="chip parent-c p2"><span class="dot"></span>制品 #13 海报</span>
+          <span class="chip child-c p2"><span class="dot"></span>喷绘</span>
+          <span class="chip child-c p2"><span class="dot"></span>裁切</span>
+        </span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
