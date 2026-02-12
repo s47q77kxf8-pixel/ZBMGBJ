@@ -7413,9 +7413,17 @@ function getScheduleItemsForDate(selectedDate) {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         if (hasDailyPlanForDate(h, target)) return true;
-        const start = h.startTime ? normalizeYmd(h.startTime) : normalizeYmd(h.timestamp);
-        const end = h.deadline ? normalizeYmd(h.deadline) : start;
-        if (!start || !end) return false;
+
+        const start = h.startTime ? normalizeYmd(h.startTime) : null;
+        const end = h.deadline ? normalizeYmd(h.deadline) : null;
+
+        // start/deadline 都缺失：不显示
+        if (!start && !end) return false;
+        // 仅 start：只显示在 start 当天
+        if (start && !end) return target === start;
+        // 仅 deadline：只显示在 deadline 当天
+        if (!start && end) return target === end;
+        // start + deadline：显示在区间内
         return target >= start && target <= end;
     });
 }
@@ -7479,8 +7487,30 @@ function getScheduleItemsForMonth(year, month) {
     return history.filter(function (h) {
         // 不再过滤已归档的排单，统计当月所有排单数据
         ensureProductDoneStates(h);
-        const start = h.startTime ? new Date(h.startTime) : new Date(h.timestamp);
-        const end = h.deadline ? new Date(h.deadline) : start;
+
+        const hasStart = h.startTime && String(h.startTime).trim();
+        const hasDeadline = h.deadline && String(h.deadline).trim();
+        if (!hasStart && !hasDeadline) return false;
+
+        // 仅 startTime：只在 startTime 当天
+        if (hasStart && !hasDeadline) {
+            const d = new Date(h.startTime);
+            if (isNaN(d.getTime())) return false;
+            d.setHours(0, 0, 0, 0);
+            return !(d < monthStart || d > monthEnd);
+        }
+
+        // 仅 deadline：只在 deadline 当天
+        if (!hasStart && hasDeadline) {
+            const d = new Date(h.deadline);
+            if (isNaN(d.getTime())) return false;
+            d.setHours(0, 0, 0, 0);
+            return !(d < monthStart || d > monthEnd);
+        }
+
+        // startTime + deadline：按区间交集
+        const start = new Date(h.startTime);
+        const end = new Date(h.deadline);
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
         start.setHours(0, 0, 0, 0);
         end.setHours(23, 59, 59, 999);
@@ -8391,7 +8421,6 @@ function renderScheduleTodoSection() {
         
         // 1. 处理制品
         products.forEach((p, i) => {
-            const productNum = i + 1;
             const productLabel = (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : '');
             const isDone = !!doneStates[i];
             
@@ -8399,7 +8428,7 @@ function renderScheduleTodoSection() {
             allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}">
                                 <input type="checkbox" class="schedule-todo-checkbox" ${isDone ? 'checked' : ''} 
                                        data-id="${item.id}" data-idx="${i}" onchange="toggleScheduleTodoDone(this)">
-                                <span class="schedule-todo-label">#${productNum} ${productLabel}</span>
+                                <span class="schedule-todo-label">${productLabel}</span>
                              </div>`;
 
             // 子节点（工序/节点）：改为“共享一根竖线”的分组容器，突出层级

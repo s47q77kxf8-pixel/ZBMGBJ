@@ -6706,7 +6706,7 @@ input:checked + .toggle-slider:before {
 }
 
 .schedule-todo-chip .schedule-todo-label {
-    font-weight: 700; /* 父节点文字加粗 */
+    font-weight: 400;
     color: var(--text-color);
 }
 
