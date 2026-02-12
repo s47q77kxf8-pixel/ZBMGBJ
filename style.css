@@ -6735,7 +6735,9 @@ input:checked + .toggle-slider:before {
     flex-shrink: 0;
     line-height: 1.05;
 }
-.schedule-todo-row.schedule-todo-done .schedule-todo-label {
+.schedule-todo-row.schedule-todo-done .schedule-todo-label,
+.schedule-todo-chip.schedule-todo-done .schedule-todo-label,
+.schedule-todo-chip-node.schedule-todo-done .schedule-todo-label {
     text-decoration: line-through;
     color: var(--text-light);
 }
