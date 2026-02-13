@@ -8023,7 +8023,30 @@ function getScheduleMaxTracks() {
     
     // 至少3条，最多不超过12条（色板数量），完全根据可用空间计算，不设屏幕宽度上限
     var minTracks = 3;
-    return Math.max(minTracks, Math.min(maxTracks, 12));
+    var calculated = Math.max(minTracks, Math.min(maxTracks, 12));
+
+    // 如果处于“展开全部”状态，则返回一个很大的数值（如 99），否则返回计算出的限制值
+    return window.scheduleExpandAllBars ? 99 : calculated;
+}
+
+// 切换日历彩条显示：默认按 getScheduleMaxTracks() 限制；展开后显示全部（通过把 maxTracks 提升到 99）
+function toggleScheduleBarsExpand() {
+    window.scheduleExpandAllBars = !window.scheduleExpandAllBars;
+
+    // 更新按钮状态（图标旋转表示展开/收起）
+    var btn = document.getElementById('scheduleExpandBtn');
+    if (btn) btn.classList.toggle('is-expanded', !!window.scheduleExpandAllBars);
+
+    // 展开时抬高日历高度，避免被裁切
+    try {
+        if (window.scheduleExpandAllBars) {
+            var y = window.scheduleCalendarYear;
+            var m = window.scheduleCalendarMonth;
+            if (y != null && m != null) adjustCalendarHeightForAllBars(y, m);
+        }
+    } catch (e) {}
+
+    renderScheduleCalendar();
 }
 
 // 按星期视图：同周内条带轨道分配，maxTracks 随屏幕宽度动态调整

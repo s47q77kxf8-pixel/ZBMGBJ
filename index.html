@@ -723,6 +723,9 @@
                             <button type="button" class="btn secondary schedule-title-next" onclick="scheduleCalendarNextMonth()">›</button>
                         </div>
                         <div class="schedule-title-actions d-flex items-center gap-2">
+                            <button type="button" class="btn secondary btn--icon schedule-expand-btn" id="scheduleExpandBtn" onclick="toggleScheduleBarsExpand()" title="展开/收起全部彩条" aria-label="展开/收起全部彩条">
+                                <svg class="icon" aria-hidden="true"><use href="#i-sort-desc"></use></svg>
+                            </button>
                             <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">Today</button>
                             <button type="button" class="btn secondary btn--icon schedule-title-icon-btn" id="themeToggleBtn" onclick="toggleThemeOnClick()" oncontextmenu="toggleThemeLongPress(event); return false;" aria-label="切换昼夜模式" title="点击切换昼夜，长按跟随系统">
                                 <svg class="icon theme-icon-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
