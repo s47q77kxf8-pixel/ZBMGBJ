@@ -7660,24 +7660,9 @@ function getScheduleBarsForCalendar(year, month) {
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
     history.forEach(item => {
-        if (isOrderSettled(item)) return;
+        // 结单/撤稿/废稿：彩条也要继续显示（但在渲染时会沉底并显示划线样式）
         if (!item.startTime && !item.deadline) return;
-        // 已完成/已结算：彩条不再显示（改为卡片内画线下沉）
-        ensureProductDoneStates(item);
-        const _states0 = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
-        const _totalLen0 =
-            (Array.isArray(item.productPrices) ? item.productPrices.length : 0) +
-            (Array.isArray(item.giftPrices) ? item.giftPrices.length : 0);
-        const _doneCount0 = _states0.filter(Boolean).length;
-        if (_totalLen0 > 0 && _doneCount0 >= _totalLen0) return;
-        // 如果该排单所有制品都已完成，则不再渲染彩条
-        ensureProductDoneStates(item);
-        const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
-        const totalLen =
-            (Array.isArray(item.productPrices) ? item.productPrices.length : 0) +
-            (Array.isArray(item.giftPrices) ? item.giftPrices.length : 0);
-        const doneCount = states.filter(Boolean).length;
-        if (totalLen > 0 && doneCount >= totalLen) return;
+        // 已完成（所有制品 done）：彩条也要继续显示（但在渲染时会沉底并显示划线样式）
 
         const hasStart = item.startTime && String(item.startTime).trim();
         const hasDeadline = item.deadline && String(item.deadline).trim();
@@ -7726,12 +7711,16 @@ function getScheduleBarsForCalendar(year, month) {
         const tb = pickSortTime(b);
         if (ta !== tb) return ta - tb;
 
-        // 同时间：未完成排前
+        const aSettled = isOrderSettled(a);
+        const bSettled = isOrderSettled(b);
+        if (aSettled !== bSettled) return Number(aSettled) - Number(bSettled);
+
+        // 同时间：未完成排前；已完成排后；已结单最沉底
         const aTotal = (Array.isArray(a.productPrices) ? a.productPrices.length : 0) + (Array.isArray(a.giftPrices) ? a.giftPrices.length : 0);
         const bTotal = (Array.isArray(b.productPrices) ? b.productPrices.length : 0) + (Array.isArray(b.giftPrices) ? b.giftPrices.length : 0);
         const aDone = aTotal > 0 && (a.productDoneStates || []).filter(Boolean).length === aTotal;
         const bDone = bTotal > 0 && (b.productDoneStates || []).filter(Boolean).length === bTotal;
-        
+
         if (aDone !== bDone) return Number(aDone) - Number(bDone);
 
         return a.id - b.id; // 稳定排序
@@ -8161,7 +8150,21 @@ function renderScheduleCalendar() {
                     const label = (b.clientId || '—') + '  ' + b.productCount + '制品';
                     var textColor = barTextColors[idx];
                     var singleDay = s.startCol === s.endCol ? ' data-single-day="1"' : '';
-                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '"' + singleDay + '>' + label + '</div>';
+
+                    // 检查是否已结单或已完成，应用划线和透明度样式
+                    var isSettled = false;
+                    var isDone = false;
+                    const fullItem = history.find(h => h.id === b.id);
+                    if (fullItem) {
+                        isSettled = isOrderSettled(fullItem);
+                        const totalLen = (Array.isArray(fullItem.productPrices) ? fullItem.productPrices.length : 0) +
+                                       (Array.isArray(fullItem.giftPrices) ? fullItem.giftPrices.length : 0);
+                        const doneCount = (fullItem.productDoneStates || []).filter(Boolean).length;
+                        isDone = totalLen > 0 && doneCount >= totalLen;
+                    }
+                    const barStyle = (isSettled || isDone) ? 'text-decoration: line-through; opacity: 0.6;' : '';
+
+                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';' + barStyle + '" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '"' + singleDay + '>' + label + '</div>';
                 });
             });
             html += '</div>';
@@ -8392,7 +8395,7 @@ function renderScheduleTodoSection() {
         const d0 = String(now.getDate()).padStart(2, '0');
         window.scheduleSelectedDate = y0 + '-' + m0 + '-' + d0;
     }
-    const items = getScheduleItemsByFilter();
+    const items = getScheduleItemsByFilter().filter(it => !isOrderSettled(it));
     const titles = { all: '所有', month: '当月', pending: '待排', today: '当日' };
     const sub = f === 'today' && window.scheduleSelectedDate ? '：' + formatYmdCn(window.scheduleSelectedDate) : '';
     titleEl.textContent = (titles[f] || '当日') + sub;
