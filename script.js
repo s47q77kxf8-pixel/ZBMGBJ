@@ -8116,7 +8116,7 @@ function renderScheduleCalendar() {
     html += '</div>';
     // 按周：每周一行日期，彩条用绝对定位层横跨
     for (let row = 0; row < numRows; row++) {
-        html += '<div class="schedule-week-block">';
+        html += '<div class="schedule-week-block" data-row="' + row + '">';
         html += '<div class="schedule-calendar-grid schedule-week-dates">';
         for (let col = 0; col < 7; col++) {
             const i = row * 7 + col;
@@ -8155,6 +8155,11 @@ function renderScheduleCalendar() {
             segments.push({ startCol: startCol, endCol: endCol, bar: b.bar });
         });
         const weekTracks = assignWeekBarsToTracks(segments, getScheduleMaxTracks());
+        // 展开模式下按需增高本周块，避免彩条轨道重叠
+        if (window.scheduleExpandAllBars) {
+            const blockMinHeight = 22 + (weekTracks.length * 12) + 8;
+            html += '<style>.schedule-week-block[data-row="' + row + '"]{min-height:' + blockMinHeight + 'px;}</style>';
+        }
         if (weekTracks.length > 0) {
             var isDark = document.documentElement.classList.contains('theme-dark');
             var barColors = isDark && SCHEDULE_BAR_COLORS_DARK ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
@@ -8335,8 +8340,8 @@ function adjustCalendarHeightForAllBars(year, month) {
             if (startDay > endDay) return;
             
             if (endDay < weekFirstDay || startDay > weekLastDay) return;
-            const startCol = Math.max(0, b.startDay - weekFirstDay);
-            const endCol = Math.min(6, b.endDay - weekFirstDay);
+            const startCol = Math.max(0, startDay - weekFirstDay);
+            const endCol = Math.min(6, endDay - weekFirstDay);
             if (startCol > endCol) return;
             segments.push({ startCol: startCol, endCol: endCol, bar: b });
         });
@@ -8346,14 +8351,26 @@ function adjustCalendarHeightForAllBars(year, month) {
         maxTracks = Math.max(maxTracks, weekTracks.length);
     }
     
-    // 如果需要更多轨道，调整日历容器高度
-    if (maxTracks > 0) {
+    // 如果需要更多轨道，调整日历高度逻辑
+    if (window.scheduleExpandAllBars) {
+        // 展开模式：根据最大轨道数动态增加高度
+        container.style.height = "auto";
+        container.style.maxHeight = "none";
         const calendarInner = container.querySelector('.schedule-calendar-inner');
         if (calendarInner) {
-            // 为每个轨道分配至少40px高度
-            const minHeight = 200 + (maxTracks * 40);
-            calendarInner.style.minHeight = minHeight + 'px';
+            // 计算高度：表头(30px) + 每周基础高度(80px + 每轨道14px)
+            // 粗略估算：每周至少显示 maxTracks 条彩条的高度
+            const trackHeight = 14; 
+            const weekBaseHeight = 60; // 日期数字行高度
+            const totalHeight = 30 + (numRows * (weekBaseHeight + maxTracks * trackHeight + 10));
+            calendarInner.style.minHeight = totalHeight + 'px';
         }
+    } else {
+        // 收起模式：恢复默认高度
+        container.style.height = "";
+        container.style.maxHeight = "";
+        const calendarInner = container.querySelector('.schedule-calendar-inner');
+        if (calendarInner) calendarInner.style.minHeight = "";
     }
 }
 
@@ -8652,20 +8669,23 @@ function syncOrderPlatformToPlatform() {
     if (!orderPlatformEl || !platformEl) return;
     var text = (orderPlatformEl.value || '').trim();
     if (!text) return;
+
     var platformFees = defaultSettings.platformFees;
     if (platformFees && typeof platformFees === 'object') {
         var textLower = text.toLowerCase();
         var match = Object.entries(platformFees).find(function (e) {
             return e[1] && (e[1].name || '').toLowerCase() === textLower;
         });
+
         if (match) {
+            // 匹配到设置页配置的平台：同步选择该平台手续费
             platformEl.value = match[0];
             if (typeof onPlatformChangeForDeposit === 'function') onPlatformChangeForDeposit();
         } else {
-            // 未在设置页配置的平台：平台手续费默认选“无”
+            // 未在设置页配置的平台（如QQ/微信等）：手续费选“无”，但不要反向覆盖接单平台文本
             if (platformFees.none != null) platformEl.value = 'none';
             else platformEl.value = '';
-            if (typeof onPlatformChangeForDeposit === 'function') onPlatformChangeForDeposit();
+            // 这里不要调用 onPlatformChangeForDeposit()，避免把接单平台改成“无”
         }
     }
 }
@@ -8675,10 +8695,19 @@ function onPlatformChangeForDeposit() {
     var orderPlatformEl = document.getElementById('orderPlatform');
     if (!platformEl || !orderPlatformEl) return;
     var key = platformEl.value;
+
+    // 如果选择的是“无”，则不修改接单平台的文本，允许保留如 QQ、微信等输入
+    if (key === 'none' || !key) {
+        if (typeof updateQuoteDisplay === 'function') updateQuoteDisplay();
+        return;
+    }
+
     if (key && defaultSettings.platformFees && defaultSettings.platformFees[key]) {
         orderPlatformEl.value = (defaultSettings.platformFees[key].name || key);
         toggleOrderPlatformClear();
     }
+    
+    if (typeof updateQuoteDisplay === 'function') updateQuoteDisplay();
 }
 // 接单平台一键清空
 function clearOrderPlatformInput() {
