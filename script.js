@@ -8619,8 +8619,8 @@ function handleScheduleTodoCardClick(id, event) {
         return;
     }
 
-    // 点击 todo 区的任何内容（复选框/文字/竖线/节点组等）都不弹窗，只允许点击卡片空白处或头部弹窗
-    if (event.target.closest('.schedule-todo-card-products')) return;
+    // 仅点击「制品选择框」及其内容时不弹窗；其它空白区域点击都需要弹窗
+    if (event.target.closest('.schedule-todo-chips-wrap')) return;
 
     openScheduleTodoCardModal(id);
 }
