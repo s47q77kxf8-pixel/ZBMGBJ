@@ -8033,9 +8033,15 @@ function getScheduleMaxTracks() {
 function toggleScheduleBarsExpand() {
     window.scheduleExpandAllBars = !window.scheduleExpandAllBars;
 
-    // 更新按钮状态（图标旋转表示展开/收起）
+    // 更新按钮状态（展开/收起图标切换）
     var btn = document.getElementById('scheduleExpandBtn');
-    if (btn) btn.classList.toggle('is-expanded', !!window.scheduleExpandAllBars);
+    if (btn) {
+        btn.classList.toggle('is-expanded', !!window.scheduleExpandAllBars);
+        var expandIcon = btn.querySelector('.expand-icon');
+        var collapseIcon = btn.querySelector('.collapse-icon');
+        if (expandIcon) expandIcon.classList.toggle('d-none', !!window.scheduleExpandAllBars);
+        if (collapseIcon) collapseIcon.classList.toggle('d-none', !window.scheduleExpandAllBars);
+    }
 
     // 展开时抬高日历高度，避免被裁切
     try {

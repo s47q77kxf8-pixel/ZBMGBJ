@@ -73,6 +73,19 @@
             <path d="M6 8h12M6 12h8M6 16h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             <path d="M16 14l2 2 2-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
+        <symbol id="i-unfold-more" viewBox="0 0 24 24">
+            <path d="M8 18l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 6l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-unfold-less" viewBox="0 0 24 24">
+            <path d="M8 22l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+            <path d="M6 8h12M6 12h8M6 16h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M16 14l2 2 2-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
         <!-- 返回今日图标备选（与页面返回 i-back 区分） -->
         <symbol id="i-today-curved" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 7.5 7.5 0 0 0-2 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 12v7h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
         <symbol id="i-today-calendar-dot" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 2v4M8 2v4M3 10h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16" r="2" fill="currentColor"/></symbol>
@@ -723,10 +736,11 @@
                             <button type="button" class="btn secondary schedule-title-next" onclick="scheduleCalendarNextMonth()">›</button>
                         </div>
                         <div class="schedule-title-actions d-flex items-center gap-2">
-                            <button type="button" class="btn secondary btn--icon schedule-expand-btn" id="scheduleExpandBtn" onclick="toggleScheduleBarsExpand()" title="展开/收起全部彩条" aria-label="展开/收起全部彩条">
-                                <svg class="icon" aria-hidden="true"><use href="#i-sort-desc"></use></svg>
-                            </button>
                             <button type="button" class="btn secondary schedule-title-today-pill d-none" id="scheduleTodayBtn" onclick="scheduleTodoBackToToday()" aria-label="返回今日" title="返回今日">Today</button>
+                            <button type="button" class="btn secondary btn--icon schedule-expand-btn" id="scheduleExpandBtn" onclick="toggleScheduleBarsExpand()" title="展开/收起全部彩条" aria-label="展开/收起全部彩条">
+                                <svg class="icon expand-icon" aria-hidden="true"><use href="#i-unfold-more"></use></svg>
+                                <svg class="icon collapse-icon d-none" aria-hidden="true"><use href="#i-unfold-less"></use></svg>
+                            </button>
                             <button type="button" class="btn secondary btn--icon schedule-title-icon-btn" id="themeToggleBtn" onclick="toggleThemeOnClick()" oncontextmenu="toggleThemeLongPress(event); return false;" aria-label="切换昼夜模式" title="点击切换昼夜，长按跟随系统">
                                 <svg class="icon theme-icon-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
                                 <svg class="icon theme-icon-moon d-none" aria-hidden="true"><use href="#i-moon"></use></svg>
