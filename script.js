@@ -13139,7 +13139,7 @@ function generateCategoryOptions() {
     createSearchableSelect(
         'newProductCategorySelect',
         categoryOptions,
-        '选择或输入分类名称',
+        '输入新增分类 / 选择已有',
         function(value, label) {
             // 分类选择回调（可选）
         },
