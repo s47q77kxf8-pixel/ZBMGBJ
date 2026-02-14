@@ -107,6 +107,10 @@
             <path d="M8.5 10.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="none" stroke="currentColor" stroke-width="2"/>
             <path d="M4 16l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
+        <symbol id="i-user" viewBox="0 0 24 24">
+            <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M6 21c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
         <!-- 小票右上角图标·线性备选：设置 -->
         <symbol id="i-settings-line-a" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -510,12 +514,12 @@
                     </span>
                     <span class="nav-tab-label">统计</span>
                 </button>
-                <button class="nav-btn nav-btn-tab nav-btn-settings" onclick="showPage('settings')" aria-label="设置" title="设置">
+                <button class="nav-btn nav-btn-tab nav-btn-settings" onclick="showPage('settings')" aria-label="我的" title="我的">
                     <span class="nav-tab-icon-wrap">
-                        <svg class="nav-tab-icon thin" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-settings-line-p"></use></svg>
-                        <svg class="nav-tab-icon bold" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-settings-line-p-bold"></use></svg>
+                        <svg class="nav-tab-icon thin" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-user"></use></svg>
+                        <svg class="nav-tab-icon bold" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-user"></use></svg>
                     </span>
-                    <span class="nav-tab-label">设置</span>
+                    <span class="nav-tab-label">我的</span>
                 </button>
             </div>
         </nav>
@@ -1704,8 +1708,33 @@
                 </div>
             </div>
 
-            <!-- 设置页 -->
+            <!-- 我的页（原设置页） -->
             <div id="settings" class="page">
+                <button type="button" class="btn secondary w-full" onclick="openLoginPage(event)" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-radius:14px;">
+                    <span style="display:flex;align-items:center;gap:12px;">
+                        <span style="width:44px;height:44px;border-radius:999px;background:rgba(0,0,0,0.04);display:flex;align-items:center;justify-content:center;">
+                            <svg class="icon" aria-hidden="true" style="width:22px;height:22px;"><use href="#i-user"></use></svg>
+                        </span>
+                        <span id="myAccountSummary" style="font-size:20px;font-weight:700;">未登录</span>
+                    </span>
+                    <span aria-hidden="true" style="font-size:24px;line-height:1;opacity:0.5;">›</span>
+                </button>
+
+                <div class="section">
+                    <h2>云端同步</h2>
+                    <p class="text-gray" style="font-size:12px;">一键同步当前设备的排单数据与设置到云端，实现多端共享。</p>
+                    <div id="cloudSyncStatusText" style="margin:8px 0;padding:8px 12px;background:#f5f5f5;border-radius:6px;font-size:13px;color:#666;">
+                        正在检测云端状态...
+                    </div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                        <button type="button" id="enableCloudBtn" class="btn" onclick="handleEnableCloud()" style="display:none;">启用云端模式</button>
+                        <button type="button" id="disableCloudBtn" class="btn secondary" onclick="handleDisableCloud()" style="display:none;">禁用云端模式</button>
+                        <button type="button" id="syncCloudBtn" class="btn" onclick="mgSyncAllToCloud()" style="display:none;">一键上传所有</button>
+                        <button type="button" id="loadCloudBtn" class="btn secondary" onclick="mgRestoreAllFromCloud()" style="display:none;">一键从云端恢复</button>
+                        <button type="button" id="reselectSyncBtn" class="btn secondary" onclick="mgReselectFirstSyncPolicy()" style="display:none;">重新选择首次同步策略</button>
+                    </div>
+                </div>
+                
                 <!-- 美工信息 -->
                 <div class="section">
                     <div class="section-title-row d-flex justify-between items-center">
@@ -2582,6 +2611,56 @@
     </div>
 
     <div id="globalToast" class="global-toast d-none"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script>
+        function openLoginPage(e) {
+            try {
+                if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+            } catch (_) {}
+            try { sessionStorage.setItem('mg_redirecting_to_login', '1'); } catch (_) {}
+            window.location.assign('login.html');
+        }
+
+        // 捕获错误，避免一闪而过看不到
+        window.addEventListener('error', function (ev) {
+            try {
+                console.error('[global error]', ev && ev.message, ev && ev.error);
+                if (ev && ev.error && ev.error.stack) console.error(ev.error.stack);
+            } catch (_) {}
+        });
+        window.addEventListener('unhandledrejection', function (ev) {
+            try {
+                console.error('[unhandledrejection]', ev && ev.reason);
+            } catch (_) {}
+        });
+
+        (async function () {
+            try {
+                if (!window.__SUPABASE__ || !window.__SUPABASE__.client) {
+                    window.__APP_AUTH__ = { enabled: false, session: null };
+                    return;
+                }
+                const client = window.__SUPABASE__.client;
+                const { data: { session } } = await client.auth.getSession();
+                window.__APP_AUTH__ = { enabled: !!session, session: session || null };
+
+                var el = document.getElementById('myAccountSummary');
+                if (el) {
+                    if (session && session.user && session.user.email) {
+                        el.textContent = session.user.email.split('@')[0];
+                    } else {
+                        el.textContent = '未登录';
+                    }
+                }
+            } catch (e) {
+                window.__APP_AUTH__ = { enabled: false, session: null };
+                try { console.error('[auth init error]', e); } catch (_) {}
+            }
+        })();
+    </script>
 
     <script src="script.js?v=20250204-deposit-display"></script>
 </body>

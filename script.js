@@ -462,6 +462,9 @@ function toggleThemeLongPress(event) {
 
 // 初始化应用
 function init() {
+    // 加载未同步订单列表
+    loadUnsyncedOrders();
+    
     // 昼夜模式：先应用主题，再监听系统偏好
     applyTheme();
     if (window.matchMedia) {
@@ -799,6 +802,18 @@ function doSaveData() {
         localStorage.setItem('templates', JSON.stringify(data));
     } catch (e) {
         console.error('保存模板失败:', e);
+    }
+    
+    // 如果启用了云端模式，自动同步设置到云端
+    // 合并模式下也会自动同步（因为已经智能合并过了）
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        // 所有模式都自动同步设置（延迟执行，避免频繁请求）
+        clearTimeout(window._autoSyncSettingsTimer);
+        window._autoSyncSettingsTimer = setTimeout(() => {
+            mgSyncSettingsToCloud().catch(err => {
+                console.error('自动同步设置到云端失败:', err);
+            });
+        }, 2000); // 延迟2秒，避免频繁同步
     }
 }
 function saveData() {
@@ -7292,6 +7307,22 @@ function saveToHistory() {
     }
     
     saveData();
+    
+    // 云端同步：如果已启用云端模式，异步同步到 Supabase
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        const savedItem = window.editingHistoryId 
+            ? history.find(item => item.id === window.editingHistoryId)
+            : history[0]; // 新保存的在最前面
+        if (savedItem) {
+            // 标记为未同步，同步成功后会移除
+            markOrderUnsynced(savedItem.id);
+            mgCloudUpsertOrder(savedItem).catch(err => {
+                console.error('云端同步失败:', err);
+                updateSyncStatus();
+            });
+        }
+    }
+    
     if (document.getElementById('quote') && document.getElementById('quote').classList.contains('active')) {
         renderScheduleCalendar();
         renderScheduleTodoSection();
@@ -11173,6 +11204,9 @@ function batchDeleteHistory() {
         return;
     }
     
+    // 保存要删除的订单（用于云端同步）
+    const itemsToDelete = history.filter(item => selectedHistoryIds.has(item.id));
+    
     history = history.filter(item => !selectedHistoryIds.has(item.id));
     selectedHistoryIds.clear();
     saveData();
@@ -11181,6 +11215,15 @@ function batchDeleteHistory() {
     applyHistoryFilters();
     if (document.getElementById('recordContainer')) {
         applyRecordFilters();
+    }
+    
+    // 云端同步：如果已启用云端模式，同步删除云端订单
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        itemsToDelete.forEach(item => {
+            mgCloudDeleteOrder(item).catch(err => {
+                console.error('云端删除订单失败:', err);
+            });
+        });
     }
     
     alert('已删除选中的历史记录！');
@@ -11841,6 +11884,9 @@ function loadQuoteFromHistory(id) {
 
 // 删除历史记录项
 function deleteHistoryItem(id) {
+    const item = history.find(item => item.id === id);
+    if (!item) return;
+    
     history = history.filter(item => item.id !== id);
     selectedHistoryIds.delete(id);
     saveData();
@@ -11848,6 +11894,13 @@ function deleteHistoryItem(id) {
     // 同步刷新记录页
     if (document.getElementById('recordContainer')) {
         applyRecordFilters();
+    }
+    
+    // 云端同步：如果已启用云端模式，同步删除云端订单
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        mgCloudDeleteOrder(item).catch(err => {
+            console.error('云端删除订单失败:', err);
+        });
     }
 }
 
@@ -12997,6 +13050,10 @@ function copyOrderRemark() {
 // 保存设置
 function saveSettings() {
     saveData();
+    
+    // 所有模式下设置都会自动同步（通过 doSaveData 中的延迟同步）
+    // 合并模式下设置会智能合并后再同步
+    
     if (typeof showGlobalToast === 'function') showGlobalToast('已保存');
     else alert('设置已保存！');
 }
@@ -15208,11 +15265,1342 @@ function resetToDefaultSettings() {
 // 排单日历功能
 
 
+// ========== 云端适配层（Supabase 联通） ==========
+// 获取 Supabase 客户端（安全获取）
+function mgGetSupabaseClient() {
+    if (!window.__SUPABASE__ || !window.__SUPABASE__.client) return null;
+    return window.__SUPABASE__.client;
+}
+
+// 检查是否已登录并启用云端
+function mgIsCloudEnabled() {
+    return !!(window.__APP_AUTH__ && window.__APP_AUTH__.enabled && mgGetSupabaseClient());
+}
+
+// 为本地 history item 生成/确保 external_id（用于云端去重）
+function mgEnsureExternalId(item) {
+    if (!item || !item.id) return null;
+    // 如果已有 external_id，直接返回
+    if (item.external_id) return item.external_id;
+    // 否则基于本地 id 生成稳定的 external_id（格式：h_时间戳）
+    item.external_id = 'h_' + String(item.id);
+    return item.external_id;
+}
+
+// 将本地 history item 映射为云端 orders 表结构
+function mgMapLocalToCloud(item) {
+    if (!item) return null;
+    
+    const externalId = mgEnsureExternalId(item);
+    if (!externalId) return null;
+    
+    // 提取关键字段用于筛选/分析
+    const totalPrice = item.finalTotal || item.agreedAmount || 0;
+    const depositPrice = item.depositReceived || 0;
+    
+    // 提取制品类型（用于筛选）
+    const productTypes = [];
+    if (Array.isArray(item.productPrices)) {
+        item.productPrices.forEach(p => {
+            if (p.type && productSettings.find(ps => ps.id == p.type)) {
+                const setting = productSettings.find(ps => ps.id == p.type);
+                if (setting && setting.name) productTypes.push(setting.name);
+            }
+        });
+    }
+    
+    // 提取状态（如果有）
+    let status = 'pending';
+    if (item.settlement) {
+        const st = item.settlement.type;
+        if (st === 'normal') status = 'completed';
+        else if (st === 'full_refund' || st === 'cancel_with_fee') status = 'cancelled';
+        else if (st === 'waste_fee') status = 'wasted';
+    } else if (item.status) {
+        status = item.status;
+    }
+    
+    return {
+        external_id: externalId,
+        client_name: item.clientId || '未命名客户',
+        contact: item.contact || '',
+        total_price: totalPrice,
+        deposit_price: depositPrice,
+        order_type: productTypes.join(',') || null,
+        status: status,
+        start_date: item.startTime ? item.startTime.split(' ')[0] : null,
+        due_date: item.deadline ? item.deadline.split(' ')[0] : null,
+        tags: productTypes.length > 0 ? productTypes : null,
+        payload: item // 完整原始数据
+    };
+}
+
+// 首次登录一次性导入本地到云端（选项A：只导入云端没有的）
+async function mgCloudMigrateOnce() {
+    const client = mgGetSupabaseClient();
+    if (!client) return false;
+    
+    // 检查是否已迁移
+    if (localStorage.getItem('mg_cloud_migrated_v1') === '1') {
+        console.log('✅ 本地数据已迁移过，跳过');
+        return true;
+    }
+    
+    try {
+        // 1. 获取云端已有的 external_id 列表
+        const { data: existingOrders, error: fetchError } = await client
+            .from('orders')
+            .select('external_id');
+        
+        if (fetchError) {
+            console.error('获取云端订单失败:', fetchError);
+            return false;
+        }
+        
+        const existingIds = new Set((existingOrders || []).map(o => o.external_id).filter(Boolean));
+        
+        // 2. 获取当前登录用户的 artist_id（只获取一次）
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) {
+            console.error('未找到登录会话');
+            return false;
+        }
+        const artistId = session.user.id;
+        
+        // 3. 筛选本地需要上传的记录（云端没有的）
+        const toUpload = [];
+        for (const item of history) {
+            const extId = mgEnsureExternalId(item);
+            if (extId && !existingIds.has(extId)) {
+                const mapped = mgMapLocalToCloud(item);
+                if (mapped) {
+                    mapped.artist_id = artistId;
+                    toUpload.push(mapped);
+                }
+            }
+        }
+        
+        if (toUpload.length === 0) {
+            console.log('✅ 本地数据已全部在云端，无需迁移');
+            localStorage.setItem('mg_cloud_migrated_v1', '1');
+            return true;
+        }
+        
+        // 4. 批量上传
+        const { error: insertError } = await client
+            .from('orders')
+            .insert(toUpload);
+        
+        if (insertError) {
+            console.error('上传本地数据到云端失败:', insertError);
+            return false;
+        }
+        
+        // 5. 标记已迁移
+        localStorage.setItem('mg_cloud_migrated_v1', '1');
+        console.log(`✅ 成功导入 ${toUpload.length} 条本地排单到云端`);
+        return true;
+    } catch (err) {
+        console.error('迁移过程出错:', err);
+        return false;
+    }
+}
+
+// 从云端拉取订单并合并到本地 history（用于云端筛选/分析）
+async function mgCloudFetchOrders(filters = {}) {
+    const client = mgGetSupabaseClient();
+    if (!client) return [];
+    
+    try {
+        let query = client.from('orders').select('*');
+        
+        // 应用筛选条件（示例：可按 status/order_type/日期范围等）
+        if (filters.status) query = query.eq('status', filters.status);
+        if (filters.order_type) query = query.ilike('order_type', `%${filters.order_type}%`);
+        if (filters.start_date) query = query.gte('due_date', filters.start_date);
+        if (filters.end_date) query = query.lte('due_date', filters.end_date);
+        
+        query = query.order('created_at', { ascending: false });
+        
+        const { data, error } = await query;
+        
+        if (error) {
+            console.error('拉取云端订单失败:', error);
+            return [];
+        }
+        
+        // 将云端数据还原为本地 history 格式
+        return (data || []).map(o => {
+            const item = o.payload || {};
+            item.id = o.external_id ? parseInt(o.external_id.replace('h_', '')) : Date.now();
+            item.external_id = o.external_id;
+            return item;
+        });
+    } catch (err) {
+        console.error('云端查询出错:', err);
+        return [];
+    }
+}
+
+// 跟踪未同步的订单ID
+let unsyncedOrderIds = new Set();
+
+// 从localStorage加载未同步订单列表
+function loadUnsyncedOrders() {
+    try {
+        const saved = localStorage.getItem('mg_unsynced_orders');
+        if (saved) {
+            unsyncedOrderIds = new Set(JSON.parse(saved));
+        }
+    } catch (e) {
+        console.error('加载未同步订单失败:', e);
+        unsyncedOrderIds = new Set();
+    }
+}
+
+// 保存未同步订单列表到localStorage
+function saveUnsyncedOrders() {
+    try {
+        localStorage.setItem('mg_unsynced_orders', JSON.stringify([...unsyncedOrderIds]));
+    } catch (e) {
+        console.error('保存未同步订单失败:', e);
+    }
+}
+
+// 标记订单为已同步
+function markOrderSynced(orderId) {
+    if (orderId) {
+        unsyncedOrderIds.delete(orderId);
+        saveUnsyncedOrders();
+        updateSyncStatus();
+    }
+}
+
+// 标记订单为未同步
+function markOrderUnsynced(orderId) {
+    if (orderId) {
+        unsyncedOrderIds.add(orderId);
+        saveUnsyncedOrders();
+        updateSyncStatus();
+    }
+}
+
+// 更新同步状态显示
+function updateSyncStatus() {
+    const statusText = document.getElementById('cloudSyncStatusText');
+    if (!statusText) return;
+    
+    const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
+    if (!isCloudModeOn) return;
+    
+    const unsyncedCount = unsyncedOrderIds.size;
+    if (unsyncedCount > 0) {
+        const currentText = statusText.textContent;
+        if (!currentText.includes('未同步')) {
+            statusText.innerHTML = `✅ 智能同步模式已启用 <span style="color:#ff6b6b;font-weight:600;">（${unsyncedCount} 条未同步）</span>`;
+        }
+    }
+}
+
+// 删除云端订单
+async function mgCloudDeleteOrder(item, retryCount = 0) {
+    if (!mgIsCloudEnabled()) {
+        return;
+    }
+    
+    const client = mgGetSupabaseClient();
+    if (!client || !item) {
+        return;
+    }
+    
+    try {
+        const externalId = mgEnsureExternalId(item);
+        if (!externalId) {
+            console.log('订单无 external_id，跳过云端删除');
+            return;
+        }
+        
+        // 获取当前登录用户的 artist_id
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) {
+            return;
+        }
+        
+        // 删除云端订单（根据 external_id 和 artist_id）
+        const { error } = await client
+            .from('orders')
+            .delete()
+            .eq('external_id', externalId)
+            .eq('artist_id', session.user.id);
+        
+        if (error) {
+            console.error('云端删除订单失败:', error);
+            
+            // 重试机制（最多重试2次）
+            if (retryCount < 2) {
+                setTimeout(() => {
+                    mgCloudDeleteOrder(item, retryCount + 1);
+                }, 3000 * (retryCount + 1)); // 3秒、6秒后重试
+            }
+        } else {
+            console.log('✅ 云端删除订单成功:', externalId);
+            // 如果订单有 id，从未同步列表中移除
+            if (item && item.id) {
+                markOrderSynced(item.id);
+            }
+        }
+    } catch (err) {
+        console.error('云端删除订单出错:', err);
+        
+        // 网络错误时重试
+        if (retryCount < 2 && (err.message?.includes('network') || err.message?.includes('fetch'))) {
+            setTimeout(() => {
+                mgCloudDeleteOrder(item, retryCount + 1);
+            }, 3000 * (retryCount + 1));
+        }
+    }
+}
+
+// 保存/更新订单到云端（在 saveToHistory 后调用）
+async function mgCloudUpsertOrder(item, retryCount = 0) {
+    if (!mgIsCloudEnabled()) {
+        if (item && item.id) markOrderUnsynced(item.id);
+        return;
+    }
+    
+    const client = mgGetSupabaseClient();
+    if (!client || !item) {
+        if (item && item.id) markOrderUnsynced(item.id);
+        return;
+    }
+    
+    try {
+        const mapped = mgMapLocalToCloud(item);
+        if (!mapped) {
+            if (item && item.id) markOrderUnsynced(item.id);
+            return;
+        }
+        
+        // 获取当前登录用户的 artist_id
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) {
+            if (item && item.id) markOrderUnsynced(item.id);
+            return;
+        }
+        
+        mapped.artist_id = session.user.id;
+        mapped.updated_at = new Date().toISOString();
+        
+        // 使用 upsert（如果 external_id 存在则更新，否则插入）
+        const { error } = await client
+            .from('orders')
+            .upsert(mapped, { onConflict: 'external_id' });
+        
+        if (error) {
+            console.error('云端同步失败:', error);
+            if (item && item.id) markOrderUnsynced(item.id);
+            
+            // 重试机制（最多重试2次）
+            if (retryCount < 2) {
+                setTimeout(() => {
+                    mgCloudUpsertOrder(item, retryCount + 1);
+                }, 3000 * (retryCount + 1)); // 3秒、6秒后重试
+            }
+        } else {
+            console.log('✅ 云端同步成功:', mapped.external_id);
+            if (item && item.id) markOrderSynced(item.id);
+        }
+    } catch (err) {
+        console.error('云端同步出错:', err);
+        if (item && item.id) markOrderUnsynced(item.id);
+        
+        // 网络错误时重试
+        if (retryCount < 2 && (err.message?.includes('network') || err.message?.includes('fetch'))) {
+            setTimeout(() => {
+                mgCloudUpsertOrder(item, retryCount + 1);
+            }, 3000 * (retryCount + 1));
+        }
+    }
+}
+
+// 检测本地和云端的数据差异
+async function mgDetectDataConflict() {
+    const client = mgGetSupabaseClient();
+    if (!client) return { hasConflict: false, localOrders: 0, cloudOrders: 0, localSettings: false, cloudSettings: false };
+    
+    try {
+        // 检测订单数量
+        const localOrders = history.length;
+        const cloudHistory = await mgCloudFetchOrders();
+        const cloudOrders = cloudHistory.length;
+        
+        // 检测设置是否存在
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) {
+            return { hasConflict: false, localOrders, cloudOrders, localSettings: false, cloudSettings: false };
+        }
+        
+        const { data: settingsData } = await client
+            .from('artist_settings')
+            .select('payload')
+            .eq('artist_id', session.user.id)
+            .single();
+        
+        const cloudSettings = !!settingsData?.payload;
+        const localSettings = !!(productSettings.length > 0 || processSettings.length > 0 || Object.keys(defaultSettings).length > 0);
+        
+        // 判断是否有冲突（云端有数据或本地有数据，且两者不同）
+        // 更宽松的判断：只要云端有数据或本地有数据，就显示策略选择
+        const hasConflict = (cloudOrders > 0 || localOrders > 0) && 
+                           (cloudOrders !== localOrders || (cloudSettings && localSettings));
+        
+        return {
+            hasConflict,
+            localOrders,
+            cloudOrders,
+            localSettings,
+            cloudSettings,
+            cloudHistory
+        };
+    } catch (err) {
+        console.error('检测数据冲突失败:', err);
+        return { hasConflict: false, localOrders: 0, cloudOrders: 0, localSettings: false, cloudSettings: false };
+    }
+}
+
+// 登录后弹窗提示启用云端（优化版：检测数据冲突）
+async function mgShowCloudEnableModal() {
+    if (!mgIsCloudEnabled()) return;
+    if (localStorage.getItem('mg_cloud_enabled') === '1') return; // 已启用过，不再弹窗
+    
+    // 检查是否已迁移
+    const isMigrated = localStorage.getItem('mg_cloud_migrated_v1') === '1';
+    
+    // 检测数据冲突（首次启用时总是检测，让用户选择）
+    const conflictInfo = await mgDetectDataConflict();
+    // 首次启用时，如果云端或本地有数据，就显示策略选择
+    // 即使数据相同，也让用户选择，确保用户有控制权
+    const hasConflict = !isMigrated && (conflictInfo.cloudOrders > 0 || conflictInfo.localOrders > 0 || conflictInfo.cloudSettings || conflictInfo.localSettings);
+    
+    // 如果云端和本地都没有数据，也显示简单提示（但这种情况很少）
+    // 如果云端或本地有数据，总是显示策略选择
+    
+    // 创建弹窗
+    const modal = document.createElement('div');
+    modal.className = 'mg-cloud-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    
+    let modalContent = '';
+    if (hasConflict) {
+        // 有冲突：显示首次同步策略选择
+        modalContent = `
+            <div class="mg-cloud-modal-content" style="background:white;padding:1.5rem;border-radius:12px;max-width:500px;width:100%;box-sizing:border-box;max-height:90vh;overflow-y:auto;">
+                <h3 style="margin-top:0;margin-bottom:0.75rem;font-size:18px;font-weight:600;line-height:1.4;">🌐 检测到数据差异</h3>
+                <p style="margin-bottom:1rem;font-size:14px;line-height:1.5;color:#333;">检测到本地和云端都有数据，请选择首次同步策略：</p>
+                <div style="background:#fff9e6;padding:12px;border-radius:6px;margin-bottom:1rem;font-size:13px;color:#856404;">
+                    <strong>数据统计：</strong><br>
+                    本地订单：${conflictInfo.localOrders} 条<br>
+                    云端订单：${conflictInfo.cloudOrders} 条<br>
+                    ${conflictInfo.localSettings ? '本地有设置' : '本地无设置'}<br>
+                    ${conflictInfo.cloudSettings ? '云端有设置' : '云端无设置'}
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1.25rem;">
+                    <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #4caf50;border-radius:8px;cursor:pointer;background:#f1f8f4;">
+                        <input type="radio" name="firstSyncPolicy" value="merge" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;" checked>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:600;margin-bottom:4px;font-size:15px;">智能合并 ⭐ 推荐</div>
+                            <div style="font-size:13px;color:#666;">保留所有数据，订单和设置都智能合并，不会丢失任何数据</div>
+                        </div>
+                    </label>
+                    <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;">
+                        <input type="radio" name="firstSyncPolicy" value="local" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:600;margin-bottom:4px;font-size:15px;">以本地为准</div>
+                            <div style="font-size:13px;color:#666;">本地数据覆盖云端，适合当前设备是主设备的情况</div>
+                        </div>
+                    </label>
+                    <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;">
+                        <input type="radio" name="firstSyncPolicy" value="cloud" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:600;margin-bottom:4px;font-size:15px;">以云端为准</div>
+                            <div style="font-size:13px;color:#666;">云端数据覆盖本地，适合云端是主版本的情况</div>
+                        </div>
+                    </label>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button id="mg-cloud-confirm-btn" style="flex:1;min-width:120px;padding:0.75rem;background:#ff6b6b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:15px;touch-action:manipulation;">确认</button>
+                    <button id="mg-cloud-skip-btn" style="flex:1;min-width:120px;padding:0.75rem;background:#eee;color:#333;border:none;border-radius:6px;cursor:pointer;font-size:15px;touch-action:manipulation;">暂不启用</button>
+                </div>
+            </div>
+        `;
+    } else {
+        // 无冲突：简单提示
+        modalContent = `
+            <div class="mg-cloud-modal-content" style="background:white;padding:1.5rem;border-radius:12px;max-width:400px;width:100%;box-sizing:border-box;">
+                <h3 style="margin-top:0;margin-bottom:0.75rem;font-size:18px;font-weight:600;line-height:1.4;">🌐 检测到云端账号</h3>
+                <p style="margin-bottom:0.75rem;font-size:14px;line-height:1.5;color:#333;">是否启用智能同步？启用后，你的排单数据将自动同步到云端，支持跨设备访问和数据分析。</p>
+                ${!isMigrated ? '<p style="color:#666;font-size:13px;line-height:1.5;margin-bottom:0;">首次启用将自动导入本地数据到云端（不会重复）。</p>' : ''}
+                <div style="display:flex;gap:10px;margin-top:1.5rem;flex-wrap:wrap;">
+                    <button id="mg-cloud-enable-btn" style="flex:1;min-width:120px;padding:0.75rem;background:#ff6b6b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:15px;touch-action:manipulation;">启用云端</button>
+                    <button id="mg-cloud-skip-btn" style="flex:1;min-width:120px;padding:0.75rem;background:#eee;color:#333;border:none;border-radius:6px;cursor:pointer;font-size:15px;touch-action:manipulation;">暂不启用</button>
+                </div>
+            </div>
+        `;
+    }
+    
+    modal.innerHTML = modalContent;
+    document.body.appendChild(modal);
+    
+    // 绑定事件
+    if (hasConflict) {
+        // 有冲突：需要选择策略
+        document.getElementById('mg-cloud-confirm-btn').onclick = async () => {
+            const selected = document.querySelector('input[name="firstSyncPolicy"]:checked');
+            if (!selected) {
+                alert('请选择一个同步策略');
+                return;
+            }
+            
+            const policy = selected.value;
+            modal.remove();
+            localStorage.setItem('mg_cloud_enabled', '1');
+            localStorage.setItem('mg_first_sync_policy', policy);
+            
+            // 根据策略执行首次同步
+            await mgExecuteFirstSync(policy, conflictInfo);
+        };
+    } else {
+        // 无冲突：直接启用
+        document.getElementById('mg-cloud-enable-btn').onclick = async () => {
+            modal.remove();
+            localStorage.setItem('mg_cloud_enabled', '1');
+            
+            // 执行首次迁移（如果未迁移）
+            if (!isMigrated) {
+                const success = await mgCloudMigrateOnce();
+                if (success) {
+                    if (typeof showGlobalToast === 'function') {
+                        showGlobalToast('✅ 本地数据已导入云端');
+                    } else {
+                        alert('✅ 本地数据已导入云端');
+                    }
+                }
+            }
+            
+            // 从云端拉取最新数据（智能合并）
+            await mgLoadSettingsFromCloud(true);
+            const cloudHistory = await mgCloudFetchOrders();
+            if (cloudHistory.length > 0) {
+                const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
+                const localOnlyOrders = history.filter(item => {
+                    const extId = mgEnsureExternalId(item);
+                    return extId && !cloudIds.has(extId);
+                });
+                history = [...cloudHistory, ...localOnlyOrders];
+                saveData();
+                if (typeof updateDisplay === 'function') updateDisplay();
+                if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+            }
+        };
+    }
+    
+    document.getElementById('mg-cloud-skip-btn').onclick = () => {
+        modal.remove();
+    };
+}
+
+// 重新选择首次同步策略（用于已启用但想重新选择的用户）
+async function mgReselectFirstSyncPolicy() {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+    
+    if (!confirm('确定要重新选择首次同步策略吗？这将重新执行首次同步，可能会影响现有数据。')) {
+        return;
+    }
+    
+    // 清除迁移标记，重新检测
+    localStorage.removeItem('mg_cloud_migrated_v1');
+    localStorage.removeItem('mg_first_sync_policy');
+    
+    // 检测数据冲突
+    const conflictInfo = await mgDetectDataConflict();
+    
+    // 显示策略选择弹窗
+    const modal = document.createElement('div');
+    modal.className = 'mg-cloud-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML = `
+        <div class="mg-cloud-modal-content" style="background:white;padding:1.5rem;border-radius:12px;max-width:500px;width:100%;box-sizing:border-box;max-height:90vh;overflow-y:auto;">
+            <h3 style="margin-top:0;margin-bottom:0.75rem;font-size:18px;font-weight:600;line-height:1.4;">🌐 重新选择首次同步策略</h3>
+            <p style="margin-bottom:1rem;font-size:14px;line-height:1.5;color:#333;">请选择首次同步策略：</p>
+            <div style="background:#fff9e6;padding:12px;border-radius:6px;margin-bottom:1rem;font-size:13px;color:#856404;">
+                <strong>数据统计：</strong><br>
+                本地订单：${conflictInfo.localOrders} 条<br>
+                云端订单：${conflictInfo.cloudOrders} 条<br>
+                ${conflictInfo.localSettings ? '本地有设置' : '本地无设置'}<br>
+                ${conflictInfo.cloudSettings ? '云端有设置' : '云端无设置'}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1.25rem;">
+                <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #4caf50;border-radius:8px;cursor:pointer;background:#f1f8f4;">
+                    <input type="radio" name="firstSyncPolicy" value="merge" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;" checked>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;margin-bottom:4px;font-size:15px;">智能合并 ⭐ 推荐</div>
+                        <div style="font-size:13px;color:#666;">保留所有数据，订单和设置都智能合并，不会丢失任何数据</div>
+                    </div>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;">
+                    <input type="radio" name="firstSyncPolicy" value="local" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;margin-bottom:4px;font-size:15px;">以本地为准</div>
+                        <div style="font-size:13px;color:#666;">本地数据覆盖云端，适合当前设备是主设备的情况</div>
+                    </div>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;">
+                    <input type="radio" name="firstSyncPolicy" value="cloud" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;margin-bottom:4px;font-size:15px;">以云端为准</div>
+                        <div style="font-size:13px;color:#666;">云端数据覆盖本地，适合云端是主版本的情况</div>
+                    </div>
+                </label>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button id="mg-reselect-confirm-btn" style="flex:1;min-width:120px;padding:0.75rem;background:#ff6b6b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:15px;touch-action:manipulation;">确认</button>
+                <button id="mg-reselect-cancel-btn" style="flex:1;min-width:120px;padding:0.75rem;background:#eee;color:#333;border:none;border-radius:6px;cursor:pointer;font-size:15px;touch-action:manipulation;">取消</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('mg-reselect-confirm-btn').onclick = async () => {
+        const selected = document.querySelector('input[name="firstSyncPolicy"]:checked');
+        if (!selected) {
+            alert('请选择一个同步策略');
+            return;
+        }
+        
+        const policy = selected.value;
+        modal.remove();
+        localStorage.setItem('mg_first_sync_policy', policy);
+        
+        // 执行首次同步
+        await mgExecuteFirstSync(policy, conflictInfo);
+        updateCloudSyncStatus();
+    };
+    
+    document.getElementById('mg-reselect-cancel-btn').onclick = () => {
+        modal.remove();
+    };
+}
+
+// 执行首次同步（根据选择的策略）
+async function mgExecuteFirstSync(policy, conflictInfo) {
+    if (typeof showGlobalToast === 'function') {
+        showGlobalToast('正在执行首次同步...');
+    }
+    
+    try {
+        if (policy === 'merge') {
+            // 智能合并
+            await mgLoadSettingsFromCloud(true);
+            const cloudHistory = conflictInfo.cloudHistory || await mgCloudFetchOrders();
+            const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
+            
+            // 上传本地独有的订单
+            for (const item of history) {
+                const extId = mgEnsureExternalId(item);
+                if (extId && !cloudIds.has(extId)) {
+                    await mgCloudUpsertOrder(item);
+                }
+            }
+            
+            // 拉取所有订单并合并
+            const mergedHistory = await mgCloudFetchOrders();
+            if (mergedHistory.length > 0) {
+                history = mergedHistory;
+                saveData();
+            }
+            
+            // 上传合并后的设置
+            await mgSyncSettingsToCloud();
+            
+            if (typeof showGlobalToast === 'function') {
+                showGlobalToast('✅ 首次同步完成：数据已智能合并');
+            } else {
+                alert('✅ 首次同步完成：数据已智能合并');
+            }
+            
+        } else if (policy === 'local') {
+            // 以本地为准
+            await mgSyncSettingsToCloud();
+            for (const item of history) {
+                await mgCloudUpsertOrder(item);
+            }
+            
+            if (typeof showGlobalToast === 'function') {
+                showGlobalToast('✅ 首次同步完成：本地数据已覆盖云端');
+            } else {
+                alert('✅ 首次同步完成：本地数据已覆盖云端');
+            }
+            
+        } else if (policy === 'cloud') {
+            // 以云端为准
+            await mgLoadSettingsFromCloud(false); // 直接覆盖
+            const cloudHistory = conflictInfo.cloudHistory || await mgCloudFetchOrders();
+            if (cloudHistory.length > 0) {
+                history = cloudHistory;
+                saveData();
+            }
+            
+            if (typeof showGlobalToast === 'function') {
+                showGlobalToast('✅ 首次同步完成：云端数据已覆盖本地');
+            } else {
+                alert('✅ 首次同步完成：云端数据已覆盖本地');
+            }
+        }
+        
+        localStorage.setItem('mg_cloud_migrated_v1', '1');
+        
+        if (typeof updateDisplay === 'function') updateDisplay();
+        if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+        
+    } catch (err) {
+        console.error('首次同步失败:', err);
+        alert('首次同步失败，请稍后重试');
+    }
+}
+
+// 更新设置页面的云端状态显示
+function updateCloudSyncStatus() {
+    const statusText = document.getElementById('cloudSyncStatusText');
+    const enableBtn = document.getElementById('enableCloudBtn');
+    const disableBtn = document.getElementById('disableCloudBtn');
+    const syncBtn = document.getElementById('syncCloudBtn');
+    const loadBtn = document.getElementById('loadCloudBtn');
+    
+    if (!statusText) return;
+    
+    const isEnabled = mgIsCloudEnabled();
+    const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
+    const isMigrated = localStorage.getItem('mg_cloud_migrated_v1') === '1';
+    
+    if (!isEnabled) {
+        statusText.textContent = '未登录。请先登录以启用云端同步。';
+        if (enableBtn) enableBtn.style.display = 'none';
+        if (disableBtn) disableBtn.style.display = 'none';
+        if (syncBtn) syncBtn.style.display = 'none';
+        if (loadBtn) loadBtn.style.display = 'none';
+    } else if (!isCloudModeOn) {
+        statusText.textContent = '云端模式未启用。点击下方按钮启用智能同步。';
+        if (enableBtn) enableBtn.style.display = 'inline-block';
+        if (disableBtn) disableBtn.style.display = 'none';
+        if (syncBtn) syncBtn.style.display = 'none';
+        if (loadBtn) loadBtn.style.display = 'none';
+    } else {
+        // 加载未同步订单列表
+        loadUnsyncedOrders();
+        const unsyncedCount = unsyncedOrderIds.size;
+        
+        let statusHtml = '✅ 智能同步模式已启用';
+        if (isMigrated) statusHtml += '（本地数据已导入）';
+        if (unsyncedCount > 0) {
+            statusHtml += ` <span style="color:#ff6b6b;font-weight:600;">（${unsyncedCount} 条未同步）</span>`;
+        }
+        statusText.innerHTML = statusHtml;
+        
+        if (enableBtn) enableBtn.style.display = 'none';
+        if (disableBtn) disableBtn.style.display = 'inline-block';
+        if (syncBtn) {
+            syncBtn.style.display = 'inline-block';
+            // 如果有未同步数据，按钮文字改为"同步未同步数据"
+            if (unsyncedCount > 0) {
+                syncBtn.textContent = `同步未同步数据（${unsyncedCount}）`;
+            } else {
+                syncBtn.textContent = '一键上传所有';
+            }
+        }
+        if (loadBtn) loadBtn.style.display = 'inline-block';
+        const reselectBtn = document.getElementById('reselectSyncBtn');
+        if (reselectBtn) reselectBtn.style.display = 'inline-block';
+    }
+}
+
+// 手动启用云端模式
+async function handleEnableCloud() {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+    
+    if (confirm('确定要启用云端模式吗？首次启用将自动导入本地数据到云端。')) {
+        localStorage.setItem('mg_cloud_enabled', '1');
+        
+        // 执行首次迁移
+        const isMigrated = localStorage.getItem('mg_cloud_migrated_v1') === '1';
+        if (!isMigrated) {
+            const success = await mgCloudMigrateOnce();
+            if (success) {
+                if (typeof showGlobalToast === 'function') {
+                    showGlobalToast('✅ 本地数据已导入云端');
+                } else {
+                    alert('✅ 本地数据已导入云端');
+                }
+            }
+        }
+        
+        // 从云端加载数据
+        await handleLoadCloud();
+        updateCloudSyncStatus();
+    }
+}
+
+// 手动禁用云端模式
+async function handleDisableCloud() {
+    if (!confirm('确定要禁用云端模式吗？禁用后，数据将不再自动同步到云端，但本地数据不会丢失。')) {
+        return;
+    }
+    
+    localStorage.setItem('mg_cloud_enabled', '0');
+    
+    if (typeof showGlobalToast === 'function') {
+        showGlobalToast('✅ 云端模式已禁用');
+    } else {
+        alert('✅ 云端模式已禁用');
+    }
+    
+    updateCloudSyncStatus();
+}
+
+// 手动同步到云端
+async function handleSyncCloud() {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+    
+    if (typeof showGlobalToast === 'function') {
+        showGlobalToast('正在同步到云端...');
+    }
+    
+    // 同步所有本地 history 到云端
+    const client = mgGetSupabaseClient();
+    if (!client) return;
+    
+    let synced = 0;
+    for (const item of history) {
+        await mgCloudUpsertOrder(item);
+        synced++;
+    }
+    
+    if (typeof showGlobalToast === 'function') {
+        showGlobalToast(`✅ 已同步 ${synced} 条排单到云端`);
+    } else {
+        alert(`✅ 已同步 ${synced} 条排单到云端`);
+    }
+}
+
+// 从云端加载数据
+async function handleLoadCloud() {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+    
+    if (typeof showGlobalToast === 'function') {
+        showGlobalToast('正在从云端加载...');
+    }
+    
+    const cloudHistory = await mgCloudFetchOrders();
+    if (cloudHistory.length > 0) {
+        history = cloudHistory;
+        saveData();
+        if (typeof updateDisplay === 'function') updateDisplay();
+        if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+        
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast(`✅ 已从云端加载 ${cloudHistory.length} 条排单`);
+        } else {
+            alert(`✅ 已从云端加载 ${cloudHistory.length} 条排单`);
+        }
+    } else {
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast('云端暂无数据');
+        } else {
+            alert('云端暂无数据');
+        }
+    }
+}
+
+// ====== 设置同步：artist_settings ======
+async function mgSyncSettingsToCloud() {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+
+    const client = mgGetSupabaseClient();
+    if (!client) return;
+
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) {
+        alert('登录状态已失效，请重新登录');
+        return;
+    }
+
+    // 智能合并：先拉取云端设置并智能合并到本地，然后再上传合并后的设置
+    try {
+        // 1. 拉取云端设置并智能合并到本地
+        await mgLoadSettingsFromCloud(true); // 智能合并模式
+        
+        // 2. 使用合并后的本地设置上传到云端
+        const payload = {
+            calculatorSettings: defaultSettings,
+            productSettings: productSettings,
+            processSettings: processSettings,
+            templates: templates,
+            exportDate: new Date().toISOString()
+        };
+
+        const { error } = await client
+            .from('artist_settings')
+            .upsert({
+                artist_id: session.user.id,
+                payload: payload,
+                updated_at: new Date().toISOString()
+            });
+
+        if (error) {
+            console.error('上传设置到云端失败:', error);
+            alert('上传设置到云端失败，请稍后重试');
+            return;
+        }
+
+        if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已智能合并并上传到云端');
+        else alert('设置已智能合并并上传到云端');
+    } catch (err) {
+        console.error('智能合并设置失败:', err);
+        // 如果智能合并失败，仍然尝试直接上传（降级处理）
+        const payload = {
+            calculatorSettings: defaultSettings,
+            productSettings: productSettings,
+            processSettings: processSettings,
+            templates: templates,
+            exportDate: new Date().toISOString()
+        };
+
+        const { error } = await client
+            .from('artist_settings')
+            .upsert({
+                artist_id: session.user.id,
+                payload: payload,
+                updated_at: new Date().toISOString()
+            });
+
+        if (error) {
+            console.error('上传设置到云端失败:', error);
+            alert('上传设置到云端失败，请稍后重试');
+        } else {
+            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已上传到云端');
+            else alert('设置已上传到云端');
+        }
+    }
+}
+
+// 智能合并数组设置（按id去重，保留最新的）
+function mergeArraySettings(cloudArray, localArray, key = 'id') {
+    if (!Array.isArray(cloudArray)) return localArray || [];
+    if (!Array.isArray(localArray)) return cloudArray;
+    
+    // 创建云端设置的映射（以id为key）
+    const cloudMap = new Map();
+    cloudArray.forEach(item => {
+        const itemKey = item && item[key] != null ? String(item[key]) : null;
+        if (itemKey) cloudMap.set(itemKey, item);
+    });
+    
+    // 创建本地设置的映射
+    const localMap = new Map();
+    localArray.forEach(item => {
+        const itemKey = item && item[key] != null ? String(item[key]) : null;
+        if (itemKey) localMap.set(itemKey, item);
+    });
+    
+    // 合并：云端优先，但保留本地独有的
+    const merged = [...cloudArray]; // 先添加所有云端设置
+    
+    // 添加本地独有的设置
+    localArray.forEach(item => {
+        const itemKey = item && item[key] != null ? String(item[key]) : null;
+        if (itemKey && !cloudMap.has(itemKey)) {
+            merged.push(item);
+        }
+    });
+    
+    return merged;
+}
+
+// 智能合并对象设置（深度合并，云端优先）
+function mergeObjectSettings(cloudObj, localObj) {
+    if (!cloudObj || typeof cloudObj !== 'object') return localObj || {};
+    if (!localObj || typeof localObj !== 'object') return cloudObj;
+    
+    const merged = { ...localObj }; // 先复制本地设置
+    
+    // 用云端设置覆盖（深度合并）
+    Object.keys(cloudObj).forEach(key => {
+        if (cloudObj[key] && typeof cloudObj[key] === 'object' && !Array.isArray(cloudObj[key]) && 
+            localObj[key] && typeof localObj[key] === 'object' && !Array.isArray(localObj[key])) {
+            // 递归合并嵌套对象
+            merged[key] = mergeObjectSettings(cloudObj[key], localObj[key]);
+        } else {
+            // 云端优先
+            merged[key] = cloudObj[key];
+        }
+    });
+    
+    return merged;
+}
+
+async function mgLoadSettingsFromCloud(mergeMode = false) {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+
+    const client = mgGetSupabaseClient();
+    if (!client) return;
+
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) {
+        alert('登录状态已失效，请重新登录');
+        return;
+    }
+
+    const { data, error } = await client
+        .from('artist_settings')
+        .select('payload')
+        .eq('artist_id', session.user.id)
+        .single();
+
+    if (error) {
+        console.error('从云端获取设置失败:', error);
+        if (!mergeMode) {
+            alert('从云端获取设置失败（可能还未上传过设置）');
+        }
+        return;
+    }
+
+    const p = data && data.payload;
+    if (!p) {
+        if (!mergeMode) {
+            alert('云端尚无设置，请先上传');
+        }
+        return;
+    }
+
+    try {
+        if (mergeMode) {
+            // 合并模式：智能合并设置
+            if (p.calculatorSettings && typeof p.calculatorSettings === 'object') {
+                defaultSettings = mergeObjectSettings(p.calculatorSettings, defaultSettings);
+            }
+            if (Array.isArray(p.productSettings)) {
+                productSettings = mergeArraySettings(p.productSettings, productSettings, 'id');
+            }
+            if (Array.isArray(p.processSettings)) {
+                processSettings = mergeArraySettings(p.processSettings, processSettings, 'id');
+            }
+            if (Array.isArray(p.templates)) {
+                templates = mergeArraySettings(p.templates, templates, 'id');
+            }
+        } else {
+            // 非合并模式：直接覆盖
+            if (p.calculatorSettings && typeof p.calculatorSettings === 'object') {
+                Object.assign(defaultSettings, p.calculatorSettings);
+            }
+            if (Array.isArray(p.productSettings)) productSettings = p.productSettings;
+            if (Array.isArray(p.processSettings)) processSettings = p.processSettings;
+            if (Array.isArray(p.templates)) templates = p.templates;
+        }
+
+        // 落盘
+        clearTimeout(_saveDataTimer);
+        if (typeof doSaveData === 'function') doSaveData();
+
+        if (mergeMode) {
+            // 合并模式不刷新页面，只更新显示
+            if (typeof updateDisplay === 'function') updateDisplay();
+        } else {
+            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已从云端恢复设置，正在刷新');
+            else alert('已从云端恢复设置，正在刷新');
+            setTimeout(function () { location.reload(); }, 400);
+        }
+    } catch (e) {
+        console.error('应用云端设置失败:', e);
+        alert('应用云端设置失败，请重试');
+    }
+}
+
+// ====== 智能同步模式（唯一选项） ======
+/**
+ * 确保已初始化智能同步模式
+ * @returns {Promise<string>} 始终返回 'smart_sync'
+ */
+async function mgEnsureSyncPolicy() {
+    // 直接使用智能同步模式，无需选择
+    const policy = 'smart_sync';
+    localStorage.setItem('mg_cloud_sync_policy', policy);
+    localStorage.setItem('mg_cloud_sync_initialized', '1');
+    return policy;
+}
+
+// ====== 智能同步模式：一键上传所有（设置+订单） ======
+/**
+ * 一键上传所有数据到云端（智能同步模式）
+ * 优先同步未同步的数据
+ */
+async function mgSyncAllToCloud() {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+    
+    // 确保已初始化智能同步模式
+    await mgEnsureSyncPolicy();
+    
+    // 加载未同步订单列表
+    loadUnsyncedOrders();
+    const unsyncedCount = unsyncedOrderIds.size;
+    
+    if (typeof showGlobalToast === 'function') {
+        if (unsyncedCount > 0) {
+            showGlobalToast(`正在同步 ${unsyncedCount} 条未同步数据...`);
+        } else {
+            showGlobalToast('正在同步到云端...');
+        }
+    }
+    
+    try {
+        const client = mgGetSupabaseClient();
+        if (!client) return;
+        
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) {
+            alert('登录状态已失效，请重新登录');
+            return;
+        }
+        
+        // 智能同步模式：设置和订单都智能合并
+        // 1. 设置：智能合并（云端优先，但保留本地独有的）
+        await mgLoadSettingsFromCloud(true); // 智能合并模式
+        
+        // 2. 优先同步未同步的订单
+        let syncedCount = 0;
+        if (unsyncedCount > 0) {
+            // 只同步未同步的订单
+            for (const orderId of unsyncedOrderIds) {
+                const item = history.find(h => h.id == orderId);
+                if (item) {
+                    await mgCloudUpsertOrder(item);
+                    syncedCount++;
+                }
+            }
+        } else {
+            // 没有未同步数据，执行完整同步
+            const cloudHistory = await mgCloudFetchOrders();
+            const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
+            
+            // 合并逻辑：本地有但云端没有的，上传到云端
+            for (const item of history) {
+                const extId = mgEnsureExternalId(item);
+                if (extId && !cloudIds.has(extId)) {
+                    await mgCloudUpsertOrder(item);
+                    syncedCount++;
+                }
+            }
+            
+            // 拉取云端所有订单（包含合并后的）
+            const mergedHistory = await mgCloudFetchOrders();
+            if (mergedHistory.length > 0) {
+                history = mergedHistory;
+                if (typeof saveData === 'function') saveData();
+            }
+        }
+        
+        // 3. 上传合并后的设置到云端
+        await mgSyncSettingsToCloud();
+        
+        // 更新同步状态
+        updateCloudSyncStatus();
+        
+        if (typeof showGlobalToast === 'function') {
+            if (unsyncedCount > 0) {
+                showGlobalToast(`✅ 已同步 ${syncedCount} 条未同步数据`);
+            } else {
+                showGlobalToast(`✅ 智能同步完成：设置和订单已智能合并`);
+            }
+        } else {
+            if (unsyncedCount > 0) {
+                alert(`✅ 已同步 ${syncedCount} 条未同步数据`);
+            } else {
+                alert(`✅ 智能同步完成`);
+            }
+        }
+        
+        // 刷新显示
+        setTimeout(() => {
+            if (typeof updateDisplay === 'function') updateDisplay();
+            if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+        }, 500);
+        
+    } catch (err) {
+        console.error('同步到云端失败:', err);
+        alert('同步到云端失败，请稍后重试');
+    }
+}
+
+// ====== 统一恢复入口：一键从云端恢复所有（设置+订单） ======
+/**
+ * 一键从云端恢复所有数据（无论策略是什么，都以云端为源）
+ */
+async function mgRestoreAllFromCloud() {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+    
+    if (!confirm('确定要从云端恢复所有数据吗？这将覆盖本地数据。')) {
+        return;
+    }
+    
+    if (typeof showGlobalToast === 'function') {
+        showGlobalToast('正在从云端恢复...');
+    }
+    
+    try {
+        // 1. 恢复设置
+        await mgLoadSettingsFromCloud();
+        
+        // 2. 恢复订单
+        const cloudHistory = await mgCloudFetchOrders();
+        if (cloudHistory.length > 0) {
+            history = cloudHistory;
+            if (typeof saveData === 'function') saveData();
+            
+            if (typeof showGlobalToast === 'function') {
+                showGlobalToast(`✅ 已从云端恢复设置和 ${cloudHistory.length} 条排单，正在刷新`);
+            } else {
+                alert(`✅ 已从云端恢复设置和 ${cloudHistory.length} 条排单`);
+            }
+            
+            // 刷新页面以应用云端数据
+            setTimeout(() => {
+                if (typeof updateDisplay === 'function') updateDisplay();
+                if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+                location.reload();
+            }, 400);
+        } else {
+            if (typeof showGlobalToast === 'function') {
+                showGlobalToast('云端暂无订单数据');
+            } else {
+                alert('云端暂无订单数据');
+            }
+            // 即使没有订单，设置已恢复，也需要刷新
+            setTimeout(() => {
+                location.reload();
+            }, 400);
+        }
+        
+    } catch (err) {
+        console.error('从云端恢复失败:', err);
+        alert('从云端恢复失败，请稍后重试');
+    }
+}
+
+// 在 init() 末尾调用云端检测
+const originalInit = init;
+init = function() {
+    originalInit();
+    
+    // 立即更新一次状态（显示检测中或未登录状态）
+    updateCloudSyncStatus();
+    
+    // 延迟检测云端（等待 __APP_AUTH__ 初始化完成）
+    setTimeout(async () => {
+        if (mgIsCloudEnabled()) {
+            await mgShowCloudEnableModal();
+            
+            // 智能同步模式：启动时自动拉取并合并
+            const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
+            if (isCloudModeOn) {
+                try {
+                    // 先合并设置（智能合并）
+                    await mgLoadSettingsFromCloud(true);
+                    
+                    // 再合并订单
+                    const cloudHistory = await mgCloudFetchOrders();
+                    const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
+                    
+                    // 上传本地独有的订单
+                    for (const item of history) {
+                        const extId = mgEnsureExternalId(item);
+                        if (extId && !cloudIds.has(extId)) {
+                            await mgCloudUpsertOrder(item);
+                        }
+                    }
+                    
+                    // 拉取所有订单（包含刚上传的）
+                    const mergedHistory = await mgCloudFetchOrders();
+                    if (mergedHistory.length > 0) {
+                        history = mergedHistory;
+                        if (typeof saveData === 'function') saveData();
+                    }
+                    
+                    if (typeof updateDisplay === 'function') updateDisplay();
+                    if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+                } catch (err) {
+                    console.error('启动时智能同步失败:', err);
+                }
+            }
+        }
+        // 更新设置页面的云端状态
+        updateCloudSyncStatus();
+    }, 1000);
+    
+    // 当切换到设置页时，更新云端状态和登录UI
+    const originalShowPage = window.showPage;
+    if (originalShowPage) {
+        window.showPage = function(page) {
+            originalShowPage(page);
+            if (page === 'settings') {
+                setTimeout(() => {
+                    if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus();
+                    if (typeof updateLoginUI === 'function') updateLoginUI();
+                }, 100);
+            }
+        };
+    }
+};
+
 // 自动初始化应用，确保小票设置与预览可用
 if (typeof init === 'function') {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', function() {
+            // 如果正在跳转到登录页，跳过主页 init，避免页面被脚本抢回
+            try {
+                if (sessionStorage.getItem('mg_redirecting_to_login') === '1') return;
+            } catch (_) {}
+            init();
+        });
     } else {
-        init();
+        try {
+            if (sessionStorage.getItem('mg_redirecting_to_login') !== '1') {
+                init();
+            }
+        } catch (_) {
+            init();
+        }
     }
 }

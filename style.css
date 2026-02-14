@@ -9239,3 +9239,202 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
         box-sizing: border-box;
     }
 }
+
+/* 云端同步策略选择弹窗 - 移动端优化 */
+.mg-sync-policy-modal {
+    padding: 12px !important;
+}
+
+.mg-sync-policy-content {
+    padding: 1.25rem !important;
+}
+
+.mg-sync-policy-option {
+    -webkit-tap-highlight-color: transparent;
+}
+
+.mg-sync-policy-option:active {
+    border-color: #ff6b6b !important;
+    background-color: #fff5f5 !important;
+}
+
+/* 移动端优化 */
+@media (max-width: 480px) {
+    .mg-sync-policy-modal {
+        padding: 8px !important;
+        align-items: flex-end !important;
+    }
+    
+    .mg-sync-policy-content {
+        padding: 1rem !important;
+        max-height: 85vh !important;
+        border-radius: 16px 16px 0 0 !important;
+    }
+    
+    .mg-sync-policy-content h3 {
+        font-size: 16px !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .mg-sync-policy-content > p {
+        font-size: 13px !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    .mg-sync-policy-options {
+        gap: 8px !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    .mg-sync-policy-option {
+        padding: 10px !important;
+        gap: 10px !important;
+    }
+    
+    .mg-sync-policy-option input[type="radio"] {
+        width: 20px !important;
+        height: 20px !important;
+        margin-top: 2px !important;
+    }
+    
+    .mg-sync-policy-option > div > div:first-child {
+        font-size: 14px !important;
+        margin-bottom: 3px !important;
+    }
+    
+    .mg-sync-policy-option > div > div:last-child {
+        font-size: 12px !important;
+    }
+    
+    .mg-sync-policy-content button {
+        padding: 0.7rem !important;
+        font-size: 14px !important;
+    }
+}
+
+/* 超小屏幕优化 */
+@media (max-width: 360px) {
+    .mg-sync-policy-content {
+        padding: 0.875rem !important;
+    }
+    
+    .mg-sync-policy-content h3 {
+        font-size: 15px !important;
+    }
+    
+    .mg-sync-policy-option {
+        padding: 8px !important;
+    }
+    
+    .mg-sync-policy-option > div > div:first-child {
+        font-size: 13px !important;
+    }
+    
+    .mg-sync-policy-option > div > div:last-child {
+        font-size: 11px !important;
+    }
+}
+
+/* 黑夜模式适配 */
+html.theme-dark .mg-sync-policy-content {
+    background: var(--card-bg) !important;
+    color: var(--text-color) !important;
+}
+
+html.theme-dark .mg-sync-policy-content h3 {
+    color: var(--text-color) !important;
+}
+
+html.theme-dark .mg-sync-policy-content > p {
+    color: var(--text-light) !important;
+}
+
+html.theme-dark .mg-sync-policy-option {
+    border-color: var(--border-color) !important;
+    background-color: var(--card-bg) !important;
+}
+
+html.theme-dark .mg-sync-policy-option:active {
+    border-color: #ff6b6b !important;
+    background-color: rgba(255, 107, 107, 0.1) !important;
+}
+
+html.theme-dark .mg-sync-policy-option > div > div:last-child {
+    color: var(--text-light) !important;
+}
+
+html.theme-dark #mg-policy-cancel-btn {
+    background: var(--primary-light) !important;
+    color: var(--text-color) !important;
+}
+
+/* 云端启用弹窗 - 移动端优化 */
+.mg-cloud-modal {
+    padding: 12px !important;
+}
+
+.mg-cloud-modal-content {
+    padding: 1.25rem !important;
+}
+
+/* 移动端优化 */
+@media (max-width: 480px) {
+    .mg-cloud-modal {
+        padding: 8px !important;
+        align-items: flex-end !important;
+    }
+    
+    .mg-cloud-modal-content {
+        padding: 1rem !important;
+        border-radius: 16px 16px 0 0 !important;
+    }
+    
+    .mg-cloud-modal-content h3 {
+        font-size: 16px !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .mg-cloud-modal-content p {
+        font-size: 13px !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .mg-cloud-modal-content button {
+        padding: 0.7rem !important;
+        font-size: 14px !important;
+    }
+}
+
+/* 超小屏幕优化 */
+@media (max-width: 360px) {
+    .mg-cloud-modal-content {
+        padding: 0.875rem !important;
+    }
+    
+    .mg-cloud-modal-content h3 {
+        font-size: 15px !important;
+    }
+    
+    .mg-cloud-modal-content p {
+        font-size: 12px !important;
+    }
+}
+
+/* 黑夜模式适配 */
+html.theme-dark .mg-cloud-modal-content {
+    background: var(--card-bg) !important;
+    color: var(--text-color) !important;
+}
+
+html.theme-dark .mg-cloud-modal-content h3 {
+    color: var(--text-color) !important;
+}
+
+html.theme-dark .mg-cloud-modal-content p {
+    color: var(--text-light) !important;
+}
+
+html.theme-dark #mg-cloud-skip-btn {
+    background: var(--primary-light) !important;
+    color: var(--text-color) !important;
+}

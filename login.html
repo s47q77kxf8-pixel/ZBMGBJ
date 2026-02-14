@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>账号登录</title>
+    <link rel="stylesheet" href="style.css?v=20250131-process-input">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .page-wrap {
+            max-width: 520px;
+            margin: 0 auto;
+            padding: 16px 14px 28px;
+        }
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 8px 0 14px;
+        }
+        .topbar-title {
+            font-size: 22px;
+            font-weight: 800;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px;
+        }
+        .form-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .form-group {
+            flex: 1;
+            min-width: 220px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-light);
+            margin: 0 0 6px;
+        }
+        .form-group input {
+            width: 100%;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .actions .btn {
+            flex: 1;
+        }
+        #message {
+            margin-top: 10px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-light);
+            min-height: 1.2em;
+        }
+        #message.error { color: var(--danger, #e74c3c); }
+        #message.success { color: var(--ok, #2ecc71); }
+    </style>
+</head>
+<body>
+
+<div class="page-wrap">
+    <div class="topbar">
+        <button type="button" class="btn-icon" onclick="window.location.href='index.html#settings'" aria-label="返回" title="返回">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="topbar-title">账号登录</div>
+        <span style="width: 40px;"></span>
+    </div>
+
+    <div class="card">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="email">邮箱</label>
+                <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" placeholder="至少6位密码" autocomplete="current-password">
+            </div>
+        </div>
+        <div class="actions">
+            <button type="button" class="btn" onclick="handleAuth('login')">登录</button>
+            <button type="button" class="btn secondary" onclick="handleAuth('signup')">注册账号</button>
+        </div>
+        <div id="message"></div>
+    </div>
+</div>
+
+<!-- 引入 Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js?v=20250213"></script>
+<script>
+    // 使用全局配置的 Supabase 客户端（避免重复声明）
+    // 注意：使用 supabaseClient 而不是 supabase，避免与可能的全局变量冲突
+    var supabaseClient = null;
+    (function() {
+        if (window.__SUPABASE__ && window.__SUPABASE__.client) {
+            supabaseClient = window.__SUPABASE__.client;
+        } else {
+            console.error('Supabase 客户端初始化失败');
+        }
+    })();
+
+    const messageEl = document.getElementById('message');
+
+    function showMessage(msg, type = 'success') {
+        messageEl.textContent = msg;
+        messageEl.className = 'message ' + type;
+    }
+
+    async function handleAuth(type) {
+        if (!supabaseClient) {
+            return showMessage('系统初始化失败，请刷新页面重试', 'error');
+        }
+        
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+
+        if (!email || !password) {
+            return showMessage('请填写完整信息', 'error');
+        }
+
+        showMessage('处理中...', 'success');
+
+        if (type === 'signup') {
+            // 注册逻辑
+            const { data, error } = await supabaseClient.auth.signUp({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                return showMessage(error.message, 'error');
+            }
+
+            if (data.user) {
+                // 注册成功后，立即在 artists 表生成 slug
+                const userId = data.user.id;
+                const randomSlug = 'a' + Math.random().toString(36).substring(2, 8); // 生成 a+6位随机字符
+
+                const { error: artistError } = await supabaseClient
+                    .from('artists')
+                    .insert([{ 
+                        id: userId, 
+                        slug: randomSlug, 
+                        display_name: '新美工' 
+                    }]);
+
+                if (artistError) {
+                    console.error('档案初始化失败:', artistError);
+                    showMessage('注册成功，但档案生成失败，请联系管理员', 'error');
+                } else {
+                    showMessage('注册成功！正在跳转...', 'success');
+                    setTimeout(() => window.location.href = 'index.html#settings', 1500);
+                }
+            }
+        } else {
+            // 登录逻辑
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                return showMessage('登录失败: ' + error.message, 'error');
+            }
+
+            showMessage('登录成功！正在跳转...', 'success');
+            setTimeout(() => window.location.href = 'index.html#settings', 1500);
+        }
+    }
+
+    async function handleLogout() {
+        if (!supabaseClient) return;
+        try {
+            await supabaseClient.auth.signOut();
+        } catch (e) {
+            console.error('退出失败:', e);
+        }
+        window.location.href = 'index.html#settings';
+    }
+
+    async function initLoginPage() {
+        if (!supabaseClient) return;
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        const card = document.querySelector('.card');
+        if (!card) return;
+
+        if (session && session.user && session.user.email) {
+            card.innerHTML = `
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <div>
+                        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">当前已登录账号</div>
+                        <div style="font-size:15px;font-weight:600;word-break:break-all;">${session.user.email}</div>
+                    </div>
+                    <button type="button" class="btn w-full" onclick="handleLogout()">退出登录</button>
+                </div>
+            `;
+        }
+    }
+
+    initLoginPage();
+</script>
+
+</body>
+</html>
