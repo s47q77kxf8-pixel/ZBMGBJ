@@ -16431,12 +16431,13 @@ async function mgSyncSettingsToCloud(silent = false) {
     }
     window._isSyncingSettings = true;
 
-    // 智能合并：先拉取云端设置并智能合并到本地，然后再上传合并后的设置
+    // 以本地为准：直接上传当前本地设置到云端（包含删除），不从云端先合并
     try {
-        // 1. 拉取云端设置并智能合并到本地
-        await mgLoadSettingsFromCloud(true); // 智能合并模式
+        // 1. 直接使用本地设置上传到云端
+        // 清理数据，确保可序列化（移除undefined、函数等）
+        // 注意：这里不调用 mgLoadSettingsFromCloud(true)，避免把云端已存在但本地已删除的项合并回来
         
-        // 2. 使用合并后的本地设置上传到云端
+        // 2. 使用本地设置上传到云端
         // 清理数据，确保可序列化（移除undefined、函数等）
         const cleanPayload = {
             calculatorSettings: JSON.parse(JSON.stringify(defaultSettings || {})),
