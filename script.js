@@ -15369,12 +15369,15 @@ async function mgCloudMigrateOnce() {
         
         // 3. 筛选本地需要上传的记录（云端没有的）
         const toUpload = [];
+        const now = new Date().toISOString();
         for (const item of history) {
             const extId = mgEnsureExternalId(item);
             if (extId && !existingIds.has(extId)) {
                 const mapped = mgMapLocalToCloud(item);
                 if (mapped) {
                     mapped.artist_id = artistId;
+                    mapped.created_at = now;
+                    mapped.updated_at = now;
                     toUpload.push(mapped);
                 }
             }
@@ -15589,7 +15592,21 @@ async function mgCloudUpsertOrder(item, retryCount = 0) {
         }
         
         mapped.artist_id = session.user.id;
-        mapped.updated_at = new Date().toISOString();
+        const now = new Date().toISOString();
+        mapped.updated_at = now;
+        
+        // 检查是否已存在（用于判断是插入还是更新）
+        const { data: existing } = await client
+            .from('orders')
+            .select('external_id, created_at')
+            .eq('external_id', mapped.external_id)
+            .eq('artist_id', session.user.id)
+            .single();
+        
+        // 如果是新记录，设置 created_at
+        if (!existing) {
+            mapped.created_at = now;
+        }
         
         // 使用 upsert（如果 external_id 存在则更新，否则插入）
         const { error } = await client
@@ -15670,20 +15687,19 @@ async function mgDetectDataConflict() {
 
 // 登录后弹窗提示启用云端（优化版：检测数据冲突）
 async function mgShowCloudEnableModal() {
+    // 检查是否已登录（必须登录才能启用云端）
     if (!mgIsCloudEnabled()) return;
-    if (localStorage.getItem('mg_cloud_enabled') === '1') return; // 已启用过，不再弹窗
+    // 如果已经启用过云端模式，不再弹窗
+    if (localStorage.getItem('mg_cloud_enabled') === '1') return;
     
     // 检查是否已迁移
     const isMigrated = localStorage.getItem('mg_cloud_migrated_v1') === '1';
     
     // 检测数据冲突（首次启用时总是检测，让用户选择）
     const conflictInfo = await mgDetectDataConflict();
-    // 首次启用时，如果云端或本地有数据，就显示策略选择
-    // 即使数据相同，也让用户选择，确保用户有控制权
-    const hasConflict = !isMigrated && (conflictInfo.cloudOrders > 0 || conflictInfo.localOrders > 0 || conflictInfo.cloudSettings || conflictInfo.localSettings);
-    
-    // 如果云端和本地都没有数据，也显示简单提示（但这种情况很少）
-    // 如果云端或本地有数据，总是显示策略选择
+    // 首次启用时，总是显示策略选择，让用户有控制权
+    // 即使本地和云端都没有数据，也显示策略选择（用户可以选择以本地为准，这样后续有数据时会自动同步）
+    const hasConflict = !isMigrated; // 首次启用时总是显示策略选择
     
     // 创建弹窗
     const modal = document.createElement('div');
@@ -15695,8 +15711,9 @@ async function mgShowCloudEnableModal() {
         // 有冲突：显示首次同步策略选择
         modalContent = `
             <div class="mg-cloud-modal-content" style="background:white;padding:1.5rem;border-radius:12px;max-width:500px;width:100%;box-sizing:border-box;max-height:90vh;overflow-y:auto;">
-                <h3 style="margin-top:0;margin-bottom:0.75rem;font-size:18px;font-weight:600;line-height:1.4;">🌐 检测到数据差异</h3>
-                <p style="margin-bottom:1rem;font-size:14px;line-height:1.5;color:#333;">检测到本地和云端都有数据，请选择首次同步策略：</p>
+                <h3 style="margin-top:0;margin-bottom:0.75rem;font-size:18px;font-weight:600;line-height:1.4;">🌐 首次启用云端同步</h3>
+                <p style="margin-bottom:1rem;font-size:14px;line-height:1.5;color:#333;">请选择首次同步策略：</p>
+                ${(conflictInfo.cloudOrders > 0 || conflictInfo.localOrders > 0 || conflictInfo.cloudSettings || conflictInfo.localSettings) ? `
                 <div style="background:#fff9e6;padding:12px;border-radius:6px;margin-bottom:1rem;font-size:13px;color:#856404;">
                     <strong>数据统计：</strong><br>
                     本地订单：${conflictInfo.localOrders} 条<br>
@@ -15704,6 +15721,11 @@ async function mgShowCloudEnableModal() {
                     ${conflictInfo.localSettings ? '本地有设置' : '本地无设置'}<br>
                     ${conflictInfo.cloudSettings ? '云端有设置' : '云端无设置'}
                 </div>
+                ` : `
+                <div style="background:#e8f5e9;padding:12px;border-radius:6px;margin-bottom:1rem;font-size:13px;color:#2e7d32;">
+                    <strong>提示：</strong>当前本地和云端都没有数据。选择策略后，后续数据将按选择的策略自动同步。
+                </div>
+                `}
                 <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1.25rem;">
                     <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #4caf50;border-radius:8px;cursor:pointer;background:#f1f8f4;">
                         <input type="radio" name="firstSyncPolicy" value="merge" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;" checked>
@@ -16034,26 +16056,14 @@ async function handleEnableCloud() {
         return;
     }
     
-    if (confirm('确定要启用云端模式吗？首次启用将自动导入本地数据到云端。')) {
-        localStorage.setItem('mg_cloud_enabled', '1');
-        
-        // 执行首次迁移
-        const isMigrated = localStorage.getItem('mg_cloud_migrated_v1') === '1';
-        if (!isMigrated) {
-            const success = await mgCloudMigrateOnce();
-            if (success) {
-                if (typeof showGlobalToast === 'function') {
-                    showGlobalToast('✅ 本地数据已导入云端');
-                } else {
-                    alert('✅ 本地数据已导入云端');
-                }
-            }
-        }
-        
-        // 从云端加载数据
-        await handleLoadCloud();
-        updateCloudSyncStatus();
+    // 如果已经启用过，直接返回
+    if (localStorage.getItem('mg_cloud_enabled') === '1') {
+        alert('云端模式已启用');
+        return;
     }
+    
+    // 首次启用时，显示策略选择弹窗（三个选择）
+    await mgShowCloudEnableModal();
 }
 
 // 手动禁用云端模式
@@ -16163,13 +16173,28 @@ async function mgSyncSettingsToCloud() {
             exportDate: new Date().toISOString()
         };
 
+        const now = new Date().toISOString();
+        // 检查是否已存在设置
+        const { data: existing } = await client
+            .from('artist_settings')
+            .select('artist_id, created_at')
+            .eq('artist_id', session.user.id)
+            .single();
+        
+        const settingsData = {
+            artist_id: session.user.id,
+            payload: payload,
+            updated_at: now
+        };
+        
+        // 如果是新记录，设置 created_at
+        if (!existing) {
+            settingsData.created_at = now;
+        }
+        
         const { error } = await client
             .from('artist_settings')
-            .upsert({
-                artist_id: session.user.id,
-                payload: payload,
-                updated_at: new Date().toISOString()
-            });
+            .upsert(settingsData);
 
         if (error) {
             console.error('上传设置到云端失败:', error);
@@ -16190,13 +16215,28 @@ async function mgSyncSettingsToCloud() {
             exportDate: new Date().toISOString()
         };
 
+        const now = new Date().toISOString();
+        // 检查是否已存在设置
+        const { data: existing } = await client
+            .from('artist_settings')
+            .select('artist_id, created_at')
+            .eq('artist_id', session.user.id)
+            .single();
+        
+        const settingsData = {
+            artist_id: session.user.id,
+            payload: payload,
+            updated_at: now
+        };
+        
+        // 如果是新记录，设置 created_at
+        if (!existing) {
+            settingsData.created_at = now;
+        }
+        
         const { error } = await client
             .from('artist_settings')
-            .upsert({
-                artist_id: session.user.id,
-                payload: payload,
-                updated_at: new Date().toISOString()
-            });
+            .upsert(settingsData);
 
         if (error) {
             console.error('上传设置到云端失败:', error);
@@ -16569,18 +16609,35 @@ init = function() {
         updateCloudSyncStatus();
     }, 1000);
     
+    // 更新设置页状态（延迟确保认证状态已更新）
+    function updateSettingsPageStatus() {
+        setTimeout(() => {
+            if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus();
+            if (typeof updateLoginUI === 'function') updateLoginUI();
+        }, 300); // 增加延迟，确保 __APP_AUTH__ 已更新
+    }
+    
     // 当切换到设置页时，更新云端状态和登录UI
     const originalShowPage = window.showPage;
     if (originalShowPage) {
         window.showPage = function(page) {
             originalShowPage(page);
             if (page === 'settings') {
-                setTimeout(() => {
-                    if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus();
-                    if (typeof updateLoginUI === 'function') updateLoginUI();
-                }, 100);
+                updateSettingsPageStatus();
             }
         };
+    }
+    
+    // 监听 hash 变化（处理从登录页跳转回来的情况）
+    window.addEventListener('hashchange', function() {
+        if (window.location.hash === '#settings') {
+            updateSettingsPageStatus();
+        }
+    });
+    
+    // 页面加载时，如果当前在设置页，也更新状态
+    if (window.location.hash === '#settings') {
+        updateSettingsPageStatus();
     }
 };
 
