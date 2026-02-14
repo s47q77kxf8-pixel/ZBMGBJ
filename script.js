@@ -15347,10 +15347,19 @@ async function mgCloudMigrateOnce() {
     }
     
     try {
-        // 1. 获取云端已有的 external_id 列表
+        // 1. 获取当前登录用户的 artist_id（必须先获取，用于过滤）
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) {
+            console.error('未找到登录会话');
+            return false;
+        }
+        const artistId = session.user.id;
+        
+        // 2. 获取云端已有的 external_id 列表（必须过滤 artist_id，防止查询其他用户数据）
         const { data: existingOrders, error: fetchError } = await client
             .from('orders')
-            .select('external_id');
+            .select('external_id')
+            .eq('artist_id', artistId);
         
         if (fetchError) {
             console.error('获取云端订单失败:', fetchError);
@@ -15358,14 +15367,6 @@ async function mgCloudMigrateOnce() {
         }
         
         const existingIds = new Set((existingOrders || []).map(o => o.external_id).filter(Boolean));
-        
-        // 2. 获取当前登录用户的 artist_id（只获取一次）
-        const { data: { session } } = await client.auth.getSession();
-        if (!session || !session.user) {
-            console.error('未找到登录会话');
-            return false;
-        }
-        const artistId = session.user.id;
         
         // 3. 筛选本地需要上传的记录（云端没有的）
         const toUpload = [];
@@ -15415,7 +15416,18 @@ async function mgCloudFetchOrders(filters = {}) {
     if (!client) return [];
     
     try {
+        // 获取当前登录用户的 artist_id（必须过滤，防止拉取其他用户数据）
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) {
+            console.error('未找到登录会话，无法拉取云端订单');
+            return [];
+        }
+        const artistId = session.user.id;
+        
         let query = client.from('orders').select('*');
+        
+        // 必须添加 artist_id 过滤，防止拉取其他用户的数据
+        query = query.eq('artist_id', artistId);
         
         // 应用筛选条件（示例：可按 status/order_type/日期范围等）
         if (filters.status) query = query.eq('status', filters.status);
@@ -15434,9 +15446,24 @@ async function mgCloudFetchOrders(filters = {}) {
         
         // 将云端数据还原为本地 history 格式
         return (data || []).map(o => {
-            const item = o.payload || {};
-            item.id = o.external_id ? parseInt(o.external_id.replace('h_', '')) : Date.now();
-            item.external_id = o.external_id;
+            // 直接使用 payload 中的原始数据，不要从 external_id 反推 id
+            const item = o.payload ? { ...o.payload } : {};
+            
+            // 确保 external_id 存在
+            if (o.external_id) {
+                item.external_id = o.external_id;
+            }
+            
+            // 如果 payload 中没有 id，才使用 external_id 反推（降级处理）
+            if (!item.id && o.external_id) {
+                const parsedId = parseInt(o.external_id.replace('h_', ''));
+                if (!isNaN(parsedId)) {
+                    item.id = parsedId;
+                } else {
+                    item.id = Date.now();
+                }
+            }
+            
             return item;
         });
     } catch (err) {
