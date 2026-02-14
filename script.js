@@ -1,7 +1,105 @@
 // ========== 文件版本标识 ==========
-console.log('🔧🔧🔧 script.js 文件版本: 2025-02-04-deposit-display 🔧🔧🔧');
+console.log('🔧🔧🔧 script.js 文件版本: 2026-02-15-cloud-debug 🔧🔧🔧');
 console.log('🔧 如果看不到这条日志，说明浏览器加载的是旧版本！');
 // ========== 文件版本标识结束 ==========
+
+// ====== 云端调试面板（必须尽早初始化，避免按钮找不到函数） ======
+(function mgInitCloudDebug() {
+    if (window.__mgCloudDebugInited) return;
+    window.__mgCloudDebugInited = true;
+
+    const MAX_LINES = 400;
+    const state = {
+        lines: [],
+        lastFlush: 0
+    };
+
+    function safeToString(v) {
+        try {
+            if (v == null) return String(v);
+            if (typeof v === 'string') return v;
+            if (v instanceof Error) return (v.stack || v.message || String(v));
+            return JSON.stringify(v);
+        } catch (_) {
+            try { return String(v); } catch (__) { return '[unprintable]'; }
+        }
+    }
+
+    function appendLine(level, args) {
+        const ts = new Date().toISOString();
+        const msg = Array.prototype.slice.call(args || []).map(safeToString).join(' ');
+        state.lines.push(`[${ts}] [${level}] ${msg}`);
+        if (state.lines.length > MAX_LINES) state.lines.splice(0, state.lines.length - MAX_LINES);
+        scheduleFlush();
+    }
+
+    function scheduleFlush() {
+        const now = Date.now();
+        if (now - state.lastFlush < 250) return;
+        state.lastFlush = now;
+        setTimeout(() => {
+            const ta = document.getElementById('cloudDebugLogText');
+            if (ta) {
+                ta.value = state.lines.join('\n');
+                ta.scrollTop = ta.scrollHeight;
+            }
+        }, 0);
+    }
+
+    // hook console（保留原行为）
+    const origError = console.error;
+    const origWarn = console.warn;
+    console.error = function () {
+        appendLine('error', arguments);
+        try { return origError.apply(console, arguments); } catch (_) {}
+    };
+    console.warn = function () {
+        appendLine('warn', arguments);
+        try { return origWarn.apply(console, arguments); } catch (_) {}
+    };
+
+    window.addEventListener('error', (ev) => {
+        try {
+            appendLine('window.error', [ev.message, ev.filename + ':' + ev.lineno + ':' + ev.colno]);
+        } catch (_) {}
+    });
+    window.addEventListener('unhandledrejection', (ev) => {
+        try {
+            appendLine('unhandledrejection', [ev.reason]);
+        } catch (_) {}
+    });
+
+    window.mgToggleCloudDebugPanel = function () {
+        const panel = document.getElementById('cloudDebugPanel');
+        if (!panel) return;
+        panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+        scheduleFlush();
+    };
+    window.mgClearCloudDebugLog = function () {
+        state.lines = [];
+        scheduleFlush();
+    };
+    window.mgCopyCloudDebugLog = async function () {
+        const text = state.lines.join('\n');
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const ta = document.getElementById('cloudDebugLogText');
+                if (ta) {
+                    ta.focus();
+                    ta.select();
+                    document.execCommand('copy');
+                }
+            }
+            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已复制调试日志');
+            else alert('已复制调试日志');
+        } catch (e) {
+            console.error('复制失败:', e);
+            alert('复制失败，请长按文本框手动复制');
+        }
+    };
+})();
 
 // 全局变量
 let products = [];
