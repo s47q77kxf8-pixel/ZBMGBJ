@@ -810,7 +810,8 @@ function doSaveData() {
         // 所有模式都自动同步设置（延迟执行，避免频繁请求）
         clearTimeout(window._autoSyncSettingsTimer);
         window._autoSyncSettingsTimer = setTimeout(() => {
-            mgSyncSettingsToCloud().catch(err => {
+            // 自动同步时不显示提示，静默同步
+            mgSyncSettingsToCloud(true).catch(err => {
                 console.error('自动同步设置到云端失败:', err);
             });
         }, 2000); // 延迟2秒，避免频繁同步
@@ -15282,8 +15283,18 @@ function mgEnsureExternalId(item) {
     if (!item || !item.id) return null;
     // 如果已有 external_id，直接返回
     if (item.external_id) return item.external_id;
-    // 否则基于本地 id 生成稳定的 external_id（格式：h_时间戳）
+    // 基于本地 id 生成稳定的 external_id（格式：h_本地ID）
+    // 使用本地 id 作为基础，确保同一设备上的订单有稳定的标识
+    // 注意：如果本地 id 是时间戳，external_id 也会基于时间戳，但这样可以在同一设备上保持稳定
     item.external_id = 'h_' + String(item.id);
+    // 保存到本地，确保下次使用时保持一致
+    if (typeof saveData === 'function') {
+        // 延迟保存，避免频繁写入
+        clearTimeout(window._saveExternalIdTimer);
+        window._saveExternalIdTimer = setTimeout(() => {
+            saveData();
+        }, 1000);
+    }
     return item.external_id;
 }
 
@@ -15815,14 +15826,23 @@ async function mgShowCloudEnableModal() {
             localStorage.setItem('mg_cloud_enabled', '1');
             localStorage.setItem('mg_first_sync_policy', policy);
             
+            // 更新开关状态
+            updateCloudSyncStatus();
+            
             // 根据策略执行首次同步
             await mgExecuteFirstSync(policy, conflictInfo);
+            
+            // 同步完成后再次更新状态
+            updateCloudSyncStatus();
         };
     } else {
         // 无冲突：直接启用
         document.getElementById('mg-cloud-enable-btn').onclick = async () => {
             modal.remove();
             localStorage.setItem('mg_cloud_enabled', '1');
+            
+            // 更新开关状态
+            updateCloudSyncStatus();
             
             // 执行首次迁移（如果未迁移）
             if (!isMigrated) {
@@ -15850,11 +15870,20 @@ async function mgShowCloudEnableModal() {
                 if (typeof updateDisplay === 'function') updateDisplay();
                 if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
             }
+            
+            // 同步完成后再次更新状态
+            updateCloudSyncStatus();
         };
     }
     
     document.getElementById('mg-cloud-skip-btn').onclick = () => {
         modal.remove();
+        // 如果用户选择暂不启用，确保开关状态正确
+        const toggleInput = document.getElementById('cloudSyncToggleInput');
+        if (toggleInput) {
+            toggleInput.checked = false;
+        }
+        updateCloudSyncStatus();
     };
 }
 
@@ -15953,54 +15982,111 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
     try {
         if (policy === 'merge') {
             // 智能合并
-            await mgLoadSettingsFromCloud(true);
-            const cloudHistory = conflictInfo.cloudHistory || await mgCloudFetchOrders();
+            try {
+                await mgLoadSettingsFromCloud(true);
+            } catch (err) {
+                console.warn('拉取云端设置失败（可能云端无设置）:', err);
+                // 继续执行，不影响后续流程
+            }
+            
+            let cloudHistory = [];
+            try {
+                cloudHistory = conflictInfo.cloudHistory || await mgCloudFetchOrders();
+            } catch (err) {
+                console.error('拉取云端订单失败:', err);
+                throw new Error('拉取云端订单失败: ' + (err.message || '未知错误'));
+            }
+            
             const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
             
             // 上传本地独有的订单
+            let uploadCount = 0;
             for (const item of history) {
-                const extId = mgEnsureExternalId(item);
-                if (extId && !cloudIds.has(extId)) {
-                    await mgCloudUpsertOrder(item);
+                try {
+                    const extId = mgEnsureExternalId(item);
+                    if (extId && !cloudIds.has(extId)) {
+                        await mgCloudUpsertOrder(item);
+                        uploadCount++;
+                    }
+                } catch (err) {
+                    console.error('上传订单失败:', item.id, err);
+                    // 继续上传其他订单，不中断流程
                 }
             }
             
             // 拉取所有订单并合并
-            const mergedHistory = await mgCloudFetchOrders();
-            if (mergedHistory.length > 0) {
-                history = mergedHistory;
-                saveData();
+            try {
+                const mergedHistory = await mgCloudFetchOrders();
+                if (mergedHistory.length > 0) {
+                    history = mergedHistory;
+                    saveData();
+                }
+            } catch (err) {
+                console.error('拉取合并后的订单失败:', err);
+                // 如果拉取失败，至少本地数据已上传，继续执行
             }
             
             // 上传合并后的设置
-            await mgSyncSettingsToCloud();
+            try {
+                await mgSyncSettingsToCloud();
+            } catch (err) {
+                console.error('上传设置失败:', err);
+                // 设置上传失败不影响整体流程，但需要提示用户
+                if (typeof showGlobalToast === 'function') {
+                    showGlobalToast('⚠️ 设置上传失败，请稍后手动同步');
+                }
+            }
             
             if (typeof showGlobalToast === 'function') {
-                showGlobalToast('✅ 首次同步完成：数据已智能合并');
+                showGlobalToast(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，数据已智能合并`);
             } else {
-                alert('✅ 首次同步完成：数据已智能合并');
+                alert(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，数据已智能合并`);
             }
             
         } else if (policy === 'local') {
             // 以本地为准
-            await mgSyncSettingsToCloud();
+            try {
+                await mgSyncSettingsToCloud();
+            } catch (err) {
+                console.error('上传设置失败:', err);
+                throw new Error('上传设置失败: ' + (err.message || '未知错误'));
+            }
+            
+            let uploadCount = 0;
             for (const item of history) {
-                await mgCloudUpsertOrder(item);
+                try {
+                    await mgCloudUpsertOrder(item);
+                    uploadCount++;
+                } catch (err) {
+                    console.error('上传订单失败:', item.id, err);
+                    // 继续上传其他订单
+                }
             }
             
             if (typeof showGlobalToast === 'function') {
-                showGlobalToast('✅ 首次同步完成：本地数据已覆盖云端');
+                showGlobalToast(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，本地数据已覆盖云端`);
             } else {
-                alert('✅ 首次同步完成：本地数据已覆盖云端');
+                alert(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，本地数据已覆盖云端`);
             }
             
         } else if (policy === 'cloud') {
             // 以云端为准
-            await mgLoadSettingsFromCloud(false); // 直接覆盖
-            const cloudHistory = conflictInfo.cloudHistory || await mgCloudFetchOrders();
-            if (cloudHistory.length > 0) {
-                history = cloudHistory;
-                saveData();
+            try {
+                await mgLoadSettingsFromCloud(false); // 直接覆盖
+            } catch (err) {
+                console.error('拉取云端设置失败:', err);
+                throw new Error('拉取云端设置失败: ' + (err.message || '未知错误'));
+            }
+            
+            try {
+                const cloudHistory = conflictInfo.cloudHistory || await mgCloudFetchOrders();
+                if (cloudHistory.length > 0) {
+                    history = cloudHistory;
+                    saveData();
+                }
+            } catch (err) {
+                console.error('拉取云端订单失败:', err);
+                throw new Error('拉取云端订单失败: ' + (err.message || '未知错误'));
             }
             
             if (typeof showGlobalToast === 'function') {
@@ -16017,15 +16103,22 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
         
     } catch (err) {
         console.error('首次同步失败:', err);
-        alert('首次同步失败，请稍后重试');
+        const errorMsg = err.message || '未知错误';
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast('❌ 首次同步失败: ' + errorMsg);
+        } else {
+            alert('首次同步失败: ' + errorMsg + '，请稍后重试');
+        }
+        // 不设置迁移标记，允许用户重试
     }
 }
 
 // 更新设置页面的云端状态显示
 function updateCloudSyncStatus() {
     const statusText = document.getElementById('cloudSyncStatusText');
-    const enableBtn = document.getElementById('enableCloudBtn');
-    const disableBtn = document.getElementById('disableCloudBtn');
+    const toggleInput = document.getElementById('cloudSyncToggleInput');
+    const toggleLabel = document.getElementById('cloudSyncToggle');
+    const actionsContainer = document.getElementById('cloudSyncActions');
     const syncBtn = document.getElementById('syncCloudBtn');
     const loadBtn = document.getElementById('loadCloudBtn');
     
@@ -16035,39 +16128,53 @@ function updateCloudSyncStatus() {
     const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
     const isMigrated = localStorage.getItem('mg_cloud_migrated_v1') === '1';
     
+    // 更新开关状态
+    if (toggleInput) {
+        toggleInput.checked = isCloudModeOn && isEnabled;
+        toggleInput.disabled = !isEnabled;
+    }
+    
+    if (toggleLabel) {
+        if (!isEnabled) {
+            toggleLabel.style.opacity = '0.5';
+            toggleLabel.style.cursor = 'not-allowed';
+        } else {
+            toggleLabel.style.opacity = '1';
+            toggleLabel.style.cursor = 'pointer';
+        }
+    }
+    
     if (!isEnabled) {
-        statusText.textContent = '未登录。请先登录以启用云端同步。';
-        if (enableBtn) enableBtn.style.display = 'none';
-        if (disableBtn) disableBtn.style.display = 'none';
-        if (syncBtn) syncBtn.style.display = 'none';
-        if (loadBtn) loadBtn.style.display = 'none';
+        statusText.textContent = '请先登录';
+        if (actionsContainer) actionsContainer.style.display = 'none';
     } else if (!isCloudModeOn) {
-        statusText.textContent = '云端模式未启用。点击下方按钮启用智能同步。';
-        if (enableBtn) enableBtn.style.display = 'inline-block';
-        if (disableBtn) disableBtn.style.display = 'none';
-        if (syncBtn) syncBtn.style.display = 'none';
-        if (loadBtn) loadBtn.style.display = 'none';
+        statusText.textContent = '开启开关以启用智能同步';
+        if (actionsContainer) actionsContainer.style.display = 'none';
     } else {
         // 加载未同步订单列表
         loadUnsyncedOrders();
         const unsyncedCount = unsyncedOrderIds.size;
         
-        let statusHtml = '✅ 智能同步模式已启用';
-        if (isMigrated) statusHtml += '（本地数据已导入）';
+        // 简化状态文本
+        let statusMsg = '已启用';
         if (unsyncedCount > 0) {
-            statusHtml += ` <span style="color:#ff6b6b;font-weight:600;">（${unsyncedCount} 条未同步）</span>`;
+            statusMsg = `${unsyncedCount} 条未同步`;
         }
-        statusText.innerHTML = statusHtml;
+        statusText.textContent = statusMsg;
+        statusText.style.color = unsyncedCount > 0 ? '#ff6b6b' : '#666';
         
-        if (enableBtn) enableBtn.style.display = 'none';
-        if (disableBtn) disableBtn.style.display = 'inline-block';
+        // 显示操作按钮
+        if (actionsContainer) {
+            actionsContainer.style.display = 'flex';
+        }
+        
         if (syncBtn) {
             syncBtn.style.display = 'inline-block';
-            // 如果有未同步数据，按钮文字改为"同步未同步数据"
+            // 简化按钮文字
             if (unsyncedCount > 0) {
-                syncBtn.textContent = `同步未同步数据（${unsyncedCount}）`;
+                syncBtn.textContent = `同步（${unsyncedCount}）`;
             } else {
-                syncBtn.textContent = '一键上传所有';
+                syncBtn.textContent = '上传';
             }
         }
         if (loadBtn) loadBtn.style.display = 'inline-block';
@@ -16076,38 +16183,63 @@ function updateCloudSyncStatus() {
     }
 }
 
-// 手动启用云端模式
-async function handleEnableCloud() {
+// 处理云端同步开关切换
+async function handleCloudSyncToggle(checked) {
     if (!mgIsCloudEnabled()) {
+        // 如果未登录，恢复开关状态
+        const toggleInput = document.getElementById('cloudSyncToggleInput');
+        if (toggleInput) toggleInput.checked = false;
         alert('请先登录');
         return;
     }
     
-    // 如果已经启用过，直接返回
-    if (localStorage.getItem('mg_cloud_enabled') === '1') {
-        alert('云端模式已启用');
-        return;
-    }
-    
-    // 首次启用时，显示策略选择弹窗（三个选择）
-    await mgShowCloudEnableModal();
-}
-
-// 手动禁用云端模式
-async function handleDisableCloud() {
-    if (!confirm('确定要禁用云端模式吗？禁用后，数据将不再自动同步到云端，但本地数据不会丢失。')) {
-        return;
-    }
-    
-    localStorage.setItem('mg_cloud_enabled', '0');
-    
-    if (typeof showGlobalToast === 'function') {
-        showGlobalToast('✅ 云端模式已禁用');
+    if (checked) {
+        // 启用云端模式
+        const currentStatus = localStorage.getItem('mg_cloud_enabled');
+        if (currentStatus === '1') {
+            // 已经启用，不需要操作
+            return;
+        }
+        
+        // 首次启用时，显示策略选择弹窗（三个选择）
+        await mgShowCloudEnableModal();
+        // 注意：mgShowCloudEnableModal 内部会设置 mg_cloud_enabled，所以这里不需要再次设置
     } else {
-        alert('✅ 云端模式已禁用');
+        // 禁用云端模式
+        if (!confirm('确定要禁用云端模式吗？禁用后，数据将不再自动同步到云端，但本地数据不会丢失。')) {
+            // 用户取消，恢复开关状态
+            const toggleInput = document.getElementById('cloudSyncToggleInput');
+            if (toggleInput) toggleInput.checked = true;
+            return;
+        }
+        
+        localStorage.setItem('mg_cloud_enabled', '0');
+        
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast('✅ 云端模式已禁用');
+        } else {
+            alert('✅ 云端模式已禁用');
+        }
     }
     
     updateCloudSyncStatus();
+}
+
+// 兼容旧函数名（保留以防其他地方调用）
+async function handleEnableCloud() {
+    const toggleInput = document.getElementById('cloudSyncToggleInput');
+    if (toggleInput) {
+        toggleInput.checked = true;
+        await handleCloudSyncToggle(true);
+    }
+}
+
+async function handleDisableCloud() {
+    const toggleInput = document.getElementById('cloudSyncToggleInput');
+    if (toggleInput) {
+        toggleInput.checked = false;
+        await handleCloudSyncToggle(false);
+    }
 }
 
 // 手动同步到云端
@@ -16171,9 +16303,9 @@ async function handleLoadCloud() {
 }
 
 // ====== 设置同步：artist_settings ======
-async function mgSyncSettingsToCloud() {
+async function mgSyncSettingsToCloud(silent = false) {
     if (!mgIsCloudEnabled()) {
-        alert('请先登录');
+        if (!silent) alert('请先登录');
         return;
     }
 
@@ -16182,9 +16314,15 @@ async function mgSyncSettingsToCloud() {
 
     const { data: { session } } = await client.auth.getSession();
     if (!session || !session.user) {
-        alert('登录状态已失效，请重新登录');
+        if (!silent) alert('登录状态已失效，请重新登录');
         return;
     }
+    
+    // 防止重复同步：如果正在同步，直接返回
+    if (window._isSyncingSettings) {
+        return;
+    }
+    window._isSyncingSettings = true;
 
     // 智能合并：先拉取云端设置并智能合并到本地，然后再上传合并后的设置
     try {
@@ -16192,85 +16330,148 @@ async function mgSyncSettingsToCloud() {
         await mgLoadSettingsFromCloud(true); // 智能合并模式
         
         // 2. 使用合并后的本地设置上传到云端
-        const payload = {
-            calculatorSettings: defaultSettings,
-            productSettings: productSettings,
-            processSettings: processSettings,
-            templates: templates,
+        // 清理数据，确保可序列化（移除undefined、函数等）
+        const cleanPayload = {
+            calculatorSettings: JSON.parse(JSON.stringify(defaultSettings || {})),
+            productSettings: JSON.parse(JSON.stringify(productSettings || [])),
+            processSettings: JSON.parse(JSON.stringify(processSettings || [])),
+            templates: JSON.parse(JSON.stringify(templates || [])),
             exportDate: new Date().toISOString()
         };
 
         const now = new Date().toISOString();
-        // 检查是否已存在设置
-        const { data: existing } = await client
+        const artistId = session.user.id;
+        
+        // 检查是否已存在设置（不查询 created_at，因为该列可能不存在）
+        const { data: existing, error: checkError } = await client
             .from('artist_settings')
-            .select('artist_id, created_at')
-            .eq('artist_id', session.user.id)
-            .single();
+            .select('artist_id')
+            .eq('artist_id', artistId)
+            .maybeSingle(); // 使用 maybeSingle 避免未找到记录时的错误
+        
+        if (checkError && checkError.code !== 'PGRST116') {
+            console.error('检查设置是否存在失败:', checkError);
+            throw checkError;
+        }
         
         const settingsData = {
-            artist_id: session.user.id,
-            payload: payload,
+            artist_id: artistId,
+            payload: cleanPayload,
             updated_at: now
         };
         
-        // 如果是新记录，设置 created_at
-        if (!existing) {
-            settingsData.created_at = now;
+        // 使用 upsert，兼容Safari：先尝试更新，如果不存在则插入
+        let error;
+        if (existing) {
+            // 已存在，使用 update
+            const { error: updateError } = await client
+                .from('artist_settings')
+                .update({
+                    payload: cleanPayload,
+                    updated_at: now
+                })
+                .eq('artist_id', artistId);
+            error = updateError;
+        } else {
+            // 不存在，使用 insert
+            const { error: insertError } = await client
+                .from('artist_settings')
+                .insert(settingsData);
+            error = insertError;
         }
-        
-        const { error } = await client
-            .from('artist_settings')
-            .upsert(settingsData);
 
         if (error) {
             console.error('上传设置到云端失败:', error);
-            alert('上传设置到云端失败，请稍后重试');
+            console.error('错误代码:', error.code);
+            console.error('错误详情:', JSON.stringify(error, null, 2));
+            const errorMsg = error.message || error.hint || '未知错误';
+            if (!silent) {
+                alert('上传设置到云端失败: ' + errorMsg + '，请稍后重试');
+            }
+            window._isSyncingSettings = false;
             return;
         }
 
-        if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已智能合并并上传到云端');
-        else alert('设置已智能合并并上传到云端');
+        // 只在非静默模式下显示提示
+        if (!silent) {
+            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已智能合并并上传到云端');
+            else alert('设置已智能合并并上传到云端');
+        }
+        window._isSyncingSettings = false;
     } catch (err) {
         console.error('智能合并设置失败:', err);
+        console.error('错误堆栈:', err.stack);
+        
         // 如果智能合并失败，仍然尝试直接上传（降级处理）
-        const payload = {
-            calculatorSettings: defaultSettings,
-            productSettings: productSettings,
-            processSettings: processSettings,
-            templates: templates,
-            exportDate: new Date().toISOString()
-        };
+        try {
+            // 清理数据，确保可序列化
+            const cleanPayload = {
+                calculatorSettings: JSON.parse(JSON.stringify(defaultSettings || {})),
+                productSettings: JSON.parse(JSON.stringify(productSettings || [])),
+                processSettings: JSON.parse(JSON.stringify(processSettings || [])),
+                templates: JSON.parse(JSON.stringify(templates || [])),
+                exportDate: new Date().toISOString()
+            };
 
-        const now = new Date().toISOString();
-        // 检查是否已存在设置
-        const { data: existing } = await client
-            .from('artist_settings')
-            .select('artist_id, created_at')
-            .eq('artist_id', session.user.id)
-            .single();
-        
-        const settingsData = {
-            artist_id: session.user.id,
-            payload: payload,
-            updated_at: now
-        };
-        
-        // 如果是新记录，设置 created_at
-        if (!existing) {
-            settingsData.created_at = now;
-        }
-        
-        const { error } = await client
-            .from('artist_settings')
-            .upsert(settingsData);
+            const now = new Date().toISOString();
+            const artistId = session.user.id;
+            
+            // 检查是否已存在设置（不查询 created_at）
+            const { data: existing, error: checkError } = await client
+                .from('artist_settings')
+                .select('artist_id')
+                .eq('artist_id', artistId)
+                .maybeSingle();
+            
+            if (checkError && checkError.code !== 'PGRST116') {
+                throw checkError;
+            }
+            
+            let error;
+            if (existing) {
+                // 已存在，使用 update
+                const { error: updateError } = await client
+                    .from('artist_settings')
+                    .update({
+                        payload: cleanPayload,
+                        updated_at: now
+                    })
+                    .eq('artist_id', artistId);
+                error = updateError;
+            } else {
+                // 不存在，使用 insert（不设置 created_at）
+                const { error: insertError } = await client
+                    .from('artist_settings')
+                    .insert({
+                        artist_id: artistId,
+                        payload: cleanPayload,
+                        updated_at: now
+                    });
+                error = insertError;
+            }
 
-        if (error) {
-            console.error('上传设置到云端失败:', error);
-            alert('上传设置到云端失败，请稍后重试');
-        } else {
-            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已上传到云端');
-            else alert('设置已上传到云端');
+            if (error) {
+                console.error('降级上传设置失败:', error);
+                console.error('错误代码:', error.code);
+                console.error('错误详情:', JSON.stringify(error, null, 2));
+                const errorMsg = error.message || error.hint || '未知错误';
+                if (!silent) {
+                    alert('上传设置到云端失败: ' + errorMsg + '，请稍后重试');
+                }
+            } else {
+                // 只在非静默模式下显示提示
+                if (!silent) {
+                    if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已上传到云端');
+                    else alert('设置已上传到云端');
+                }
+            }
+            window._isSyncingSettings = false;
+        } catch (fallbackErr) {
+            console.error('降级处理也失败:', fallbackErr);
+            if (!silent) {
+                alert('上传设置失败，请检查网络连接或稍后重试');
+            }
+            window._isSyncingSettings = false;
         }
     }
 }
@@ -16332,16 +16533,25 @@ function mergeObjectSettings(cloudObj, localObj) {
 
 async function mgLoadSettingsFromCloud(mergeMode = false) {
     if (!mgIsCloudEnabled()) {
-        alert('请先登录');
+        if (!mergeMode) {
+            alert('请先登录');
+        }
         return;
     }
 
     const client = mgGetSupabaseClient();
-    if (!client) return;
+    if (!client) {
+        if (!mergeMode) {
+            alert('云端客户端初始化失败');
+        }
+        return;
+    }
 
     const { data: { session } } = await client.auth.getSession();
     if (!session || !session.user) {
-        alert('登录状态已失效，请重新登录');
+        if (!mergeMode) {
+            alert('登录状态已失效，请重新登录');
+        }
         return;
     }
 
@@ -16353,8 +16563,15 @@ async function mgLoadSettingsFromCloud(mergeMode = false) {
 
     if (error) {
         console.error('从云端获取设置失败:', error);
+        // 如果是 PGRST116（未找到记录），这是正常的（首次使用）
+        if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
+            if (!mergeMode) {
+                console.log('云端尚无设置，这是正常的（首次使用）');
+            }
+            return;
+        }
         if (!mergeMode) {
-            alert('从云端获取设置失败（可能还未上传过设置）');
+            alert('从云端获取设置失败: ' + (error.message || '未知错误'));
         }
         return;
     }
@@ -16362,34 +16579,59 @@ async function mgLoadSettingsFromCloud(mergeMode = false) {
     const p = data && data.payload;
     if (!p) {
         if (!mergeMode) {
-            alert('云端尚无设置，请先上传');
+            console.log('云端设置数据为空');
         }
         return;
     }
 
     try {
+        // 验证数据格式
+        if (!p || typeof p !== 'object') {
+            throw new Error('云端设置数据格式错误');
+        }
+        
         if (mergeMode) {
             // 合并模式：智能合并设置
             if (p.calculatorSettings && typeof p.calculatorSettings === 'object') {
-                defaultSettings = mergeObjectSettings(p.calculatorSettings, defaultSettings);
+                // 使用 Object.assign 更新 defaultSettings，而不是重新赋值
+                Object.assign(defaultSettings, mergeObjectSettings(p.calculatorSettings, defaultSettings || {}));
             }
             if (Array.isArray(p.productSettings)) {
-                productSettings = mergeArraySettings(p.productSettings, productSettings, 'id');
+                // 清空数组后添加新元素，而不是重新赋值
+                const merged = mergeArraySettings(p.productSettings, productSettings || [], 'id');
+                productSettings.length = 0;
+                productSettings.push(...merged);
             }
             if (Array.isArray(p.processSettings)) {
-                processSettings = mergeArraySettings(p.processSettings, processSettings, 'id');
+                const merged = mergeArraySettings(p.processSettings, processSettings || [], 'id');
+                processSettings.length = 0;
+                processSettings.push(...merged);
             }
             if (Array.isArray(p.templates)) {
-                templates = mergeArraySettings(p.templates, templates, 'id');
+                const merged = mergeArraySettings(p.templates, templates || [], 'id');
+                templates.length = 0;
+                templates.push(...merged);
             }
         } else {
             // 非合并模式：直接覆盖
             if (p.calculatorSettings && typeof p.calculatorSettings === 'object') {
-                Object.assign(defaultSettings, p.calculatorSettings);
+                Object.assign(defaultSettings, JSON.parse(JSON.stringify(p.calculatorSettings)));
             }
-            if (Array.isArray(p.productSettings)) productSettings = p.productSettings;
-            if (Array.isArray(p.processSettings)) processSettings = p.processSettings;
-            if (Array.isArray(p.templates)) templates = p.templates;
+            if (Array.isArray(p.productSettings)) {
+                const newSettings = JSON.parse(JSON.stringify(p.productSettings));
+                productSettings.length = 0;
+                productSettings.push(...newSettings);
+            }
+            if (Array.isArray(p.processSettings)) {
+                const newSettings = JSON.parse(JSON.stringify(p.processSettings));
+                processSettings.length = 0;
+                processSettings.push(...newSettings);
+            }
+            if (Array.isArray(p.templates)) {
+                const newSettings = JSON.parse(JSON.stringify(p.templates));
+                templates.length = 0;
+                templates.push(...newSettings);
+            }
         }
 
         // 落盘
@@ -16406,7 +16648,15 @@ async function mgLoadSettingsFromCloud(mergeMode = false) {
         }
     } catch (e) {
         console.error('应用云端设置失败:', e);
-        alert('应用云端设置失败，请重试');
+        console.error('错误堆栈:', e.stack);
+        console.error('云端数据:', p);
+        const errorMsg = e.message || '未知错误';
+        if (!mergeMode) {
+            alert('应用云端设置失败: ' + errorMsg + '，请重试');
+        } else {
+            console.warn('合并云端设置时出错（继续使用本地设置）:', errorMsg);
+            // 合并模式失败时，不显示错误提示，静默失败
+        }
     }
 }
 
@@ -16601,31 +16851,60 @@ init = function() {
         if (isCloudModeOn) {
             try {
                 // 先合并设置（智能合并）
-                await mgLoadSettingsFromCloud(true);
+                try {
+                    await mgLoadSettingsFromCloud(true);
+                } catch (err) {
+                    console.warn('启动时拉取云端设置失败（继续使用本地设置）:', err);
+                    // 设置拉取失败不影响后续流程
+                }
                 
                 // 再合并订单
-                const cloudHistory = await mgCloudFetchOrders();
+                let cloudHistory = [];
+                try {
+                    cloudHistory = await mgCloudFetchOrders();
+                } catch (err) {
+                    console.error('启动时拉取云端订单失败:', err);
+                    // 订单拉取失败时，至少尝试上传本地订单
+                }
+                
                 const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
                 
                 // 上传本地独有的订单
+                let uploadCount = 0;
                 for (const item of history) {
-                    const extId = mgEnsureExternalId(item);
-                    if (extId && !cloudIds.has(extId)) {
-                        await mgCloudUpsertOrder(item);
+                    try {
+                        const extId = mgEnsureExternalId(item);
+                        if (extId && !cloudIds.has(extId)) {
+                            await mgCloudUpsertOrder(item);
+                            uploadCount++;
+                        }
+                    } catch (err) {
+                        console.error('启动时上传订单失败:', item.id, err);
+                        // 继续上传其他订单
                     }
                 }
                 
                 // 拉取所有订单（包含刚上传的）
-                const mergedHistory = await mgCloudFetchOrders();
-                if (mergedHistory.length > 0) {
-                    history = mergedHistory;
-                    if (typeof saveData === 'function') saveData();
+                try {
+                    const mergedHistory = await mgCloudFetchOrders();
+                    if (mergedHistory.length > 0) {
+                        history = mergedHistory;
+                        if (typeof saveData === 'function') saveData();
+                    }
+                } catch (err) {
+                    console.error('启动时拉取合并后的订单失败:', err);
+                    // 如果拉取失败，至少本地数据已上传
                 }
                 
                 if (typeof updateDisplay === 'function') updateDisplay();
                 if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+                
+                if (uploadCount > 0) {
+                    console.log(`✅ 启动时同步完成：已上传 ${uploadCount} 条本地订单`);
+                }
             } catch (err) {
                 console.error('启动时智能同步失败:', err);
+                // 不显示错误提示，避免干扰用户
             }
         }
         // 更新设置页面的云端状态

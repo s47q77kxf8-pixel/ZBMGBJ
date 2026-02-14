@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云端同步功能测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #555;
+        }
+        .result {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #0069d9;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>云端同步功能测试</h1>
+        
+        <div class="test-section">
+            <div class="test-title">测试步骤</div>
+            <ol>
+                <li>等待脚本加载完成（约2-3秒）</li>
+                <li>点击下方「开始测试」按钮</li>
+                <li>查看测试结果</li>
+                <li>根据错误信息排查问题</li>
+            </ol>
+            <div id="loadingStatus" class="result info">正在加载必要的脚本...</div>
+            <button id="testBtn" onclick="runCloudSyncTest()" disabled>开始测试</button>
+        </div>
+        
+        <div id="testResults"></div>
+    </div>
+    
+    <!-- 加载必要的脚本 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script>
+        // 初始化 __APP_AUTH__（模拟主应用中的初始化逻辑）
+        async function initAuthStatus() {
+            try {
+                if (!window.__SUPABASE__ || !window.__SUPABASE__.client) {
+                    window.__APP_AUTH__ = { enabled: false, session: null };
+                    return;
+                }
+                const client = window.__SUPABASE__.client;
+                const { data: { session } } = await client.auth.getSession();
+                window.__APP_AUTH__ = { enabled: !!session, session: session || null };
+                
+                // 监听认证状态变化
+                client.auth.onAuthStateChange((event, session) => {
+                    window.__APP_AUTH__ = { enabled: !!session, session: session || null };
+                });
+            } catch (e) {
+                window.__APP_AUTH__ = { enabled: false, session: null };
+                console.error('[auth init error]', e);
+            }
+        }
+        
+        // 等待脚本加载完成后启用测试按钮
+        window.addEventListener('load', async () => {
+            // 等待 Supabase 初始化
+            let retries = 0;
+            const maxRetries = 10;
+            
+            const checkReady = setInterval(() => {
+                retries++;
+                if (typeof window.__SUPABASE__ !== 'undefined' && window.__SUPABASE__.client) {
+                    clearInterval(checkReady);
+                    // 初始化认证状态
+                    initAuthStatus().then(() => {
+                        const loadingStatus = document.getElementById('loadingStatus');
+                        const testBtn = document.getElementById('testBtn');
+                        
+                        loadingStatus.className = 'result success';
+                        loadingStatus.textContent = '✅ 脚本加载完成，可以开始测试';
+                        testBtn.disabled = false;
+                    });
+                } else if (retries >= maxRetries) {
+                    clearInterval(checkReady);
+                    const loadingStatus = document.getElementById('loadingStatus');
+                    const testBtn = document.getElementById('testBtn');
+                    
+                    loadingStatus.className = 'result warning';
+                    loadingStatus.textContent = '⚠️ Supabase 客户端可能未初始化，但可以尝试开始测试';
+                    testBtn.disabled = false;
+                }
+            }, 200);
+        });
+    </script>
+    <script>
+        async function runCloudSyncTest() {
+            const results = document.getElementById('testResults');
+            results.innerHTML = '<div class="result info">正在运行测试...</div>';
+            
+            // 测试 1: 检查环境依赖
+            testEnvironmentDeps(results);
+            
+            // 测试 2: 检查本地存储设置
+            testLocalStorageSettings(results);
+            
+            // 测试 3: 检查 Supabase 客户端
+            testSupabaseClient(results);
+            
+            // 测试 4: 检查认证状态
+            await testAuthStatus(results);
+            
+            // 测试 5: 检查网络连接
+            await testNetworkConnection(results);
+            
+            // 测试 6: 检查云端同步函数（需要加载 script.js）
+            testCloudSyncFunctions(results);
+            
+            // 提示：如果需要测试完整的云端同步函数，需要在主应用中运行
+            if (typeof window.mgIsCloudEnabled === 'undefined') {
+                const section = document.createElement('div');
+                section.className = 'test-section';
+                section.innerHTML = '<div class="test-title">⚠️ 重要提示</div>';
+                section.innerHTML += '<div class="result warning">云端同步函数（mgIsCloudEnabled、mgCloudFetchOrders 等）定义在 script.js 中。</div>';
+                section.innerHTML += '<div class="result info">要测试完整的云端同步功能，请：</div>';
+                section.innerHTML += '<ol style="margin-left: 20px;">';
+                section.innerHTML += '<li>在主应用（index.html）的设置页面中运行测试</li>';
+                section.innerHTML += '<li>或者将测试代码集成到主应用中</li>';
+                section.innerHTML += '</ol>';
+                results.appendChild(section);
+            }
+        }
+        
+        function testEnvironmentDeps(results) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            section.innerHTML = '<div class="test-title">1. 环境依赖检查</div>';
+            
+            const hasAppAuth = typeof window.__APP_AUTH__ !== 'undefined';
+            const hasSupabase = typeof window.__SUPABASE__ !== 'undefined';
+            
+            if (hasAppAuth && hasSupabase) {
+                section.innerHTML += '<div class="result success">✅ 环境依赖完整</div>';
+                section.innerHTML += '<pre>window.__APP_AUTH__: ' + JSON.stringify(window.__APP_AUTH__, null, 2) + '</pre>';
+                section.innerHTML += '<pre>window.__SUPABASE__: ' + JSON.stringify(window.__SUPABASE__, null, 2) + '</pre>';
+            } else {
+                section.innerHTML += '<div class="result error">❌ 环境依赖缺失</div>';
+                if (!hasAppAuth) {
+                    section.innerHTML += '<div class="result error">- window.__APP_AUTH__ 未定义</div>';
+                }
+                if (!hasSupabase) {
+                    section.innerHTML += '<div class="result error">- window.__SUPABASE__ 未定义</div>';
+                }
+            }
+            
+            results.appendChild(section);
+        }
+        
+        function testLocalStorageSettings(results) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            section.innerHTML = '<div class="test-title">2. 本地存储设置检查</div>';
+            
+            try {
+                const cloudEnabled = localStorage.getItem('mg_cloud_enabled');
+                const migrated = localStorage.getItem('mg_cloud_migrated_v1');
+                const unsyncedOrders = localStorage.getItem('mg_unsynced_orders');
+                
+                section.innerHTML += '<div class="result info">mg_cloud_enabled: ' + (cloudEnabled || '未设置') + '</div>';
+                section.innerHTML += '<div class="result info">mg_cloud_migrated_v1: ' + (migrated || '未设置') + '</div>';
+                section.innerHTML += '<div class="result info">mg_unsynced_orders: ' + (unsyncedOrders || '未设置') + '</div>';
+                
+                if (cloudEnabled !== '1') {
+                    section.innerHTML += '<div class="result warning">⚠️ 云端同步未启用，请在设置中启用</div>';
+                }
+            } catch (e) {
+                section.innerHTML += '<div class="result error">❌ 读取本地存储失败: ' + e.message + '</div>';
+            }
+            
+            results.appendChild(section);
+        }
+        
+        function testSupabaseClient(results) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            section.innerHTML = '<div class="test-title">3. Supabase 客户端检查</div>';
+            
+            if (typeof window.__SUPABASE__ !== 'undefined') {
+                const hasClient = typeof window.__SUPABASE__.client !== 'undefined';
+                if (hasClient) {
+                    section.innerHTML += '<div class="result success">✅ Supabase 客户端存在</div>';
+                } else {
+                    section.innerHTML += '<div class="result error">❌ Supabase 客户端未初始化</div>';
+                }
+            } else {
+                section.innerHTML += '<div class="result error">❌ Supabase 未定义</div>';
+            }
+            
+            results.appendChild(section);
+        }
+        
+        async function testAuthStatus(results) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            section.innerHTML = '<div class="test-title">4. 认证状态检查</div>';
+            
+            if (typeof window.__APP_AUTH__ !== 'undefined') {
+                const isEnabled = window.__APP_AUTH__.enabled;
+                section.innerHTML += '<div class="result info">认证状态: ' + (isEnabled ? '已启用' : '未启用') + '</div>';
+                
+                if (window.__APP_AUTH__.session) {
+                    section.innerHTML += '<div class="result success">✅ 会话存在</div>';
+                    section.innerHTML += '<pre>用户ID: ' + (window.__APP_AUTH__.session.user?.id || '未知') + '</pre>';
+                } else {
+                    section.innerHTML += '<div class="result warning">⚠️ 无活动会话</div>';
+                }
+                
+                if (!isEnabled) {
+                    section.innerHTML += '<div class="result warning">⚠️ 认证未启用，请登录</div>';
+                }
+            } else {
+                section.innerHTML += '<div class="result error">❌ 认证模块未定义（需要在主应用中运行）</div>';
+            }
+            
+            results.appendChild(section);
+        }
+        
+        async function testNetworkConnection(results) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            section.innerHTML = '<div class="test-title">5. 网络连接检查</div>';
+            
+            if (navigator.onLine) {
+                section.innerHTML += '<div class="result success">✅ 浏览器在线状态正常</div>';
+            } else {
+                section.innerHTML += '<div class="result error">❌ 浏览器显示离线</div>';
+            }
+            
+            // 测试 Supabase 服务连接
+            if (typeof window.__SUPABASE__ !== 'undefined' && window.__SUPABASE__.client) {
+                section.innerHTML += '<div class="result info">正在测试 Supabase 服务连接...</div>';
+                
+                try {
+                    const response = await window.__SUPABASE__.client.auth.getSession();
+                    section.innerHTML += '<div class="result success">✅ Supabase 服务连接正常</div>';
+                    if (response.data.session) {
+                        section.innerHTML += '<div class="result success">✅ 已登录，用户ID: ' + response.data.session.user.id + '</div>';
+                    } else {
+                        section.innerHTML += '<div class="result warning">⚠️ 未登录</div>';
+                    }
+                } catch (error) {
+                    section.innerHTML += '<div class="result error">❌ Supabase 服务连接失败: ' + (error.message || '未知错误') + '</div>';
+                }
+            } else {
+                section.innerHTML += '<div class="result warning">⚠️ 无法测试 Supabase 连接（客户端未初始化）</div>';
+            }
+            
+            results.appendChild(section);
+        }
+        
+        function testCloudSyncFunctions(results) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            section.innerHTML = '<div class="test-title">6. 云端同步函数检查</div>';
+            
+            // 检查关键函数是否存在
+            const functions = [
+                'mgIsCloudEnabled',
+                'mgGetSupabaseClient',
+                'mgCloudFetchOrders',
+                'mgCloudUpsertOrder',
+                'mgSyncSettingsToCloud',
+                'mgLoadSettingsFromCloud',
+                'mgExecuteFirstSync',
+                'mgEnsureExternalId'
+            ];
+            
+            let allExists = true;
+            functions.forEach(funcName => {
+                if (typeof window[funcName] === 'function') {
+                    section.innerHTML += '<div class="result success">✅ ' + funcName + ' 存在</div>';
+                } else {
+                    section.innerHTML += '<div class="result error">❌ ' + funcName + ' 不存在</div>';
+                    allExists = false;
+                }
+            });
+            
+            if (!allExists) {
+                section.innerHTML += '<div class="result warning">⚠️ 部分函数缺失（可能需要在主应用中运行）</div>';
+            }
+            
+            // 测试 mgIsCloudEnabled
+            if (typeof window.mgIsCloudEnabled === 'function') {
+                try {
+                    const isEnabled = window.mgIsCloudEnabled();
+                    section.innerHTML += '<div class="result info">mgIsCloudEnabled() 返回: ' + isEnabled + '</div>';
+                } catch (e) {
+                    section.innerHTML += '<div class="result error">调用 mgIsCloudEnabled() 失败: ' + e.message + '</div>';
+                }
+            }
+            
+            results.appendChild(section);
+        }
+    </script>
+</body>
+</html>
