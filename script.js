@@ -5857,20 +5857,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             suggestedDeposit = Math.round(baseForDeposit * 0.3 * 100) / 100;
         }
     }
-    // 3）已收定金从小票页输入框读取；若为空且选了“是否付定金=是”，则默认等于建议定金，可再手动修改
-    var depositInputEl = document.getElementById('receiptDepositInput');
+    // 3）已收定金：计算报价时不自动填充（避免“先看报价就显示已收定金”）
+    // 只在你点击“确认已收定金”后，才会写入 quoteData.depositReceived
     var depositReceived = 0;
-    if (depositInputEl) {
-        var dv = parseFloat(depositInputEl.value);
-        if (!isNaN(dv) && dv > 0) {
-            depositReceived = dv;
-        } else if (needDepositFlag && suggestedDeposit > 0) {
-            depositReceived = suggestedDeposit;
-            depositInputEl.value = suggestedDeposit.toFixed(2);
-        }
-    } else if (needDepositFlag && suggestedDeposit > 0) {
-        depositReceived = suggestedDeposit;
-    }
     quoteData = {
         clientId: clientId,
         contact: contactDisplay,
@@ -6840,6 +6829,36 @@ function roundAgreedAmount(mode) {
     generateQuote();
     syncReceiptDrawerContent();
 }
+// 确认已收定金
+function confirmDepositReceived() {
+    if (!quoteData) return;
+    quoteData.depositConfirmed = true;
+    
+    // 如果之前没有填过金额，默认填入建议定金
+    if (!quoteData.depositReceived || quoteData.depositReceived <= 0) {
+        var finalPays = quoteData.finalTotal != null ? quoteData.finalTotal : (quoteData.agreedAmount || 0);
+        var rate = (defaultSettings && defaultSettings.depositRate != null) ? Number(defaultSettings.depositRate) : 0.3;
+        quoteData.depositReceived = Math.round(finalPays * rate * 100) / 100;
+    }
+    
+    updateAgreedAmountBar();
+    generateQuote();
+    syncReceiptDrawerContent();
+}
+
+// 取消已收定金
+function cancelDepositReceived() {
+    if (!quoteData) return;
+    if (!confirm('确定要取消已收定金记录吗？这会从小票正文中移除该行。')) return;
+    
+    quoteData.depositConfirmed = false;
+    quoteData.depositReceived = 0;
+    
+    updateAgreedAmountBar();
+    generateQuote();
+    syncReceiptDrawerContent();
+}
+
 // 约定实收：同步 UI 栏
 function updateAgreedAmountBar() {
     var bar = document.getElementById('receiptAgreedAmountBar');
@@ -6855,12 +6874,46 @@ function updateAgreedAmountBar() {
     var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : calc;
     calcEl.textContent = '¥' + calc.toFixed(2);
     inputEl.value = agreed;
-    // 已收定输入框：有定金时显示实际金额，无定金时清空（不显示 0）
+    // 已收定金确认逻辑：需要手动确认后才显示输入框；默认不展示更符合“先出报价再收定金”的流程
+    var confirmWrap = document.getElementById('depositConfirmContainer');
+    var inputWrap = document.getElementById('depositInputContainer');
     var depositInputEl = document.getElementById('receiptDepositInput');
-    if (depositInputEl) {
-        var dep = Number(quoteData.depositReceived || 0);
-        depositInputEl.value = (isFinite(dep) && dep > 0) ? dep.toFixed(2) : '';
+
+    // 兼容旧数据：仅当历史记录里确实有已收定金金额时，才视为已确认
+    var dep = Number(quoteData.depositReceived || 0);
+    if (dep > 0 && quoteData.depositConfirmed == null) quoteData.depositConfirmed = true;
+    if (quoteData.depositConfirmed == null) quoteData.depositConfirmed = false;
+
+    if (confirmWrap && inputWrap) {
+        if (quoteData.depositConfirmed) {
+            confirmWrap.classList.add('d-none');
+            inputWrap.classList.remove('d-none');
+        } else {
+            confirmWrap.classList.remove('d-none');
+            inputWrap.classList.add('d-none');
+        }
     }
+
+    if (depositInputEl) {
+        depositInputEl.value = (quoteData.depositConfirmed && isFinite(dep) && dep > 0) ? dep.toFixed(2) : '';
+    }
+
+    // 顶部提示：报价金额下一行展示“需付定金”（与报价金额同款展示结构）
+    var topRowEl = document.getElementById('receiptDepositHintTop');
+    var topValEl = document.getElementById('receiptDepositAmountTop');
+    if (topRowEl && topValEl) {
+        if (quoteData.needDeposit) {
+            var finalPays = quoteData.finalTotal != null ? quoteData.finalTotal : (quoteData.platformFeeAmount > 0 ? (agreed + quoteData.platformFeeAmount) : agreed);
+            var rate = (defaultSettings && defaultSettings.depositRate != null) ? Number(defaultSettings.depositRate) : 0.3;
+            var depositAmount = Math.round(finalPays * rate * 100) / 100;
+            topValEl.textContent = '¥' + depositAmount.toFixed(2);
+            topRowEl.classList.remove('d-none');
+        } else {
+            topValEl.textContent = '¥0.00';
+            topRowEl.classList.add('d-none');
+        }
+    }
+
     inputEl.onchange = inputEl.oninput = function () {
         var v = parseFloat(inputEl.value);
         if (!isNaN(v) && v >= 0) {

@@ -796,6 +796,10 @@
                                     <span class="receipt-agreed-label">报价金额<span class="receipt-agreed-note">（不含平台费）</span></span>
                                     <span id="receiptCalcAmount" class="receipt-agreed-value">¥0.00</span>
                                 </div>
+                                <div id="receiptDepositHintTop" class="receipt-agreed-row receipt-agreed-row-compact d-none">
+                                    <span class="receipt-agreed-label">需付定金</span>
+                                    <span id="receiptDepositAmountTop" class="receipt-agreed-value">¥0.00</span>
+                                </div>
                                 <div class="receipt-agreed-row receipt-agreed-row-inline">
                                     <span class="receipt-agreed-label">约定实收</span>
                                     <div class="receipt-agreed-controls-inline">
@@ -811,11 +815,17 @@
                                 <div class="receipt-agreed-row receipt-deposit-row-inline">
                                     <span class="receipt-agreed-label">已收定金</span>
                                     <div class="receipt-agreed-controls-inline">
-                                        <input type="number" id="receiptDepositInput" class="receipt-deposit-field" min="0" step="0.01" placeholder="0.00">
-                                        <div class="receipt-agreed-btns">
-                                            <button type="button" class="btn secondary small" onclick="roundDepositAmount('floor')" title="向下取整">向下</button>
-                                            <button type="button" class="btn secondary small" onclick="roundDepositAmount('ten')" title="取整到十位">取整到十</button>
-                                            <button type="button" class="btn secondary small" onclick="roundDepositAmount('hundred')" title="取整到百位">取整到百</button>
+                                        <div id="depositConfirmContainer" class="deposit-confirm-container">
+                                            <button type="button" id="confirmDepositBtn" class="btn secondary small" onclick="confirmDepositReceived()">确认已收定金</button>
+                                        </div>
+                                        <div id="depositInputContainer" class="deposit-input-container d-none">
+                                            <input type="number" id="receiptDepositInput" class="receipt-deposit-field" min="0" step="0.01" placeholder="0.00">
+                                            <div class="receipt-agreed-btns">
+                                                <button type="button" class="btn secondary small" onclick="roundDepositAmount('floor')" title="向下取整">向下</button>
+                                                <button type="button" class="btn secondary small" onclick="roundDepositAmount('ten')" title="取整到十位">取整到十</button>
+                                                <button type="button" class="btn secondary small" onclick="roundDepositAmount('hundred')" title="取整到百位">取整到百</button>
+                                                <button type="button" class="btn danger-light small" onclick="cancelDepositReceived()" title="取消已收">取消</button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
