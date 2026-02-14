@@ -16599,34 +16599,33 @@ init = function() {
         // 智能同步模式：启动时自动拉取并合并
         const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
         if (isCloudModeOn) {
-                try {
-                    // 先合并设置（智能合并）
-                    await mgLoadSettingsFromCloud(true);
-                    
-                    // 再合并订单
-                    const cloudHistory = await mgCloudFetchOrders();
-                    const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
-                    
-                    // 上传本地独有的订单
-                    for (const item of history) {
-                        const extId = mgEnsureExternalId(item);
-                        if (extId && !cloudIds.has(extId)) {
-                            await mgCloudUpsertOrder(item);
-                        }
+            try {
+                // 先合并设置（智能合并）
+                await mgLoadSettingsFromCloud(true);
+                
+                // 再合并订单
+                const cloudHistory = await mgCloudFetchOrders();
+                const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
+                
+                // 上传本地独有的订单
+                for (const item of history) {
+                    const extId = mgEnsureExternalId(item);
+                    if (extId && !cloudIds.has(extId)) {
+                        await mgCloudUpsertOrder(item);
                     }
-                    
-                    // 拉取所有订单（包含刚上传的）
-                    const mergedHistory = await mgCloudFetchOrders();
-                    if (mergedHistory.length > 0) {
-                        history = mergedHistory;
-                        if (typeof saveData === 'function') saveData();
-                    }
-                    
-                    if (typeof updateDisplay === 'function') updateDisplay();
-                    if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
-                } catch (err) {
-                    console.error('启动时智能同步失败:', err);
                 }
+                
+                // 拉取所有订单（包含刚上传的）
+                const mergedHistory = await mgCloudFetchOrders();
+                if (mergedHistory.length > 0) {
+                    history = mergedHistory;
+                    if (typeof saveData === 'function') saveData();
+                }
+                
+                if (typeof updateDisplay === 'function') updateDisplay();
+                if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+            } catch (err) {
+                console.error('启动时智能同步失败:', err);
             }
         }
         // 更新设置页面的云端状态
