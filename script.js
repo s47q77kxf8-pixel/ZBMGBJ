@@ -8697,16 +8697,22 @@ function toggleScheduleTodoDone(checkbox) {
     }, 0);
 }
 
-// 点击 todo 卡片：弹出操作菜单；仅点击制品行（芯片）时不弹窗，点击卡片或制品区空白处均弹窗
+// 点击 todo 卡片：弹出操作菜单；勾选框 + 制品文字 + 其下方节点/赠品文字不弹窗，其余区域（包括制品区空白）均弹窗
 function handleScheduleTodoCardClick(id, event) {
     if (!event) {
         openScheduleTodoCardModal(id);
         return;
     }
 
-    // 仅点击「制品选择框」及其内容时不弹窗；其它空白区域点击都需要弹窗
-    if (event.target.closest('.schedule-todo-chips-wrap')) return;
+    const target = event.target;
 
+    // 1. 勾选框点击：不弹窗
+    if (target.closest('.schedule-todo-checkbox')) return;
+
+    // 2. 制品/节点/赠品文字点击：不弹窗（制品信息文字部分统一使用 schedule-todo-label）
+    if (target.closest('.schedule-todo-label')) return;
+
+    // 其它区域（包括 chips 容器的空白）都弹窗
     openScheduleTodoCardModal(id);
 }
 
@@ -16121,6 +16127,7 @@ function updateCloudSyncStatus() {
     const actionsContainer = document.getElementById('cloudSyncActions');
     const syncBtn = document.getElementById('syncCloudBtn');
     const loadBtn = document.getElementById('loadCloudBtn');
+    const debugBtn = document.getElementById('cloudDebugBtn');
     
     if (!statusText) return;
     
@@ -16147,9 +16154,11 @@ function updateCloudSyncStatus() {
     if (!isEnabled) {
         statusText.textContent = '请先登录';
         if (actionsContainer) actionsContainer.style.display = 'none';
+        if (debugBtn) debugBtn.style.display = 'inline-block';
     } else if (!isCloudModeOn) {
         statusText.textContent = '开启开关以启用智能同步';
         if (actionsContainer) actionsContainer.style.display = 'none';
+        if (debugBtn) debugBtn.style.display = 'inline-block';
     } else {
         // 加载未同步订单列表
         loadUnsyncedOrders();
