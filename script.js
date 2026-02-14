@@ -16569,12 +16569,9 @@ init = function() {
     
     // 延迟检测云端（等待 __APP_AUTH__ 初始化完成）
     setTimeout(async () => {
-        if (mgIsCloudEnabled()) {
-            await mgShowCloudEnableModal();
-            
-            // 智能同步模式：启动时自动拉取并合并
-            const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
-            if (isCloudModeOn) {
+        // 智能同步模式：启动时自动拉取并合并
+        const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
+        if (isCloudModeOn) {
                 try {
                     // 先合并设置（智能合并）
                     await mgLoadSettingsFromCloud(true);
