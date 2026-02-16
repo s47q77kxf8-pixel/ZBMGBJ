@@ -143,22 +143,63 @@
             // 注册逻辑
             const { data, error } = await supabaseClient.auth.signUp({
                 email: email,
-                password: password,
-                options: {
-                    // 使用当前页面作为跳转目标，PKCE 模式下会带有 ?code=...
-                    emailRedirectTo: window.location.origin + window.location.pathname
-                }
+                password: password
             });
 
             if (error) {
                 return showMessage(error.message, 'error');
             }
 
-            if (data.user) {
-                // 数据库触发器会自动处理 artists 和 artist_settings 的创建
-                // 这里只需引导用户去验证邮箱
-                showMessage('注册成功！请前往邮箱点开验证链接（可能在垃圾箱）', 'success');
-                // 增加一个重发按钮的提示（可选，也可以直接在这里显示）
+            // 关闭邮箱验证后，signUp 通常会直接返回 session。
+            // 若没返回 session，则立即 signIn 获取 session，以便调用建档函数。
+            let session = data && data.session ? data.session : null;
+            if (!session) {
+                const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+                if (signInErr) {
+                    return showMessage('注册成功，但自动登录失败：' + signInErr.message, 'error');
+                }
+                session = signInData.session;
+            }
+
+            if (!session || !session.access_token) {
+                return showMessage('注册成功，但获取登录态失败，请稍后直接登录', 'error');
+            }
+
+            showMessage('注册成功，正在初始化档案...', 'success');
+
+            const fnUrl = (window.__SUPABASE__ && window.__SUPABASE__.SUPABASE_URL)
+                ? (window.__SUPABASE__.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/swift-function')
+                : null;
+
+            if (!fnUrl) {
+                return showMessage('系统配置缺失：SUPABASE_URL', 'error');
+            }
+
+            try {
+                const resp = await fetch(fnUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + session.access_token
+                    },
+                    body: JSON.stringify({})
+                });
+
+                const payload = await resp.json().catch(() => ({}));
+
+                if (!resp.ok || !payload || payload.ok !== true) {
+                    const detail = payload && (payload.detail || payload.error || payload.message);
+                    throw new Error(detail || ('HTTP ' + resp.status));
+                }
+
+                showMessage('注册成功！正在跳转...', 'success');
+                setTimeout(() => window.location.href = 'index.html#settings', 800);
+            } catch (e) {
+                console.error('建档失败:', e);
+                showMessage('注册成功，但档案初始化失败：' + (e && e.message ? e.message : '未知错误') + '。请联系管理员', 'error');
             }
         } else {
             // 登录逻辑
