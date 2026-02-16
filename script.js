@@ -15640,10 +15640,9 @@ function updateSyncStatus() {
     
     const unsyncedCount = unsyncedOrderIds.size;
     if (unsyncedCount > 0) {
-        const currentText = statusText.textContent;
-        if (!currentText.includes('未同步')) {
-            statusText.innerHTML = `✅ 智能同步模式已启用 <span style="color:#ff6b6b;font-weight:600;">（${unsyncedCount} 条未同步）</span>`;
-        }
+        statusText.innerHTML = `✅ 智能同步模式已启用 <span style="color:#ff6b6b;font-weight:600;">（${unsyncedCount} 条未同步）</span>`;
+    } else {
+        statusText.innerHTML = `✅ 智能同步模式已启用`;
     }
 }
 
@@ -15661,43 +15660,48 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
     try {
         const externalId = mgEnsureExternalId(item);
         if (!externalId) {
-            console.log('订单无 external_id，跳过云端删除');
+            console.log('订单无 external_id，无需同步删除，标记为已同步');
+            if (item && item.id) markOrderSynced(item.id);
             return;
         }
         
         // 获取当前登录用户的 artist_id
         const { data: { session } } = await client.auth.getSession();
         if (!session || !session.user) {
+            console.warn('删除同步失败：未登录');
             return;
         }
         
         // 删除云端订单（根据 external_id 和 artist_id）
-        const { error } = await client
+        const { error, count } = await client
             .from('orders')
             .delete()
             .eq('external_id', externalId)
             .eq('artist_id', session.user.id);
         
         if (error) {
-            console.error('云端删除订单失败:', error);
+            console.error('云端删除订单失败 (attempt ' + (retryCount+1) + '):', error.message || error);
             
+            // 如果是权限错误或 404，通常不需要重试，保留在未同步列表中供用户查看
+            if (error.code === '42501' || error.status === 404) {
+                return;
+            }
+
             // 重试机制（最多重试2次）
             if (retryCount < 2) {
                 setTimeout(() => {
                     mgCloudDeleteOrder(item, retryCount + 1);
-                }, 3000 * (retryCount + 1)); // 3秒、6秒后重试
+                }, 3000 * (retryCount + 1)); 
             }
         } else {
             console.log('✅ 云端删除订单成功:', externalId);
-            // 如果订单有 id，从未同步列表中移除
+            // 无论实际删除了几行（即使云端已不存在），只要没有错误，就视为同步成功
             if (item && item.id) {
                 markOrderSynced(item.id);
             }
         }
     } catch (err) {
         console.error('云端删除订单出错:', err);
-        
-        // 网络错误时重试
         if (retryCount < 2 && (err.message?.includes('network') || err.message?.includes('fetch'))) {
             setTimeout(() => {
                 mgCloudDeleteOrder(item, retryCount + 1);
