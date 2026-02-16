@@ -15590,12 +15590,30 @@ async function mgCloudFetchOrders(filters = {}) {
 // 跟踪未同步的订单ID
 let unsyncedOrderIds = new Set();
 
+// 校准未同步队列：剔除本地 history 中已不存在的订单 ID
+function calibrateUnsyncedOrders() {
+    if (!Array.isArray(history)) return;
+    const localIds = new Set(history.map(item => item.id).filter(id => id !== undefined));
+    let changed = false;
+    for (const id of unsyncedOrderIds) {
+        if (!localIds.has(id)) {
+            unsyncedOrderIds.delete(id);
+            changed = true;
+        }
+    }
+    if (changed) {
+        saveUnsyncedOrders();
+    }
+}
+
 // 从localStorage加载未同步订单列表
 function loadUnsyncedOrders() {
     try {
         const saved = localStorage.getItem('mg_unsynced_orders');
         if (saved) {
             unsyncedOrderIds = new Set(JSON.parse(saved));
+            // 加载后立即执行一次校准
+            calibrateUnsyncedOrders();
         }
     } catch (e) {
         console.error('加载未同步订单失败:', e);
@@ -15637,6 +15655,9 @@ function updateSyncStatus() {
     
     const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
     if (!isCloudModeOn) return;
+    
+    // 每次更新 UI 前先校准一次，确保数量准确
+    calibrateUnsyncedOrders();
     
     const unsyncedCount = unsyncedOrderIds.size;
     if (unsyncedCount > 0) {
