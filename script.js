@@ -47,8 +47,13 @@ console.log('🔧 如果看不到这条日志，说明浏览器加载的是旧�
     }
 
     // hook console（保留原行为）
+    const origLog = console.log;
     const origError = console.error;
     const origWarn = console.warn;
+    console.log = function () {
+        appendLine('log', arguments);
+        try { return origLog.apply(console, arguments); } catch (_) {}
+    };
     console.error = function () {
         appendLine('error', arguments);
         try { return origError.apply(console, arguments); } catch (_) {}
@@ -57,6 +62,9 @@ console.log('🔧 如果看不到这条日志，说明浏览器加载的是旧�
         appendLine('warn', arguments);
         try { return origWarn.apply(console, arguments); } catch (_) {}
     };
+
+    // 写入一条可见日志，确保面板不是空的
+    appendLine('log', ['cloud debug ready']);
 
     window.addEventListener('error', (ev) => {
         try {
@@ -7669,6 +7677,8 @@ function getScheduleItemsByFilter() {
         return getScheduleItemsForMonth(y, m);
     }
     if (f === 'pending') return getScheduleItemsPending();
+    // incoming（待接）不从 history 里取，交由 renderScheduleTodoSection 单独渲染
+    if (f === 'incoming') return [];
     const y = now.getFullYear();
     const m = now.getMonth() + 1;
     const today = y + '-' + String(m).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -8627,11 +8637,199 @@ function updateScheduleTitleTodayButton() {
 }
 
 // 渲染当前批次制品 todo 区（按快捷筛选或选中日期显示排单制品）
-function renderScheduleTodoSection() {
+async function mgFetchIncomingProjects() {
+    const client = mgGetSupabaseClient();
+    if (!client) return [];
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) return [];
+    const artistId = session.user.id;
+
+    const { data, error } = await client
+        .from('projects')
+        .select('id, status, submitted_at, client_input_snapshot')
+        .eq('artist_id', artistId)
+        .eq('status', 'PENDING_REVIEW')
+        .order('submitted_at', { ascending: false })
+        .limit(50);
+
+    if (error) {
+        console.error('获取待接企划失败:', error);
+        return [];
+    }
+    return data || [];
+}
+
+function mgEscapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] || c;
+    });
+}
+
+async function mgRenderIncomingProjectsTodo(titleEl, modulesEl) {
+    titleEl.textContent = '待接';
+    modulesEl.innerHTML = '<p class="schedule-todo-empty">加载中...</p>';
+
+    const rows = await mgFetchIncomingProjects();
+    if (!rows.length) {
+        modulesEl.innerHTML = '<p class="schedule-todo-empty">暂无待接企划</p>';
+        return;
+    }
+
+    const cards = rows.map(function (p) {
+        const snap = p.client_input_snapshot || {};
+        const name = snap.clientName || '单主';
+        const contact = snap.contact || '';
+        const deadline = snap.deadline ? ('截稿 ' + formatYmdCn(snap.deadline)) : '未填截稿（待排）';
+        const items = Array.isArray(snap.items) ? snap.items : [];
+        const summary = items.slice(0, 3).map(function (it) {
+            const n = it.typeName || '制品';
+            const q = it.quantity != null ? (' x ' + it.quantity) : '';
+            const sz = it.size ? ('（' + it.size + '）') : '';
+            return mgEscapeHtml(n + q + sz);
+        }).join('，') + (items.length > 3 ? '…' : '');
+
+        return ''
+            + '<div class="schedule-todo-card" onclick="handleIncomingProjectCardClick(\'' + String(p.id) + '\', event)">' 
+            + '  <div class="schedule-todo-card-main">'
+            + '    <div class="schedule-todo-card-head">'
+            + '      <span class="schedule-todo-card-dot" style="background-color:#999"></span>'
+            + '      <span class="schedule-todo-card-date">待接</span>'
+            + '      <span class="schedule-todo-card-sep"></span>'
+            + '      <span class="schedule-todo-card-range">' + mgEscapeHtml(deadline) + '</span>'
+            + '      <span class="schedule-todo-card-sep-inline"></span>'
+            + '      <span class="schedule-todo-card-client">' + mgEscapeHtml(name) + (contact ? ('（' + mgEscapeHtml(contact) + '）') : '') + '</span>'
+            + '      <span class="record-status record-status--pending schedule-todo-card-status">待复核</span>'
+            + '    </div>'
+            + '    <div class="schedule-todo-card-products">'
+            + '      <div class="schedule-todo-chips-wrap">' + mgEscapeHtml(summary) + '</div>'
+            + '    </div>'
+            + '  </div>'
+            + '</div>';
+    });
+
+    modulesEl.innerHTML = cards.join('');
+}
+
+async function mgLoadIncomingProjectToCalculator(projectId) {
+    const client = mgGetSupabaseClient();
+    if (!client) {
+        alert('未检测到 Supabase 配置');
+        return;
+    }
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) {
+        alert('请先登录');
+        return;
+    }
+    const artistId = session.user.id;
+
+    const { data: rows, error } = await client
+        .from('projects')
+        .select('id, status, submitted_at, client_input_snapshot')
+        .eq('artist_id', artistId)
+        .eq('id', projectId)
+        .limit(1);
+
+    if (error) {
+        console.error(error);
+        alert('读取待接企划失败：' + (error.message || error));
+        return;
+    }
+    const proj = rows && rows[0];
+    if (!proj) {
+        alert('未找到该待接企划');
+        return;
+    }
+
+    const snap = proj.client_input_snapshot || {};
+    const clientName = snap.clientName || '';
+    const contact = snap.contact || '';
+    const deadline = snap.deadline || '';
+    const remark = snap.remark || '';
+    const items = Array.isArray(snap.items) ? snap.items : [];
+
+    // 切换到排单页并打开计算抽屉
+    if (typeof showPage === 'function') showPage('quote');
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            openCalculatorDrawer(true);
+        });
+    });
+
+    // 清空当前制品和赠品
+    products = [];
+    gifts = [];
+    productIdCounter = 0;
+    giftIdCounter = 0;
+    const productsContainer = document.getElementById('productsContainer');
+    const giftsContainer = document.getElementById('giftsContainer');
+    if (productsContainer) productsContainer.innerHTML = '';
+    if (giftsContainer) giftsContainer.innerHTML = '';
+
+    // 恢复单主信息（沿用 editHistoryItem 的字段）
+    var clientIdEl = document.getElementById('clientId');
+    if (clientIdEl) clientIdEl.value = clientName;
+    var orderPlatformInput = document.getElementById('orderPlatform');
+    if (orderPlatformInput) orderPlatformInput.value = contact;
+
+    var deadlineEl = document.getElementById('deadline');
+    if (deadlineEl) deadlineEl.value = deadline || '';
+
+    // 订单备注：拼接尺寸信息（方案 A）
+    var sizes = items
+        .filter(function (it) { return it && it.size; })
+        .map(function (it) {
+            var n = it.typeName || '制品';
+            return n + '：' + it.size;
+        })
+        .join('；');
+    var mergedRemark = '';
+    if (remark) mergedRemark += String(remark);
+    if (sizes) mergedRemark += (mergedRemark ? '\n' : '') + '【尺寸】' + sizes;
+    if (defaultSettings) defaultSettings.orderRemark = mergedRemark;
+    var orderRemarkTextEl = document.getElementById('orderRemarkText');
+    if (orderRemarkTextEl) orderRemarkTextEl.value = mergedRemark;
+    if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
+
+    // 恢复制品（仅 typeId + quantity，其他项由用户复核补齐）
+    items.forEach(function (it) {
+        if (!it || !it.typeId) return;
+        productIdCounter++;
+        const product = {
+            id: productIdCounter,
+            type: String(it.typeId),
+            sides: 'single',
+            quantity: it.quantity || 1,
+            sameModel: true,
+            hasBackground: false,
+            processes: {}
+        };
+        products.push(product);
+        renderProduct(product);
+        // 让下拉与工艺选项刷新
+        updateProductForm(product.id);
+        updateProcessOptions(product.id, false);
+    });
+
+    if (typeof showGlobalToast === 'function') showGlobalToast('已载入待接企划到计算页');
+}
+
+function handleIncomingProjectCardClick(projectId, event) {
+    if (event && event.target && event.target.closest('.schedule-todo-checkbox')) return;
+    mgLoadIncomingProjectToCalculator(projectId);
+}
+
+// 渲染当前批次制品 todo 区（按快捷筛选或选中日期显示排单制品）
+async function renderScheduleTodoSection() {
     const titleEl = document.getElementById('scheduleTodoTitle');
     const modulesEl = document.getElementById('scheduleTodoModules');
     if (!titleEl || !modulesEl) return;
     const f = window.scheduleTodoFilter || 'today';
+    // 待接：从云端 projects 渲染（不走本地 history）
+    if (f === 'incoming') {
+        await mgRenderIncomingProjectsTodo(titleEl, modulesEl);
+        return;
+    }
     if (f === 'today' && !window.scheduleSelectedDate) {
         const now = new Date();
         const y0 = now.getFullYear();
@@ -8639,6 +8837,12 @@ function renderScheduleTodoSection() {
         const d0 = String(now.getDate()).padStart(2, '0');
         window.scheduleSelectedDate = y0 + '-' + m0 + '-' + d0;
     }
+    // 待接：从云端 projects 渲染（不走本地 history）
+    if (f === 'incoming') {
+        await mgRenderIncomingProjectsTodo(titleEl, modulesEl);
+        return;
+    }
+
     const items = getScheduleItemsByFilter().filter(it => !isOrderSettled(it));
     const titles = { all: '所有', month: '当月', pending: '待排', today: '当日' };
     const sub = f === 'today' && window.scheduleSelectedDate ? '：' + formatYmdCn(window.scheduleSelectedDate) : '';
@@ -10832,7 +11036,25 @@ function settlementConfirm() {
         };
     }
 
+    // 标记本地订单最近更新时间（用于防止云端旧数据覆盖本地新结单状态）
+    item.mg_updated_at = Date.now();
     saveData();
+
+    // 结算/撤单/废稿后强制同步云端（如果已启用云端模式）
+    try {
+        if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+            const extId = mgEnsureExternalId(item);
+            console.log('[settlement] syncing order', { id: item.id, external_id: extId, settlement: item.settlement && item.settlement.type, mg_updated_at: item.mg_updated_at });
+            markOrderUnsynced(item.id);
+            mgCloudUpsertOrder(item).catch(function (err) {
+                console.error('结算后云端同步失败:', err);
+                updateSyncStatus();
+            });
+        }
+    } catch (e) {
+        console.error('结算后触发云端同步异常:', e);
+    }
+
     closeSettlementModal();
     if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
     if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>委托信息填写</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+</head>
+<body>
+  <div class="page active" style="padding:16px;max-width:760px;margin:0 auto;">
+    <h1 style="margin:8px 0 12px 0;">单主自主填写委托</h1>
+    <div id="clientStatus" class="text-gray" style="margin-bottom:12px;">正在校验链接...</div>
+
+    <div id="clientFormWrap" class="section d-none">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="cClientName">称呼 / 单主昵称</label>
+          <input id="cClientName" type="text" placeholder="例如：小明" />
+        </div>
+        <div class="form-group">
+          <label for="cContact">联系方式（QQ/VX/MHS 等）</label>
+          <input id="cContact" type="text" placeholder="例如：QQ 12345" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="cDeadline">截稿日（可不填，不填将进入待排）</label>
+          <input id="cDeadline" type="date" />
+        </div>
+        <div class="form-group">
+          <label for="cRemark">委托总备注</label>
+          <input id="cRemark" type="text" placeholder="可填写整体委托要求" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="flex:1;">
+          <label>制品明细</label>
+          <div id="cItemsContainer"></div>
+          <div style="margin-top:10px;">
+            <button type="button" class="btn secondary" id="cAddItemBtn">+ 添加制品</button>
+          </div>
+          <small class="text-gray" style="display:block;margin-top:8px;">制品选项来自画师的制品设置；每个制品可填写独立尺寸（自由输入）。</small>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:20px;">
+        <button type="button" class="btn primary w-full" id="clientSubmitBtn">提交委托</button>
+      </div>
+    </div>
+
+    <div id="clientDone" class="section d-none">
+      <h2 style="margin:8px 0;">已提交成功</h2>
+      <p class="text-gray">您的委托信息已送达画师。画师复核后将为您提供正式报价并排单。</p>
+      <button type="button" class="btn secondary mt-4" onclick="window.location.reload()">再填一单</button>
+    </div>
+  </div>
+
+  <script>
+    let artistProductSettings = [];
+
+    function getQueryParam(name) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name);
+    }
+
+    function show(el, yes) {
+      if (!el) return;
+      el.classList.toggle('d-none', !yes);
+    }
+
+    function buildProductOptionsHtml() {
+      if (!Array.isArray(artistProductSettings) || artistProductSettings.length === 0) {
+        return '<option value="">暂无预设制品</option>';
+      }
+      return artistProductSettings
+        .map(p => `<option value="${String(p.id)}">${String(p.name || '')}</option>`)
+        .join('');
+    }
+
+    function createItemRow() {
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      row.style.border = '1px solid rgba(0,0,0,0.08)';
+      row.style.borderRadius = '10px';
+      row.style.padding = '12px';
+      row.style.marginBottom = '12px';
+      row.style.background = 'rgba(0,0,0,0.01)';
+      row.style.position = 'relative';
+
+      row.innerHTML = `
+        <button type="button" style="position:absolute; right:8px; top:8px; border:none; background:none; cursor:pointer; color:#999;" onclick="this.closest('.item-row').remove()">×</button>
+        <div class="form-row">
+          <div class="form-group">
+            <label>制品类型</label>
+            <select class="c-item-type" style="width:100%">${buildProductOptionsHtml()}</select>
+          </div>
+          <div class="form-group" style="max-width:100px;">
+            <label>数量</label>
+            <input type="number" class="c-item-qty" value="1" min="1" step="1" style="width:100%" />
+          </div>
+        </div>
+        <div class="form-row" style="margin-top:8px;">
+          <div class="form-group">
+            <label>尺寸要求</label>
+            <input type="text" class="c-item-size" placeholder="例如：58mm / A4 / 800x800px" style="width:100%" />
+          </div>
+        </div>
+      `;
+
+      document.getElementById('cItemsContainer').appendChild(row);
+    }
+
+    async function init() {
+      const statusEl = document.getElementById('clientStatus');
+      const formWrap = document.getElementById('clientFormWrap');
+      const doneWrap = document.getElementById('clientDone');
+      const submitBtn = document.getElementById('clientSubmitBtn');
+      const addItemBtn = document.getElementById('cAddItemBtn');
+
+      const slug = (getQueryParam('t') || '').trim();
+      if (!slug) {
+        statusEl.textContent = '链接无效：缺少凭证';
+        return;
+      }
+
+      const supabase = window.__SUPABASE__ && window.__SUPABASE__.client;
+      if (!supabase) {
+        statusEl.textContent = '系统未初始化 Supabase，请联系画师';
+        return;
+      }
+
+      // 1) 校验 slug/token，获取 artist_id
+      const { data: linkRows, error: linkErr } = await supabase
+        .from('project_links')
+        .select('artist_id')
+        .eq('token', slug)
+        .eq('kind', 'default')
+        .limit(1);
+
+      if (linkErr) {
+        console.error(linkErr);
+        statusEl.textContent = '校验失败，请稍后重试';
+        return;
+      }
+
+      const link = linkRows && linkRows[0];
+      if (!link || !link.artist_id) {
+        statusEl.textContent = '链接无效或已失效';
+        return;
+      }
+
+      const artistId = link.artist_id;
+
+      // 2) 拉取画师制品设置（artist_settings）
+      const { data: settingsRows, error: settingsErr } = await supabase
+        .from('artist_settings')
+        .select('productSettings')
+        .eq('artist_id', artistId)
+        .limit(1);
+
+      if (settingsErr) {
+        console.warn('拉取制品设置失败，将使用空列表:', settingsErr);
+        artistProductSettings = [];
+      } else {
+        const row = settingsRows && settingsRows[0];
+        artistProductSettings = (row && row.productSettings) ? row.productSettings : [];
+      }
+
+      statusEl.textContent = '请填写委托信息并提交';
+      show(formWrap, true);
+
+      // 初始化一行制品
+      createItemRow();
+
+      addItemBtn.addEventListener('click', function () {
+        createItemRow();
+      });
+
+      submitBtn.addEventListener('click', async function () {
+        const clientName = (document.getElementById('cClientName').value || '').trim();
+        const contact = (document.getElementById('cContact').value || '').trim();
+
+        if (!clientName && !contact) {
+          alert('请至少留下您的称呼或联系方式');
+          return;
+        }
+
+        const items = [];
+        document.querySelectorAll('.item-row').forEach(function (row) {
+          const typeEl = row.querySelector('.c-item-type');
+          const qtyEl = row.querySelector('.c-item-qty');
+          const sizeEl = row.querySelector('.c-item-size');
+
+          const typeId = typeEl ? (typeEl.value || '').trim() : '';
+          const typeName = typeEl && typeEl.selectedIndex >= 0 ? (typeEl.options[typeEl.selectedIndex].text || '') : '';
+          const quantity = Math.max(1, parseInt((qtyEl ? qtyEl.value : '1') || '1', 10) || 1);
+          const size = (sizeEl ? sizeEl.value : '').trim();
+
+          items.push({
+            typeId: typeId || null,
+            typeName: typeName || null,
+            quantity,
+            size
+          });
+        });
+
+        if (!items.length) {
+          alert('请至少添加一个制品');
+          return;
+        }
+
+        // 若下拉无数据，typeId 可能为空，给出提示
+        const hasAnyTypeId = items.some(it => it.typeId);
+        if (!hasAnyTypeId) {
+          alert('当前画师未配置制品列表，无法选择制品类型，请联系画师先在设置页完善制品设置并同步到云端。');
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = '提交中...';
+
+        try {
+          const payload = {
+            artist_id: artistId,
+            token: slug,
+            source: 'client_self_submit',
+            status: 'PENDING_REVIEW',
+            client_input_snapshot: {
+              clientName,
+              contact,
+              deadline: (document.getElementById('cDeadline').value || '').trim() || null,
+              remark: (document.getElementById('cRemark').value || '').trim(),
+              items
+            },
+            calc_snapshot: null
+          };
+
+          const { error: insErr } = await supabase
+            .from('projects')
+            .insert([payload]);
+
+          if (insErr) {
+            console.error(insErr);
+            alert('提交失败：' + (insErr.message || insErr));
+            return;
+          }
+
+          show(formWrap, false);
+          show(doneWrap, true);
+          statusEl.textContent = '提交成功';
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '提交委托';
+        }
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
