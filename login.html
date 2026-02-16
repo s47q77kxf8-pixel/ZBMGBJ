@@ -140,7 +140,7 @@
         showMessage('处理中...', 'success');
 
         if (type === 'signup') {
-            // 注册逻辑
+            // 1. 注册逻辑
             const { data, error } = await supabaseClient.auth.signUp({
                 email: email,
                 password: password
@@ -150,33 +150,25 @@
                 return showMessage(error.message, 'error');
             }
 
-            // 关闭邮箱验证后，signUp 通常会直接返回 session。
-            // 若没返回 session，则立即 signIn 获取 session，以便调用建档函数。
-            let session = data && data.session ? data.session : null;
-            if (!session) {
-                const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
-                    email: email,
-                    password: password
-                });
-                if (signInErr) {
-                    return showMessage('注册成功，但自动登录失败：' + signInErr.message, 'error');
-                }
-                session = signInData.session;
+            // 2. 强制登录以确保拿到 Session
+            showMessage('注册成功，正在建立安全连接...', 'success');
+            const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (signInErr) {
+                return showMessage('注册成功，但自动登录失败：' + signInErr.message + '。请尝试手动登录。', 'error');
             }
 
+            const session = signInData.session;
             if (!session || !session.access_token) {
-                return showMessage('注册成功，但获取登录态失败，请稍后直接登录', 'error');
+                return showMessage('注册成功，但未能获取到安全令牌，请尝试重新登录', 'error');
             }
 
-            showMessage('注册成功，正在初始化档案...', 'success');
-
-            const fnUrl = (window.__SUPABASE__ && window.__SUPABASE__.SUPABASE_URL)
-                ? (window.__SUPABASE__.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/swift-function')
-                : null;
-
-            if (!fnUrl) {
-                return showMessage('系统配置缺失：SUPABASE_URL', 'error');
-            }
+            // 3. 调用 Edge Function 自动建档
+            showMessage('身份验证成功，正在初始化档案...', 'success');
+            const fnUrl = window.__SUPABASE__.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/swift-function';
 
             try {
                 const resp = await fetch(fnUrl, {
@@ -195,11 +187,11 @@
                     throw new Error(detail || ('HTTP ' + resp.status));
                 }
 
-                showMessage('注册成功！正在跳转...', 'success');
+                showMessage('所有初始化已完成！正在进入系统...', 'success');
                 setTimeout(() => window.location.href = 'index.html#settings', 800);
             } catch (e) {
                 console.error('建档失败:', e);
-                showMessage('注册成功，但档案初始化失败：' + (e && e.message ? e.message : '未知错误') + '。请联系管理员', 'error');
+                showMessage('档案初始化失败：' + (e && e.message ? e.message : '网络错误') + '。请联系管理员', 'error');
             }
         } else {
             // 登录逻辑
