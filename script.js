@@ -2942,6 +2942,21 @@ function showPage(pageId) {
         renderProductSettings();
         renderProcessSettings();
         renderCoefficientSettings();
+
+        // dev=1 时才显示“单主自助填写”相关入口
+        try {
+            const params = new URLSearchParams(window.location.search || '');
+            const isDev = params.get('dev') === '1';
+            document.querySelectorAll('.dev-feature').forEach(function (el) {
+                el.classList.toggle('d-none', !isDev);
+            });
+            // 仅在 dev 模式下初始化链接（避免开发中功能被看见/被误触发请求）
+            if (isDev && typeof mgInitInviteLinkUI === 'function') {
+                mgInitInviteLinkUI();
+            }
+        } catch (e) {
+            // ignore
+        }
     }
     // 页面切换时不再直接显示/隐藏计算页，只控制报价 / 设置下的逻辑
 }
@@ -12539,6 +12554,39 @@ function updateArtistInfo(field, value) {
     if (field === 'defaultDuration') {
         calculateDeadline();
     }
+    
+    // 如果修改的是美工ID，同步到 Supabase artists 表的 display_name
+    if (field === 'id') {
+        mgSyncArtistDisplayNameToCloud(value);
+    }
+}
+
+// 同步美工ID到云端 artists 表
+async function mgSyncArtistDisplayNameToCloud(displayName) {
+    if (!mgIsCloudEnabled()) return;
+    
+    const client = mgGetSupabaseClient();
+    if (!client) return;
+    
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) return;
+    
+    const artistId = session.user.id;
+    
+    try {
+        const { error } = await client
+            .from('artists')
+            .update({ display_name: displayName })
+            .eq('id', artistId);
+            
+        if (error) {
+            console.error('同步美工显示名称失败:', error);
+        } else {
+            console.log('已同步美工显示名称到云端:', displayName);
+        }
+    } catch (err) {
+        console.error('同步美工显示名称异常:', err);
+    }
 }
 
 // 更新定金比例（0~100 输入，内部存 0~1）
@@ -15375,6 +15423,156 @@ function resetToDefaultSettings() {
 function mgGetSupabaseClient() {
     if (!window.__SUPABASE__ || !window.__SUPABASE__.client) return null;
     return window.__SUPABASE__.client;
+}
+
+// ========== 单主直填邀请链接（固定链接） ==========
+function mgGenerateInviteToken(byteLen = 16) {
+    try {
+        const arr = new Uint8Array(byteLen);
+        window.crypto.getRandomValues(arr);
+        return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+        // 兜底：不依赖 crypto 的弱随机（仅用于极端环境）
+        return (Date.now().toString(16) + Math.random().toString(16).slice(2)).slice(0, 32);
+    }
+}
+
+function mgBuildClientInviteLink(token) {
+    const base = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '/');
+    return base + 'client.html?t=' + encodeURIComponent(token);
+}
+
+async function mgInitInviteLinkUI() {
+    const input = document.getElementById('inviteLinkInput');
+    if (!input) return;
+
+    const client = mgGetSupabaseClient();
+    if (!client) {
+        input.value = '未检测到 Supabase 配置';
+        return;
+    }
+
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) {
+        input.value = '请先登录后生成链接';
+        return;
+    }
+
+    const artistId = session.user.id;
+
+    // 每个用户固定一条：artist_id + kind='default'
+    const { data: rows, error } = await client
+        .from('project_links')
+        .select('token')
+        .eq('artist_id', artistId)
+        .eq('kind', 'default')
+        .limit(1);
+
+    if (error) {
+        console.error('获取邀请链接失败:', error);
+        input.value = '获取链接失败（请检查 project_links 表/RLS）';
+        return;
+    }
+
+    let token = rows && rows[0] ? rows[0].token : null;
+    if (!token) {
+        token = mgGenerateInviteToken(16);
+        const { error: insErr } = await client
+            .from('project_links')
+            .insert([{ artist_id: artistId, kind: 'default', token }]);
+        if (insErr) {
+            console.error('创建邀请链接失败:', insErr);
+            input.value = '创建链接失败（请检查 project_links 表/RLS）';
+            return;
+        }
+    }
+
+    input.value = mgBuildClientInviteLink(token);
+}
+
+async function copyInviteLink() {
+    const input = document.getElementById('inviteLinkInput');
+    const text = input ? (input.value || '').trim() : '';
+    if (!text || text.indexOf('http') !== 0) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('暂无可复制的链接');
+        return;
+    }
+
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            // 兜底
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        if (typeof showGlobalToast === 'function') showGlobalToast('已复制链接');
+    } catch (e) {
+        console.error(e);
+        if (typeof showGlobalToast === 'function') showGlobalToast('复制失败');
+    }
+}
+
+async function resetInviteLink() {
+    const input = document.getElementById('inviteLinkInput');
+    if (!input) return;
+
+    const client = mgGetSupabaseClient();
+    if (!client) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('未检测到 Supabase 配置');
+        return;
+    }
+
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('请先登录');
+        return;
+    }
+
+    if (!confirm('重置后旧链接将失效，确定要重置吗？')) return;
+
+    const artistId = session.user.id;
+    const newToken = mgGenerateInviteToken(16);
+
+    // 优先 update（如果没有行则 insert）
+    const { data: updRows, error: updErr } = await client
+        .from('project_links')
+        .update({ token: newToken, updated_at: new Date().toISOString() })
+        .eq('artist_id', artistId)
+        .eq('kind', 'default')
+        .select('token')
+        .limit(1);
+
+    if (updErr) {
+        console.error('重置链接失败:', updErr);
+        if (typeof showGlobalToast === 'function') showGlobalToast('重置失败（请检查 project_links 表/RLS）');
+        return;
+    }
+
+    // 如果 update 没命中（极少数情况），补 insert
+    const hasRow = updRows && updRows[0] && updRows[0].token;
+    if (!hasRow) {
+        const { error: insErr } = await client
+            .from('project_links')
+            .insert([{ artist_id: artistId, kind: 'default', token: newToken }]);
+        if (insErr) {
+            console.error('重置链接补写失败:', insErr);
+            if (typeof showGlobalToast === 'function') showGlobalToast('重置失败');
+            return;
+        }
+    }
+
+    input.value = mgBuildClientInviteLink(newToken);
+    if (typeof showGlobalToast === 'function') showGlobalToast('链接已重置');
+}
+
+function openAllClientSubmissions() {
+    // 先占位：后续接入“全部直填委托”列表
+    alert('功能开发中：这里将展示全部单主直填委托（含取消/拒绝/已完成）。');
 }
 
 // 检查是否已登录并启用云端
