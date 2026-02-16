@@ -143,7 +143,11 @@
             // 注册逻辑
             const { data, error } = await supabaseClient.auth.signUp({
                 email: email,
-                password: password
+                password: password,
+                options: {
+                    // 使用当前页面作为跳转目标，PKCE 模式下会带有 ?code=...
+                    emailRedirectTo: window.location.origin + window.location.pathname
+                }
             });
 
             if (error) {
@@ -151,25 +155,10 @@
             }
 
             if (data.user) {
-                // 注册成功后，立即在 artists 表生成 slug
-                const userId = data.user.id;
-                const randomSlug = 'a' + Math.random().toString(36).substring(2, 8); // 生成 a+6位随机字符
-
-                const { error: artistError } = await supabaseClient
-                    .from('artists')
-                    .insert([{ 
-                        id: userId, 
-                        slug: randomSlug, 
-                        display_name: '新美工' 
-                    }]);
-
-                if (artistError) {
-                    console.error('档案初始化失败:', artistError);
-                    showMessage('注册成功，但档案生成失败，请联系管理员', 'error');
-                } else {
-                    showMessage('注册成功！正在跳转...', 'success');
-                    setTimeout(() => window.location.href = 'index.html#settings', 1500);
-                }
+                // 数据库触发器会自动处理 artists 和 artist_settings 的创建
+                // 这里只需引导用户去验证邮箱
+                showMessage('注册成功！请前往邮箱点开验证链接（可能在垃圾箱）', 'success');
+                // 增加一个重发按钮的提示（可选，也可以直接在这里显示）
             }
         } else {
             // 登录逻辑
@@ -179,12 +168,31 @@
             });
 
             if (error) {
+                if (error.message.includes('Email not confirmed')) {
+                    messageEl.innerHTML = `登录失败: 邮箱未验证。<br><a href="#" onclick="resendEmail('${email}')" style="color:var(--primary);text-decoration:underline;">重新发送验证邮件</a>`;
+                    messageEl.className = 'message error';
+                    return;
+                }
                 return showMessage('登录失败: ' + error.message, 'error');
             }
 
             showMessage('登录成功！正在跳转...', 'success');
             setTimeout(() => window.location.href = 'index.html#settings', 1500);
         }
+    }
+
+    async function resendEmail(email) {
+        if (!supabaseClient) return;
+        showMessage('正在重发验证邮件...', 'success');
+        const { error } = await supabaseClient.auth.resend({
+            type: 'signup',
+            email: email,
+            options: {
+                emailRedirectTo: window.location.origin + window.location.pathname
+            }
+        });
+        if (error) showMessage('重发失败: ' + error.message, 'error');
+        else showMessage('验证邮件已重发，请查收', 'success');
     }
 
     async function handleLogout() {
