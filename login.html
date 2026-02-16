@@ -42,6 +42,7 @@
         .form-group {
             flex: 1;
             min-width: 220px;
+            position: relative;
         }
         .form-group label {
             display: block;
@@ -51,6 +52,31 @@
         }
         .form-group input {
             width: 100%;
+            box-sizing: border-box;
+        }
+        .password-toggle {
+            position: absolute;
+            right: 8px;
+            bottom: 6px;
+            background: none;
+            border: none;
+            padding: 4px;
+            cursor: pointer;
+            color: var(--text-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .password-toggle:hover {
+            color: var(--text);
+        }
+        .password-toggle svg {
+            width: 16px;
+            height: 16px;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
         .actions {
             display: flex;
@@ -86,21 +112,24 @@
         <div class="form-row">
             <div class="form-group">
                 <label for="email">邮箱</label>
-                <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
+                <input type="email" id="email" placeholder="your@email.com" autocomplete="email" autocapitalize="none" spellcheck="false">
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
                 <label for="password">密码</label>
-                <input type="password" id="password" placeholder="至少6位密码" autocomplete="current-password">
+                <input type="password" id="password" placeholder="至少6位密码" autocomplete="current-password" autocapitalize="none" spellcheck="false">
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('password', this)" aria-label="显示或隐藏密码" title="显示/隐藏密码">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
             </div>
         </div>
         <div class="actions">
-            <button type="button" class="btn" onclick="handleAuth('login')">登录</button>
+            <button type="button" class="btn" id="btnLogin" onclick="handleAuth('login')">登录</button>
             <button type="button" class="btn secondary" onclick="handleAuth('signup')">注册账号</button>
         </div>
         <div style="margin-top:10px;text-align:center;">
-            <a href="#" onclick="requestPasswordReset(); return false;" style="font-size:12px;color:var(--primary);text-decoration:underline;">忘记密码？</a>
+            <a href="#" id="linkForgot" onclick="requestPasswordReset(); return false;" style="font-size:12px;color:var(--primary);text-decoration:underline;">忘记密码？</a>
         </div>
         <div id="message"></div>
     </div>
@@ -128,6 +157,29 @@
         messageEl.className = 'message ' + type;
     }
 
+    function togglePasswordVisibility(id, btn) {
+        const input = document.getElementById(id);
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.586 10.586a2 2 0 1 1 2.828 2.828" fill="none" stroke="currentColor" stroke-width="2"/><path d="m17.94 17.94-2.12-2.12M9.88 9.88l-2.12-2.12M12 5c7 0 10 7 10 7s-1 2-3 4M2 12s3-7 10-7M5 19 19 5" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+        } else {
+            input.type = 'password';
+            btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+        }
+    }
+
+    function setBtnLoading(loading) {
+        const btns = ['btnLogin', 'btnSignup', 'linkForgot'].map(id => document.getElementById(id));
+        btns.forEach(b => {
+            if (!b) return;
+            b.disabled = loading;
+            if (b.tagName === 'A') {
+                b.style.pointerEvents = loading ? 'none' : 'auto';
+                b.style.opacity = loading ? '0.5' : '1';
+            }
+        });
+    }
+
     async function handleAuth(type) {
         if (!supabaseClient) {
             return showMessage('系统初始化失败，请刷新页面重试', 'error');
@@ -140,80 +192,91 @@
             return showMessage('请填写完整信息', 'error');
         }
 
+        setBtnLoading(true);
         showMessage('处理中...', 'success');
 
-        if (type === 'signup') {
-            // 1. 注册逻辑
-            const { data, error } = await supabaseClient.auth.signUp({
-                email: email,
-                password: password
-            });
-
-            if (error) {
-                return showMessage(error.message, 'error');
-            }
-
-            // 2. 强制登录以确保拿到 Session
-            showMessage('注册成功，正在建立安全连接...', 'success');
-            const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-
-            if (signInErr) {
-                return showMessage('注册成功，但自动登录失败：' + signInErr.message + '。请尝试手动登录。', 'error');
-            }
-
-            const session = signInData.session;
-            if (!session || !session.access_token) {
-                return showMessage('注册成功，但未能获取到安全令牌，请尝试重新登录', 'error');
-            }
-
-            // 3. 调用 Edge Function 自动建档
-            showMessage('身份验证成功，正在初始化档案...', 'success');
-            const fnUrl = window.__SUPABASE__.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/swift-function';
-
-            try {
-                const resp = await fetch(fnUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + session.access_token
-                    },
-                    body: JSON.stringify({})
+        try {
+            if (type === 'signup') {
+                // 1. 注册逻辑
+                const { data, error } = await supabaseClient.auth.signUp({
+                    email: email,
+                    password: password
                 });
 
-                const payload = await resp.json().catch(() => ({}));
-
-                if (!resp.ok || !payload || payload.ok !== true) {
-                    const detail = payload && (payload.detail || payload.error || payload.message);
-                    throw new Error(detail || ('HTTP ' + resp.status));
+                if (error) {
+                    setBtnLoading(false);
+                    return showMessage(error.message, 'error');
                 }
 
-                showMessage('所有初始化已完成！正在进入系统...', 'success');
-                setTimeout(() => window.location.href = 'index.html#settings', 800);
-            } catch (e) {
-                console.error('建档失败:', e);
-                showMessage('档案初始化失败：' + (e && e.message ? e.message : '网络错误') + '。请联系管理员', 'error');
-            }
-        } else {
-            // 登录逻辑
-            const { data, error } = await supabaseClient.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
+                // 2. 强制登录以确保拿到 Session
+                showMessage('注册成功，正在建立安全连接...', 'success');
+                const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
 
-            if (error) {
-                if (error.message.includes('Email not confirmed')) {
-                    messageEl.innerHTML = `登录失败: 邮箱未验证。<br><a href="#" onclick="resendEmail('${email}')" style="color:var(--primary);text-decoration:underline;">重新发送验证邮件</a>`;
-                    messageEl.className = 'message error';
-                    return;
+                if (signInErr) {
+                    setBtnLoading(false);
+                    return showMessage('注册成功，但自动登录失败：' + signInErr.message + '。请尝试手动登录。', 'error');
                 }
-                return showMessage('登录失败: ' + error.message, 'error');
-            }
 
-            showMessage('登录成功！正在跳转...', 'success');
-            setTimeout(() => window.location.href = 'index.html#settings', 1500);
+                const session = signInData.session;
+                if (!session || !session.access_token) {
+                    setBtnLoading(false);
+                    return showMessage('注册成功，但未能获取到安全令牌，请尝试重新登录', 'error');
+                }
+
+                // 3. 调用 Edge Function 自动建档
+                showMessage('身份验证成功，正在初始化档案...', 'success');
+                const fnUrl = window.__SUPABASE__.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/swift-function';
+
+                try {
+                    const resp = await fetch(fnUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + session.access_token
+                        },
+                        body: JSON.stringify({})
+                    });
+
+                    const payload = await resp.json().catch(() => ({}));
+
+                    if (!resp.ok || !payload || payload.ok !== true) {
+                        const detail = payload && (payload.detail || payload.error || payload.message);
+                        throw new Error(detail || ('HTTP ' + resp.status));
+                    }
+
+                    showMessage('所有初始化已完成！正在进入系统...', 'success');
+                    setTimeout(() => window.location.href = 'index.html#settings', 800);
+                } catch (e) {
+                    setBtnLoading(false);
+                    console.error('建档失败:', e);
+                    showMessage('档案初始化失败：' + (e && e.message ? e.message : '网络错误') + '。请联系管理员', 'error');
+                }
+            } else {
+                // 登录逻辑
+                const { data, error } = await supabaseClient.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+
+                if (error) {
+                    setBtnLoading(false);
+                    if (error.message.includes('Email not confirmed')) {
+                        messageEl.innerHTML = `登录失败: 邮箱未验证。<br><a href="#" onclick="resendEmail('${email}')" style="color:var(--primary);text-decoration:underline;">重新发送验证邮件</a>`;
+                        messageEl.className = 'message error';
+                        return;
+                    }
+                    return showMessage('登录失败: ' + error.message, 'error');
+                }
+
+                showMessage('登录成功！正在跳转...', 'success');
+                setTimeout(() => window.location.href = 'index.html#settings', 1500);
+            }
+        } catch (e) {
+            setBtnLoading(false);
+            showMessage('请求异常：' + (e && e.message ? e.message : '未知错误'), 'error');
         }
     }
 
@@ -241,16 +304,25 @@
             return showMessage('请先填写邮箱', 'error');
         }
 
+        setBtnLoading(true);
         showMessage('正在发送重置密码邮件...', 'success');
-        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin + window.location.pathname.replace(/[^\/]*$/, 'reset-password.html')
-        });
 
-        if (error) {
-            return showMessage('发送失败: ' + error.message, 'error');
+        try {
+            const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin + window.location.pathname.replace(/[^\/]*$/, 'reset-password.html')
+            });
+
+            if (error) {
+                setBtnLoading(false);
+                return showMessage('发送失败: ' + error.message, 'error');
+            }
+
+            setBtnLoading(false);
+            showMessage('已发送重置密码邮件，请去邮箱按提示修改密码（可能在垃圾箱）', 'success');
+        } catch (e) {
+            setBtnLoading(false);
+            return showMessage('发送失败: ' + (e && e.message ? e.message : '网络错误'), 'error');
         }
-
-        showMessage('已发送重置密码邮件，请去邮箱按提示修改密码（可能在垃圾箱）', 'success');
     }
 
     async function initPasswordRecoveryIfNeeded() {
