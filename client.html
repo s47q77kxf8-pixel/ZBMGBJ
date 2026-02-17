@@ -14,26 +14,10 @@
     <div id="clientStatus" class="text-gray" style="margin-bottom:12px;">正在校验链接...</div>
 
     <div id="clientFormWrap" class="section d-none">
-      <div class="form-row">
-        <div class="form-group">
-          <label for="cClientName">称呼 / 单主昵称</label>
-          <input id="cClientName" type="text" placeholder="例如：小明" />
-        </div>
-        <div class="form-group">
-          <label for="cContact">联系方式（QQ/VX/MHS 等）</label>
-          <input id="cContact" type="text" placeholder="例如：QQ 12345" />
-        </div>
-      </div>
+      <div id="cFormError" class="d-none" style="margin:10px 0;padding:10px 12px;border-radius:10px;border:1px solid rgba(239,68,68,0.35);background:rgba(239,68,68,0.08);color:#b91c1c;font-size:13px;"></div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label for="cDeadline">截稿日（可不填，不填将进入待排）</label>
-          <input id="cDeadline" type="date" />
-        </div>
-        <div class="form-group">
-          <label for="cRemark">委托总备注</label>
-          <input id="cRemark" type="text" placeholder="可填写整体委托要求" />
-        </div>
+      <div id="cDynamicFieldsContainer">
+        <!-- 动态渲染的基础字段 -->
       </div>
 
       <div class="form-row">
@@ -43,7 +27,7 @@
           <div style="margin-top:10px;">
             <button type="button" class="btn secondary" id="cAddItemBtn">+ 添加制品</button>
           </div>
-          <small class="text-gray" style="display:block;margin-top:8px;">制品选项来自画师的制品设置；每个制品可填写独立尺寸（自由输入）。</small>
+          <small id="cItemsHint" class="text-gray" style="display:block;margin-top:8px;">制品选项来自画师的制品设置；每个制品可填写独立尺寸（自由输入）。</small>
         </div>
       </div>
 
@@ -60,7 +44,27 @@
   </div>
 
   <script>
+    const DEFAULT_TEMPLATE = {
+      version: 1,
+      fields: [
+        { key: "clientName", type: "text", enabled: true, required: true, label: "称呼 / 单主昵称", placeholder: "例如：小明", order: 10 },
+        { key: "contact", type: "text", enabled: true, required: true, label: "联系方式（QQ/VX/MHS 等）", placeholder: "例如：QQ 12345", order: 20 },
+        { key: "deadline", type: "date", enabled: true, required: false, label: "截稿日", placeholder: "", order: 30 },
+        { key: "remark", type: "textarea", enabled: true, required: false, label: "委托总备注", placeholder: "可填写整体委托要求", order: 40 }
+      ],
+      items: {
+        enabled: true,
+        multi: true,
+        fields: {
+          typeId: { enabled: true, required: true },
+          quantity: { enabled: true, required: true },
+          size: { enabled: true, required: false, label: "尺寸要求", placeholder: "例如：58mm / A4 / 800x800px" }
+        }
+      }
+    };
+
     let artistProductSettings = [];
+    let currentTemplate = DEFAULT_TEMPLATE;
 
     function getQueryParam(name) {
       const url = new URL(window.location.href);
@@ -72,6 +76,37 @@
       el.classList.toggle('d-none', !yes);
     }
 
+    function setFormError(msg) {
+      const el = document.getElementById('cFormError');
+      if (!el) return;
+      if (!msg) {
+        el.classList.add('d-none');
+        el.textContent = '';
+        return;
+      }
+      el.textContent = msg;
+      el.classList.remove('d-none');
+    }
+
+    function clearAllFieldErrors() {
+      document.querySelectorAll('.field-error').forEach(function (e) { e.textContent = ''; });
+      document.querySelectorAll('.field-invalid').forEach(function (e) { e.classList.remove('field-invalid'); });
+      setFormError('');
+    }
+
+    function markFieldInvalid(inputEl, message) {
+      if (!inputEl) return;
+      inputEl.classList.add('field-invalid');
+      const err = inputEl.closest('.form-group') ? inputEl.closest('.form-group').querySelector('.field-error') : null;
+      if (err) err.textContent = message || '必填';
+    }
+
+    function scrollToEl(el) {
+      try {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e) {}
+    }
+
     function buildProductOptionsHtml() {
       if (!Array.isArray(artistProductSettings) || artistProductSettings.length === 0) {
         return '<option value="">暂无预设制品</option>';
@@ -79,6 +114,42 @@
       return artistProductSettings
         .map(p => `<option value="${String(p.id)}">${String(p.name || '')}</option>`)
         .join('');
+    }
+
+    function renderDynamicFields() {
+      const container = document.getElementById('cDynamicFieldsContainer');
+      if (!container) return;
+
+      const enabledFields = currentTemplate.fields
+        .filter(f => f.enabled)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      let html = '';
+      for (let i = 0; i < enabledFields.length; i += 2) {
+        html += '<div class="form-row">';
+        for (let j = 0; j < 2; j++) {
+          const field = enabledFields[i + j];
+          if (field) {
+            const isTextarea = field.type === 'textarea';
+            html += `<div class="form-group" style="${isTextarea ? 'flex:100%' : ''}">
+              <label for="f_${field.key}">${field.label}${field.required ? '<span style="color:red;margin-left:4px;">*</span>' : ''}</label>
+              ${isTextarea
+                ? `<textarea id="f_${field.key}" class="c-base-field" data-key="${field.key}" placeholder="${field.placeholder || ''}" style="width:100%;min-height:80px;"></textarea>`
+                : `<input id="f_${field.key}" class="c-base-field" data-key="${field.key}" type="${field.type || 'text'}" placeholder="${field.placeholder || ''}" style="width:100%;" />`
+              }
+              <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
+            </div>`;
+            if (isTextarea) break;
+          }
+        }
+        html += '</div>';
+      }
+      container.innerHTML = html;
+    }
+
+    function canRemoveItemRow() {
+      const rows = document.querySelectorAll('.item-row');
+      return rows.length > 1;
     }
 
     function createItemRow() {
@@ -91,25 +162,49 @@
       row.style.background = 'rgba(0,0,0,0.01)';
       row.style.position = 'relative';
 
+      const itemsFields = currentTemplate.items.fields;
+      const sizeLabel = (itemsFields.size && itemsFields.size.label) ? itemsFields.size.label : '尺寸要求';
+      const sizePlaceholder = (itemsFields.size && itemsFields.size.placeholder) ? itemsFields.size.placeholder : '尺寸要求';
+
+      const removeBtnHtml = currentTemplate.items.multi
+        ? '<button type="button" class="c-item-remove" style="position:absolute; right:8px; top:8px; border:none; background:none; cursor:pointer; color:#999;">×</button>'
+        : '';
+
       row.innerHTML = `
-        <button type="button" style="position:absolute; right:8px; top:8px; border:none; background:none; cursor:pointer; color:#999;" onclick="this.closest('.item-row').remove()">×</button>
+        ${removeBtnHtml}
         <div class="form-row">
           <div class="form-group">
-            <label>制品类型</label>
+            <label>制品类型<span style="color:red;margin-left:4px;">*</span></label>
             <select class="c-item-type" style="width:100%">${buildProductOptionsHtml()}</select>
+            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
           </div>
           <div class="form-group" style="max-width:100px;">
-            <label>数量</label>
+            <label>数量<span style="color:red;margin-left:4px;">*</span></label>
             <input type="number" class="c-item-qty" value="1" min="1" step="1" style="width:100%" />
+            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
           </div>
         </div>
+        ${itemsFields.size && itemsFields.size.enabled ? `
         <div class="form-row" style="margin-top:8px;">
           <div class="form-group">
-            <label>尺寸要求</label>
-            <input type="text" class="c-item-size" placeholder="例如：58mm / A4 / 800x800px" style="width:100%" />
+            <label>${sizeLabel}${itemsFields.size.required ? '<span style="color:red;margin-left:4px;">*</span>' : ''}</label>
+            <input type="text" class="c-item-size" placeholder="${sizePlaceholder}" style="width:100%" />
+            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
           </div>
         </div>
+        ` : ''}
       `;
+
+      const removeBtn = row.querySelector('.c-item-remove');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', function () {
+          if (!canRemoveItemRow()) {
+            setFormError('至少保留一条制品');
+            return;
+          }
+          row.remove();
+        });
+      }
 
       document.getElementById('cItemsContainer').appendChild(row);
     }
@@ -120,6 +215,7 @@
       const doneWrap = document.getElementById('clientDone');
       const submitBtn = document.getElementById('clientSubmitBtn');
       const addItemBtn = document.getElementById('cAddItemBtn');
+      const itemsHintEl = document.getElementById('cItemsHint');
 
       const slug = (getQueryParam('t') || '').trim();
       if (!slug) {
@@ -155,50 +251,119 @@
 
       const artistId = link.artist_id;
 
-      // 2) 拉取画师制品设置（artist_settings）
+      // 2) 拉取画师设置（artist_settings）：制品列表 + 表单模板
       const { data: settingsRows, error: settingsErr } = await supabase
         .from('artist_settings')
-        .select('productSettings')
+        .select('productSettings, client_form_template')
         .eq('artist_id', artistId)
         .limit(1);
 
       if (settingsErr) {
-        console.warn('拉取制品设置失败，将使用空列表:', settingsErr);
-        artistProductSettings = [];
+        console.warn('拉取设置失败，将使用默认值:', settingsErr);
+        statusEl.textContent = '加载配置失败，请稍后重试';
       } else {
         const row = settingsRows && settingsRows[0];
-        artistProductSettings = (row && row.productSettings) ? row.productSettings : [];
+        if (row) {
+          artistProductSettings = row.productSettings || [];
+          if (row.client_form_template) {
+            currentTemplate = row.client_form_template;
+          }
+        }
       }
 
       statusEl.textContent = '请填写委托信息并提交';
       show(formWrap, true);
 
-      // 初始化一行制品
-      createItemRow();
+      // 根据模板渲染基础字段
+      renderDynamicFields();
+
+      // 制品列表未配置：阻断提交
+      if (!artistProductSettings || artistProductSettings.length === 0) {
+        if (itemsHintEl) {
+          itemsHintEl.textContent = '当前画师未配置制品列表，无法提交。请联系画师先在设置页完善制品设置并同步到云端。';
+          itemsHintEl.style.color = '#b91c1c';
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = '暂不可提交';
+      }
+
+      // 根据模板显示/隐藏添加按钮
+      if (currentTemplate.items && currentTemplate.items.enabled) {
+        show(addItemBtn, !!currentTemplate.items.multi);
+        createItemRow();
+      } else {
+        const itemsWrap = document.getElementById('cItemsContainer');
+        if (itemsWrap && itemsWrap.parentElement) show(itemsWrap.parentElement, false);
+      }
 
       addItemBtn.addEventListener('click', function () {
         createItemRow();
       });
 
       submitBtn.addEventListener('click', async function () {
-        const clientName = (document.getElementById('cClientName').value || '').trim();
-        const contact = (document.getElementById('cContact').value || '').trim();
+        clearAllFieldErrors();
 
-        if (!clientName && !contact) {
-          alert('请至少留下您的称呼或联系方式');
+        // 防重复
+        if (submitBtn.disabled) return;
+
+        // 校验基础字段
+        const baseData = {};
+        let firstInvalidEl = null;
+
+        currentTemplate.fields.filter(f => f.enabled).forEach(f => {
+          const el = document.querySelector(`.c-base-field[data-key="${f.key}"]`);
+          if (!el) return;
+          const val = (el.value || '').trim();
+          if (f.required && !val) {
+            markFieldInvalid(el, '必填');
+            if (!firstInvalidEl) firstInvalidEl = el;
+          }
+          baseData[f.key] = val || null;
+        });
+
+        if (firstInvalidEl) {
+          setFormError('请完善标红的必填项');
+          scrollToEl(firstInvalidEl);
+          try { firstInvalidEl.focus(); } catch (e) {}
           return;
         }
 
+        // 校验并收集制品明细
         const items = [];
-        document.querySelectorAll('.item-row').forEach(function (row) {
+        const itemRows = document.querySelectorAll('.item-row');
+        if (currentTemplate.items && currentTemplate.items.enabled) {
+          if (!itemRows.length) {
+            setFormError('请至少添加一个制品');
+            return;
+          }
+        }
+
+        let firstItemInvalid = null;
+        let itemIndex = 0;
+        for (let row of itemRows) {
+          itemIndex++;
           const typeEl = row.querySelector('.c-item-type');
           const qtyEl = row.querySelector('.c-item-qty');
           const sizeEl = row.querySelector('.c-item-size');
 
           const typeId = typeEl ? (typeEl.value || '').trim() : '';
           const typeName = typeEl && typeEl.selectedIndex >= 0 ? (typeEl.options[typeEl.selectedIndex].text || '') : '';
-          const quantity = Math.max(1, parseInt((qtyEl ? qtyEl.value : '1') || '1', 10) || 1);
-          const size = (sizeEl ? sizeEl.value : '').trim();
+          const quantityRaw = (qtyEl ? qtyEl.value : '1');
+          const quantity = Math.max(1, parseInt(quantityRaw || '1', 10) || 1);
+          const size = sizeEl ? (sizeEl.value || '').trim() : '';
+
+          if (!typeId) {
+            markFieldInvalid(typeEl, `第 ${itemIndex} 行：请选择制品类型`);
+            if (!firstItemInvalid) firstItemInvalid = typeEl;
+          }
+          if (!isFinite(quantity) || quantity < 1) {
+            markFieldInvalid(qtyEl, `第 ${itemIndex} 行：数量需大于 0`);
+            if (!firstItemInvalid) firstItemInvalid = qtyEl;
+          }
+          if (currentTemplate.items.fields.size && currentTemplate.items.fields.size.required && !size) {
+            markFieldInvalid(sizeEl, `第 ${itemIndex} 行：请填写尺寸`);
+            if (!firstItemInvalid) firstItemInvalid = sizeEl;
+          }
 
           items.push({
             typeId: typeId || null,
@@ -206,36 +371,33 @@
             quantity,
             size
           });
-        });
-
-        if (!items.length) {
-          alert('请至少添加一个制品');
-          return;
         }
 
-        // 若下拉无数据，typeId 可能为空，给出提示
-        const hasAnyTypeId = items.some(it => it.typeId);
-        if (!hasAnyTypeId) {
-          alert('当前画师未配置制品列表，无法选择制品类型，请联系画师先在设置页完善制品设置并同步到云端。');
+        if (firstItemInvalid) {
+          setFormError('请完善标红的制品明细');
+          scrollToEl(firstItemInvalid);
+          try { firstItemInvalid.focus(); } catch (e) {}
           return;
         }
 
         submitBtn.disabled = true;
         submitBtn.textContent = '提交中...';
+        statusEl.textContent = '提交中...';
 
         try {
+          const clientInputSnapshot = {
+            ...baseData,
+            base: baseData,
+            items: items,
+            templateVersion: currentTemplate.version || 1
+          };
+
           const payload = {
             artist_id: artistId,
             token: slug,
             source: 'client_self_submit',
             status: 'PENDING_REVIEW',
-            client_input_snapshot: {
-              clientName,
-              contact,
-              deadline: (document.getElementById('cDeadline').value || '').trim() || null,
-              remark: (document.getElementById('cRemark').value || '').trim(),
-              items
-            },
+            client_input_snapshot: clientInputSnapshot,
             calc_snapshot: null
           };
 
@@ -245,7 +407,8 @@
 
           if (insErr) {
             console.error(insErr);
-            alert('提交失败：' + (insErr.message || insErr));
+            setFormError('提交失败，请稍后重试');
+            statusEl.textContent = '提交失败';
             return;
           }
 
@@ -261,5 +424,12 @@
 
     init();
   </script>
+
+  <style>
+    .field-invalid {
+      border-color: rgba(239,68,68,0.9) !important;
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
+    }
+  </style>
 </body>
 </html>

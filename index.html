@@ -761,7 +761,10 @@
                                 <button type="button" class="schedule-todo-filter-btn" data-filter="month" onclick="setScheduleTodoFilter('month')">当月</button>
                                 <button type="button" class="schedule-todo-filter-btn" data-filter="pending" onclick="setScheduleTodoFilter('pending')">待排</button>
                                 <button type="button" class="schedule-todo-filter-btn active" data-filter="today" onclick="setScheduleTodoFilter('today')">当日</button>
-                                <button type="button" class="schedule-todo-filter-btn dev-feature d-none" data-filter="incoming" onclick="setScheduleTodoFilter('incoming')">待接</button>
+                                <button type="button" class="schedule-todo-filter-btn dev-feature d-none" data-filter="incoming" onclick="setScheduleTodoFilter('incoming')">
+                                    待接
+                                    <span id="incomingDot" class="todo-filter-dot d-none"></span>
+                                </button>
                             </div>
                         </div>
                         <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
@@ -2693,7 +2696,13 @@
                     return;
                 }
                 const client = window.__SUPABASE__.client;
-                const { data: { session } } = await client.auth.getSession();
+                let { data: { session } } = await client.auth.getSession();
+                // iOS Safari 上偶发出现首帧读取不到持久化 session 的情况，做一次短延迟重试
+                if (!session) {
+                    await new Promise(r => setTimeout(r, 350));
+                    const retry = await client.auth.getSession();
+                    session = (retry && retry.data && retry.data.session) ? retry.data.session : null;
+                }
                 window.__APP_AUTH__ = { enabled: !!session, session: session || null };
 
                 var el = document.getElementById('myAccountSummary');

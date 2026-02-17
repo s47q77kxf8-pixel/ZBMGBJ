@@ -8710,6 +8710,33 @@ async function mgRenderIncomingProjectsTodo(titleEl, modulesEl) {
     modulesEl.innerHTML = cards.join('');
 }
 
+async function mgUpdateProjectStatus(projectId, status, extraPatch) {
+    const client = mgGetSupabaseClient();
+    if (!client) return false;
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) return false;
+
+    try {
+        const patch = Object.assign({ status: status, updated_at: new Date().toISOString() }, (extraPatch || {}));
+        const { error } = await client
+            .from('projects')
+            .update(patch)
+            .eq('artist_id', session.user.id)
+            .eq('id', projectId);
+        if (error) throw error;
+        if (typeof mgUpdateIncomingDot === 'function') mgUpdateIncomingDot();
+        return true;
+    } catch (e) {
+        console.warn('更新企划状态失败:', e);
+        return false;
+    }
+}
+
+function mgClearIncomingContext() {
+    window.currentIncomingProjectId = null;
+    window.isIncomingNegotiationMode = false;
+}
+
 async function mgLoadIncomingProjectToCalculator(projectId) {
     const client = mgGetSupabaseClient();
     if (!client) {
@@ -8740,6 +8767,10 @@ async function mgLoadIncomingProjectToCalculator(projectId) {
         alert('未找到该待接企划');
         return;
     }
+
+    // 记录当前待接企划上下文，用于后续状态流转 (QUOTED / SCHEDULED)
+    window.currentIncomingProjectId = projectId;
+    window.isIncomingNegotiationMode = true;
 
     const snap = proj.client_input_snapshot || {};
     const clientName = snap.clientName || '';
@@ -8819,11 +8850,51 @@ function handleIncomingProjectCardClick(projectId, event) {
     mgLoadIncomingProjectToCalculator(projectId);
 }
 
+async function mgUpdateIncomingDot() {
+    const dot = document.getElementById('incomingDot');
+    if (!dot) return;
+
+    // 如果未开启云端或未登录，直接隐藏
+    if (!mgIsCloudEnabled()) {
+        dot.classList.add('d-none');
+        return;
+    }
+
+    const client = mgGetSupabaseClient();
+    if (!client) return;
+
+    try {
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) {
+            dot.classList.add('d-none');
+            return;
+        }
+
+        // 仅查询数量，只要有 PENDING_REVIEW 状态的就显示红点
+        const { count, error } = await client
+            .from('projects')
+            .select('*', { count: 'exact', head: true })
+            .eq('artist_id', session.user.id)
+            .eq('status', 'PENDING_REVIEW');
+
+        if (error) throw error;
+
+        dot.classList.toggle('d-none', !(count > 0));
+    } catch (e) {
+        console.warn('更新待接红点失败:', e);
+        dot.classList.add('d-none');
+    }
+}
+
 // 渲染当前批次制品 todo 区（按快捷筛选或选中日期显示排单制品）
 async function renderScheduleTodoSection() {
     const titleEl = document.getElementById('scheduleTodoTitle');
     const modulesEl = document.getElementById('scheduleTodoModules');
     if (!titleEl || !modulesEl) return;
+
+    // 每次渲染 Todo 区时尝试异步更新红点状态
+    mgUpdateIncomingDot();
+
     const f = window.scheduleTodoFilter || 'today';
     // 待接：从云端 projects 渲染（不走本地 history）
     if (f === 'incoming') {

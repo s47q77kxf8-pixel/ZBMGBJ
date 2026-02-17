@@ -271,8 +271,13 @@
                     return showMessage('登录失败: ' + error.message, 'error');
                 }
 
-                showMessage('登录成功！正在跳转...', 'success');
-                setTimeout(() => window.location.href = 'index.html#settings', 1500);
+                showMessage('登录成功！正在同步安全连接...', 'success');
+                // 确保 session 已写入存储
+                await supabaseClient.auth.getSession();
+                setTimeout(() => {
+                    // 使用 replace 避免在 iOS 上点击后退返回到登录页的问题
+                    window.location.replace('index.html#settings');
+                }, 600);
             }
         } catch (e) {
             setBtnLoading(false);
