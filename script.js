@@ -386,7 +386,9 @@ const defaultSettings = {
         fortyEightHours: { value: 1.8, name: '48H加急' },
         twentyFourHours: { value: 2, name: '24H加急' }
     },
-    // 同模系数
+    // 同模设置
+    sameModelMode: 'coefficient', // 'coefficient' (系数) 或 'minus' (减金额)
+    sameModelMinusAmount: 10,     // 减免金额（元/件）
     sameModelCoefficients: {
         basic: { value: 0.4, name: '改字、色、柄图' },
         advanced: { value: 0.6, name: '改字、色、柄图、元素' }
@@ -5599,6 +5601,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const usage = getCoefficientValue(defaultSettings.usageCoefficients[usageType]) || 1;
     const urgent = getCoefficientValue(defaultSettings.urgentCoefficients[urgentType]) || 1;
     const sameModelCoefficient = getCoefficientValue(defaultSettings.sameModelCoefficients[sameModelType]) || 0.5;
+    const sameModelMode = defaultSettings.sameModelMode || 'coefficient';
+    const sameModelMinusAmount = Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0;
     const discount = getCoefficientValue(defaultSettings.discountCoefficients[discountType]) || 1;
     const platformFee = getCoefficientValue(defaultSettings.platformFees[platformType]) || 0;
     // 扩展加价类、折扣类的选中值
@@ -5723,7 +5727,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         
         // 计算同模相关数据（按节点收费不参与同模）
         const sameModelCount = productSetting.priceType === 'nodes' ? 0 : (product.sameModel ? product.quantity - 1 : 0);
-        const sameModelUnitPrice = basePrice * sameModelCoefficient;
+        const sameModelUnitPrice = (sameModelMode === 'minus') ? Math.max(0, basePrice - sameModelMinusAmount) : (basePrice * sameModelCoefficient);
         const sameModelTotal = sameModelCount * sameModelUnitPrice;
         
         // 计算背景费（按节点收费不参与背景费）
@@ -5883,7 +5887,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         
         // 计算同模相关数据
         const sameModelCount = gift.sameModel ? gift.quantity - 1 : 0;
-        const sameModelUnitPrice = basePrice * sameModelCoefficient;
+        const sameModelUnitPrice = (sameModelMode === 'minus') ? Math.max(0, basePrice - sameModelMinusAmount) : (basePrice * sameModelCoefficient);
         const sameModelTotal = sameModelCount * sameModelUnitPrice;
         
         // 计算工艺费用
@@ -6307,7 +6311,8 @@ function generateQuote() {
             
             // 同模制品行
             if (hasSameModel) {
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelRate}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
+                const sameModelHint = (defaultSettings.sameModelMode === 'minus') ? `−¥${(Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0).toFixed(2)}/件` : `${sameModelRate}x`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHint})</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
             }
             
             // 工艺行（按每层单价分组，同单价的工艺合并为一行）
@@ -6443,7 +6448,8 @@ function generateQuote() {
                 
                 // 同模制品行（赠品显示原价）
                 if (hasSameModelGift) {
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelRateGift}x)</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
+                    const sameModelHintGift = (defaultSettings.sameModelMode === 'minus') ? `−¥${(Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0).toFixed(2)}/件` : `${sameModelRateGift}x`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
                 }
                 
                 // 工艺行（按每层单价分组，同单价的工艺合并为一行）
@@ -14638,17 +14644,45 @@ function renderUrgentCoefficients() {
     container.innerHTML = html;
 }
 
-// 渲染同模系数
+// 渲染同模优惠
 function renderSameModelCoefficients() {
     const container = document.querySelector('#sameModelCoefficient-content .coefficient-settings');
     if (!container) return;
-    
-    let html = '';
+
+    let html = `
+        <div class="mb-3">
+            <div class="d-flex items-center gap-3 mt-1 flex-wrap">
+                <label class="d-flex items-center gap-1" style="cursor:pointer; display: inline-flex; align-items: center; white-space: nowrap; margin-right: 10px;">
+                    <input type="radio" name="sameModelMode" value="coefficient" ${defaultSettings.sameModelMode === 'minus' ? '' : 'checked'} onchange="updateSameModelMode('coefficient')" style="margin: 0 4px 0 0; width: 16px; height: 16px; vertical-align: middle;">
+                    <span style="font-size: 0.9rem; line-height: 1;">按系数 (×)</span>
+                </label>
+                <label class="d-flex items-center gap-1" style="cursor:pointer; display: inline-flex; align-items: center; white-space: nowrap;">
+                    <input type="radio" name="sameModelMode" value="minus" ${defaultSettings.sameModelMode === 'minus' ? 'checked' : ''} onchange="updateSameModelMode('minus')" style="margin: 0 4px 0 0; width: 16px; height: 16px; vertical-align: middle;">
+                    <span style="font-size: 0.9rem; line-height: 1;">按减金额 (−)</span>
+                </label>
+            </div>
+        </div>
+    `;
+
+    if (defaultSettings.sameModelMode === 'minus') {
+        const val = Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? defaultSettings.sameModelMinusAmount : 0;
+        html += `
+            <div class="mb-2">
+                <label class="process-item-label">同模减免金额（元/件）</label>
+                <input type="number" value="${val}" min="0" step="0.5" class="w-120" onchange="updateSameModelMinusAmount(this.value)">
+                <div class="text-gray" style="font-size:0.85rem; margin-top:0.25rem;">同模制品单价 = 主设单价 − 减免金额（最低为0）</div>
+            </div>
+        `;
+        container.innerHTML = html;
+        return;
+    }
+
+    // 系数模式：渲染档位
     for (const [key, item] of Object.entries(defaultSettings.sameModelCoefficients)) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
         const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        
+
         html += `
             <div class="mb-2 d-flex items-center gap-2">
                 <input type="text" value="${escapedName}" class="flex-1" 
@@ -14664,6 +14698,18 @@ function renderSameModelCoefficients() {
     }
     html += '<button type="button" class="btn secondary mt-2" onclick="addSameModelOption()">+ 添加</button>';
     container.innerHTML = html;
+}
+
+function updateSameModelMode(mode) {
+    defaultSettings.sameModelMode = mode;
+    saveData();
+    renderSameModelCoefficients();
+}
+
+function updateSameModelMinusAmount(value) {
+    const v = value === '' ? 0 : parseFloat(value);
+    defaultSettings.sameModelMinusAmount = Number.isFinite(v) ? Math.max(0, v) : 0;
+    saveData();
 }
 
 // 渲染折扣系数（当加价类、折扣类均为单数时，第一项移到并排行，此处不渲染）
