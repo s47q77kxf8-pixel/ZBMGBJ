@@ -5747,7 +5747,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                 const processSetting = processSettings.find(p => p.id === processChoice.id);
                 if (processSetting) {
                     // 工艺价格（每层）
-                    const processPricePerLayer = processSetting.price || 10;
+                    const processPricePerLayer = (processSetting.price ?? 10);
                     // 工艺层数
                     const processLayers = processChoice.layers || 1;
                     // 工艺单价 = 工艺价格（每层） * 层数
@@ -5896,7 +5896,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                 const processSetting = processSettings.find(p => p.id === processChoice.id);
                 if (processSetting) {
                     // 工艺价格（每层）
-                    const processPricePerLayer = processSetting.price || 10;
+                    const processPricePerLayer = (processSetting.price ?? 10);
                     // 工艺层数
                     const processLayers = processChoice.layers || 1;
                     // 工艺单价 = 工艺价格（每层） * 层数
@@ -6089,6 +6089,11 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
 
     // 自动打开小票抽屉，直接展示最新小票
     openReceiptDrawer();
+
+    // 待接协商：生成小票视为已报价（不代表已进入排单）
+    if (window.currentIncomingProjectId) {
+        mgUpdateProjectStatus(window.currentIncomingProjectId, 'QUOTED');
+    }
     
     // 滚动到报价页顶部（排单区）
     setTimeout(function() {
@@ -7135,6 +7140,13 @@ function handleReceiptSchedule() {
         return;
     }
     saveToHistory();
+
+    // 待接企划：在小票页点击“保存”才视为进入排单
+    if (window.currentIncomingProjectId) {
+        mgUpdateProjectStatus(window.currentIncomingProjectId, 'SCHEDULED');
+        if (typeof mgClearIncomingContext === 'function') mgClearIncomingContext();
+    }
+
     maybeReturnToRecordAndCloseReceipt();
 }
 
@@ -8907,11 +8919,6 @@ async function renderScheduleTodoSection() {
         const m0 = String(now.getMonth() + 1).padStart(2, '0');
         const d0 = String(now.getDate()).padStart(2, '0');
         window.scheduleSelectedDate = y0 + '-' + m0 + '-' + d0;
-    }
-    // 待接：从云端 projects 渲染（不走本地 history）
-    if (f === 'incoming') {
-        await mgRenderIncomingProjectsTodo(titleEl, modulesEl);
-        return;
     }
 
     const items = getScheduleItemsByFilter().filter(it => !isOrderSettled(it));
@@ -14952,7 +14959,9 @@ function closeAddProcessModal() {
 // 保存新工艺设置
 function saveNewProcess() {
     const name = document.getElementById('newProcessName').value.trim();
-    const price = parseFloat(document.getElementById('newProcessPrice').value) || 10;
+    const rawPrice = document.getElementById('newProcessPrice').value;
+    const parsedPrice = rawPrice === '' ? NaN : parseFloat(rawPrice);
+    const price = Number.isFinite(parsedPrice) ? Math.max(0, parsedPrice) : 10;
     
     // 验证必填项
     if (!name) {
@@ -14987,7 +14996,7 @@ function renderProcessSettings() {
         if (setting.layers && !setting.price) {
             setting.price = 10;
         }
-        const price = setting.price || 10;
+        const price = (setting.price ?? 10);
         
         html += `
             <div class="process-item" data-id="${setting.id}">
