@@ -5617,6 +5617,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             extraUpSelections.push({
                 id: e.id,
                 selectedKey: sel.value,
+                optionValue: sel.value,
+                moduleName: e.name || '扩展加价系数',
                 optionName: (option && option.name) ? option.name : sel.value,
                 value: value
             });
@@ -5633,6 +5635,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             extraDownSelections.push({
                 id: e.id,
                 selectedKey: sel.value,
+                optionValue: sel.value,
+                moduleName: e.name || '扩展折扣系数',
                 optionName: (option && option.name) ? option.name : sel.value,
                 value: value
             });
@@ -6011,10 +6015,15 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         usage: usage,
         urgent: urgent,
         sameModelCoefficient: sameModelCoefficient,
+        sameModelMode: sameModelMode,
+        sameModelMinusAmount: sameModelMinusAmount,
         discount: discount,
         usageType: usageType,
         urgentType: urgentType,
         discountType: discountType,
+        usageName: (defaultSettings.usageCoefficients[usageType] && defaultSettings.usageCoefficients[usageType].name) ? defaultSettings.usageCoefficients[usageType].name : '用途系数',
+        urgentName: (defaultSettings.urgentCoefficients[urgentType] && defaultSettings.urgentCoefficients[urgentType].name) ? defaultSettings.urgentCoefficients[urgentType].name : '加急系数',
+        discountName: (defaultSettings.discountCoefficients[discountType] && defaultSettings.discountCoefficients[discountType].name) ? defaultSettings.discountCoefficients[discountType].name : '折扣系数',
         extraUpSelections: extraUpSelections,
         extraDownSelections: extraDownSelections,
         pricingUpProduct: pricingUpProduct,
@@ -6035,6 +6044,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         depositReceived: depositReceived,
         scheduleColorIndex: window.currentScheduleColorIndex,
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
+        settlementRulesSnapshot: JSON.parse(JSON.stringify(defaultSettings.settlementRules || {})),
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
@@ -6311,7 +6321,9 @@ function generateQuote() {
             
             // 同模制品行
             if (hasSameModel) {
-                const sameModelHint = (defaultSettings.sameModelMode === 'minus') ? `−¥${(Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0).toFixed(2)}` : `${sameModelRate}x`;
+                const _sameMode = quoteData.sameModelMode || defaultSettings.sameModelMode;
+                const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
+                const sameModelHint = (_sameMode === 'minus') ? `−¥${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
                 html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHint})</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
             }
             
@@ -6448,7 +6460,9 @@ function generateQuote() {
                 
                 // 同模制品行（赠品显示原价）
                 if (hasSameModelGift) {
-                    const sameModelHintGift = (defaultSettings.sameModelMode === 'minus') ? `−¥${(Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0).toFixed(2)}/件` : `${sameModelRateGift}x`;
+                    const _sameModeGift = quoteData.sameModelMode || defaultSettings.sameModelMode;
+                    const _sameMinusGift = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
+                    const sameModelHintGift = (_sameModeGift === 'minus') ? `−¥${_sameMinusGift.toFixed(2)}` : `${sameModelRateGift}x`;
                     html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
                 }
                 
@@ -6521,21 +6535,14 @@ function generateQuote() {
         // 详细系数
         const upCoefficients = [];
         // 用途系数
-        let usageValue = quoteData.usage || 1;
-        let usageName = '用途系数';
-        if (quoteData.usageType && defaultSettings.usageCoefficients[quoteData.usageType]) {
+        let usageValue = (quoteData.usage !== undefined && quoteData.usage !== null) ? Number(quoteData.usage) : 1;
+        let usageName = quoteData.usageName || '用途系数';
+        if (!isFinite(usageValue)) usageValue = 1;
+        // 兼容老数据：若历史单未保存 usage 值，则退回按类型读取当前设置
+        if ((quoteData.usage === undefined || quoteData.usage === null) && quoteData.usageType && defaultSettings.usageCoefficients[quoteData.usageType]) {
             const usageOption = defaultSettings.usageCoefficients[quoteData.usageType];
             usageValue = getCoefficientValue(usageOption);
-            usageName = (usageOption && usageOption.name) ? usageOption.name : '用途系数';
-        } else if (quoteData.usage !== undefined && quoteData.usage !== 1) {
-            // 向后兼容：从usage值查找匹配的系数选项
-            usageValue = quoteData.usage;
-            for (const [key, option] of Object.entries(defaultSettings.usageCoefficients)) {
-                if (Math.abs(getCoefficientValue(option) - quoteData.usage) < 0.001) {
-                    usageName = (option && option.name) ? option.name : '用途系数';
-                    break;
-                }
-            }
+            if (!quoteData.usageName) usageName = (usageOption && usageOption.name) ? usageOption.name : '用途系数';
         }
         if (usageValue !== 1) {
             upCoefficients.push({
@@ -6544,21 +6551,14 @@ function generateQuote() {
             });
         }
         // 加急系数
-        let urgentValue = quoteData.urgent || 1;
-        let urgentName = '加急系数';
-        if (quoteData.urgentType && defaultSettings.urgentCoefficients[quoteData.urgentType]) {
+        let urgentValue = (quoteData.urgent !== undefined && quoteData.urgent !== null) ? Number(quoteData.urgent) : 1;
+        let urgentName = quoteData.urgentName || '加急系数';
+        if (!isFinite(urgentValue)) urgentValue = 1;
+        // 兼容老数据：若历史单未保存 urgent 值，则退回按类型读取当前设置
+        if ((quoteData.urgent === undefined || quoteData.urgent === null) && quoteData.urgentType && defaultSettings.urgentCoefficients[quoteData.urgentType]) {
             const urgentOption = defaultSettings.urgentCoefficients[quoteData.urgentType];
             urgentValue = getCoefficientValue(urgentOption);
-            urgentName = (urgentOption && urgentOption.name) ? urgentOption.name : '加急系数';
-        } else if (quoteData.urgent !== undefined && quoteData.urgent !== 1) {
-            // 向后兼容：从urgent值查找匹配的系数选项
-            urgentValue = quoteData.urgent;
-            for (const [key, option] of Object.entries(defaultSettings.urgentCoefficients)) {
-                if (Math.abs(getCoefficientValue(option) - quoteData.urgent) < 0.001) {
-                    urgentName = (option && option.name) ? option.name : '加急系数';
-                    break;
-                }
-            }
+            if (!quoteData.urgentName) urgentName = (urgentOption && urgentOption.name) ? urgentOption.name : '加急系数';
         }
         if (urgentValue !== 1) {
             upCoefficients.push({
@@ -6569,10 +6569,18 @@ function generateQuote() {
         // 扩展加价类系数
         if (quoteData.extraUpSelections && quoteData.extraUpSelections.length > 0) {
             quoteData.extraUpSelections.forEach(sel => {
-                if (sel.value !== 1) {
+                let v = (sel && sel.value != null) ? Number(sel.value) : 1;
+                if (!isFinite(v)) v = 1;
+                // 兼容老数据：未保存 value 时，尝试按 id+key 从当前配置回填
+                if ((sel == null || sel.value == null) && sel && sel.id != null) {
+                    const m = (defaultSettings.extraPricingUp || []).find(x => x && x.id == sel.id);
+                    const k = sel.optionValue != null ? sel.optionValue : sel.selectedKey;
+                    if (m && m.options && k != null && m.options[k] != null) v = getCoefficientValue(m.options[k]) || 1;
+                }
+                if (Math.abs(v - 1) > 0.001) {
                     upCoefficients.push({
-                        name: sel.optionName || '扩展加价系数',
-                        value: sel.value
+                        name: sel.optionName || sel.moduleName || '扩展加价系数',
+                        value: v
                     });
                 }
             });
@@ -6623,21 +6631,14 @@ function generateQuote() {
         // 详细系数
         const downCoefficients = [];
         // 折扣系数
-        let discountValue = quoteData.discount || 1;
-        let discountName = '折扣系数';
-        if (quoteData.discountType && defaultSettings.discountCoefficients[quoteData.discountType]) {
+        let discountValue = (quoteData.discount !== undefined && quoteData.discount !== null) ? Number(quoteData.discount) : 1;
+        let discountName = quoteData.discountName || '折扣系数';
+        if (!isFinite(discountValue)) discountValue = 1;
+        // 兼容老数据：若历史单未保存 discount 值，则退回按类型读取当前设置
+        if ((quoteData.discount === undefined || quoteData.discount === null) && quoteData.discountType && defaultSettings.discountCoefficients[quoteData.discountType]) {
             const discountOption = defaultSettings.discountCoefficients[quoteData.discountType];
             discountValue = getCoefficientValue(discountOption);
-            discountName = (discountOption && discountOption.name) ? discountOption.name : '折扣系数';
-        } else if (quoteData.discount !== undefined && quoteData.discount !== 1) {
-            // 向后兼容：从discount值查找匹配的系数选项
-            discountValue = quoteData.discount;
-            for (const [key, option] of Object.entries(defaultSettings.discountCoefficients)) {
-                if (Math.abs(getCoefficientValue(option) - quoteData.discount) < 0.001) {
-                    discountName = (option && option.name) ? option.name : '折扣系数';
-                    break;
-                }
-            }
+            if (!quoteData.discountName) discountName = (discountOption && discountOption.name) ? discountOption.name : '折扣系数';
         }
         if (discountValue !== 1) {
             downCoefficients.push({
@@ -6648,10 +6649,18 @@ function generateQuote() {
         // 扩展折扣类系数
         if (quoteData.extraDownSelections && quoteData.extraDownSelections.length > 0) {
             quoteData.extraDownSelections.forEach(sel => {
-                if (sel.value !== 1) {
+                let v = (sel && sel.value != null) ? Number(sel.value) : 1;
+                if (!isFinite(v)) v = 1;
+                // 兼容老数据：未保存 value 时，尝试按 id+key 从当前配置回填
+                if ((sel == null || sel.value == null) && sel && sel.id != null) {
+                    const m = (defaultSettings.extraPricingDown || []).find(x => x && x.id == sel.id);
+                    const k = sel.optionValue != null ? sel.optionValue : sel.selectedKey;
+                    if (m && m.options && k != null && m.options[k] != null) v = getCoefficientValue(m.options[k]) || 1;
+                }
+                if (Math.abs(v - 1) > 0.001) {
                     downCoefficients.push({
-                        name: sel.optionName || '扩展折扣系数',
-                        value: sel.value
+                        name: sel.optionName || sel.moduleName || '扩展折扣系数',
+                        value: v
                     });
                 }
             });
@@ -6917,6 +6926,206 @@ function generateQuote() {
     // 手机上自动缩放小票以适应屏幕宽度（保持 400px 内部排版不变）
     adjustReceiptScale();
 }
+
+// 冻结来源调试：在控制台执行 inspectQuoteFreezeSource() 查看当前小票字段来源（snapshot / fallback）
+function inspectQuoteFreezeSource() {
+    if (!quoteData) {
+        console.log('[freeze-inspect] 当前无 quoteData');
+        return;
+    }
+
+    var hasSnapshot = function (k) { return quoteData[k] !== undefined && quoteData[k] !== null; };
+    var report = {
+        sameModelMode: hasSnapshot('sameModelMode') ? 'snapshot' : 'fallback(defaultSettings)',
+        sameModelMinusAmount: hasSnapshot('sameModelMinusAmount') ? 'snapshot' : 'fallback(defaultSettings)',
+        usageValue: hasSnapshot('usage') ? 'snapshot' : 'fallback(by type/defaultSettings)',
+        urgentValue: hasSnapshot('urgent') ? 'snapshot' : 'fallback(by type/defaultSettings)',
+        discountValue: hasSnapshot('discount') ? 'snapshot' : 'fallback(by type/defaultSettings)',
+        usageName: hasSnapshot('usageName') ? 'snapshot' : 'fallback(defaultSettings)',
+        urgentName: hasSnapshot('urgentName') ? 'snapshot' : 'fallback(defaultSettings)',
+        discountName: hasSnapshot('discountName') ? 'snapshot' : 'fallback(defaultSettings)',
+        extraUpSelections: (Array.isArray(quoteData.extraUpSelections) && quoteData.extraUpSelections.every(function (s) { return s && s.value != null; })) ? 'snapshot' : 'fallback(partial/defaultSettings)',
+        extraDownSelections: (Array.isArray(quoteData.extraDownSelections) && quoteData.extraDownSelections.every(function (s) { return s && s.value != null; })) ? 'snapshot' : 'fallback(partial/defaultSettings)',
+        settlementRulesSnapshot: quoteData.settlementRulesSnapshot ? 'snapshot' : 'fallback(defaultSettings)'
+    };
+
+    console.table(report);
+    return report;
+}
+window.inspectQuoteFreezeSource = inspectQuoteFreezeSource;
+
+// 一键补快照（仅当前单，不改金额）：用于把老历史单补齐冻结字段
+function backfillFreezeSnapshotForCurrentQuote() {
+    if (!quoteData) {
+        showGlobalToast('当前无小票数据，无法补快照');
+        return;
+    }
+
+    if (!quoteData.id) {
+        showGlobalToast('当前不是历史单，已按当前设置生成的单据无需补快照');
+        return;
+    }
+
+    var idx = history.findIndex(function (h) { return h && h.id === quoteData.id; });
+    if (idx === -1) {
+        showGlobalToast('未在历史记录中找到当前单据');
+        return;
+    }
+
+    var item = history[idx];
+    if (!item) {
+        showGlobalToast('历史单据读取失败');
+        return;
+    }
+
+    // 仅补缺失字段，不改已有金额与结算结果
+    if (item.sameModelMode == null) item.sameModelMode = defaultSettings.sameModelMode || 'coefficient';
+    if (item.sameModelMinusAmount == null) item.sameModelMinusAmount = Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0;
+
+    if (item.usageName == null) item.usageName = (item.usageType && defaultSettings.usageCoefficients && defaultSettings.usageCoefficients[item.usageType] && defaultSettings.usageCoefficients[item.usageType].name) ? defaultSettings.usageCoefficients[item.usageType].name : '用途系数';
+    if (item.urgentName == null) item.urgentName = (item.urgentType && defaultSettings.urgentCoefficients && defaultSettings.urgentCoefficients[item.urgentType] && defaultSettings.urgentCoefficients[item.urgentType].name) ? defaultSettings.urgentCoefficients[item.urgentType].name : '加急系数';
+    if (item.discountName == null) item.discountName = (item.discountType && defaultSettings.discountCoefficients && defaultSettings.discountCoefficients[item.discountType] && defaultSettings.discountCoefficients[item.discountType].name) ? defaultSettings.discountCoefficients[item.discountType].name : '折扣系数';
+
+    if (!item.settlementRulesSnapshot) {
+        item.settlementRulesSnapshot = JSON.parse(JSON.stringify(defaultSettings.settlementRules || {}));
+    }
+
+    if (Array.isArray(item.extraUpSelections)) {
+        item.extraUpSelections = item.extraUpSelections.map(function (s, i) {
+            if (!s) return s;
+            var m = (defaultSettings.extraPricingUp || []).find(function (x) { return x && x.id == s.id; }) || (defaultSettings.extraPricingUp || [])[i];
+            var k = s.optionValue != null ? s.optionValue : s.selectedKey;
+            var opt = (m && m.options && k != null && m.options[k] != null) ? m.options[k] : null;
+            return {
+                ...s,
+                optionValue: s.optionValue != null ? s.optionValue : s.selectedKey,
+                moduleName: s.moduleName || (m && m.name) || '扩展加价系数',
+                optionName: s.optionName || (opt && opt.name) || s.selectedKey,
+                value: (s.value != null) ? s.value : ((opt != null) ? (getCoefficientValue(opt) || 1) : 1)
+            };
+        });
+    }
+
+    if (Array.isArray(item.extraDownSelections)) {
+        item.extraDownSelections = item.extraDownSelections.map(function (s, i) {
+            if (!s) return s;
+            var m = (defaultSettings.extraPricingDown || []).find(function (x) { return x && x.id == s.id; }) || (defaultSettings.extraPricingDown || [])[i];
+            var k = s.optionValue != null ? s.optionValue : s.selectedKey;
+            var opt = (m && m.options && k != null && m.options[k] != null) ? m.options[k] : null;
+            return {
+                ...s,
+                optionValue: s.optionValue != null ? s.optionValue : s.selectedKey,
+                moduleName: s.moduleName || (m && m.name) || '扩展折扣系数',
+                optionName: s.optionName || (opt && opt.name) || s.selectedKey,
+                value: (s.value != null) ? s.value : ((opt != null) ? (getCoefficientValue(opt) || 1) : 1)
+            };
+        });
+    }
+
+    history[idx] = item;
+    saveData();
+
+    // 同步当前引用并重绘小票
+    quoteData = item;
+    generateQuote();
+    syncReceiptDrawerContent();
+
+    showGlobalToast('已为当前历史单补齐冻结快照');
+}
+window.backfillFreezeSnapshotForCurrentQuote = backfillFreezeSnapshotForCurrentQuote;
+
+// 一键补快照（全部历史单，不改金额）
+function backfillFreezeSnapshotForAllHistory() {
+    if (!Array.isArray(history) || history.length === 0) {
+        showGlobalToast('暂无历史记录可补快照');
+        return;
+    }
+
+    var updated = 0;
+
+    history = history.map(function (item) {
+        if (!item) return item;
+        var changed = false;
+
+        if (item.sameModelMode == null) {
+            item.sameModelMode = defaultSettings.sameModelMode || 'coefficient';
+            changed = true;
+        }
+        if (item.sameModelMinusAmount == null) {
+            item.sameModelMinusAmount = Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0;
+            changed = true;
+        }
+
+        if (item.usageName == null) {
+            item.usageName = (item.usageType && defaultSettings.usageCoefficients && defaultSettings.usageCoefficients[item.usageType] && defaultSettings.usageCoefficients[item.usageType].name) ? defaultSettings.usageCoefficients[item.usageType].name : '用途系数';
+            changed = true;
+        }
+        if (item.urgentName == null) {
+            item.urgentName = (item.urgentType && defaultSettings.urgentCoefficients && defaultSettings.urgentCoefficients[item.urgentType] && defaultSettings.urgentCoefficients[item.urgentType].name) ? defaultSettings.urgentCoefficients[item.urgentType].name : '加急系数';
+            changed = true;
+        }
+        if (item.discountName == null) {
+            item.discountName = (item.discountType && defaultSettings.discountCoefficients && defaultSettings.discountCoefficients[item.discountType] && defaultSettings.discountCoefficients[item.discountType].name) ? defaultSettings.discountCoefficients[item.discountType].name : '折扣系数';
+            changed = true;
+        }
+
+        if (!item.settlementRulesSnapshot) {
+            item.settlementRulesSnapshot = JSON.parse(JSON.stringify(defaultSettings.settlementRules || {}));
+            changed = true;
+        }
+
+        if (Array.isArray(item.extraUpSelections)) {
+            item.extraUpSelections = item.extraUpSelections.map(function (s, i) {
+                if (!s) return s;
+                var m = (defaultSettings.extraPricingUp || []).find(function (x) { return x && x.id == s.id; }) || (defaultSettings.extraPricingUp || [])[i];
+                var k = s.optionValue != null ? s.optionValue : s.selectedKey;
+                var opt = (m && m.options && k != null && m.options[k] != null) ? m.options[k] : null;
+                var ns = {
+                    ...s,
+                    optionValue: s.optionValue != null ? s.optionValue : s.selectedKey,
+                    moduleName: s.moduleName || (m && m.name) || '扩展加价系数',
+                    optionName: s.optionName || (opt && opt.name) || s.selectedKey,
+                    value: (s.value != null) ? s.value : ((opt != null) ? (getCoefficientValue(opt) || 1) : 1)
+                };
+                if (ns.optionValue !== s.optionValue || ns.moduleName !== s.moduleName || ns.optionName !== s.optionName || ns.value !== s.value) changed = true;
+                return ns;
+            });
+        }
+
+        if (Array.isArray(item.extraDownSelections)) {
+            item.extraDownSelections = item.extraDownSelections.map(function (s, i) {
+                if (!s) return s;
+                var m = (defaultSettings.extraPricingDown || []).find(function (x) { return x && x.id == s.id; }) || (defaultSettings.extraPricingDown || [])[i];
+                var k = s.optionValue != null ? s.optionValue : s.selectedKey;
+                var opt = (m && m.options && k != null && m.options[k] != null) ? m.options[k] : null;
+                var ns = {
+                    ...s,
+                    optionValue: s.optionValue != null ? s.optionValue : s.selectedKey,
+                    moduleName: s.moduleName || (m && m.name) || '扩展折扣系数',
+                    optionName: s.optionName || (opt && opt.name) || s.selectedKey,
+                    value: (s.value != null) ? s.value : ((opt != null) ? (getCoefficientValue(opt) || 1) : 1)
+                };
+                if (ns.optionValue !== s.optionValue || ns.moduleName !== s.moduleName || ns.optionName !== s.optionName || ns.value !== s.value) changed = true;
+                return ns;
+            });
+        }
+
+        if (changed) updated += 1;
+        return item;
+    });
+
+    saveData();
+    if (quoteData && quoteData.id) {
+        var current = history.find(function (h) { return h && h.id === quoteData.id; });
+        if (current) quoteData = current;
+        generateQuote();
+        syncReceiptDrawerContent();
+    }
+
+    showGlobalToast('已补齐历史快照：' + updated + ' 条');
+    return updated;
+}
+window.backfillFreezeSnapshotForAllHistory = backfillFreezeSnapshotForAllHistory;
 
 // 同步小票抽屉内容为当前主小票 DOM
 function syncReceiptDrawerContent() {
@@ -7399,10 +7608,13 @@ function saveToHistory() {
         }
     }
     
+    var savedOrderId = null;
+
     // 检查是否在编辑模式下
     if (window.editingHistoryId) {
         // 更新现有排单
-        const index = history.findIndex(item => item.id === window.editingHistoryId);
+        const editingId = window.editingHistoryId;
+        const index = history.findIndex(item => item.id === editingId);
         if (index !== -1) {
             const existing = history[index];
             const prevLen = (existing.productDoneStates || []).length;
@@ -7414,12 +7626,13 @@ function saveToHistory() {
             }
             history[index] = {
                 ...quoteData,
-                id: window.editingHistoryId,
+                id: editingId,
                 productDoneStates: doneStates,
                 productDailyDone: Array.isArray(existing.productDailyDone) ? existing.productDailyDone : [],
                 settlement: existing.settlement,
                 status: existing.status
             };
+            savedOrderId = editingId;
             showGlobalToast('排单已更新！');
         } else {
             showGlobalToast('未找到要更新的排单！');
@@ -7432,12 +7645,14 @@ function saveToHistory() {
         const productLen = (quoteData.productPrices || []).length;
         const giftLen = (quoteData.giftPrices || []).length;
         const productDoneStates = Array(productLen + giftLen).fill(false);
+        const newId = Date.now();
         history.unshift({
-            id: Date.now(),
+            id: newId,
             ...quoteData,
             productDoneStates,
             productDailyDone: []
         });
+        savedOrderId = newId;
         showGlobalToast('报价单已加入排单！');
         // 新单保存后清空当前备注，避免下一单未填备注时沿用本单备注
         if (defaultSettings) defaultSettings.orderRemark = '';
@@ -7450,9 +7665,9 @@ function saveToHistory() {
     
     // 云端同步：如果已启用云端模式，异步同步到 Supabase
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
-        const savedItem = window.editingHistoryId 
-            ? history.find(item => item.id === window.editingHistoryId)
-            : history[0]; // 新保存的在最前面
+        const savedItem = savedOrderId != null
+            ? history.find(item => item.id === savedOrderId)
+            : null;
         if (savedItem) {
             // 标记为未同步，同步成功后会移除
             markOrderUnsynced(savedItem.id);
@@ -9616,8 +9831,15 @@ function settlementStepBack() {
     if (previewPanel) previewPanel.classList.add('d-none');
 }
 
+function getEffectiveSettlementRulesForItem(item) {
+    if (item && item.settlementRulesSnapshot) return item.settlementRulesSnapshot;
+    return defaultSettings.settlementRules || {};
+}
+
 function settlementFillCancelFeeDefaults() {
-    var rules = defaultSettings.settlementRules && defaultSettings.settlementRules.cancelFee ? defaultSettings.settlementRules.cancelFee : {};
+    var item = history.find(function (h) { return h.id === settlementModalRecordId; });
+    var _sr = getEffectiveSettlementRulesForItem(item);
+    var rules = _sr && _sr.cancelFee ? _sr.cancelFee : {};
     var ruleEl = document.getElementById('settlementCancelFeeRule');
     var rateEl = document.getElementById('settlementCancelFeeRate');
     var fixedEl = document.getElementById('settlementCancelFeeFixed');
@@ -9911,7 +10133,7 @@ function settlementRenderWasteFeeForm() {
     ensureProductDoneStates(item);
     
     // 从设置页读取废稿费配置
-    var wf = (defaultSettings.settlementRules && defaultSettings.settlementRules.wasteFee) || {};
+    var _sr = getEffectiveSettlementRulesForItem(item); var wf = (_sr && _sr.wasteFee) || {};
     var mode = wf.mode || 'percent_total';
     
     // 设置隐藏的 select 值（供后续读取）
