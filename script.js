@@ -6311,7 +6311,7 @@ function generateQuote() {
             
             // 同模制品行
             if (hasSameModel) {
-                const sameModelHint = (defaultSettings.sameModelMode === 'minus') ? `−¥${(Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0).toFixed(2)}/件` : `${sameModelRate}x`;
+                const sameModelHint = (defaultSettings.sameModelMode === 'minus') ? `−¥${(Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0).toFixed(2)}` : `${sameModelRate}x`;
                 html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHint})</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
             }
             
