@@ -6505,7 +6505,7 @@ function generateQuote() {
     // 有相同的只显示后一个：制品小计与应收相同则不显示制品小计，应收与实付相同则不显示应收
     var showBase = Math.abs(base - agreed) >= 0.005;
     // 是否显示“应收金额（-¥xx.xx）+ 原价划线”：以约定实收与系统计算原价的差额为准（与是否有平台费无关）
-    var showAgreed = Math.abs(agreed - totalBeforePlat) >= 0.005;
+    var showAgreed = Math.abs(agreed - totalBeforePlat) >= 0.005 || (quoteData.platformFeeAmount > 0 && Math.abs(finalPay - agreed) >= 0.005);
     
     html += `<div class="receipt-summary">`;
     if (showBase) {
