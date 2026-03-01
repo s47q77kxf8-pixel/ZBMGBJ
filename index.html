@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -424,7 +425,6 @@
             <path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             <path d="M8 12l8 8M16 12l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
-
         <!-- 实心图标（主操作） -->
         <symbol id="i-plus-solid" viewBox="0 0 24 24">
             <path d="M11 5a1 1 0 0 1 2 0v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5Z" fill="currentColor"/>
@@ -432,7 +432,6 @@
         <symbol id="i-calc-solid" viewBox="0 0 24 24">
             <path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 4h6a1 1 0 0 1 0 2H9a1 1 0 0 1 0-2Zm0 5h1a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Zm5 0h1a1 1 0 1 1 0 2h-1a1 1 0 1 1 0-2Zm-5 4h1a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2Zm5 0h1a1 1 0 1 1 0 2h-1a1 1 0 1 1 0-2Z" fill="currentColor"/>
         </symbol>
-
         <!-- 排单区「记录」「统计」线性图标（固定：方案 C + 方案 E） -->
         <symbol id="i-record-c" viewBox="0 0 24 24">
             <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -484,7 +483,6 @@
             <rect x="14" y="14" width="6" height="6" rx="1" fill="currentColor"/>
         </symbol>
     </svg>
-
     <div class="app-container">
         <!-- 导航栏：排单/记录/计算/统计/设置（图标+底下文字，灰/黑） -->
         <nav class="navbar">
@@ -523,7 +521,6 @@
                 </button>
             </div>
         </nav>
-
         <!-- 主要内容区域 -->
         <main class="main-content">
             <!-- 计算页抽屉容器（覆盖在报价/设置之上） -->
@@ -613,7 +610,6 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="section">
                     <div class="section-title-row d-flex justify-between items-center">
                         <h2>设置选项</h2>
@@ -697,7 +693,6 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="section section-products">
                     <h2>制品信息</h2>
                     <div id="productsContainer">
@@ -705,7 +700,6 @@
                     </div>
                     <button class="btn add-product" onclick="addProduct()">+ 制品</button>
                 </div>
-                
                 <div class="section">
                     <h2>赠品信息</h2>
                     <div id="giftsContainer">
@@ -713,7 +707,6 @@
                     </div>
                     <button class="btn add-product" onclick="addGift()">+ 赠品</button>
                 </div>
-                
                         <div class="save-template-row d-flex gap-2 items-center">
                             <!-- 保存按钮放在左侧 -->
                             <button class="btn" onclick="saveTemplate()">保存为模板</button>
@@ -724,7 +717,6 @@
                     </div>
                 </div>
             </div>
-
             <!-- 报价页（默认主页面） -->
             <div id="quote" class="page active">
                 <!-- 排单日历区（作为排单页主视图），去掉外层卡片框，仅保留排单布局 -->
@@ -773,14 +765,12 @@
                         </div>
                     </div>
                 </div>
-
                 <!-- 隐藏的主小票真源区域（仅用于渲染与截图，不在排单主视图中展示） -->
                 <div class="section quote-main-receipt-section">
                     <div id="quoteContent" class="quote-content">
                         <!-- 报价内容将通过JavaScript动态生成 -->
                     </div>
                 </div>
-
                 <!-- 小票抽屉：作为“小票页”，从左侧滑出 -->
                 <div id="receiptDrawer" class="receipt-drawer d-none">
                     <div class="receipt-drawer-overlay" onclick="handleReceiptDrawerClose()"></div>
@@ -870,7 +860,6 @@
                         </div>
                     </div>
                 </div>
-
                 <!-- 小票设置弹窗（底部弹出） -->
                 <div id="receiptCustomizationModal" class="receipt-customization-modal d-none">
                     <div class="receipt-customization-overlay" onclick="closeReceiptCustomizationPanel()"></div>
@@ -879,7 +868,6 @@
                             <h2>小票设置</h2>
                             <button class="btn-icon" onclick="closeReceiptCustomizationPanel()">×</button>
                         </div>
-                        
                         <div class="receipt-customization-body">
                             <div class="receipt-customization-tabs">
                                 <button class="tab-btn active" onclick="switchReceiptTab('settings')">设置</button>
@@ -887,7 +875,6 @@
                                 <button class="tab-btn" onclick="switchReceiptTab('font')">字体</button>
                             </div>
                             <div class="tab-content active" id="settings-tab">
-
                                 <!-- 小票头部设置 -->
                                 <div class="section">
                                     <h3>小票头部</h3>
@@ -971,7 +958,6 @@
                                         </div>
                                     </div>
                                 </div>
-                                
                                 <!-- 小票尾部设置 -->
                                 <div class="section">
                                     <h3>小票尾部</h3>
@@ -999,7 +985,6 @@
                                     </div>
                                 </div>
                             </div>
-                            
                             <!-- 主题标签页 -->
                             <div class="tab-content" id="theme-tab">
                                 <div class="section">
@@ -1058,7 +1043,6 @@
                                             <input type="number" id="customThemeBorderRadius" value="0" min="0" max="20">
                                         </div>
                                     </div>
-                                    
                                     <!-- 边框设置 -->
                                     <div class="form-row">
                                         <div class="form-group">
@@ -1082,7 +1066,6 @@
                                             </div>
                                         </div>
                                     </div>
-                                    
                                     <!-- 纸张底纹设置 -->
                                     <div class="form-row">
                                         <div class="form-group">
@@ -1119,12 +1102,10 @@
                                     </div>
                                 </div>
                             </div>
-                            
                             <!-- 字体标签页 -->
                             <div class="tab-content" id="font-tab">
                                 <div class="section">
                                     <h3>字体设置</h3>
-                                    
                                     <!-- 快速设置：统一字体 -->
                                     <div class="form-row">
                                         <div class="form-group">
@@ -1181,7 +1162,6 @@
                                             </small>
                                         </div>
                                     </div>
-                                    
                                     <!-- 分类字体设置 -->
                                     <div class="form-row">
                                         <div class="form-group">
@@ -1197,7 +1177,6 @@
                                             <small class="text-gray">开启后可以为小票的不同部分分别设置字体</small>
                                         </div>
                                     </div>
-                                    
                                     <div id="categoryFontsContainer" style="display: none;">
                                         <!-- 标题字体 -->
                                         <div class="form-row">
@@ -1210,7 +1189,6 @@
                                                 <small class="text-gray">例如：Source Han Serif SC, Noto Serif SC, serif</small>
                                             </div>
                                         </div>
-                                        
                                         <!-- 正文字体 -->
                                         <div class="form-row">
                                             <div class="form-group">
@@ -1222,7 +1200,6 @@
                                                 <small class="text-gray">例如：Source Han Sans SC, Noto Sans SC, sans-serif</small>
                                             </div>
                                         </div>
-                                        
                                         <!-- 价格/数字字体 -->
                                         <div class="form-row">
                                             <div class="form-group">
@@ -1234,7 +1211,6 @@
                                                 <small class="text-gray">例如：Courier New, Consolas, Monaco, monospace（推荐等宽字体）</small>
                                             </div>
                                         </div>
-                                        
                                         <!-- 汇总字体 -->
                                         <div class="form-row">
                                             <div class="form-group">
@@ -1246,7 +1222,6 @@
                                                 <small class="text-gray">例如：Source Han Sans SC, Noto Sans SC, sans-serif</small>
                                             </div>
                                         </div>
-                                        
                                         <!-- 尾部字体 -->
                                         <div class="form-row">
                                             <div class="form-group">
@@ -1259,7 +1234,6 @@
                                             </div>
                                         </div>
                                     </div>
-                                    
                                     <div class="form-row">
                                         <div class="form-group">
                                             <label for="receiptFontSize">字号 (px)</label>
@@ -1282,7 +1256,6 @@
                                             <input type="number" id="receiptLineHeight" value="1.3" min="1" max="2" step="0.1" onchange="updateReceiptFont('lineHeight', this.value)">
                                         </div>
                                     </div>
-                                    
                                     <!-- 导入字体文件 -->
                                     <div class="form-row">
                                         <div class="form-group">
@@ -1292,7 +1265,6 @@
                                             <small class="text-gray">支持格式：TTF, OTF, WOFF, WOFF2（建议文件小于5MB）</small>
                                         </div>
                                     </div>
-                                    
                                     <!-- 已导入的字体列表 -->
                                     <div class="form-row">
                                         <div class="form-group">
@@ -1303,14 +1275,12 @@
                                 </div>
                             </div>
                         </div>
-                        
                         <div class="receipt-customization-footer">
                             <button class="btn" onclick="clearReceiptCustomization()">清除设置</button>
                             <button class="btn" onclick="closeReceiptCustomizationPanel()">保存设置</button>
                         </div>
                     </div>
                 </div>
-
                 <!-- 历史记录弹窗 -->
                 <div id="historyRecordModal" class="history-record-modal d-none">
                     <div class="history-record-overlay" onclick="closeHistoryRecordModal()"></div>
@@ -1415,39 +1385,12 @@
                     </div>
                 </div>
             </div>
-
             <!-- 记录页（简洁列表：单主ID / 金额 / 完成状态） -->
             <div id="record" class="page">
                 <div class="schedule-section">
                     <div class="schedule-toolbar record-page-header">
                         <div class="record-header-main d-flex justify-between items-center">
                             <h2 class="schedule-title record-page-title">记录</h2>
-                            <div class="d-flex gap-2 items-center record-page-actions">
-                                <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
-                                <div class="record-export-wrap" style="position:relative">
-                                    <button type="button" class="btn secondary btn--icon" id="recordImportBtn" onclick="toggleRecordImportPopover()" aria-label="导入数据" title="导入（文件或剪贴板）" aria-expanded="false" aria-haspopup="true">
-                                        <svg class="icon" aria-hidden="true"><use href="#i-import"></use></svg>
-                                        <span class="sr-only">导入</span>
-                                    </button>
-                                    <div id="recordImportPopover" class="record-export-popover d-none" aria-hidden="true">
-                                        <p class="record-export-hint">手机端建议用剪贴板：导出时复制，另一设备粘贴导入</p>
-                                        <button type="button" class="record-export-opt" onclick="document.getElementById('recordSyncImportInput').click(); closeRecordImportPopover();">选择 JSON 文件</button>
-                                        <button type="button" class="record-export-opt" onclick="importSyncDataFromClipboard(); closeRecordImportPopover();">从剪贴板导入</button>
-                                    </div>
-                                </div>
-                                <div class="record-export-wrap" style="position:relative">
-                                    <button type="button" class="btn secondary btn--icon" id="recordExportBtn" onclick="toggleRecordExportPopover()" aria-label="导出" title="导出（按当前筛选结果，含时间范围）" aria-expanded="false" aria-haspopup="true">
-                                        <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
-                                        <span class="sr-only">导出</span>
-                                    </button>
-                                    <div id="recordExportPopover" class="record-export-popover d-none" aria-hidden="true">
-                                        <p class="record-export-hint">按当前筛选结果（含时间、价格）导出</p>
-                                        <button type="button" class="record-export-opt" onclick="exportSyncData(); closeRecordExportPopover();">导出 JSON（同步，含全局设置）</button>
-                                        <button type="button" class="record-export-opt" onclick="exportSyncDataToClipboard(); closeRecordExportPopover();">复制到剪贴板</button>
-                                        <button type="button" class="record-export-opt" onclick="exportRecordToExcel(); closeRecordExportPopover();">导出 Excel</button>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                         <div class="record-header-filter">
                             <div class="form-row">
@@ -1567,7 +1510,6 @@
                     </div>
                 </div>
             </div>
-
             <!-- 导入方式选择弹窗（覆盖 / 新增合并） -->
             <div id="recordImportModeModal" class="history-record-modal d-none" aria-hidden="true">
                 <div class="history-record-overlay" onclick="closeRecordImportModeModal()"></div>
@@ -1589,7 +1531,6 @@
                     </div>
                 </div>
             </div>
-
             <!-- 统计页（手机 App 风格） -->
             <div id="stats" class="page">
                 <div class="schedule-section stats-page">
@@ -1711,7 +1652,6 @@
                     </div>
                 </div>
             </div>
-
             <!-- 我的页（原设置页） -->
             <div id="settings" class="page">
                 <button type="button" class="btn secondary w-full" onclick="openLoginPage(event)" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-radius:14px;">
@@ -1723,7 +1663,6 @@
                     </span>
                     <span aria-hidden="true" style="font-size:24px;line-height:1;opacity:0.5;">›</span>
                 </button>
-
                 <div class="section">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
                         <h2 style="margin:0;">云端同步</h2>
@@ -1732,11 +1671,9 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    
                     <div id="cloudSyncStatusText" style="font-size:13px;color:#666;margin-bottom:12px;min-height:18px;">
                         正在检测云端状态...
                     </div>
-                    
                     <!-- 操作按钮（仅在启用时显示） -->
                     <div id="cloudSyncActions" style="display:none;gap:8px;flex-wrap:wrap;">
                         <button type="button" id="syncCloudBtn" class="btn" onclick="mgSyncAllToCloud()" style="display:none;font-size:13px;padding:6px 12px;">上传</button>
@@ -1744,7 +1681,26 @@
                         <button type="button" id="reselectSyncBtn" class="btn secondary" onclick="mgReselectFirstSyncPolicy()" style="display:none;font-size:13px;padding:6px 12px;">重选策略</button>
                         <button type="button" id="cloudDebugBtn" class="btn secondary" onclick="mgToggleCloudDebugPanel()" style="display:inline-block;font-size:13px;padding:6px 12px;">调试</button>
                     </div>
-
+                    <hr style="margin:14px 0;border:0;border-top:1px solid rgba(0,0,0,0.12);">
+                    <button type="button"
+                        style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:none;border:none;padding:0;margin:0 0 4px 0;cursor:pointer;text-align:left;color:inherit;"
+                        onclick="(function(){var body=document.getElementById('manualSyncBody');var arrow=document.getElementById('manualSyncArrow');if(!body||!arrow)return;var willExpand=body.classList.contains('d-none');body.classList.toggle('d-none');arrow.textContent=willExpand?'▾':'▸';if(!willExpand){closeRecordImportPopover();closeRecordExportPopover();}})()"
+                        aria-label="展开或收起手动同步">
+                        <span style="font-size:14px;font-weight:600;">手动同步</span>
+                        <span id="manualSyncArrow" style="font-size:14px;line-height:1;opacity:.75;">▸</span>
+                    </button>
+                    <div id="manualSyncBody" class="d-none" style="margin-top:6px;">
+                    <div style="font-size:12px;color:#666;margin-bottom:6px;">跨设备最简单：设备A点「复制 JSON」→ 设备B点「粘贴导入」</div>
+                    <div style="font-size:12px;color:#666;margin-bottom:10px;">也可用文件方式：导出 JSON 后，在另一设备用 导入 JSON</div>
+                    <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
+                    <div class="d-flex gap-2 items-center" style="flex-wrap:nowrap;overflow-x:auto;">
+                        <button type="button" class="btn secondary" id="recordImportBtn" onclick="document.getElementById('recordSyncImportInput').click();" aria-label="导入数据" title="选择 JSON 文件导入" style="white-space:nowrap;">导入 JSON</button>
+                        <button type="button" class="btn secondary" onclick="importSyncDataFromClipboard()" aria-label="粘贴导入" title="从剪贴板粘贴 JSON 并导入" style="white-space:nowrap;">粘贴导入</button>
+                        <button type="button" class="btn secondary" id="recordExportBtn" onclick="exportSyncData()" aria-label="导出" title="导出 JSON（同步，含全局设置）" style="white-space:nowrap;">导出 JSON</button>
+                        <button type="button" class="btn secondary" onclick="exportSyncDataToClipboard()" aria-label="复制JSON" title="复制 JSON 到剪贴板" style="white-space:nowrap;">复制 JSON</button>
+                        <button type="button" class="btn secondary" onclick="exportRecordToExcel()" style="white-space:nowrap;">导出 Excel</button>
+                    </div>
+                    </div>
                     <div id="cloudDebugPanel" style="display:none;margin-top:10px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:10px;background:rgba(0,0,0,0.03);">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                             <div style="font-weight:700;font-size:13px;">云端调试日志</div>
@@ -1757,7 +1713,6 @@
                         <textarea id="cloudDebugLogText" readonly style="width:100%;height:160px;margin-top:8px;box-sizing:border-box;font-size:12px;line-height:1.4;padding:10px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);background:white;"></textarea>
                     </div>
                 </div>
-                
                 <!-- 美工信息 -->
                 <div class="section">
                     <div class="section-title-row d-flex justify-between items-center">
@@ -1790,7 +1745,6 @@
                         </div>
                     </div>
                 </div>
-
                 <!-- 单主自助填写链接 + 全部直填委托入口（管理） -->
                 <div class="section dev-feature d-none">
                     <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
@@ -1814,7 +1768,6 @@
                         </button>
                     </div>
                 </div>
-
                 <div class="section">
                     <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
                         <h2>制品设置</h2>
@@ -1828,7 +1781,6 @@
                     <div id="productSettingsContainer">
                     <!-- 制品设置将通过JavaScript动态添加 -->
                     </div>
-                
                     <!-- 添加制品弹窗 -->
                     <div id="addProductModal" class="modal d-none">
                         <div class="modal-content">
@@ -1858,7 +1810,6 @@
                                         </select>
                                     </div>
                                 </div>
-                                
                                 <!-- 固定价设置 -->
                                 <div id="fixedPriceSettings" class="price-settings">
                                     <div class="form-row">
@@ -1868,7 +1819,6 @@
                                         </div>
                                     </div>
                                 </div>
-                                
                                 <!-- 单双面价设置 -->
                                 <div id="doublePriceSettings" class="price-settings d-none">
                                     <div class="form-row">
@@ -1882,7 +1832,6 @@
                                         </div>
                                     </div>
                                 </div>
-                                
                                 <!-- 基础+递增价设置 -->
                                 <div id="configPriceSettings" class="price-settings d-none">
                                     <div class="form-row">
@@ -1928,7 +1877,6 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="section">
                     <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
                         <h2>系数设置</h2>
@@ -1939,7 +1887,6 @@
                             <input type="file" id="coefficientExcelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importCoefficientsFromExcel(event)">
                         </div>
                     </div>
-
                     <!-- 加价类：用途系数、加急系数，可添加其他（可折叠大组） -->
                     <div class="category-group-container">
                         <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupPricingUp')">
@@ -1984,7 +1931,6 @@
                             <div id="urgentDiscountPairRow" class="coefficient-pair-row d-none"></div>
                         </div>
                     </div>
-                    
                     <!-- 折扣类：折扣系数，可添加其他（可折叠大组） -->
                     <div class="category-group-container">
                         <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupPricingDown')">
@@ -2011,7 +1957,6 @@
                             <div id="extraPricingDownContainer"></div>
                         </div>
                     </div>
-                    
                     <!-- 其他类：同模系数、平台手续费、其他费用（可折叠大组） -->
                     <div class="category-group-container">
                         <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupOther')">
@@ -2035,7 +1980,6 @@
                             </div>
                         </div>
                     </div>
-                    
                     <!-- 平台手续费 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('platformFee')">
@@ -2052,7 +1996,6 @@
                             </div>
                         </div>
                     </div>
-                    
                     <!-- 背景费设置 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('backgroundFee')">
@@ -2073,7 +2016,6 @@
                             </div>
                         </div>
                     </div>
-                    
                     <!-- 其他费用 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('otherFees')">
@@ -2081,7 +2023,6 @@
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="otherFees-content">
-                            
                             <!-- 其他费用类别 -->
                             <div class="form-row mt-4">
                                 <div class="form-group flex-1">
@@ -2101,7 +2042,6 @@
                     </div>
                         </div>
                     </div>
-                    
                     <!-- 结算配置：与加价类、折扣类、其他类同级 -->
                     <div class="category-group-container">
                         <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupSettlement')">
@@ -2206,7 +2146,6 @@
                         </div>
                     </div>
                 </div>
-
                 <!-- 工艺设置：与制品设置同级，可折叠 -->
                 <div class="section">
                     <div class="category-container">
@@ -2224,7 +2163,6 @@
                         </div>
                     </div>
                 </div>
-
                 <!-- 添加系数弹窗 -->
                 <div id="addCoefficientModal" class="modal d-none">
                     <div class="modal-content">
@@ -2265,7 +2203,6 @@
                         </div>
                     </div>
                 </div>
-                
                 <!-- 添加工艺设置弹窗 -->
                 <div id="addProcessModal" class="modal d-none">
                     <div class="modal-content">
@@ -2291,7 +2228,6 @@
                         </div>
                     </div>
                 </div>
-
                 <!-- 添加/编辑优惠原因弹窗 -->
                 <div id="addDiscountReasonModal" class="modal d-none">
                     <div class="modal-content modal-content-compact">
@@ -2333,14 +2269,11 @@
                         </div>
                     </div>
                 </div>
-                
                 <div class="d-flex gap-2 flex-wrap items-center">
                     <button type="button" class="btn save-settings" onclick="saveSettings()">立即保存</button>
                     <button type="button" class="btn secondary" onclick="resetToDefaultSettings()">恢复默认设置</button>
                 </div>
             </div>
-            
-
         <!-- 排单卡片操作弹窗（全局：排单页/记录页点击弹出） -->
         <div id="scheduleTodoCardModal" class="schedule-todo-card-modal d-none">
             <div class="schedule-todo-card-modal-overlay" onclick="closeScheduleTodoCardModal()"></div>
@@ -2378,7 +2311,6 @@
                 </div>
             </div>
         </div>
-
             <!-- 结算弹窗（全局：与 main 平级，记录页/排单页点击撤单/废稿/结单均可见） -->
             <div id="settlementModal" class="settlement-modal d-none">
                 <div class="settlement-modal-overlay" onclick="closeSettlementModal()"></div>
@@ -2558,10 +2490,8 @@
                     </div>
                 </div>
             </div>
-
         </main>
     </div>
-
     <!-- 全局轻提示（toast），用于非阻塞提示“排单已更新”等信息 -->
     <!-- 订单备注查看弹窗（只读） -->
     <div id="orderRemarkViewModal" class="modal d-none">
@@ -2593,7 +2523,6 @@
             </div>
         </div>
     </div>
-
     <!-- 单主ID 确认填充弹窗：输入关键词后列出匹配的单主ID，选择一项后再填充 -->
     <div id="clientIdConfirmModal" class="history-record-modal d-none" aria-hidden="true">
         <div class="history-record-overlay" onclick="closeClientIdConfirmModal()"></div>
@@ -2612,7 +2541,6 @@
             </div>
         </div>
     </div>
-
     <!-- 计算页保存方式选择弹窗（编辑模式下点「保存」时弹出） -->
     <div id="calculatorSaveChoiceModal" class="history-record-modal d-none" aria-hidden="true">
         <div class="history-record-overlay" onclick="closeCalculatorSaveChoiceModal()"></div>
@@ -2634,7 +2562,6 @@
             </div>
         </div>
     </div>
-
     <!-- 小票页排单保存方式选择弹窗（编辑模式下点「排单」时弹出） -->
     <div id="receiptScheduleChoiceModal" class="history-record-modal d-none" aria-hidden="true">
         <div class="history-record-overlay" onclick="closeReceiptScheduleChoiceModal()"></div>
@@ -2656,9 +2583,7 @@
             </div>
         </div>
     </div>
-
     <div id="globalToast" class="global-toast d-none"></div>
-
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
     <script>
@@ -2670,7 +2595,6 @@
             try { sessionStorage.setItem('mg_redirecting_to_login', '1'); } catch (_) {}
             window.location.assign('login.html');
         }
-
         // 捕获错误，避免一闪而过看不到
         window.addEventListener('error', function (ev) {
             try {
@@ -2683,7 +2607,6 @@
                 console.error('[unhandledrejection]', ev && ev.reason);
             } catch (_) {}
         });
-
         // 更新认证状态并刷新UI
         async function updateAuthStatus() {
             try {
@@ -2704,7 +2627,6 @@
                     session = (retry && retry.data && retry.data.session) ? retry.data.session : null;
                 }
                 window.__APP_AUTH__ = { enabled: !!session, session: session || null };
-
                 var el = document.getElementById('myAccountSummary');
                 if (el) {
                     if (session && session.user && session.user.email) {
@@ -2713,7 +2635,6 @@
                         el.textContent = '未登录';
                     }
                 }
-                
                 // 更新云端状态显示
                 if (typeof updateCloudSyncStatus === 'function') {
                     updateCloudSyncStatus();
@@ -2727,10 +2648,8 @@
                 }
             }
         }
-
         // 初始化认证状态
         updateAuthStatus();
-
         // 监听认证状态变化（登录/登出时自动更新）
         (async function () {
             try {
@@ -2739,7 +2658,6 @@
                 client.auth.onAuthStateChange((event, session) => {
                     // 当认证状态变化时（登录、登出、token刷新等），更新状态
                     window.__APP_AUTH__ = { enabled: !!session, session: session || null };
-                    
                     // 更新账户显示
                     var el = document.getElementById('myAccountSummary');
                     if (el) {
@@ -2749,7 +2667,6 @@
                             el.textContent = '未登录';
                         }
                     }
-                    
                     // 更新云端状态显示
                     if (typeof updateCloudSyncStatus === 'function') {
                         updateCloudSyncStatus();
@@ -2760,33 +2677,6 @@
             }
         })();
     </script>
-
     <script src="script.js?v=20260215-cloud-debug"></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
