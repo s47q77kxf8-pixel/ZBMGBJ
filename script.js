@@ -726,6 +726,7 @@ function init() {
     renderProductSettings();
     renderProcessSettings();
     renderCoefficientSettings();
+    initClientTemplateEditor();
     
     // 更新计算页中的系数选择器
     updateCalculatorCoefficientSelects();
@@ -2914,6 +2915,11 @@ function showPage(pageId) {
         activeTab = 'settings';
         const settingsBtn = document.querySelector('.nav-btn-settings');
         if (settingsBtn) settingsBtn.classList.add('active');
+    } else if (pageId === 'clientTemplateEditor') {
+        // 编辑页归属于“我的”模块，保持“我的”导航高亮
+        activeTab = 'settings';
+        const settingsBtn = document.querySelector('.nav-btn-settings');
+        if (settingsBtn) settingsBtn.classList.add('active');
     }
     // 计算：仅打开抽屉，不高亮
     
@@ -2955,6 +2961,10 @@ function showPage(pageId) {
     // 如果是设置页，加载设置
     if (pageId === 'settings') {
         loadSettings();
+        // 初始化“我的”页输入绑定（美工ID输入防抖保存 + 失焦立即同步）
+        mgInitArtistInfoBindings();
+        // 异步回填云端 display_name（不阻塞页面渲染）
+        mgHydrateArtistIdFromCloud();
         renderProductSettings();
         renderProcessSettings();
         renderCoefficientSettings();
@@ -2973,6 +2983,11 @@ function showPage(pageId) {
         } catch (e) {
             // ignore
         }
+    }
+
+    // 如果是表单模板编辑页，初始化编辑器
+    if (pageId === 'clientTemplateEditor') {
+        initClientTemplateEditor();
     }
     // 页面切换时不再直接显示/隐藏计算页，只控制报价 / 设置下的逻辑
 }
@@ -13395,43 +13410,97 @@ function renderOtherFees() {
 }
 
 // 更新美工信息
-function updateArtistInfo(field, value) {
-    defaultSettings.artistInfo[field] = value;
-    
+let mgArtistIdSyncTimer = null;
+let mgArtistInfoBindingsInited = false;
+
+function updateArtistInfo(field, value, options = {}) {
+    const normalizedValue = (field === 'defaultDuration')
+        ? (value === '' ? '' : (parseInt(value, 10) || 0))
+        : String(value || '').trim();
+
+    defaultSettings.artistInfo[field] = normalizedValue;
+
+    // 及时持久化，避免切页后丢失
+    if (typeof saveData === 'function') {
+        saveData();
+    }
+
     // 如果修改的是默认工期，重新计算截稿时间
     if (field === 'defaultDuration') {
         calculateDeadline();
     }
-    
-    // 如果修改的是美工ID，同步到 Supabase artists 表的 display_name
+
+    // 如果修改的是美工ID：默认防抖同步，失焦时立即同步
     if (field === 'id') {
-        mgSyncArtistDisplayNameToCloud(value);
+        if (options.immediate === true) {
+            if (mgArtistIdSyncTimer) {
+                clearTimeout(mgArtistIdSyncTimer);
+                mgArtistIdSyncTimer = null;
+            }
+            mgSyncArtistDisplayNameToCloud(normalizedValue);
+        } else {
+            if (mgArtistIdSyncTimer) clearTimeout(mgArtistIdSyncTimer);
+            mgArtistIdSyncTimer = setTimeout(function () {
+                mgSyncArtistDisplayNameToCloud(normalizedValue);
+            }, 500);
+        }
     }
 }
 
-// 同步美工ID到云端 artists 表
+function mgInitArtistInfoBindings() {
+    if (mgArtistInfoBindingsInited) return;
+
+    const artistIdInput = document.getElementById('artistId');
+    if (artistIdInput) {
+        // 输入时本地保存 + 防抖云端同步
+        artistIdInput.addEventListener('input', function (e) {
+            updateArtistInfo('id', e.target.value);
+        });
+        // 失焦时立即同步一次，避免用户快速切页导致未发起请求
+        artistIdInput.addEventListener('blur', function (e) {
+            updateArtistInfo('id', e.target.value, { immediate: true });
+        });
+    }
+
+    mgArtistInfoBindingsInited = true;
+}
+
+// 同步美工ID到云端（auth.user_metadata.display_name + artists.display_name）
+let mgLastSyncedArtistDisplayName = null;
 async function mgSyncArtistDisplayNameToCloud(displayName) {
     if (!mgIsCloudEnabled()) return;
-    
+
     const client = mgGetSupabaseClient();
     if (!client) return;
-    
+
+    const normalizedDisplayName = String(displayName || '').trim();
+    if (mgLastSyncedArtistDisplayName === normalizedDisplayName) return;
+
     const { data: { session } } = await client.auth.getSession();
     if (!session || !session.user) return;
-    
-    const artistId = session.user.id;
-    
+
     try {
-        const { error } = await client
-            .from('artists')
-            .update({ display_name: displayName })
-            .eq('id', artistId);
-            
-        if (error) {
-            console.error('同步美工显示名称失败:', error);
-        } else {
-            console.log('已同步美工显示名称到云端:', displayName);
+        // 1) 优先同步到 Supabase Auth（对应 Authentication 里的 Display name）
+        const { error: authErr } = await client.auth.updateUser({
+            data: { display_name: normalizedDisplayName || null }
+        });
+        if (authErr) {
+            console.error('同步 Auth display_name 失败:', authErr);
         }
+
+        // 2) 同步到业务 artists 表（兼容现有查询/展示）
+        const { error: artistErr } = await client
+            .from('artists')
+            .update({ display_name: normalizedDisplayName })
+            .eq('id', session.user.id);
+
+        if (artistErr) {
+            console.error('同步 artists.display_name 失败:', artistErr);
+            return;
+        }
+
+        mgLastSyncedArtistDisplayName = normalizedDisplayName;
+        console.log('已同步美工显示名称到云端:', normalizedDisplayName);
     } catch (err) {
         console.error('同步美工显示名称异常:', err);
     }
@@ -13609,6 +13678,35 @@ function renderDynamicOtherFees() {
 }
 
 
+
+// 从云端读取 display_name，回填到“我的-美工ID”（可选，不阻塞）
+async function mgHydrateArtistIdFromCloud() {
+    if (!mgIsCloudEnabled()) return;
+
+    const client = mgGetSupabaseClient();
+    if (!client) return;
+
+    try {
+        const { data: { user }, error } = await client.auth.getUser();
+        if (error || !user) return;
+
+        const cloudDisplayName = String((user.user_metadata && user.user_metadata.display_name) || '').trim();
+        if (!cloudDisplayName) return;
+
+        // 仅在本地未填写时用云端值回填，避免覆盖用户正在编辑的本地输入
+        if (!defaultSettings.artistInfo.id || !String(defaultSettings.artistInfo.id).trim()) {
+            defaultSettings.artistInfo.id = cloudDisplayName;
+            mgLastSyncedArtistDisplayName = cloudDisplayName;
+
+            const artistIdInput = document.getElementById('artistId');
+            if (artistIdInput) artistIdInput.value = cloudDisplayName;
+
+            if (typeof saveData === 'function') saveData();
+        }
+    } catch (err) {
+        console.error('读取云端美工ID失败:', err);
+    }
+}
 
 // 加载设置（基础信息 + 其他费用；系数由 renderCoefficientSettings 从 defaultSettings 渲染，无需在此回填）
 function loadSettings() {
@@ -16466,6 +16564,260 @@ async function resetInviteLink() {
 function openAllClientSubmissions() {
     // 先占位：后续接入“全部直填委托”列表
     alert('功能开发中：这里将展示全部单主直填委托（含取消/拒绝/已完成）。');
+}
+
+function openClientTemplateEditorPage() {
+    showPage('clientTemplateEditor');
+}
+
+function backToSettingsPage() {
+    showPage('settings');
+}
+
+// ========== 设置页：表单模板编辑器 ==========
+const CLIENT_FORM_TEMPLATE_KEY = 'client_form_template_local';
+const CLIENT_FORM_TEMPLATE_DEFAULT = {
+    version: 1,
+    fields: [
+        { key: 'clientName', type: 'text', enabled: true, required: true, label: '称呼 / 单主昵称', placeholder: '例如：小明', order: 10, rules: { minLength: 1, maxLength: 30, regex: '' } },
+        { key: 'contact', type: 'text', enabled: true, required: true, label: '联系方式（QQ/VX/MHS 等）', placeholder: '例如：QQ 12345', order: 20, rules: { minLength: 2, maxLength: 50, regex: '' } },
+        { key: 'deadline', type: 'date', enabled: true, required: false, label: '截稿日', placeholder: '', order: 30, rules: { minLength: '', maxLength: '', regex: '' } },
+        { key: 'remark', type: 'textarea', enabled: true, required: false, label: '委托总备注', placeholder: '可填写整体委托要求', order: 40, rules: { minLength: '', maxLength: 1000, regex: '' } }
+    ]
+};
+
+let clientFormTemplate = JSON.parse(JSON.stringify(CLIENT_FORM_TEMPLATE_DEFAULT));
+
+function getSafeClientFormTemplate(tpl) {
+    const base = JSON.parse(JSON.stringify(CLIENT_FORM_TEMPLATE_DEFAULT));
+    if (!tpl || !Array.isArray(tpl.fields)) return base;
+    base.version = Number(tpl.version) || 1;
+    base.fields = tpl.fields.map((f, idx) => ({
+        key: f.key || ('field_' + Date.now() + '_' + idx),
+        type: ['text', 'textarea', 'date', 'number'].includes(f.type) ? f.type : 'text',
+        enabled: f.enabled !== false,
+        required: !!f.required,
+        label: f.label || '未命名字段',
+        placeholder: f.placeholder || '',
+        order: Number(f.order) || ((idx + 1) * 10),
+        rules: {
+            minLength: (f.rules && f.rules.minLength !== undefined) ? f.rules.minLength : '',
+            maxLength: (f.rules && f.rules.maxLength !== undefined) ? f.rules.maxLength : '',
+            regex: (f.rules && f.rules.regex) ? String(f.rules.regex) : ''
+        }
+    }));
+    return base;
+}
+
+function loadClientFormTemplateLocal() {
+    try {
+        const raw = localStorage.getItem(CLIENT_FORM_TEMPLATE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        clientFormTemplate = getSafeClientFormTemplate(parsed);
+    } catch (e) {
+        console.warn('读取本地表单模板失败:', e);
+    }
+}
+
+function saveClientFormTemplateLocal() {
+    try {
+        localStorage.setItem(CLIENT_FORM_TEMPLATE_KEY, JSON.stringify(clientFormTemplate));
+    } catch (e) {
+        console.warn('保存本地表单模板失败:', e);
+    }
+}
+
+function initClientTemplateEditor() {
+    const section = document.getElementById('clientTemplateEditorSection');
+    if (!section) return;
+    loadClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function renderClientTemplateEditor() {
+    const wrap = document.getElementById('clientTemplateEditorList');
+    if (!wrap) return;
+    const sorted = [...(clientFormTemplate.fields || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+    wrap.innerHTML = sorted.map((f, idx) => {
+        const minLength = f.rules && f.rules.minLength !== '' ? f.rules.minLength : '';
+        const maxLength = f.rules && f.rules.maxLength !== '' ? f.rules.maxLength : '';
+        const regex = f.rules && f.rules.regex ? f.rules.regex : '';
+        return `
+            <div style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                    <strong style="font-size:13px;">${f.label || '未命名字段'}</strong>
+                    <div style="display:flex;gap:6px;">
+                        <button type="button" class="btn secondary btn-compact" onclick="moveClientTemplateField('${f.key}', -1)" ${idx === 0 ? 'disabled' : ''}>上移</button>
+                        <button type="button" class="btn secondary btn-compact" onclick="moveClientTemplateField('${f.key}', 1)" ${idx === sorted.length - 1 ? 'disabled' : ''}>下移</button>
+                        <button type="button" class="btn danger-light btn-compact" onclick="removeClientTemplateField('${f.key}')">删除</button>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>字段名</label>
+                        <input type="text" value="${(f.label || '').replace(/"/g, '&quot;')}" onchange="updateClientTemplateField('${f.key}','label',this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label>类型</label>
+                        <select onchange="updateClientTemplateField('${f.key}','type',this.value)">
+                            <option value="text" ${f.type === 'text' ? 'selected' : ''}>文本</option>
+                            <option value="textarea" ${f.type === 'textarea' ? 'selected' : ''}>多行文本</option>
+                            <option value="date" ${f.type === 'date' ? 'selected' : ''}>日期</option>
+                            <option value="number" ${f.type === 'number' ? 'selected' : ''}>数字</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>占位提示</label>
+                        <input type="text" value="${(f.placeholder || '').replace(/"/g, '&quot;')}" onchange="updateClientTemplateField('${f.key}','placeholder',this.value)">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>最小长度</label>
+                        <input type="number" min="0" value="${minLength}" onchange="updateClientTemplateRule('${f.key}','minLength',this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label>最大长度</label>
+                        <input type="number" min="0" value="${maxLength}" onchange="updateClientTemplateRule('${f.key}','maxLength',this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label>正则校验</label>
+                        <input type="text" value="${String(regex).replace(/"/g, '&quot;')}" placeholder="如 ^[0-9]{5,}$" onchange="updateClientTemplateRule('${f.key}','regex',this.value)">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="display:flex;gap:12px;align-items:center;">
+                        <label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="updateClientTemplateField('${f.key}','enabled',this.checked)"> 启用</label>
+                        <label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" ${f.required ? 'checked' : ''} onchange="updateClientTemplateField('${f.key}','required',this.checked)"> 必填</label>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderClientTemplatePreview() {
+    const wrap = document.getElementById('clientTemplatePreview');
+    if (!wrap) return;
+    const sorted = [...(clientFormTemplate.fields || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+    wrap.innerHTML = sorted.filter(f => f.enabled).map(f => {
+        return `
+            <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-size:12px;color:#666;">${f.label}${f.required ? ' *' : ''}</label>
+                ${f.type === 'textarea' ? '<textarea disabled placeholder="' + (f.placeholder || '') + '" style="min-height:72px;"></textarea>' : '<input disabled type="' + (f.type || 'text') + '" placeholder="' + (f.placeholder || '') + '">'}
+            </div>
+        `;
+    }).join('') || '<div class="text-gray" style="font-size:12px;">暂无启用字段</div>';
+}
+
+function updateClientTemplateField(key, field, value) {
+    const item = (clientFormTemplate.fields || []).find(f => f.key === key);
+    if (!item) return;
+    item[field] = value;
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function updateClientTemplateRule(key, ruleKey, value) {
+    const item = (clientFormTemplate.fields || []).find(f => f.key === key);
+    if (!item) return;
+    if (!item.rules) item.rules = { minLength: '', maxLength: '', regex: '' };
+    if (ruleKey === 'regex') {
+        item.rules[ruleKey] = value || '';
+    } else {
+        item.rules[ruleKey] = (value === '' || value == null) ? '' : Number(value);
+    }
+    saveClientFormTemplateLocal();
+    renderClientTemplatePreview();
+}
+
+function addClientTemplateField() {
+    if (!clientFormTemplate.fields) clientFormTemplate.fields = [];
+    const nextOrder = (clientFormTemplate.fields.length + 1) * 10;
+    clientFormTemplate.fields.push({
+        key: 'field_' + Date.now(),
+        type: 'text',
+        enabled: true,
+        required: false,
+        label: '新字段',
+        placeholder: '',
+        order: nextOrder,
+        rules: { minLength: '', maxLength: '', regex: '' }
+    });
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function removeClientTemplateField(key) {
+    if (!confirm('确定删除该字段吗？')) return;
+    clientFormTemplate.fields = (clientFormTemplate.fields || []).filter(f => f.key !== key);
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function moveClientTemplateField(key, step) {
+    const sorted = [...(clientFormTemplate.fields || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const idx = sorted.findIndex(f => f.key === key);
+    if (idx < 0) return;
+    const targetIdx = idx + step;
+    if (targetIdx < 0 || targetIdx >= sorted.length) return;
+    const temp = sorted[idx];
+    sorted[idx] = sorted[targetIdx];
+    sorted[targetIdx] = temp;
+    sorted.forEach((f, i) => { f.order = (i + 1) * 10; });
+    clientFormTemplate.fields = sorted;
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function resetClientTemplateToDefault() {
+    if (!confirm('确定恢复默认模板吗？')) return;
+    clientFormTemplate = JSON.parse(JSON.stringify(CLIENT_FORM_TEMPLATE_DEFAULT));
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+async function saveClientFormTemplate() {
+    saveClientFormTemplateLocal();
+
+    const client = mgGetSupabaseClient();
+    if (!client) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('已保存到本地（未连接云端）');
+        return;
+    }
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('已保存到本地（请登录后同步云端）');
+        return;
+    }
+
+    const artistId = session.user.id;
+    const payload = {
+        artist_id: artistId,
+        client_form_template: clientFormTemplate,
+        updated_at: new Date().toISOString()
+    };
+
+    const { error } = await client
+        .from('artist_settings')
+        .upsert(payload, { onConflict: 'artist_id' });
+
+    if (error) {
+        console.error('保存表单模板到云端失败:', error);
+        if (typeof showGlobalToast === 'function') showGlobalToast('本地已保存，云端保存失败');
+        return;
+    }
+
+    if (typeof showGlobalToast === 'function') showGlobalToast('表单模板已保存');
 }
 
 // 检查是否已登录并启用云端

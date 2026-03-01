@@ -1529,6 +1529,57 @@
                     </div>
                 </div>
             </div>
+            <!-- 表单模板编辑页 -->
+            <div id="clientTemplateEditor" class="page">
+                <div class="schedule-section">
+                    <div class="schedule-toolbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <button type="button" class="btn secondary" onclick="backToSettingsPage()">返回</button>
+                        <h2 style="margin:0;">表单模板编辑器</h2>
+                        <div style="width:64px;"></div>
+                    </div>
+                    <div class="section" id="clientTemplateEditorSection">
+                        <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
+                            <h2>字段配置</h2>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn secondary btn-compact" onclick="addClientTemplateField()">添加字段</button>
+                                <button type="button" class="btn secondary btn-compact" onclick="resetClientTemplateToDefault()">恢复默认</button>
+                                <button type="button" class="btn btn-compact" onclick="saveClientFormTemplate()">保存模板</button>
+                            </div>
+                        </div>
+                        <p class="text-gray" style="font-size:12px;margin-top:-6px;margin-bottom:12px;">配置单主填写页（client.html）的字段、校验规则、排序与预览。保存后会同步到云端。</p>
+                        <div id="clientTemplateEditorList" class="d-flex flex-col gap-2"></div>
+                        <div class="section" style="margin-top:12px;padding:12px;border:1px dashed rgba(0,0,0,0.12);">
+                            <div style="font-weight:700;margin-bottom:8px;">实时预览</div>
+                            <div id="clientTemplatePreview" class="d-flex flex-col gap-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 表单模板编辑页 -->
+            <div id="clientTemplateEditor" class="page">
+                <div class="schedule-section">
+                    <div class="schedule-toolbar d-flex justify-between items-center" style="margin-bottom:12px;">
+                        <button type="button" class="btn secondary" onclick="backToSettingsPage()">返回我的</button>
+                        <h2 class="schedule-title" style="margin:0;">表单模板编辑器</h2>
+                        <button type="button" class="btn" onclick="saveClientFormTemplate()">保存模板</button>
+                    </div>
+                    <div class="section" id="clientTemplateEditorSection">
+                        <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
+                            <h2>字段配置</h2>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn secondary btn-compact" onclick="addClientTemplateField()">添加字段</button>
+                                <button type="button" class="btn secondary btn-compact" onclick="resetClientTemplateToDefault()">恢复默认</button>
+                            </div>
+                        </div>
+                        <p class="text-gray" style="font-size:12px;margin-top:-6px;margin-bottom:12px;">配置单主填写页（client.html）的字段、校验规则、排序与预览。保存后会同步到云端。</p>
+                        <div id="clientTemplateEditorList" class="d-flex flex-col gap-2"></div>
+                        <div class="section" style="margin-top:12px;padding:12px;border:1px dashed rgba(0,0,0,0.12);">
+                            <div style="font-weight:700;margin-bottom:8px;">实时预览</div>
+                            <div id="clientTemplatePreview" class="d-flex flex-col gap-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <!-- 我的页（原设置页） -->
             <div id="settings" class="page">
                 <button type="button" class="btn secondary w-full" onclick="openLoginPage(event)" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-radius:14px;">
@@ -1588,7 +1639,7 @@
                             </div>
                         </div>
                         <div style="margin-top:8px;font-size:12px;color:#666;">把这里的内容复制发我即可定位问题。</div>
-                        <textarea id="cloudDebugLogText" readonly style="width:100%;height:160px;margin-top:8px;box-sizing:border-box;font-size:12px;line-height:1.4;padding:10px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);background:white;"></textarea>
+                        <textarea id="cloudDebugLogText" readonly style="width:100%;height:160px;margin-top:8px;box-sizing:border-box;font-size:12px;line-height:1.4;padding:10px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-color);color:var(--text-color);"></textarea>
                     </div>
                 </div>
                 <!-- 美工信息 -->
@@ -1603,7 +1654,7 @@
                     <div class="form-row artist-info-row-1">
                         <div class="form-group">
                             <label for="artistId">美工ID</label>
-                            <input type="text" id="artistId" placeholder="请输入美工ID" onchange="updateArtistInfo('id', this.value)">
+                            <input type="text" id="artistId" placeholder="请输入美工ID">
                         </div>
                         <div class="form-group">
                             <label for="artistContact">联系方式</label>
@@ -1632,7 +1683,7 @@
                         <div style="font-weight:700;margin-bottom:8px;">生成单主填写链接（固定）</div>
                         <div style="font-size:12px;color:#666;margin-bottom:10px;">将链接发给单主，单主可自主填写委托信息并查看预估报价；提交后进入排单页「待接」筛选。</div>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                            <input type="text" id="inviteLinkInput" readonly placeholder="正在获取链接..." style="flex:1;min-width:220px;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,0.12);background:white;">
+                            <input type="text" id="inviteLinkInput" readonly placeholder="正在获取链接..." style="flex:1;min-width:220px;padding:10px 12px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-color);color:var(--text-color);">
                             <button type="button" class="btn secondary" onclick="copyInviteLink()" style="font-size:13px;padding:8px 12px;">复制链接</button>
                             <button type="button" class="btn danger-light" onclick="resetInviteLink()" style="font-size:13px;padding:8px 12px;">重置链接</button>
                         </div>
@@ -1641,6 +1692,14 @@
                             <span style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;">
                                 <span style="font-weight:700;">全部直填委托</span>
                                 <span style="font-size:12px;color:#666;">查看全部单主自主填写的委托（包括取消/拒绝/已完成）</span>
+                            </span>
+                            <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
+                        </button>
+                        <div style="height:10px;"></div>
+                        <button type="button" class="btn secondary w-full" onclick="openClientTemplateEditorPage()" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-radius:12px;">
+                            <span style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;">
+                                <span style="font-weight:700;">表单模板编辑器</span>
+                                <span style="font-size:12px;color:#666;">点击进入编辑页面配置单主填写表单</span>
                             </span>
                             <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
                         </button>

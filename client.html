@@ -1,435 +1,990 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>委托信息填写</title>
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabase-config.js"></script>
-</head>
-<body>
-  <div class="page active" style="padding:16px;max-width:760px;margin:0 auto;">
-    <h1 style="margin:8px 0 12px 0;">单主自主填写委托</h1>
-    <div id="clientStatus" class="text-gray" style="margin-bottom:12px;">正在校验链接...</div>
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+
+<head>
+
+  <meta charset="UTF-8" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>周边设计需求填写</title>
+
+  <link rel="stylesheet" href="style.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script src="supabase-config.js"></script>
+
+</head>
+
+<body>
+
+  <div class="page active" style="padding:16px;max-width:760px;margin:0 auto;">
+
+    <h1 style="margin:8px 0 8px 0;">周边设计需求填写</h1>
+
+    <p class="text-gray" style="margin:0 0 12px 0;font-size:13px;line-height:1.6;">
+
+      感谢下单～工作党上线时间不定，请填写需求表，看见就会回复。<br>
+
+      标价为个人/同人社团商用，官周/企商请在用途或备注中说明。
+
+    </p>
+
+    <div id="clientStatus" class="text-gray" style="margin-bottom:12px;">正在校验链接...</div>
+
+    <div id="clientFormWrap" class="section d-none">
+
+      <div id="cFormError" class="d-none" style="margin:10px 0;padding:10px 12px;border-radius:10px;border:1px solid rgba(239,68,68,0.35);background:rgba(239,68,68,0.08);color:#b91c1c;font-size:13px;"></div>
+
+      <div id="cDynamicFieldsContainer"></div>
+
+      <div class="form-row">
+
+        <div class="form-group" style="flex:1;">
+
+          <label>制品工艺及尺寸</label>
+
+          <div id="cItemsContainer"></div>
+
+          <div style="margin-top:10px;">
+
+            <button type="button" class="btn secondary" id="cAddItemBtn">+ 添加制品</button>
+
+          </div>
+
+          <small id="cItemsHint" class="text-gray" style="display:block;margin-top:8px;">此区域与计算页选项一致（制品类型 / 双单面 / 背景 / 配置项 / 节点 / 工艺），仅额外增加尺寸输入。</small>
+
+        </div>
+
+      </div>
+
+      <div class="form-row" style="margin-top:20px;">
+
+        <button type="button" class="btn primary w-full" id="clientSubmitBtn">提交委托</button>
+
+      </div>
+
+    </div>
+
+    <div id="clientDone" class="section d-none">
+
+      <h2 style="margin:8px 0;">已提交成功</h2>
+
+      <p class="text-gray">您的委托信息已送达画师。画师复核后将为您提供正式报价并排单。</p>
+
+      <button type="button" class="btn secondary mt-4" onclick="window.location.reload()">再填一单</button>
+
+    </div>
+
+  </div>
+
+  <script>
+
+    const DEFAULT_TEMPLATE = {
+
+      version: 3,
+
+      fields: [
+
+        { key: 'clientName', type: 'text', enabled: true, required: true, label: '称呼 / 单主昵称', placeholder: '例如：小明', order: 10 },
+
+        { key: 'commissionUse', type: 'select', enabled: true, required: true, label: '用途', options: [
+
+          { value: '个人/同人社团商用', label: '个人/同人社团商用' },
+
+          { value: '官周/企商', label: '官周/企商（请说明）' },
+
+          { value: '其他', label: '其他用途' }
+
+        ], order: 20 },
+
+        { key: 'originalWork', type: 'text', enabled: true, required: true, label: '原作', placeholder: '例如：某某作品/IP', order: 30 },
+
+        { key: 'characterName', type: 'text', enabled: true, required: true, label: '角色', placeholder: '例如：角色A、角色B', order: 40 },
+
+        { key: 'birthday', type: 'text', enabled: true, required: false, label: '生日', placeholder: '例如：05-20', order: 50 },
+
+        { key: 'englishName', type: 'text', enabled: true, required: false, label: '英文名', placeholder: '例如：Alice', order: 60 },
+
+        { key: 'projectThemeName', type: 'text', enabled: true, required: false, label: '企划主题名（中英双语）', placeholder: '例如：春日企划 / Spring Day', order: 70 },
+
+        { key: 'contactType', type: 'select', enabled: true, required: true, label: '联系方式类型', options: [
+
+          { value: 'QQ', label: 'QQ' }, { value: '微信', label: '微信' }, { value: '手机号', label: '手机号' }, { value: '小红书', label: '小红书' }, { value: '其他', label: '其他' }
+
+        ], order: 80 },
+
+        { key: 'contact', type: 'text', enabled: true, required: true, label: '联系方式账号', placeholder: '例如：123456 / wx_id', order: 90 },
+
+        { key: 'textToAdd', type: 'textarea', enabled: true, required: false, label: '想添加的文字（角色名、语录等）', placeholder: '可分行填写：\n①\n②', order: 100 },
+
+        { key: 'otherRequirements', type: 'textarea', enabled: true, required: false, label: '其他要求（例如不想要的元素等）', placeholder: '请尽量详细描述', order: 110 },
+
+        { key: 'needCutout', type: 'select', enabled: true, required: true, label: '是否需要抠图', options: [
+
+          { value: '需要', label: '需要' }, { value: '不需要', label: '不需要' }, { value: '不确定', label: '不确定（请沟通）' }
+
+        ], order: 120 },
+
+        { key: 'deadline', type: 'date', enabled: true, required: false, label: '期望截稿时间', placeholder: '', order: 130 },
+
+        { key: 'remark', type: 'textarea', enabled: true, required: false, label: '补充备注', placeholder: '其他想说明的内容都可写这里', order: 140 }
+
+      ],
+
+      items: {
+
+        enabled: true,
+
+        multi: true,
+
+        fields: {
+
+          typeId: { enabled: true, required: true },
+
+          quantity: { enabled: true, required: true },
+
+          size: { enabled: true, required: false, label: '尺寸', placeholder: '例：6.5*10cm' }
+
+        }
+
+      }
+
+    };
+
+    let artistProductSettings = [];
+
+    let artistProcessSettings = [];
+
+    let currentTemplate = DEFAULT_TEMPLATE;
+
+    function getQueryParam(name) {
+
+      const url = new URL(window.location.href);
+
+      return url.searchParams.get(name);
+
+    }
+
+    function show(el, yes) {
+
+      if (!el) return;
+
+      el.classList.toggle('d-none', !yes);
+
+    }
+
+    function setFormError(msg) {
+
+      const el = document.getElementById('cFormError');
+
+      if (!el) return;
+
+      if (!msg) {
+
+        el.classList.add('d-none');
+
+        el.textContent = '';
+
+        return;
+
+      }
+
+      el.textContent = msg;
+
+      el.classList.remove('d-none');
+
+    }
+
+    function clearAllFieldErrors() {
+
+      document.querySelectorAll('.field-error').forEach(e => e.textContent = '');
+
+      document.querySelectorAll('.field-invalid').forEach(e => e.classList.remove('field-invalid'));
+
+      setFormError('');
+
+    }
+
+    function markFieldInvalid(inputEl, message) {
+
+      if (!inputEl) return;
+
+      inputEl.classList.add('field-invalid');
+
+      const err = inputEl.closest('.form-group')?.querySelector('.field-error');
+
+      if (err) err.textContent = message || '必填';
+
+    }
+
+    function buildProductOptionsHtml() {
+
+      if (!Array.isArray(artistProductSettings) || artistProductSettings.length === 0) {
+
+        return '<option value="">暂无预设制品</option>';
+
+      }
+
+      return artistProductSettings.map(p => `<option value="${String(p.id)}">${String(p.name || '')}</option>`).join('');
+
+    }
+
+    function renderDynamicFields() {
+
+      const container = document.getElementById('cDynamicFieldsContainer');
+
+      if (!container) return;
+
+      const enabledFields = currentTemplate.fields.filter(f => f.enabled).sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      let html = '';
+
+      for (let i = 0; i < enabledFields.length; i += 2) {
+
+        html += '<div class="form-row">';
+
+        for (let j = 0; j < 2; j++) {
+
+          const field = enabledFields[i + j];
+
+          if (!field) continue;
+
+          const isTextarea = field.type === 'textarea';
+
+          const isSelect = field.type === 'select';
+
+          const optionsHtml = Array.isArray(field.options)
+
+            ? field.options.map(opt => `<option value="${String(opt.value || '')}">${String(opt.label || opt.value || '')}</option>`).join('')
+
+            : '';
+
+          html += `<div class="form-group" style="${isTextarea ? 'flex:100%' : ''}">
+
+            <label for="f_${field.key}">${field.label}${field.required ? '<span style="color:red;margin-left:4px;">*</span>' : ''}</label>
+
+            ${isTextarea
+
+              ? `<textarea id="f_${field.key}" class="c-base-field" data-key="${field.key}" placeholder="${field.placeholder || ''}" style="width:100%;min-height:80px;"></textarea>`
+
+              : isSelect
+
+                ? `<select id="f_${field.key}" class="c-base-field" data-key="${field.key}" style="width:100%;">${optionsHtml}</select>`
+
+                : `<input id="f_${field.key}" class="c-base-field" data-key="${field.key}" type="${field.type || 'text'}" placeholder="${field.placeholder || ''}" style="width:100%;" />`
+
+            }
+
+            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
+
+          </div>`;
+
+          if (isTextarea) break;
+
+        }
+
+        html += '</div>';
+
+      }
+
+      container.innerHTML = html;
+
+    }
+
+    function canRemoveItemRow() {
+
+      return document.querySelectorAll('.item-row').length > 1;
+
+    }
+
+    function createItemRow() {
+
+      const row = document.createElement('div');
+
+      row.className = 'item-row';
+
+      row.style.border = '1px solid rgba(0,0,0,0.08)';
+
+      row.style.borderRadius = '10px';
+
+      row.style.padding = '12px';
+
+      row.style.marginBottom = '12px';
+
+      row.style.background = 'rgba(0,0,0,0.01)';
+
+      row.style.position = 'relative';
+
+      row.innerHTML = `
+
+        <button type="button" class="c-item-remove" style="position:absolute; right:8px; top:8px; border:none; background:none; cursor:pointer; color:#999;">×</button>
+
+        <div class="form-row">
+
+          <div class="form-group" style="flex:1;min-width:180px;">
+
+            <label>制品类型<span style="color:red;margin-left:4px;">*</span></label>
+
+            <select class="c-item-type" style="width:100%">${buildProductOptionsHtml()}</select>
+
+            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
+
+          </div>
+
+          <div class="form-group" style="max-width:110px;">
+
+            <label>数量<span style="color:red;margin-left:4px;">*</span></label>
+
+            <input type="number" class="c-item-qty" value="1" min="1" step="1" style="width:100%" />
+
+            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
+
+          </div>
+
+          <div class="form-group" style="flex:1;min-width:180px;">
+
+            <label>尺寸（仅此项为额外增加）</label>
+
+            <input type="text" class="c-item-size" placeholder="例：6.5*10cm" style="width:100%" />
+
+            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
+
+          </div>
+
+        </div>
+
+        <div class="c-item-dynamic-options" style="margin-top:8px;"></div>
+
+      `;
+
+      const renderByType = () => {
+
+        const typeEl = row.querySelector('.c-item-type');
+
+        const selectedId = String(typeEl?.value || '');
+
+        const setting = artistProductSettings.find(p => String(p.id) === selectedId);
+
+        const priceType = setting?.priceType || 'fixed';
+
+        const additionalConfigs = Array.isArray(setting?.additionalConfigs) ? setting.additionalConfigs : [];
+
+        const nodes = Array.isArray(setting?.nodes) ? setting.nodes : [];
+
+        const dynamicWrap = row.querySelector('.c-item-dynamic-options');
+
+        dynamicWrap.innerHTML = `
+
+          <div class="form-row">
+
+            ${priceType === 'double' ? `
+
+            <div class="form-group" style="max-width:140px;">
+
+              <label>单双面</label>
+
+              <select class="c-item-double-side" style="width:100%">
+
+                <option value="single" selected>单面</option>
+
+                <option value="double">双面</option>
+
+              </select>
+
+            </div>` : ''}
+
+            ${priceType !== 'nodes' ? `
+
+            <div class="form-group" style="max-width:160px;">
+
+              <label>是否需要背景</label>
+
+              <select class="c-item-background" style="width:100%">
+
+                <option value="no" selected>不需要背景</option>
+
+                <option value="yes">需要背景</option>
+
+              </select>
+
+            </div>` : ''}
+
+          </div>
+
+          ${priceType === 'config' && additionalConfigs.length ? `
+
+          <div class="form-row">
+
+            <div class="form-group" style="flex:1;">
+
+              <label>配置项（与计算页一致）</label>
+
+              ${additionalConfigs.map((cfg, idx) => `
+
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+
+                  <span style="min-width:120px;font-size:12px;color:#666;">${cfg.name || ('配置' + (idx + 1))}</span>
+
+                  <input type="number" class="c-item-config-count" data-key="cfg_${idx}" min="0" step="1" value="0" style="width:90px;" />
+
+                </div>
+
+              `).join('')}
+
+            </div>
+
+          </div>` : ''}
+
+          ${priceType === 'nodes' && nodes.length ? `
+
+          <div class="form-row">
+
+            <div class="form-group" style="flex:1;">
+
+              <label>节点（与计算页一致）</label>
+
+              ${nodes.map((n, idx) => `
+
+                <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+
+                  <input type="checkbox" class="c-item-node-check" data-idx="${idx}" checked>
+
+                  <span>${n.name || ('节点' + (idx + 1))}（${Number(n.percent || 0)}%）</span>
+
+                </label>
+
+              `).join('')}
+
+            </div>
+
+          </div>` : ''}
+
+          <div class="form-row">
+
+            <div class="form-group" style="flex:1;">
+
+              <label>工艺（与计算页一致）</label>
+
+              ${artistProcessSettings.length ? artistProcessSettings.map(p => `
+
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+
+                  <label style="display:flex;gap:6px;align-items:center;">
+
+                    <input type="checkbox" class="c-item-process-check" data-name="${String(p.name || '').replace(/"/g, '&quot;')}" />
+
+                    <span>${String(p.name || '')}</span>
+
+                  </label>
+
+                  <label style="display:flex;gap:6px;align-items:center;">
+
+                    <span style="font-size:12px;color:#666;">层数</span>
+
+                    <input type="number" class="c-item-process-layer" data-name="${String(p.name || '').replace(/"/g, '&quot;')}" value="1" min="1" step="1" style="width:70px;" disabled />
+
+                  </label>
+
+                </div>
+
+              `).join('') : '<span class="text-gray" style="font-size:12px;">未配置工艺，可留空</span>'}
+
+            </div>
+
+          </div>
+
+        `;
+
+        dynamicWrap.querySelectorAll('.c-item-process-check').forEach(chk => {
+
+          chk.addEventListener('change', () => {
+
+            const name = chk.getAttribute('data-name');
+
+            const layer = dynamicWrap.querySelector(`.c-item-process-layer[data-name="${name}"]`);
+
+            if (layer) layer.disabled = !chk.checked;
+
+          });
+
+        });
+
+      };
+
+      row.querySelector('.c-item-type').addEventListener('change', renderByType);
+
+      renderByType();
+
+      const typeSelectEl = row.querySelector('.c-item-type');
+
+      if (typeSelectEl && typeSelectEl.options && typeSelectEl.options.length > 0) {
+
+        const firstValid = Array.from(typeSelectEl.options).find(o => String(o.value || '').trim());
+
+        if (firstValid) {
+
+          typeSelectEl.value = firstValid.value;
+
+          renderByType();
+
+        }
+
+      }
+
+      row.querySelector('.c-item-remove').addEventListener('click', function () {
+
+        if (!canRemoveItemRow()) {
+
+          setFormError('至少保留一条制品');
+
+          return;
+
+        }
+
+        row.remove();
+
+      });
+
+      document.getElementById('cItemsContainer').appendChild(row);
+
+    }
+
+    async function init() {
+
+      const statusEl = document.getElementById('clientStatus');
+
+      const formWrap = document.getElementById('clientFormWrap');
+
+      const doneWrap = document.getElementById('clientDone');
+
+      const submitBtn = document.getElementById('clientSubmitBtn');
+
+      const addItemBtn = document.getElementById('cAddItemBtn');
+
+      const itemsHintEl = document.getElementById('cItemsHint');
+
+      const slug = (getQueryParam('t') || '').trim();
+
+      if (!slug) {
+
+        statusEl.textContent = '链接无效：缺少凭证';
+
+        return;
+
+      }
+
+      const supabase = window.__SUPABASE__ && window.__SUPABASE__.client;
+
+      if (!supabase) {
+
+        statusEl.textContent = '系统未初始化 Supabase，请联系画师';
+
+        return;
+
+      }
+
+      const { data: linkRows, error: linkErr } = await supabase
+
+        .from('project_links')
+
+        .select('artist_id')
+
+        .eq('token', slug)
+
+        .eq('kind', 'default')
+
+        .limit(1);
+
+      if (linkErr) {
+
+        console.error(linkErr);
+
+        statusEl.textContent = '校验失败，请稍后重试';
+
+        return;
+
+      }
+
+      const link = linkRows && linkRows[0];
+
+      if (!link || !link.artist_id) {
+
+        statusEl.textContent = '链接无效或已失效';
+
+        return;
+
+      }
+
+      const artistId = link.artist_id;
+
+      const { data: settingsRows, error: settingsErr } = await supabase
+
+        .from('artist_settings')
+
+        .select('productSettings, processSettings, calculatorSettings, client_form_template')
+
+        .eq('artist_id', artistId)
+
+        .limit(1);
+
+      if (settingsErr) {
+
+        console.warn('拉取设置失败，将使用默认值:', settingsErr);
+
+      } else {
+
+        const row = settingsRows && settingsRows[0];
+
+        if (row) {
+
+          artistProductSettings = row.productSettings || [];
+
+          artistProcessSettings = row.processSettings || [];
+
+          if (row.client_form_template) currentTemplate = row.client_form_template;
 
-    <div id="clientFormWrap" class="section d-none">
-      <div id="cFormError" class="d-none" style="margin:10px 0;padding:10px 12px;border-radius:10px;border:1px solid rgba(239,68,68,0.35);background:rgba(239,68,68,0.08);color:#b91c1c;font-size:13px;"></div>
-
-      <div id="cDynamicFieldsContainer">
-        <!-- 动态渲染的基础字段 -->
-      </div>
-
-      <div class="form-row">
-        <div class="form-group" style="flex:1;">
-          <label>制品明细</label>
-          <div id="cItemsContainer"></div>
-          <div style="margin-top:10px;">
-            <button type="button" class="btn secondary" id="cAddItemBtn">+ 添加制品</button>
-          </div>
-          <small id="cItemsHint" class="text-gray" style="display:block;margin-top:8px;">制品选项来自画师的制品设置；每个制品可填写独立尺寸（自由输入）。</small>
-        </div>
-      </div>
-
-      <div class="form-row" style="margin-top:20px;">
-        <button type="button" class="btn primary w-full" id="clientSubmitBtn">提交委托</button>
-      </div>
-    </div>
-
-    <div id="clientDone" class="section d-none">
-      <h2 style="margin:8px 0;">已提交成功</h2>
-      <p class="text-gray">您的委托信息已送达画师。画师复核后将为您提供正式报价并排单。</p>
-      <button type="button" class="btn secondary mt-4" onclick="window.location.reload()">再填一单</button>
-    </div>
-  </div>
-
-  <script>
-    const DEFAULT_TEMPLATE = {
-      version: 1,
-      fields: [
-        { key: "clientName", type: "text", enabled: true, required: true, label: "称呼 / 单主昵称", placeholder: "例如：小明", order: 10 },
-        { key: "contact", type: "text", enabled: true, required: true, label: "联系方式（QQ/VX/MHS 等）", placeholder: "例如：QQ 12345", order: 20 },
-        { key: "deadline", type: "date", enabled: true, required: false, label: "截稿日", placeholder: "", order: 30 },
-        { key: "remark", type: "textarea", enabled: true, required: false, label: "委托总备注", placeholder: "可填写整体委托要求", order: 40 }
-      ],
-      items: {
-        enabled: true,
-        multi: true,
-        fields: {
-          typeId: { enabled: true, required: true },
-          quantity: { enabled: true, required: true },
-          size: { enabled: true, required: false, label: "尺寸要求", placeholder: "例如：58mm / A4 / 800x800px" }
-        }
-      }
-    };
-
-    let artistProductSettings = [];
-    let currentTemplate = DEFAULT_TEMPLATE;
-
-    function getQueryParam(name) {
-      const url = new URL(window.location.href);
-      return url.searchParams.get(name);
-    }
-
-    function show(el, yes) {
-      if (!el) return;
-      el.classList.toggle('d-none', !yes);
-    }
-
-    function setFormError(msg) {
-      const el = document.getElementById('cFormError');
-      if (!el) return;
-      if (!msg) {
-        el.classList.add('d-none');
-        el.textContent = '';
-        return;
-      }
-      el.textContent = msg;
-      el.classList.remove('d-none');
-    }
-
-    function clearAllFieldErrors() {
-      document.querySelectorAll('.field-error').forEach(function (e) { e.textContent = ''; });
-      document.querySelectorAll('.field-invalid').forEach(function (e) { e.classList.remove('field-invalid'); });
-      setFormError('');
-    }
-
-    function markFieldInvalid(inputEl, message) {
-      if (!inputEl) return;
-      inputEl.classList.add('field-invalid');
-      const err = inputEl.closest('.form-group') ? inputEl.closest('.form-group').querySelector('.field-error') : null;
-      if (err) err.textContent = message || '必填';
-    }
-
-    function scrollToEl(el) {
-      try {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch (e) {}
-    }
-
-    function buildProductOptionsHtml() {
-      if (!Array.isArray(artistProductSettings) || artistProductSettings.length === 0) {
-        return '<option value="">暂无预设制品</option>';
-      }
-      return artistProductSettings
-        .map(p => `<option value="${String(p.id)}">${String(p.name || '')}</option>`)
-        .join('');
-    }
-
-    function renderDynamicFields() {
-      const container = document.getElementById('cDynamicFieldsContainer');
-      if (!container) return;
-
-      const enabledFields = currentTemplate.fields
-        .filter(f => f.enabled)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-      let html = '';
-      for (let i = 0; i < enabledFields.length; i += 2) {
-        html += '<div class="form-row">';
-        for (let j = 0; j < 2; j++) {
-          const field = enabledFields[i + j];
-          if (field) {
-            const isTextarea = field.type === 'textarea';
-            html += `<div class="form-group" style="${isTextarea ? 'flex:100%' : ''}">
-              <label for="f_${field.key}">${field.label}${field.required ? '<span style="color:red;margin-left:4px;">*</span>' : ''}</label>
-              ${isTextarea
-                ? `<textarea id="f_${field.key}" class="c-base-field" data-key="${field.key}" placeholder="${field.placeholder || ''}" style="width:100%;min-height:80px;"></textarea>`
-                : `<input id="f_${field.key}" class="c-base-field" data-key="${field.key}" type="${field.type || 'text'}" placeholder="${field.placeholder || ''}" style="width:100%;" />`
+          // 用途、加急：跟随设置页（calculatorSettings）
+          const calc = row.calculatorSettings || {};
+          if (currentTemplate && Array.isArray(currentTemplate.fields)) {
+            if (calc.usageCoefficients) {
+              const usageField = currentTemplate.fields.find(f => f.key === 'commissionUse');
+              if (usageField) {
+                usageField.type = 'select';
+                usageField.options = Object.entries(calc.usageCoefficients).map(([key, val]) => ({
+                  value: String(key),
+                  label: (val && val.name) ? String(val.name) : String(key)
+                }));
               }
-              <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
-            </div>`;
-            if (isTextarea) break;
-          }
-        }
-        html += '</div>';
-      }
-      container.innerHTML = html;
-    }
-
-    function canRemoveItemRow() {
-      const rows = document.querySelectorAll('.item-row');
-      return rows.length > 1;
-    }
-
-    function createItemRow() {
-      const row = document.createElement('div');
-      row.className = 'item-row';
-      row.style.border = '1px solid rgba(0,0,0,0.08)';
-      row.style.borderRadius = '10px';
-      row.style.padding = '12px';
-      row.style.marginBottom = '12px';
-      row.style.background = 'rgba(0,0,0,0.01)';
-      row.style.position = 'relative';
-
-      const itemsFields = currentTemplate.items.fields;
-      const sizeLabel = (itemsFields.size && itemsFields.size.label) ? itemsFields.size.label : '尺寸要求';
-      const sizePlaceholder = (itemsFields.size && itemsFields.size.placeholder) ? itemsFields.size.placeholder : '尺寸要求';
-
-      const removeBtnHtml = currentTemplate.items.multi
-        ? '<button type="button" class="c-item-remove" style="position:absolute; right:8px; top:8px; border:none; background:none; cursor:pointer; color:#999;">×</button>'
-        : '';
-
-      row.innerHTML = `
-        ${removeBtnHtml}
-        <div class="form-row">
-          <div class="form-group">
-            <label>制品类型<span style="color:red;margin-left:4px;">*</span></label>
-            <select class="c-item-type" style="width:100%">${buildProductOptionsHtml()}</select>
-            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
-          </div>
-          <div class="form-group" style="max-width:100px;">
-            <label>数量<span style="color:red;margin-left:4px;">*</span></label>
-            <input type="number" class="c-item-qty" value="1" min="1" step="1" style="width:100%" />
-            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
-          </div>
-        </div>
-        ${itemsFields.size && itemsFields.size.enabled ? `
-        <div class="form-row" style="margin-top:8px;">
-          <div class="form-group">
-            <label>${sizeLabel}${itemsFields.size.required ? '<span style="color:red;margin-left:4px;">*</span>' : ''}</label>
-            <input type="text" class="c-item-size" placeholder="${sizePlaceholder}" style="width:100%" />
-            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
-          </div>
-        </div>
-        ` : ''}
-      `;
-
-      const removeBtn = row.querySelector('.c-item-remove');
-      if (removeBtn) {
-        removeBtn.addEventListener('click', function () {
-          if (!canRemoveItemRow()) {
-            setFormError('至少保留一条制品');
-            return;
-          }
-          row.remove();
-        });
-      }
-
-      document.getElementById('cItemsContainer').appendChild(row);
-    }
-
-    async function init() {
-      const statusEl = document.getElementById('clientStatus');
-      const formWrap = document.getElementById('clientFormWrap');
-      const doneWrap = document.getElementById('clientDone');
-      const submitBtn = document.getElementById('clientSubmitBtn');
-      const addItemBtn = document.getElementById('cAddItemBtn');
-      const itemsHintEl = document.getElementById('cItemsHint');
-
-      const slug = (getQueryParam('t') || '').trim();
-      if (!slug) {
-        statusEl.textContent = '链接无效：缺少凭证';
-        return;
-      }
-
-      const supabase = window.__SUPABASE__ && window.__SUPABASE__.client;
-      if (!supabase) {
-        statusEl.textContent = '系统未初始化 Supabase，请联系画师';
-        return;
-      }
-
-      // 1) 校验 slug/token，获取 artist_id
-      const { data: linkRows, error: linkErr } = await supabase
-        .from('project_links')
-        .select('artist_id')
-        .eq('token', slug)
-        .eq('kind', 'default')
-        .limit(1);
-
-      if (linkErr) {
-        console.error(linkErr);
-        statusEl.textContent = '校验失败，请稍后重试';
-        return;
-      }
-
-      const link = linkRows && linkRows[0];
-      if (!link || !link.artist_id) {
-        statusEl.textContent = '链接无效或已失效';
-        return;
-      }
-
-      const artistId = link.artist_id;
-
-      // 2) 拉取画师设置（artist_settings）：制品列表 + 表单模板
-      const { data: settingsRows, error: settingsErr } = await supabase
-        .from('artist_settings')
-        .select('productSettings, client_form_template')
-        .eq('artist_id', artistId)
-        .limit(1);
-
-      if (settingsErr) {
-        console.warn('拉取设置失败，将使用默认值:', settingsErr);
-        statusEl.textContent = '加载配置失败，请稍后重试';
-      } else {
-        const row = settingsRows && settingsRows[0];
-        if (row) {
-          artistProductSettings = row.productSettings || [];
-          if (row.client_form_template) {
-            currentTemplate = row.client_form_template;
-          }
-        }
-      }
-
-      statusEl.textContent = '请填写委托信息并提交';
-      show(formWrap, true);
-
-      // 根据模板渲染基础字段
-      renderDynamicFields();
-
-      // 制品列表未配置：阻断提交
-      if (!artistProductSettings || artistProductSettings.length === 0) {
-        if (itemsHintEl) {
-          itemsHintEl.textContent = '当前画师未配置制品列表，无法提交。请联系画师先在设置页完善制品设置并同步到云端。';
-          itemsHintEl.style.color = '#b91c1c';
-        }
-        submitBtn.disabled = true;
-        submitBtn.textContent = '暂不可提交';
-      }
-
-      // 根据模板显示/隐藏添加按钮
-      if (currentTemplate.items && currentTemplate.items.enabled) {
-        show(addItemBtn, !!currentTemplate.items.multi);
-        createItemRow();
-      } else {
-        const itemsWrap = document.getElementById('cItemsContainer');
-        if (itemsWrap && itemsWrap.parentElement) show(itemsWrap.parentElement, false);
-      }
-
-      addItemBtn.addEventListener('click', function () {
-        createItemRow();
-      });
-
-      submitBtn.addEventListener('click', async function () {
-        clearAllFieldErrors();
-
-        // 防重复
-        if (submitBtn.disabled) return;
-
-        // 校验基础字段
-        const baseData = {};
-        let firstInvalidEl = null;
-
-        currentTemplate.fields.filter(f => f.enabled).forEach(f => {
-          const el = document.querySelector(`.c-base-field[data-key="${f.key}"]`);
-          if (!el) return;
-          const val = (el.value || '').trim();
-          if (f.required && !val) {
-            markFieldInvalid(el, '必填');
-            if (!firstInvalidEl) firstInvalidEl = el;
-          }
-          baseData[f.key] = val || null;
-        });
-
-        if (firstInvalidEl) {
-          setFormError('请完善标红的必填项');
-          scrollToEl(firstInvalidEl);
-          try { firstInvalidEl.focus(); } catch (e) {}
-          return;
-        }
-
-        // 校验并收集制品明细
-        const items = [];
-        const itemRows = document.querySelectorAll('.item-row');
-        if (currentTemplate.items && currentTemplate.items.enabled) {
-          if (!itemRows.length) {
-            setFormError('请至少添加一个制品');
-            return;
-          }
-        }
-
-        let firstItemInvalid = null;
-        let itemIndex = 0;
-        for (let row of itemRows) {
-          itemIndex++;
-          const typeEl = row.querySelector('.c-item-type');
-          const qtyEl = row.querySelector('.c-item-qty');
-          const sizeEl = row.querySelector('.c-item-size');
-
-          const typeId = typeEl ? (typeEl.value || '').trim() : '';
-          const typeName = typeEl && typeEl.selectedIndex >= 0 ? (typeEl.options[typeEl.selectedIndex].text || '') : '';
-          const quantityRaw = (qtyEl ? qtyEl.value : '1');
-          const quantity = Math.max(1, parseInt(quantityRaw || '1', 10) || 1);
-          const size = sizeEl ? (sizeEl.value || '').trim() : '';
-
-          if (!typeId) {
-            markFieldInvalid(typeEl, `第 ${itemIndex} 行：请选择制品类型`);
-            if (!firstItemInvalid) firstItemInvalid = typeEl;
-          }
-          if (!isFinite(quantity) || quantity < 1) {
-            markFieldInvalid(qtyEl, `第 ${itemIndex} 行：数量需大于 0`);
-            if (!firstItemInvalid) firstItemInvalid = qtyEl;
-          }
-          if (currentTemplate.items.fields.size && currentTemplate.items.fields.size.required && !size) {
-            markFieldInvalid(sizeEl, `第 ${itemIndex} 行：请填写尺寸`);
-            if (!firstItemInvalid) firstItemInvalid = sizeEl;
-          }
-
-          items.push({
-            typeId: typeId || null,
-            typeName: typeName || null,
-            quantity,
-            size
-          });
-        }
-
-        if (firstItemInvalid) {
-          setFormError('请完善标红的制品明细');
-          scrollToEl(firstItemInvalid);
-          try { firstItemInvalid.focus(); } catch (e) {}
-          return;
-        }
-
-        submitBtn.disabled = true;
-        submitBtn.textContent = '提交中...';
-        statusEl.textContent = '提交中...';
-
-        try {
-          const clientInputSnapshot = {
-            ...baseData,
-            base: baseData,
-            items: items,
-            templateVersion: currentTemplate.version || 1
-          };
-
-          const payload = {
-            artist_id: artistId,
-            token: slug,
-            source: 'client_self_submit',
-            status: 'PENDING_REVIEW',
-            client_input_snapshot: clientInputSnapshot,
-            calc_snapshot: null
-          };
-
-          const { error: insErr } = await supabase
-            .from('projects')
-            .insert([payload]);
-
-          if (insErr) {
-            console.error(insErr);
-            setFormError('提交失败，请稍后重试');
-            statusEl.textContent = '提交失败';
-            return;
-          }
-
-          show(formWrap, false);
-          show(doneWrap, true);
-          statusEl.textContent = '提交成功';
-        } finally {
-          submitBtn.disabled = false;
-          submitBtn.textContent = '提交委托';
-        }
-      });
-    }
-
-    init();
-  </script>
-
-  <style>
-    .field-invalid {
-      border-color: rgba(239,68,68,0.9) !important;
-      box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
-    }
-  </style>
-</body>
-</html>
+            }
+            if (calc.urgentCoefficients) {
+              let urgentField = currentTemplate.fields.find(f => f.key === 'urgentLevel');
+              if (!urgentField) {
+                urgentField = {
+                  key: 'urgentLevel',
+                  type: 'select',
+                  enabled: true,
+                  required: false,
+                  label: '加急等级',
+                  options: [],
+                  order: 125
+                };
+                currentTemplate.fields.push(urgentField);
+              }
+              urgentField.type = 'select';
+              urgentField.enabled = true;
+              urgentField.options = Object.entries(calc.urgentCoefficients).map(([key, val]) => ({
+                value: String(key),
+                label: (val && val.name) ? String(val.name) : String(key)
+              }));
+            }
+          }
+
+        }
+
+      }
+
+      statusEl.textContent = '请填写委托信息并提交';
+
+      show(formWrap, true);
+
+      renderDynamicFields();
+
+      if (!artistProductSettings.length) {
+
+        if (itemsHintEl) {
+
+          itemsHintEl.textContent = '当前画师未配置制品列表，无法提交。请联系画师先在设置页完善制品设置并同步到云端。';
+
+          itemsHintEl.style.color = '#b91c1c';
+
+        }
+
+        submitBtn.disabled = true;
+
+        submitBtn.textContent = '暂不可提交';
+
+      }
+
+      if (currentTemplate.items && currentTemplate.items.enabled) {
+
+        show(addItemBtn, !!currentTemplate.items.multi);
+
+        createItemRow();
+
+      }
+
+      addItemBtn.addEventListener('click', createItemRow);
+
+      submitBtn.addEventListener('click', async function () {
+
+        clearAllFieldErrors();
+
+        if (submitBtn.disabled) return;
+
+        const baseData = {};
+
+        let firstInvalidEl = null;
+
+        currentTemplate.fields.filter(f => f.enabled).forEach(f => {
+
+          const el = document.querySelector(`.c-base-field[data-key="${f.key}"]`);
+
+          if (!el) return;
+
+          const val = (el.value || '').trim();
+
+          if (f.required && !val) {
+
+            markFieldInvalid(el, '必填');
+
+            if (!firstInvalidEl) firstInvalidEl = el;
+
+          }
+
+          baseData[f.key] = val || null;
+
+        });
+
+        if (firstInvalidEl) {
+
+          setFormError('请完善标红的必填项');
+
+          firstInvalidEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+          try { firstInvalidEl.focus(); } catch (_) {}
+
+          return;
+
+        }
+
+        const itemRows = document.querySelectorAll('.item-row');
+
+        if (!itemRows.length) {
+
+          setFormError('请至少添加一个制品');
+
+          return;
+
+        }
+
+        const items = [];
+
+        let firstItemInvalid = null;
+
+        itemRows.forEach((row, idx) => {
+
+          const typeEl = row.querySelector('.c-item-type');
+
+          const qtyEl = row.querySelector('.c-item-qty');
+
+          const sizeEl = row.querySelector('.c-item-size');
+
+          const typeId = (typeEl?.value || '').trim();
+
+          const typeName = typeEl && typeEl.selectedIndex >= 0 ? (typeEl.options[typeEl.selectedIndex].text || '') : '';
+
+          const quantity = Math.max(1, parseInt(qtyEl?.value || '1', 10) || 1);
+
+          const size = (sizeEl?.value || '').trim();
+
+          const setting = artistProductSettings.find(p => String(p.id) === String(typeId));
+
+          const priceType = setting?.priceType || 'fixed';
+
+          const doubleSideEl = row.querySelector('.c-item-double-side');
+
+          const backgroundEl = row.querySelector('.c-item-background');
+
+          const doubleSide = (doubleSideEl?.value || '').trim();
+
+          const background = (backgroundEl?.value || '').trim();
+
+          const configCounts = {};
+
+          const configInputs = row.querySelectorAll('.c-item-config-count');
+
+          configInputs.forEach(input => {
+
+            const key = input.getAttribute('data-key') || '';
+
+            const n = Math.max(0, parseInt(input.value || '0', 10) || 0);
+
+            if (key) configCounts[key] = n;
+
+          });
+
+          const selectedNodes = [];
+
+          row.querySelectorAll('.c-item-node-check').forEach(chk => {
+
+            if (chk.checked) selectedNodes.push(parseInt(chk.getAttribute('data-idx') || '0', 10));
+
+          });
+
+          const processes = [];
+
+          row.querySelectorAll('.c-item-process-check').forEach(chk => {
+
+            if (!chk.checked) return;
+
+            const name = chk.getAttribute('data-name') || '';
+
+            const layerEl = row.querySelector(`.c-item-process-layer[data-name="${name}"]`);
+
+            const layers = Math.max(1, parseInt(layerEl?.value || '1', 10) || 1);
+
+            if (name) processes.push({ name, layers });
+
+          });
+
+          if (!typeId) {
+
+            markFieldInvalid(typeEl, `第 ${idx + 1} 行：请选择制品类型`);
+
+            if (!firstItemInvalid) firstItemInvalid = typeEl;
+
+          }
+
+          const combinedSpecParts = [
+
+            typeName || '',
+
+            priceType === 'double' ? (doubleSide === 'double' ? '双面' : '单面') : '',
+
+            priceType !== 'nodes' ? (background === 'yes' ? '带背景' : '无背景') : '',
+
+            processes.length ? ('工艺：' + processes.map(p => `${p.name}×${p.layers}层`).join('、')) : '',
+
+            size || ''
+
+          ].filter(Boolean);
+
+          items.push({
+
+            typeId: typeId || null,
+
+            typeName: typeName || null,
+
+            priceType,
+
+            quantity,
+
+            size: size || null,
+
+            doubleSide: doubleSide || null,
+
+            background: background || null,
+
+            additionalConfigs: configCounts,
+
+            selectedNodes,
+
+            processes,
+
+            combinedSpec: combinedSpecParts.join('，')
+
+          });
+
+        });
+
+        if (firstItemInvalid) {
+
+          setFormError('请完善标红的制品明细');
+
+          firstItemInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+          try { firstItemInvalid.focus(); } catch (_) {}
+
+          return;
+
+        }
+
+        submitBtn.disabled = true;
+
+        submitBtn.textContent = '提交中...';
+
+        statusEl.textContent = '提交中...';
+
+        try {
+
+          const payload = {
+
+            artist_id: artistId,
+
+            token: slug,
+
+            source: 'client_self_submit',
+
+            status: 'PENDING_REVIEW',
+
+            client_input_snapshot: {
+
+              ...baseData,
+
+              base: baseData,
+
+              items,
+
+              templateVersion: currentTemplate.version || 1
+
+            },
+
+            calc_snapshot: null
+
+          };
+
+          const { error: insErr } = await supabase.from('projects').insert([payload]);
+
+          if (insErr) {
+
+            console.error(insErr);
+
+            setFormError('提交失败，请稍后重试');
+
+            statusEl.textContent = '提交失败';
+
+            return;
+
+          }
+
+          show(formWrap, false);
+
+          show(doneWrap, true);
+
+          statusEl.textContent = '提交成功';
+
+        } finally {
+
+          submitBtn.disabled = false;
+
+          submitBtn.textContent = '提交委托';
+
+        }
+
+      });
+
+    }
+
+    init();
+
+  </script>
+
+  <style>
+
+    .field-invalid {
+
+      border-color: rgba(239,68,68,0.9) !important;
+
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
+
+    }
+
+  </style>
+
+</body>
+
+</html>
+
