@@ -3312,7 +3312,10 @@ function applyRecordFilters() {
                 <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})" onclick="event.stopPropagation()">
                 <div class="record-item-client-wrap">
                     <span class="record-item-client">${clientDisplay}</span>
-                    <span class="record-item-date">${shortDate}</span>
+                    <div class="record-item-meta">
+                        <span class="record-item-date">${shortDate}</span>
+                        <span class="record-item-id">${item.id}</span>
+                    </div>
                 </div>
                 <div class="record-item-right">
                     ${amountHtml}
@@ -7560,7 +7563,25 @@ function triggerDownload(dataUrl, filename) {
     const link = document.createElement('a');
     link.download = filename;
     link.href = dataUrl;
-    link.click();
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    
+    // 确保在用户交互上下文中执行点击
+    try {
+        // 对于某些浏览器，需要使用 setTimeout 来确保在事件循环中执行
+        setTimeout(() => {
+            link.click();
+            // 延迟移除链接，确保下载操作完成
+            setTimeout(() => {
+                document.body.removeChild(link);
+            }, 100);
+        }, 0);
+    } catch (error) {
+        console.error('下载失败:', error);
+        // 失败时尝试直接点击
+        link.click();
+        document.body.removeChild(link);
+    }
 }
 
 // 轻量提示：在底部显示一条不打断操作的消息
@@ -7873,31 +7894,33 @@ function getScheduleItemsForDate(selectedDate) {
         if (!start && !end) return false;
         // 仅 start：只显示在 start 当天
         if (start && !end) return target === start;
-        // 仅 deadline：不显示（未设置开始时间的排挡不显示在当日里）
-        if (!start && end) return false;
+        // 仅 deadline：只显示在 deadline 当天
+        if (!start && end) return target === end;
         // start + deadline：显示在区间内
         return target >= start && target <= end;
     });
 }
 
-// 有排单时间的全部（必须有 startTime，排除已完结）
+// 有排单时间的全部（有 startTime 或 deadline，排除已完结）
 function getScheduleItemsAll() {
     return history.filter(h => {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         const hasStart = (h.startTime && String(h.startTime).trim());
-        return !!hasStart;
+        const hasDeadline = (h.deadline && String(h.deadline).trim());
+        return hasStart || hasDeadline;
     });
 }
 
-// 待排单：未设置排单时间（无 startTime，排除已完结）
+// 待排单：未设置排单时间（无 startTime 和 deadline，排除已完结）
 function getScheduleItemsPending() {
     return history.filter(h => {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         const hasStart = (h.startTime && String(h.startTime).trim());
-        // 未设置开始时间视为待排单
-        return !hasStart;
+        const hasDeadline = (h.deadline && String(h.deadline).trim());
+        // 既无开始时间也无截稿时间视为待排单
+        return !hasStart && !hasDeadline;
     });
 }
 
@@ -7952,9 +7975,12 @@ function getScheduleItemsForMonth(year, month) {
             return !(d < monthStart || d > monthEnd);
         }
 
-        // 仅 deadline：不显示（未设置开始时间的排挡不显示）
+        // 仅 deadline：只在 deadline 当天所在的月份显示
         if (!hasStart && hasDeadline) {
-            return false;
+            const d = new Date(h.deadline);
+            if (isNaN(d.getTime())) return false;
+            d.setHours(0, 0, 0, 0);
+            return !(d < monthStart || d > monthEnd);
         }
 
         // startTime + deadline：按区间交集
@@ -11801,6 +11827,7 @@ function toggleHistorySelection(id) {
     }
     
     updateBatchDeleteButton();
+    updateRecordBatchDeleteButton();
 }
 
 // 全选/取消全选
@@ -11859,6 +11886,114 @@ function restoreCheckboxStates() {
             item.classList.add('selected');
         }
     });
+    updateBatchDeleteButton();
+    updateRecordBatchDeleteButton();
+}
+
+// 切换记录页批量操作模式
+function toggleRecordBatchMode() {
+    const recordContainer = document.getElementById('recordContainer');
+    const batchControl = document.getElementById('recordBatchControl');
+    const batchModeBtn = document.getElementById('recordBatchModeBtn');
+    
+    if (recordContainer.classList.contains('record-batch-mode')) {
+        // 退出批量操作模式
+        exitRecordBatchMode();
+    } else {
+        // 进入批量操作模式
+        recordContainer.classList.add('record-batch-mode');
+        batchControl.classList.remove('d-none');
+        batchModeBtn.textContent = '退出批量';
+        // 清空之前的选择
+        selectedHistoryIds.clear();
+        updateRecordBatchDeleteButton();
+        // 恢复复选框状态
+        restoreCheckboxStates();
+    }
+}
+
+// 退出记录页批量操作模式
+function exitRecordBatchMode() {
+    const recordContainer = document.getElementById('recordContainer');
+    const batchControl = document.getElementById('recordBatchControl');
+    const batchModeBtn = document.getElementById('recordBatchModeBtn');
+    
+    recordContainer.classList.remove('record-batch-mode');
+    batchControl.classList.add('d-none');
+    batchModeBtn.textContent = '批量操作';
+    // 清空选择
+    selectedHistoryIds.clear();
+    updateRecordBatchDeleteButton();
+    // 移除选中样式
+    document.querySelectorAll('.record-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    // 取消勾选复选框
+    document.querySelectorAll('.record-item-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+}
+
+// 全选记录
+function selectAllRecord() {
+    const checkboxes = document.querySelectorAll('.record-item-checkbox');
+    if (checkboxes.length === 0) return;
+    
+    const allSelected = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(cb => {
+        cb.checked = !allSelected;
+        const id = parseInt(cb.dataset.id);
+        if (!allSelected) {
+            selectedHistoryIds.add(id);
+        } else {
+            selectedHistoryIds.delete(id);
+        }
+    });
+    
+    // 更新选中样式
+    document.querySelectorAll('.record-item').forEach(item => {
+        const id = parseInt(item.dataset.id);
+        if (selectedHistoryIds.has(id)) {
+            item.classList.add('selected');
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+    
+    updateRecordBatchDeleteButton();
+}
+
+// 批量删除记录
+function batchDeleteRecord() {
+    if (selectedHistoryIds.size === 0) return;
+    
+    if (confirm(`确定删除选中的 ${selectedHistoryIds.size} 条记录？`)) {
+        selectedHistoryIds.forEach(id => {
+            const index = history.findIndex(item => item.id === id);
+            if (index !== -1) {
+                history.splice(index, 1);
+            }
+        });
+        
+        // 保存数据
+        saveData();
+        // 重新渲染
+        applyRecordFilters();
+        // 退出批量操作模式
+        exitRecordBatchMode();
+        // 显示提示
+        showGlobalToast(`已删除 ${selectedHistoryIds.size} 条记录`);
+    }
+}
+
+// 更新记录页批量删除按钮状态
+function updateRecordBatchDeleteButton() {
+    const btn = document.getElementById('recordBatchDeleteBtn');
+    if (btn) {
+        btn.disabled = selectedHistoryIds.size === 0;
+        btn.textContent = selectedHistoryIds.size > 0 ? `批量删除(${selectedHistoryIds.size})` : '批量删除(0)';
+    }
 }
 
 // 批量删除历史记录

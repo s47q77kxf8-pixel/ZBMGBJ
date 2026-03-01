@@ -1361,13 +1361,7 @@
                                                 <option value="month">按月分组</option>
                                             </select>
                                         </div>
-                                        <div class="filter-section">
-                                            <label class="filter-label">批量操作</label>
-                                            <div class="d-flex gap-2">
-                                                <button class="btn secondary flex-1" onclick="selectAllHistory()">全选</button>
-                                                <button class="btn danger flex-1" id="batchDeleteBtn" onclick="batchDeleteHistory()" disabled>批量删除</button>
-                                            </div>
-                                        </div>
+
                                         <div class="filter-section">
                                             <button class="btn w-full" onclick="exportHistoryToExcel(); closeHistoryFilterDrawer();">导出Excel</button>
                                         </div>
@@ -1425,12 +1419,23 @@
                                                 <button type="button" class="record-sort-opt" data-sort="client-desc" onclick="setRecordSortValue('client-desc')">单主ID（Z-A）</button>
                                             </div>
                                         </div>
+                                        <button class="btn secondary" id="recordBatchModeBtn" onclick="toggleRecordBatchMode()" aria-label="批量操作" title="批量操作">
+                                            批量操作
+                                        </button>
                                         <button class="btn secondary page-filter-btn-with-label" id="recordFilterBtn" onclick="toggleRecordFilterDrawer()" aria-label="筛选" title="筛选">
                                             <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
                                             <span class="page-action-label" id="recordFilterBtnText">筛选</span>
                                             <span id="recordFilterBadge" class="filter-badge d-none">0</span>
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+                            <!-- 批量操作控制面板 -->
+                            <div id="recordBatchControl" class="d-none mt-2">
+                                <div class="d-flex gap-2">
+                                    <button class="btn secondary flex-1" onclick="selectAllRecord()">全选</button>
+                                    <button class="btn danger flex-1" id="recordBatchDeleteBtn" onclick="batchDeleteRecord()" disabled>批量删除(0)</button>
+                                    <button class="btn secondary" onclick="exitRecordBatchMode()">取消</button>
                                 </div>
                             </div>
                         </div>
@@ -1491,13 +1496,7 @@
                                     </select>
                                     <small class="text-gray">全部排序时按当前排序规则整列表显示，不按月份分组</small>
                                 </div>
-                                <div class="filter-section">
-                                    <label class="filter-label">批量操作</label>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn secondary flex-1" onclick="selectAllHistory()">全选</button>
-                                        <button class="btn danger flex-1" id="recordBatchDeleteBtn" onclick="batchDeleteHistory()" disabled>批量删除</button>
-                                    </div>
-                                </div>
+
                             </div>
                             <div class="filter-drawer-footer">
                                 <button class="btn secondary flex-1" onclick="resetRecordFilters()">重置</button>

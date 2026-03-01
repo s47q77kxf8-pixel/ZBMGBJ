@@ -8019,6 +8019,11 @@ html.theme-dark .settlement-preview {
     margin-right: 0.4rem;
     flex-shrink: 0;
     accent-color: #111;
+    display: none; /* 默认隐藏 */
+}
+
+.record-batch-mode .record-item .record-item-checkbox {
+    display: block; /* 批量操作模式下显示 */
 }
 
 .record-item-client-wrap {
@@ -8041,6 +8046,21 @@ html.theme-dark .settlement-preview {
     font-size: 0.72rem;
     color: var(--text-light);
     white-space: nowrap;
+}
+
+.record-item-meta {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.2rem;
+}
+
+.record-item-id {
+    font-size: 0.65rem;
+    color: var(--text-light);
+    background: var(--bg-secondary);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.2rem;
 }
 
 .record-item-right {
