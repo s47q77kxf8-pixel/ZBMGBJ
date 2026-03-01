@@ -26,6 +26,8 @@
     --spacing-lg: 1.5rem;
     --spacing-xl: 1.5rem;
     --toggle-off-bg: #9ca3af;
+    /* 桌面端顶部导航占位高度（用于抽屉/弹层避让） */
+    --desktop-nav-height: 64px;
     /* 小票默认字体（作为后备，主题类会覆盖此值） */
     --receipt-font-family: 'Courier New', 'Monaco', 'Consolas', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Courier', monospace;
 }
@@ -696,6 +698,13 @@ body {
     padding-bottom: 80px; /* 为底部导航留出空间 */
 }
 
+/* 桌面端：给主内容预留顶部导航空间，避免 sticky 元素与弹层顶到导航下方重叠 */
+@media (min-width: 769px) {
+    .main-content {
+        padding-top: calc(1rem + 2px);
+    }
+}
+
 /* 布局容器 */
 .app-container {
     max-width: 800px;
@@ -715,6 +724,13 @@ body {
     z-index: 100;
     padding: 0.75rem 1rem;
     box-shadow: var(--shadow-sm);
+}
+
+/* 桌面端：让顶部导航高度可被抽屉/弹层动态复用 */
+@media (min-width: 769px) {
+    .navbar {
+        min-height: var(--desktop-nav-height);
+    }
 }
 
 .nav-buttons {
@@ -5525,6 +5541,39 @@ input:checked + .toggle-slider:before {
     /* 桌面端抽屉可以更宽一些 */
     .filter-drawer-content {
         max-width: 500px;
+    }
+
+    /* 桌面端：统一顶部安全区（动态读取 navbar 高度），避免弹层被导航遮挡 */
+    .history-filter-drawer,
+    .calculator-drawer,
+    .receipt-drawer {
+        top: var(--desktop-nav-height) !important;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: calc(100dvh - var(--desktop-nav-height));
+    }
+
+    .filter-drawer-content,
+    .calculator-drawer-panel,
+    .receipt-drawer-panel {
+        top: 0 !important;
+        bottom: 0 !important;
+        height: 100% !important;
+        max-height: 100% !important;
+    }
+
+    /* 桌面端：弹窗默认贴顶部安全区向下排布，避免标题被导航压住 */
+    .modal,
+    .history-record-modal,
+    .schedule-todo-card-modal,
+    .settlement-modal {
+        padding-top: calc(var(--desktop-nav-height) + 0.75rem) !important;
+    }
+
+    .modal,
+    .history-record-modal {
+        align-items: flex-start;
     }
 }
 

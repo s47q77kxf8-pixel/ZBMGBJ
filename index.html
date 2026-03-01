@@ -2678,5 +2678,23 @@
         })();
     </script>
     <script src="script.js?v=20260215-cloud-debug"></script>
+    <script>
+        (function setupDesktopNavHeightVar() {
+            function applyDesktopNavHeight() {
+                try {
+                    var nav = document.querySelector('.navbar');
+                    if (!nav) return;
+                    var h = Math.ceil(nav.getBoundingClientRect().height || 0);
+                    if (h > 0) {
+                        document.documentElement.style.setProperty('--desktop-nav-height', h + 'px');
+                    }
+                } catch (_) {}
+            }
+            applyDesktopNavHeight();
+            window.addEventListener('resize', applyDesktopNavHeight, { passive: true });
+            window.addEventListener('orientationchange', applyDesktopNavHeight, { passive: true });
+            window.addEventListener('load', applyDesktopNavHeight, { passive: true });
+        })();
+    </script>
 </body>
 </html>
