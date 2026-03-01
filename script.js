@@ -7790,6 +7790,15 @@ function toggleScheduleNodeDone(checkbox, nodeIdx) {
     // 更新数据
     setScheduleNodeDone(id, idx, nodeIdx, checkbox.checked);
     
+    // 云端同步：如果已启用云端模式，异步同步到 Supabase
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        markOrderUnsynced(id);
+        mgCloudUpsertOrder(item).catch(err => {
+            console.error('云端同步失败:', err);
+            updateSyncStatus();
+        });
+    }
+    
     // 立即反馈 UI 样式
     const row = checkbox.closest('.schedule-todo-row');
     if (row) row.classList.toggle('schedule-todo-done', checkbox.checked);
@@ -7864,33 +7873,31 @@ function getScheduleItemsForDate(selectedDate) {
         if (!start && !end) return false;
         // 仅 start：只显示在 start 当天
         if (start && !end) return target === start;
-        // 仅 deadline：只显示在 deadline 当天
-        if (!start && end) return target === end;
+        // 仅 deadline：不显示（未设置开始时间的排挡不显示在当日里）
+        if (!start && end) return false;
         // start + deadline：显示在区间内
         return target >= start && target <= end;
     });
 }
 
-// 有排单时间的全部（startTime 或 deadline 至少一个，排除已完结）
+// 有排单时间的全部（必须有 startTime，排除已完结）
 function getScheduleItemsAll() {
     return history.filter(h => {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         const hasStart = (h.startTime && String(h.startTime).trim());
-        const hasDeadline = (h.deadline && String(h.deadline).trim());
-        return !!(hasStart || hasDeadline);
+        return !!hasStart;
     });
 }
 
-// 待排单：未设置排单时间（无 startTime 且无 deadline，排除已完结）
+// 待排单：未设置排单时间（无 startTime，排除已完结）
 function getScheduleItemsPending() {
     return history.filter(h => {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         const hasStart = (h.startTime && String(h.startTime).trim());
-        const hasDeadline = (h.deadline && String(h.deadline).trim());
-        // 任意一项未设置都视为待排单
-        return !hasStart || !hasDeadline;
+        // 未设置开始时间视为待排单
+        return !hasStart;
     });
 }
 
@@ -7945,12 +7952,9 @@ function getScheduleItemsForMonth(year, month) {
             return !(d < monthStart || d > monthEnd);
         }
 
-        // 仅 deadline：只在 deadline 当天
+        // 仅 deadline：不显示（未设置开始时间的排挡不显示）
         if (!hasStart && hasDeadline) {
-            const d = new Date(h.deadline);
-            if (isNaN(d.getTime())) return false;
-            d.setHours(0, 0, 0, 0);
-            return !(d < monthStart || d > monthEnd);
+            return false;
         }
 
         // startTime + deadline：按区间交集
@@ -9311,6 +9315,18 @@ function toggleScheduleTodoDone(checkbox) {
     const isAllDoneNow = total > 0 && doneAfter === total;
     const allDoneChanged = wasAllDone !== isAllDoneNow;
 
+    // 保存数据
+    saveData();
+    
+    // 云端同步：如果已启用云端模式，异步同步到 Supabase
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        markOrderUnsynced(id);
+        mgCloudUpsertOrder(item).catch(err => {
+            console.error('云端同步失败:', err);
+            updateSyncStatus();
+        });
+    }
+    
     setTimeout(function () {
         renderScheduleTodoSection();
         if (allDoneChanged) renderScheduleCalendar();
@@ -16426,16 +16442,19 @@ function updateSyncStatus() {
     if (!statusText) return;
     
     const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
-    if (!isCloudModeOn) return;
+    if (!isCloudModeOn) {
+        statusText.innerHTML = `☁️ 云端同步未启用`;
+        return;
+    }
     
     // 每次更新 UI 前先校准一次，确保数量准确
     calibrateUnsyncedOrders();
     
     const unsyncedCount = unsyncedOrderIds.size;
     if (unsyncedCount > 0) {
-        statusText.innerHTML = `✅ 智能同步模式已启用 <span style="color:#ff6b6b;font-weight:600;">（${unsyncedCount} 条未同步）</span>`;
+        statusText.innerHTML = `✅ 智能同步模式已启用 <span style="color:#ff6b6b;font-weight:600;">（${unsyncedCount} 条未同步，自动同步中）</span>`;
     } else {
-        statusText.innerHTML = `✅ 智能同步模式已启用`;
+        statusText.innerHTML = `✅ 智能同步模式已启用 <span style="color:#4caf50;">（同步完成）</span>`;
     }
 }
 

@@ -1690,12 +1690,13 @@
                         <span id="manualSyncArrow" style="font-size:14px;line-height:1;opacity:.75;">▸</span>
                     </button>
                     <div id="manualSyncBody" class="d-none" style="margin-top:6px;">
-                    <div style="font-size:12px;color:#666;margin-bottom:6px;">跨设备最简单：设备A点「复制 JSON」→ 设备B点「粘贴导入」</div>
-                    <div style="font-size:12px;color:#666;margin-bottom:10px;">也可用文件方式：导出 JSON 后，在另一设备用 导入 JSON</div>
+                    <div style="font-size:12px;color:#666;margin-bottom:10px;">跨设备最简单：设备A点「复制 JSON」→ 设备B点「粘贴导入」也可用文件方式：导出 JSON 后，在另一设备用 导入 JSON</div>
                     <input type="file" id="recordSyncImportInput" accept=".json,application/json" class="d-none" aria-hidden="true" onchange="handleRecordSyncImport(event)">
-                    <div class="d-flex gap-2 items-center" style="flex-wrap:nowrap;overflow-x:auto;">
+                    <div class="d-flex gap-2 items-center" style="margin-bottom:6px;">
                         <button type="button" class="btn secondary" id="recordImportBtn" onclick="document.getElementById('recordSyncImportInput').click();" aria-label="导入数据" title="选择 JSON 文件导入" style="white-space:nowrap;">导入 JSON</button>
                         <button type="button" class="btn secondary" onclick="importSyncDataFromClipboard()" aria-label="粘贴导入" title="从剪贴板粘贴 JSON 并导入" style="white-space:nowrap;">粘贴导入</button>
+                    </div>
+                    <div class="d-flex gap-2 items-center">
                         <button type="button" class="btn secondary" id="recordExportBtn" onclick="exportSyncData()" aria-label="导出" title="导出 JSON（同步，含全局设置）" style="white-space:nowrap;">导出 JSON</button>
                         <button type="button" class="btn secondary" onclick="exportSyncDataToClipboard()" aria-label="复制JSON" title="复制 JSON 到剪贴板" style="white-space:nowrap;">复制 JSON</button>
                         <button type="button" class="btn secondary" onclick="exportRecordToExcel()" style="white-space:nowrap;">导出 Excel</button>
