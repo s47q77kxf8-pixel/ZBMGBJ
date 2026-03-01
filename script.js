@@ -1071,6 +1071,12 @@ function toggleReceiptCustomizationPanel() {
     const drawer = document.getElementById('receiptDrawer');
     
     if (modal.classList.contains('d-none')) {
+        // 打开小票设置时，确保小票头/尾图片可见（避免被“排单后折叠图片”状态隐藏）
+        const quotePage = document.getElementById('quote');
+        if (quotePage) {
+            quotePage.classList.remove('quote-receipt-images-collapsed');
+        }
+
         // 手机端：先把小票滚到视口上方，方便上半屏预览
         if (window.innerWidth <= 768) {
             const quoteEl = document.getElementById('quoteContent');
@@ -7607,6 +7613,165 @@ function showGlobalToast(message, duration = 2000) {
             toast.classList.add('d-none');
         }, 200);
     }, duration);
+}
+
+// 网络守护：断网提示 + 手动重试 + 自动重连探测
+function mgInitNetworkGuard() {
+    if (window.__mgNetworkGuardInited) return;
+    window.__mgNetworkGuardInited = true;
+
+    const state = {
+        bar: null,
+        text: null,
+        retryBtn: null,
+        intervalId: null,
+        probing: false,
+        wasOfflineShown: false,
+        autoReloadLocked: false
+    };
+
+    function ensureBar() {
+        if (state.bar) return;
+        const bar = document.createElement('div');
+        bar.id = 'networkGuardBar';
+        bar.style.cssText = [
+            'position:fixed',
+            'left:50%',
+            'top:12px',
+            'transform:translateX(-50%)',
+            'z-index:10001',
+            'max-width:min(92vw,560px)',
+            'width:calc(100% - 24px)',
+            'padding:10px 12px',
+            'border-radius:10px',
+            'background:rgba(30,41,59,0.92)',
+            'color:#fff',
+            'display:none',
+            'align-items:center',
+            'justify-content:space-between',
+            'gap:10px',
+            'box-shadow:0 8px 24px rgba(0,0,0,.25)'
+        ].join(';');
+
+        const text = document.createElement('div');
+        text.textContent = '网络异常，正在尝试重连...';
+        text.style.cssText = 'font-size:13px;line-height:1.35;';
+
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.textContent = '重试';
+        retryBtn.style.cssText = [
+            'border:none',
+            'background:#4f46e5',
+            'color:#fff',
+            'padding:6px 12px',
+            'border-radius:8px',
+            'font-size:12px',
+            'cursor:pointer',
+            'white-space:nowrap'
+        ].join(';');
+        retryBtn.onclick = function () {
+            probeAndRecover(false, true);
+        };
+
+        bar.appendChild(text);
+        bar.appendChild(retryBtn);
+        document.body.appendChild(bar);
+
+        state.bar = bar;
+        state.text = text;
+        state.retryBtn = retryBtn;
+    }
+
+    function showBar(msg) {
+        ensureBar();
+        if (msg) state.text.textContent = msg;
+        state.bar.style.display = 'flex';
+        state.wasOfflineShown = true;
+        if (!state.intervalId) {
+            state.intervalId = setInterval(function () {
+                probeAndRecover(false, false);
+            }, 15000);
+        }
+    }
+
+    function hideBar() {
+        if (!state.bar) return;
+        state.bar.style.display = 'none';
+        if (state.intervalId) {
+            clearInterval(state.intervalId);
+            state.intervalId = null;
+        }
+    }
+
+    async function probeConnectivity() {
+        const ctrl = new AbortController();
+        const timer = setTimeout(function () { ctrl.abort(); }, 5000);
+        try {
+            // 使用同源探测，附带时间戳避免缓存
+            await fetch(window.location.href.split('#')[0] + '?mg_ping=' + Date.now(), {
+                method: 'GET',
+                cache: 'no-store',
+                mode: 'no-cors',
+                signal: ctrl.signal
+            });
+            clearTimeout(timer);
+            return true;
+        } catch (e) {
+            clearTimeout(timer);
+            return false;
+        }
+    }
+
+    async function probeAndRecover(autoReload, fromManual) {
+        if (state.probing) return;
+        state.probing = true;
+        const ok = await probeConnectivity();
+        state.probing = false;
+
+        if (ok) {
+            hideBar();
+            if (state.wasOfflineShown && !state.autoReloadLocked && autoReload) {
+                state.autoReloadLocked = true;
+                if (typeof showGlobalToast === 'function') showGlobalToast('网络已恢复，正在重连页面...');
+                setTimeout(function () {
+                    window.location.reload();
+                }, 700);
+                return;
+            }
+            if (fromManual && typeof showGlobalToast === 'function') {
+                showGlobalToast('网络已恢复');
+            }
+        } else {
+            showBar('网络异常，正在尝试重连...');
+            if (fromManual && typeof showGlobalToast === 'function') {
+                showGlobalToast('仍未连通，请稍后再试');
+            }
+        }
+    }
+
+    window.addEventListener('offline', function () {
+        showBar('检测到网络中断，请检查网络后重试');
+    });
+
+    window.addEventListener('online', function () {
+        probeAndRecover(true, false);
+    });
+
+    window.addEventListener('focus', function () {
+        if (state.wasOfflineShown || !navigator.onLine) probeAndRecover(false, false);
+    });
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && (state.wasOfflineShown || !navigator.onLine)) {
+            probeAndRecover(false, false);
+        }
+    });
+
+    // 首次进入即检查一次
+    if (!navigator.onLine) {
+        showBar('检测到网络中断，请检查网络后重试');
+    }
 }
 
 // 保存到历史记录
@@ -15894,7 +16059,10 @@ function importCoefficientsFromExcel(event) {
 }
 
 // 页面加载完成后初始化
-window.addEventListener('load', init);
+window.addEventListener('load', function () {
+    init();
+    mgInitNetworkGuard();
+});
 
 // 赠品相关函数
 // 更新赠品类型
@@ -18011,14 +18179,17 @@ if (typeof init === 'function') {
                 if (sessionStorage.getItem('mg_redirecting_to_login') === '1') return;
             } catch (_) {}
             init();
+            mgInitNetworkGuard();
         });
     } else {
         try {
             if (sessionStorage.getItem('mg_redirecting_to_login') !== '1') {
                 init();
+                mgInitNetworkGuard();
             }
         } catch (_) {
             init();
+            mgInitNetworkGuard();
         }
     }
 }
