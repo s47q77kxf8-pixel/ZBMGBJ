@@ -7519,21 +7519,25 @@ async function saveQuoteAsImage() {
                     try {
                         await navigator.share({ files: [file], title: '报价单' });
                         // 分享成功（用户选择了保存或发送）
+                        showGlobalToast('小票图片保存成功');
                     } catch (err) {
                         // 用户取消分享，不做任何提示
                         if (err.name !== 'AbortError') {
                             // 其他错误，尝试直接下载
                             triggerDownload(canvas.toDataURL('image/png'), filename);
+                            showGlobalToast('小票图片保存成功');
                         }
                     }
                 } else {
                     // 不支持分享，直接下载（图片会存到"下载"文件夹）
                     triggerDownload(canvas.toDataURL('image/png'), filename);
+                    showGlobalToast('小票图片保存成功');
                 }
             }, 'image/png');
         } else {
             // 桌面端：直接下载
             triggerDownload(canvas.toDataURL('image/png'), filename);
+            showGlobalToast('小票图片保存成功');
         }
     } catch (error) {
         console.error('保存图片失败:', error);
