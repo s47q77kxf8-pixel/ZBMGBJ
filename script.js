@@ -9548,7 +9548,7 @@ async function renderScheduleTodoSection() {
             const productLabel = (p.product || '制品');
             
             // 父节点（制品）
-            allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}" style="margin:0 .4rem .2rem 0;">
+            allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}" style="margin:0 .3rem .2rem 0;">
                                 <span class="schedule-todo-label" style="position:relative; top:1px; ${isDone ? 'text-decoration: line-through; opacity:.66;' : ''}">${productLabel}</span>
                                 <span class="schedule-todo-qty-stepper" onclick="event.stopPropagation()">
                                     <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${i}" data-delta="-1"
