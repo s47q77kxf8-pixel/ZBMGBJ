@@ -5800,7 +5800,11 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         }
         
         // 计算制品总价
-        const baseProductTotal = basePrice + sameModelTotal;
+        // 非同模时：每件都按全价计费（basePrice * quantity）
+        // 同模时：1件全价 + (quantity-1)件按同模价
+        const baseProductTotal = sameModelCount > 0
+            ? (basePrice + sameModelTotal)
+            : (basePrice * product.quantity);
         const productTotal = baseProductTotal + totalProcessFee + backgroundFee;
         
         // 按节点收费：生成节点明细
