@@ -708,6 +708,7 @@ function init() {
     
     // 初始化其他费用类型选项
     initOtherFeeTypeOptions();
+    initOtherFeeAutoAddBindings();
     
     // 初始化计算页彩条颜色预览
     if (typeof initScheduleColorPreview === 'function') {
@@ -13791,14 +13792,15 @@ let dynamicOtherFees = [];
 // 初始化其他费用类型选项
 function initOtherFeeTypeOptions() {
     const select = document.getElementById('otherFeeType');
-    
-    // 清除现有选项（保留前4个默认选项）
-    while (select.options.length > 4) {
-        select.remove(4);
+    if (!select) return;
+
+    // 仅保留默认的“自定义”选项，避免重复追加导致下拉项重复
+    while (select.options.length > 1) {
+        select.remove(1);
     }
-    
+
     // 添加其他费用类别选项
-    for (const [key, fee] of Object.entries(defaultSettings.otherFees)) {
+    for (const [key, fee] of Object.entries(defaultSettings.otherFees || {})) {
         const option = document.createElement('option');
         option.value = `other_${key}`;
         option.textContent = fee.name;
@@ -13830,9 +13832,46 @@ function updateOtherFeeAmount() {
                     feeAmountInput.value = defaultSettings.otherFees[key].amount;
                 }
                 customFeeNameInput.style.display = 'none';
+                // 选择预设费用后自动加入列表，避免用户漏点“+其他费用”
+                addDynamicOtherFee();
             }
             break;
     }
+}
+
+let otherFeeAutoBindingsInited = false;
+function initOtherFeeAutoAddBindings() {
+    if (otherFeeAutoBindingsInited) return;
+
+    const typeEl = document.getElementById('otherFeeType');
+    const nameEl = document.getElementById('customOtherFeeName');
+    const amountEl = document.getElementById('otherFeeAmount');
+
+    if (!typeEl || !nameEl || !amountEl) return;
+
+    const tryAddCustomFee = function () {
+        if (typeEl.value !== 'custom') return;
+        const name = String(nameEl.value || '').trim();
+        const amount = parseFloat(amountEl.value);
+        if (!name || !Number.isFinite(amount) || amount <= 0) return;
+        addDynamicOtherFee();
+    };
+
+    nameEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            tryAddCustomFee();
+        }
+    });
+    amountEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            tryAddCustomFee();
+        }
+    });
+    amountEl.addEventListener('blur', tryAddCustomFee);
+
+    otherFeeAutoBindingsInited = true;
 }
 
 // 添加动态其他费用
@@ -13881,11 +13920,11 @@ function addDynamicOtherFee() {
     // 渲染动态费用列表
     renderDynamicOtherFees();
     
-    // 重置输入框
-    document.getElementById('otherFeeType').value = 'none';
+    // 重置输入框：添加后默认回到“自定义”
+    document.getElementById('otherFeeType').value = 'custom';
     document.getElementById('otherFeeAmount').value = '';
     document.getElementById('customOtherFeeName').value = '';
-    document.getElementById('customOtherFeeName').style.display = 'none';
+    document.getElementById('customOtherFeeName').style.display = 'block';
 }
 
 // 移除动态其他费用
