@@ -9523,7 +9523,10 @@ async function renderScheduleTodoSection() {
         let dotColor = '#999';
         try {
             const isDark = document.documentElement.classList.contains('theme-dark');
-            const palette = getScheduleColorByIndex(item.barColorIndex != null ? item.barColorIndex : 0);
+            const colorIdx = (typeof item.scheduleColorIndex === 'number')
+                ? item.scheduleColorIndex
+                : ((typeof item.barColorIndex === 'number') ? item.barColorIndex : 0);
+            const palette = getScheduleColorByIndex(colorIdx);
             dotColor = palette.dot || palette.bar || '#999';
         } catch (e) {
             console.warn('获取 todo 圆点颜色失败', e);
