@@ -6003,8 +6003,15 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const totalWithCoefficients = productsTotal * pricingUpProduct * pricingDownProduct;
     // 3. 报价金额 = 我要收取的总金额（制品+系数+其他费用，不含平台费）
     const totalBeforePlatformFee = totalWithCoefficients + totalOtherFees;
-    // 4. 约定实收 = 报价金额（默认），平台费 = 约定实收×费率（平台收取，不经过我手）
-    const agreedAmount = totalBeforePlatformFee;
+    // 4. 约定实收：仅当“金额基数未变化”时保留手动值；金额变化则重置为最新报价金额
+    const prevBase = quoteData && Number.isFinite(Number(quoteData.totalBeforePlatformFee)) ? Number(quoteData.totalBeforePlatformFee) : null;
+    const prevAgreed = quoteData && Number.isFinite(Number(quoteData.agreedAmount)) ? Number(quoteData.agreedAmount) : null;
+    const prevManualBase = quoteData && Number.isFinite(Number(quoteData.manualAgreedBase)) ? Number(quoteData.manualAgreedBase) : null;
+    const hasManualAgreed = !!(quoteData && quoteData.hasManualAgreed);
+    const sameBase = prevBase != null && Math.abs(prevBase - totalBeforePlatformFee) < 0.005;
+    const sameManualBase = prevManualBase != null && Math.abs(prevManualBase - totalBeforePlatformFee) < 0.005;
+    const keepManualAgreed = hasManualAgreed && prevAgreed != null && (sameManualBase || sameBase);
+    const agreedAmount = keepManualAgreed ? prevAgreed : totalBeforePlatformFee;
     const platformFeeAmount = Math.round(agreedAmount * (platformFee / 100));
     // 5. 客户实付 = 约定实收 + 平台费
     const finalTotal = agreedAmount + platformFeeAmount;
@@ -6068,6 +6075,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         totalBeforePlatformFee: totalBeforePlatformFee,
         finalTotal: finalTotal,
         agreedAmount: agreedAmount,
+        hasManualAgreed: keepManualAgreed,
+        manualAgreedBase: keepManualAgreed ? totalBeforePlatformFee : null,
         needDeposit: needDepositFlag,
         depositReceived: depositReceived,
         scheduleColorIndex: window.currentScheduleColorIndex,
@@ -7206,6 +7215,8 @@ function roundAgreedAmount(mode) {
     else if (mode === 'hundred') val = Math.floor(base / 100) * 100;
     else return;
     quoteData.agreedAmount = Math.max(0, val);
+    quoteData.hasManualAgreed = true;
+    quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
     // 平台费 = 约定实收×费率，客户实付 = 约定实收+平台费
     var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
     quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
@@ -7259,6 +7270,25 @@ function updateAgreedAmountBar() {
     var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : calc;
     calcEl.textContent = '¥' + calc.toFixed(2);
     inputEl.value = agreed;
+
+    // 手动改价提示：仅在当前为“手动约定金额”状态时展示
+    var manualHintEl = document.getElementById('receiptAgreedManualHint');
+    if (!manualHintEl) {
+        manualHintEl = document.createElement('div');
+        manualHintEl.id = 'receiptAgreedManualHint';
+        manualHintEl.style.cssText = 'margin-top:4px;font-size:12px;color:#6b7280;';
+        if (bar && bar.appendChild) bar.appendChild(manualHintEl);
+    }
+    if (manualHintEl) {
+        var isManualActive = !!quoteData.hasManualAgreed;
+        if (isManualActive) {
+            manualHintEl.textContent = '已手动改价（金额变动后将自动重置）';
+            manualHintEl.classList.remove('d-none');
+        } else {
+            manualHintEl.textContent = '';
+            manualHintEl.classList.add('d-none');
+        }
+    }
     // 已收定金确认逻辑：需要手动确认后才显示输入框；默认不展示更符合“先出报价再收定金”的流程
     var confirmWrap = document.getElementById('depositConfirmContainer');
     var inputWrap = document.getElementById('depositInputContainer');
@@ -7303,6 +7333,8 @@ function updateAgreedAmountBar() {
         var v = parseFloat(inputEl.value);
         if (!isNaN(v) && v >= 0) {
             quoteData.agreedAmount = v;
+            quoteData.hasManualAgreed = true;
+            quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
             var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
             quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
             quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
@@ -7811,6 +7843,8 @@ function saveToHistory() {
         var av = parseFloat(agreedEl.value);
         if (!isNaN(av) && av >= 0) {
             quoteData.agreedAmount = av;
+            quoteData.hasManualAgreed = true;
+            quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
             var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
             quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
             quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
@@ -7915,8 +7949,9 @@ function ensureProductDoneStates(item) {
     const productLen = Array.isArray(item.productPrices) ? item.productPrices.length : 0;
     const giftLen = Array.isArray(item.giftPrices) ? item.giftPrices.length : 0;
     const needLen = productLen + giftLen;
-    
-    // 1. 补全制品级的完成状态
+    const allPrices = (item.productPrices || []).concat(item.giftPrices || []);
+
+    // 1. 补全制品级的完成状态（旧结构：布尔）
     if (item.productDoneStates == null) {
         item.productDoneStates = Array(needLen).fill(false);
     } else if (item.productDoneStates.length < needLen) {
@@ -7925,12 +7960,37 @@ function ensureProductDoneStates(item) {
         item.productDoneStates = item.productDoneStates.slice(0, needLen);
     }
 
+    // 1.1 补全制品级完成数量（新结构：数量，支持 2/3）
+    if (!Array.isArray(item.productDoneQuantities)) {
+        item.productDoneQuantities = Array(needLen).fill(0).map((_, i) => {
+            const qty = Math.max(1, parseInt(allPrices[i] && allPrices[i].quantity, 10) || 1);
+            return item.productDoneStates[i] ? qty : 0;
+        });
+    } else {
+        if (item.productDoneQuantities.length < needLen) {
+            while (item.productDoneQuantities.length < needLen) item.productDoneQuantities.push(0);
+        } else if (item.productDoneQuantities.length > needLen) {
+            item.productDoneQuantities = item.productDoneQuantities.slice(0, needLen);
+        }
+        item.productDoneQuantities = item.productDoneQuantities.map((v, i) => {
+            const qty = Math.max(1, parseInt(allPrices[i] && allPrices[i].quantity, 10) || 1);
+            let n = parseInt(v, 10);
+            if (!isFinite(n)) n = item.productDoneStates[i] ? qty : 0;
+            return Math.max(0, Math.min(qty, n));
+        });
+    }
+
+    // 统一：由完成数量反推布尔完成状态（兼容旧逻辑）
+    item.productDoneStates = item.productDoneStates.map((_, i) => {
+        const qty = Math.max(1, parseInt(allPrices[i] && allPrices[i].quantity, 10) || 1);
+        return (item.productDoneQuantities[i] || 0) >= qty;
+    });
+
     // 2. 补全按节点计价的子节点完成状态
     if (item.productNodeDoneStates == null) {
         item.productNodeDoneStates = Array(needLen).fill(null).map(() => []);
     }
     
-    const allPrices = (item.productPrices || []).concat(item.giftPrices || []);
     allPrices.forEach((p, i) => {
         if (p.productType === 'nodes' && Array.isArray(p.nodeDetails)) {
             const nodeCount = p.nodeDetails.length;
@@ -7974,7 +8034,10 @@ function setScheduleNodeDone(scheduleId, productIndex, nodeIndex, done) {
     // 联动判断：如果该制品所有子节点都完成了，则标记该制品整体完成
     const nodes = item.productNodeDoneStates[productIndex];
     const isAllNodesDone = nodes.length > 0 && nodes.every(n => n === true);
+    const allPrices = (item.productPrices || []).concat(item.giftPrices || []);
+    const qty = Math.max(1, parseInt(allPrices[productIndex] && allPrices[productIndex].quantity, 10) || 1);
     item.productDoneStates[productIndex] = isAllNodesDone;
+    item.productDoneQuantities[productIndex] = isAllNodesDone ? qty : 0;
     
     saveData();
 }
@@ -8021,7 +8084,10 @@ function setScheduleProductDone(scheduleId, productIndex, done) {
     if (!item) return;
     ensureProductDoneStates(item);
     if (!Array.isArray(item.productDoneStates) || productIndex < 0 || productIndex >= item.productDoneStates.length) return;
-    
+
+    const allPrices = (item.productPrices || []).concat(item.giftPrices || []);
+    const qty = Math.max(1, parseInt(allPrices[productIndex] && allPrices[productIndex].quantity, 10) || 1);
+    item.productDoneQuantities[productIndex] = !!done ? qty : 0;
     item.productDoneStates[productIndex] = !!done;
     
     // 如果是按节点计价模式，勾选制品整体时，自动同步所有子节点为该状态
@@ -8029,6 +8095,31 @@ function setScheduleProductDone(scheduleId, productIndex, done) {
         item.productNodeDoneStates[productIndex] = item.productNodeDoneStates[productIndex].map(() => !!done);
     }
     
+    saveData();
+}
+
+// 更新某条排单的制品完成数量（支持部分完成）
+function setScheduleProductDoneQty(scheduleId, productIndex, doneQty) {
+    const item = history.find(h => h.id === scheduleId);
+    if (!item) return;
+    ensureProductDoneStates(item);
+
+    const allPrices = (item.productPrices || []).concat(item.giftPrices || []);
+    if (productIndex < 0 || productIndex >= allPrices.length) return;
+
+    const qty = Math.max(1, parseInt(allPrices[productIndex] && allPrices[productIndex].quantity, 10) || 1);
+    const n = Math.max(0, Math.min(qty, parseInt(doneQty, 10) || 0));
+    item.productDoneQuantities[productIndex] = n;
+    item.productDoneStates[productIndex] = n >= qty;
+
+    // 节点制品：仅在全未完成/全完成时联动节点状态
+    if (Array.isArray(item.productNodeDoneStates[productIndex]) && item.productNodeDoneStates[productIndex].length > 0) {
+        if (n === 0 || n >= qty) {
+            const done = n >= qty;
+            item.productNodeDoneStates[productIndex] = item.productNodeDoneStates[productIndex].map(() => done);
+        }
+    }
+
     saveData();
 }
 
@@ -8204,15 +8295,22 @@ function getOrderItemQuantityTotal(item) {
     return sum(products) + sum(gifts);
 }
 
-// 订单已完成的制品数量（按 quantity 求和，只计 productDoneStates 为 true 的项）
+// 订单已完成的制品数量（按 quantity 求和，支持部分完成）
 function getOrderDoneQuantityTotal(item) {
     ensureProductDoneStates(item);
     const products = Array.isArray(item.productPrices) ? item.productPrices : [];
     const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
-    const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
+    const doneQty = Array.isArray(item.productDoneQuantities) ? item.productDoneQuantities : [];
     let done = 0;
-    products.forEach((p, i) => { if (states[i]) done += (parseInt(p.quantity, 10) || 1); });
-    gifts.forEach((g, i) => { if (states[products.length + i]) done += (parseInt(g.quantity, 10) || 1); });
+    products.forEach((p, i) => {
+        const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
+        done += Math.max(0, Math.min(qty, parseInt(doneQty[i], 10) || 0));
+    });
+    gifts.forEach((g, i) => {
+        const idx = products.length + i;
+        const qty = Math.max(1, parseInt(g.quantity, 10) || 1);
+        done += Math.max(0, Math.min(qty, parseInt(doneQty[idx], 10) || 0));
+    });
     return done;
 }
 
@@ -9434,16 +9532,38 @@ async function renderScheduleTodoSection() {
         // 渲染制品与赠品（极简单行布局）
         let allChipsHtml = '';
         
-        // 1. 处理制品
-        products.forEach((p, i) => {
-            const productLabel = (p.product || '制品') + (p.quantity > 1 ? ' x ' + p.quantity : '');
-            const isDone = !!doneStates[i];
+        // 1. 处理制品（未完成在前，已完成自动排后）
+        const sortedProductEntries = products
+            .map((p, i) => {
+                const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
+                const doneQty = Math.max(0, Math.min(qty, parseInt(item.productDoneQuantities && item.productDoneQuantities[i], 10) || 0));
+                return { p, i, qty, doneQty, isDone: doneQty >= qty };
+            })
+            .sort((a, b) => Number(a.isDone) - Number(b.isDone));
+
+        sortedProductEntries.forEach(({ p, i, qty, doneQty, isDone }) => {
+            const productLabel = (p.product || '制品');
             
             // 父节点（制品）
-            allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}">
-                                <input type="checkbox" class="schedule-todo-checkbox" ${isDone ? 'checked' : ''} 
-                                       data-id="${item.id}" data-idx="${i}" onchange="toggleScheduleTodoDone(this)">
-                                <span class="schedule-todo-label">${productLabel}</span>
+            allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}" style="margin:0 .4rem .2rem 0;">
+                                <span class="schedule-todo-label" style="position:relative; top:1px; ${isDone ? 'text-decoration: line-through; opacity:.66;' : ''}">${productLabel}</span>
+                                <span class="schedule-todo-qty-stepper" onclick="event.stopPropagation()">
+                                    <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${i}" data-delta="-1"
+                                            style="border:none;background:#e5e7eb;color:#374151;border-radius:9999px;width:.82rem;height:.82rem;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0;font-size:.62rem;"
+                                            onclick="handleScheduleTodoQtyBtnClick(event, this)"
+                                            onpointerdown="startScheduleTodoQtyPress(event, this)"
+                                            onpointerup="stopScheduleTodoQtyPress()"
+                                            onpointercancel="stopScheduleTodoQtyPress()"
+                                            onpointerleave="stopScheduleTodoQtyPress()">−</button>
+                                    <span class="schedule-todo-qty-value" style="position:relative; top:2px;">${doneQty}/${qty}</span>
+                                    <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${i}" data-delta="1"
+                                            style="border:none;background:#e5e7eb;color:#374151;border-radius:9999px;width:.82rem;height:.82rem;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0;font-size:.62rem;"
+                                            onclick="handleScheduleTodoQtyBtnClick(event, this)"
+                                            onpointerdown="startScheduleTodoQtyPress(event, this)"
+                                            onpointerup="stopScheduleTodoQtyPress()"
+                                            onpointercancel="stopScheduleTodoQtyPress()"
+                                            onpointerleave="stopScheduleTodoQtyPress()">+</button>
+                                </span>
                              </div>`;
 
             // 子节点（工序/节点）：改为“共享一根竖线”的分组容器，突出层级
@@ -9455,7 +9575,7 @@ async function renderScheduleTodoSection() {
                     nodeHtml += `<div class="schedule-todo-chip-node${nodeDone ? ' schedule-todo-done' : ''}">
                                     <input type="checkbox" class="schedule-todo-checkbox" ${nodeDone ? 'checked' : ''} 
                                            data-id="${item.id}" data-idx="${i}" onchange="toggleScheduleNodeDone(this, ${ni})">
-                                    <span class="schedule-todo-label">${node.name || '节点'}</span>
+                                    <span class="schedule-todo-label" style="${nodeDone ? 'text-decoration: line-through; opacity:.66;' : ''}">${node.name || '节点'}</span>
                                  </div>`;
                 });
 
@@ -9466,16 +9586,38 @@ async function renderScheduleTodoSection() {
             }
         });
 
-        // 2. 处理赠品
-        gifts.forEach((g, i) => {
-            const giftIdx = products.length + i;
-            const giftLabel = '[赠品] ' + (g.product || '赠品') + (g.quantity > 1 ? ' x ' + g.quantity : '');
-            const isDone = !!doneStates[giftIdx];
+        // 2. 处理赠品（未完成在前，已完成自动排后）
+        const sortedGiftEntries = gifts
+            .map((g, i) => {
+                const giftIdx = products.length + i;
+                const qty = Math.max(1, parseInt(g.quantity, 10) || 1);
+                const doneQty = Math.max(0, Math.min(qty, parseInt(item.productDoneQuantities && item.productDoneQuantities[giftIdx], 10) || 0));
+                return { g, i, giftIdx, qty, doneQty, isDone: doneQty >= qty };
+            })
+            .sort((a, b) => Number(a.isDone) - Number(b.isDone));
+
+        sortedGiftEntries.forEach(({ g, i, giftIdx, qty, doneQty, isDone }) => {
+            const giftLabel = '[赠品] ' + (g.product || '赠品');
             
             allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}">
-                                <input type="checkbox" class="schedule-todo-checkbox" ${isDone ? 'checked' : ''} 
-                                       data-id="${item.id}" data-idx="${giftIdx}" onchange="toggleScheduleTodoDone(this)">
-                                <span class="schedule-todo-label">${giftLabel}</span>
+                                <span class="schedule-todo-label" style="${isDone ? 'text-decoration: line-through; opacity:.66;' : ''}">${giftLabel}</span>
+                                <span class="schedule-todo-qty-stepper" onclick="event.stopPropagation()">
+                                    <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${giftIdx}" data-delta="-1"
+                                            style="border:none;background:transparent;padding:0 6px;line-height:1;"
+                                            onclick="handleScheduleTodoQtyBtnClick(event, this)"
+                                            onpointerdown="startScheduleTodoQtyPress(event, this)"
+                                            onpointerup="stopScheduleTodoQtyPress()"
+                                            onpointercancel="stopScheduleTodoQtyPress()"
+                                            onpointerleave="stopScheduleTodoQtyPress()">−</button>
+                                    <span class="schedule-todo-qty-value">${doneQty}/${qty}</span>
+                                    <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${giftIdx}" data-delta="1"
+                                            style="border:none;background:transparent;padding:0 6px;line-height:1;"
+                                            onclick="handleScheduleTodoQtyBtnClick(event, this)"
+                                            onpointerdown="startScheduleTodoQtyPress(event, this)"
+                                            onpointerup="stopScheduleTodoQtyPress()"
+                                            onpointercancel="stopScheduleTodoQtyPress()"
+                                            onpointerleave="stopScheduleTodoQtyPress()">+</button>
+                                </span>
                              </div>`;
         });
 
@@ -9541,6 +9683,98 @@ function toggleScheduleTodoDone(checkbox) {
         renderScheduleTodoSection();
         if (allDoneChanged) renderScheduleCalendar();
     }, 0);
+}
+
+// 快捷调整制品完成数量（支持 2/3）
+function adjustScheduleTodoDoneQty(el) {
+    const id = parseInt(el.dataset.id, 10);
+    const idx = parseInt(el.dataset.idx, 10);
+    const delta = parseInt(el.dataset.delta, 10);
+    if (isNaN(id) || isNaN(idx) || isNaN(delta) || !delta) return;
+
+    const item = history.find(h => h.id === id);
+    if (!item) return;
+    ensureProductDoneStates(item);
+
+    const allPrices = (item.productPrices || []).concat(item.giftPrices || []);
+    if (idx < 0 || idx >= allPrices.length) return;
+
+    const qty = Math.max(1, parseInt(allPrices[idx] && allPrices[idx].quantity, 10) || 1);
+    const current = Math.max(0, Math.min(qty, parseInt(item.productDoneQuantities[idx], 10) || 0));
+    const next = Math.max(0, Math.min(qty, current + delta));
+    if (next === current) return;
+
+    const total = allPrices.length;
+    const doneBefore = (item.productDoneStates || []).filter(Boolean).length;
+    const wasAllDone = total > 0 && doneBefore === total;
+
+    setScheduleProductDoneQty(id, idx, next);
+    ensureProductDoneStates(item);
+
+    const doneAfter = (item.productDoneStates || []).filter(Boolean).length;
+    const isAllDoneNow = total > 0 && doneAfter === total;
+    const allDoneChanged = wasAllDone !== isAllDoneNow;
+
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        markOrderUnsynced(id);
+        mgCloudUpsertOrder(item).catch(err => {
+            console.error('云端同步失败:', err);
+            updateSyncStatus();
+        });
+    }
+
+    setTimeout(function () {
+        renderScheduleTodoSection();
+        if (allDoneChanged) renderScheduleCalendar();
+    }, 0);
+}
+
+// 数量按钮：点击单次 + 长按连续
+var scheduleTodoQtyPressTimer = null;
+var scheduleTodoQtyPressInterval = null;
+var scheduleTodoQtyPressHandled = false;
+
+function clearScheduleTodoQtyPressTimers() {
+    if (scheduleTodoQtyPressTimer) {
+        clearTimeout(scheduleTodoQtyPressTimer);
+        scheduleTodoQtyPressTimer = null;
+    }
+    if (scheduleTodoQtyPressInterval) {
+        clearInterval(scheduleTodoQtyPressInterval);
+        scheduleTodoQtyPressInterval = null;
+    }
+}
+
+function startScheduleTodoQtyPress(event, el) {
+    if (event) {
+        event.stopPropagation();
+        if (event.preventDefault) event.preventDefault();
+    }
+    stopScheduleTodoQtyPress();
+    scheduleTodoQtyPressHandled = false;
+
+    // 先短延迟再连续触发，避免误触
+    scheduleTodoQtyPressTimer = setTimeout(function () {
+        scheduleTodoQtyPressHandled = true;
+        adjustScheduleTodoDoneQty(el);
+        scheduleTodoQtyPressInterval = setInterval(function () {
+            adjustScheduleTodoDoneQty(el);
+        }, 120);
+    }, 280);
+}
+
+function stopScheduleTodoQtyPress() {
+    clearScheduleTodoQtyPressTimers();
+}
+
+function handleScheduleTodoQtyBtnClick(event, el) {
+    if (event) event.stopPropagation();
+    // 如果已经由长按触发过，本次 click 不再重复 +1/-1
+    if (scheduleTodoQtyPressHandled) {
+        scheduleTodoQtyPressHandled = false;
+        return;
+    }
+    adjustScheduleTodoDoneQty(el);
 }
 
 // 点击 todo 卡片：弹出操作菜单；勾选框 + 制品文字 + 其下方节点/赠品文字不弹窗，其余区域（包括制品区空白）均弹窗
