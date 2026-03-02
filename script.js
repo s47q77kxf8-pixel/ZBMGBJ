@@ -15963,19 +15963,21 @@ function renderProcessSettings() {
             setting.price = 10;
         }
         const price = (setting.price ?? 10);
+        const sid = String(setting.id ?? '');
+        const sidEsc = sid.replace(/'/g, "\\'");
         
         html += `
-            <div class="process-item" data-id="${setting.id}">
+            <div class="process-item" data-id="${sidEsc}">
                 <div class="process-item-row">
                     <div class="process-item-group">
                         <label class="process-item-label">工艺名称</label>
-                        <input type="text" class="process-item-input" value="${setting.name}" onchange="updateProcessSetting(${setting.id}, 'name', this.value)" placeholder="请输入工艺名称">
+                        <input type="text" class="process-item-input" value="${setting.name}" onchange="updateProcessSetting('${sidEsc}', 'name', this.value)" placeholder="请输入工艺名称">
                     </div>
                     <div class="process-item-group">
                         <label class="process-item-label">价格（每层）</label>
-                        <input type="number" class="process-item-input process-item-price" value="${price}" onchange="updateProcessSetting(${setting.id}, 'price', parseFloat(this.value))" placeholder="价格" min="0" step="1">
+                        <input type="number" class="process-item-input process-item-price" value="${price}" onchange="updateProcessSetting('${sidEsc}', 'price', parseFloat(this.value))" placeholder="价格" min="0" step="1">
                     </div>
-                    <button class="icon-action-btn delete process-item-delete" onclick="deleteProcessSetting(${setting.id})" aria-label="删除工艺" title="删除">
+                    <button class="icon-action-btn delete process-item-delete" onclick="deleteProcessSetting('${sidEsc}')" aria-label="删除工艺" title="删除">
                         <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>
                     </button>
@@ -15989,7 +15991,8 @@ function renderProcessSettings() {
 
 // 更新工艺设置
 function updateProcessSetting(id, field, value) {
-    const setting = processSettings.find(p => p.id === id);
+    const idStr = String(id);
+    const setting = processSettings.find(p => String(p.id) === idStr);
     if (setting) {
         setting[field] = value;
     }
@@ -15998,7 +16001,8 @@ function updateProcessSetting(id, field, value) {
 // 删除工艺设置
 function deleteProcessSetting(id) {
     if (!confirm('确定要删除这个工艺设置吗？')) return;
-    processSettings = processSettings.filter(p => p.id !== id);
+    const idStr = String(id);
+    processSettings = processSettings.filter(p => String(p.id) !== idStr);
     renderProcessSettings();
 }
 
@@ -18160,6 +18164,213 @@ async function handleLoadCloud() {
     }
 }
 
+// ====== 设置同步 V2（分域分条目 + 软删除） ======
+function mgSafeClone(obj, fallback) {
+    try { return JSON.parse(JSON.stringify(obj)); } catch (_) { return fallback; }
+}
+
+function mgBuildSettingsV2LocalState() {
+    const calc = mgSafeClone(defaultSettings || {}, {});
+    const artistInfo = mgSafeClone((defaultSettings && defaultSettings.artistInfo) || {}, {});
+    delete calc.otherFees;
+    delete calc.artistInfo;
+
+    const processItems = (Array.isArray(processSettings) ? processSettings : []).map(function (p) {
+        return { item_id: String(p && p.id != null ? p.id : ('p_' + Date.now() + '_' + Math.random())), payload: mgSafeClone(p, {}) };
+    });
+    const productItems = (Array.isArray(productSettings) ? productSettings : []).map(function (p) {
+        return { item_id: String(p && p.id != null ? p.id : ('prd_' + Date.now() + '_' + Math.random())), payload: mgSafeClone(p, {}) };
+    });
+    const templateItems = (Array.isArray(templates) ? templates : []).map(function (t) {
+        return { item_id: String(t && t.id != null ? t.id : ('tpl_' + Date.now() + '_' + Math.random())), payload: mgSafeClone(t, {}) };
+    });
+
+    const feeObj = (defaultSettings && defaultSettings.otherFees && typeof defaultSettings.otherFees === 'object') ? defaultSettings.otherFees : {};
+    const feeItems = Object.entries(feeObj).map(function (entry) {
+        return { item_id: String(entry[0]), payload: mgSafeClone(entry[1], {}) };
+    });
+
+    return {
+        singletons: [
+            { domain: 'calculator_settings', payload: calc },
+            { domain: 'artist_info', payload: artistInfo }
+        ],
+        itemsByDomain: {
+            process_settings: processItems,
+            product_settings: productItems,
+            templates: templateItems,
+            other_fee_types: feeItems
+        }
+    };
+}
+
+function mgApplySettingsV2(singletons, items, mergeMode) {
+    const singletonMap = new Map();
+    (singletons || []).forEach(function (row) {
+        if (row && row.domain) singletonMap.set(String(row.domain), row.payload || {});
+    });
+
+    const calc = singletonMap.get('calculator_settings');
+    if (calc && typeof calc === 'object') {
+        if (mergeMode) Object.assign(defaultSettings, mergeObjectSettings(calc, defaultSettings || {}));
+        else Object.assign(defaultSettings, mgSafeClone(calc, {}));
+    }
+    const artistInfo = singletonMap.get('artist_info');
+    if (artistInfo && typeof artistInfo === 'object') {
+        defaultSettings.artistInfo = mergeMode
+            ? mergeObjectSettings(artistInfo, defaultSettings.artistInfo || {})
+            : mgSafeClone(artistInfo, {});
+    }
+
+    const grouped = {};
+    (items || []).forEach(function (row) {
+        if (!row || !row.domain || row.deleted_at) return;
+        if (!grouped[row.domain]) grouped[row.domain] = [];
+        grouped[row.domain].push(row);
+    });
+
+    function rowsToPayload(domain) {
+        return (grouped[domain] || []).map(function (r) { return mgSafeClone(r.payload || {}, {}); });
+    }
+
+    const cloudProducts = rowsToPayload('product_settings');
+    if (cloudProducts.length || !mergeMode) {
+        const merged = mergeMode ? mergeArraySettings(cloudProducts, productSettings || [], 'id') : cloudProducts;
+        productSettings.length = 0;
+        productSettings.push(...merged);
+    }
+
+    const cloudProcess = rowsToPayload('process_settings');
+    if (cloudProcess.length || !mergeMode) {
+        const merged = mergeMode ? mergeArraySettings(cloudProcess, processSettings || [], 'id') : cloudProcess;
+        processSettings.length = 0;
+        processSettings.push(...merged);
+    }
+
+    const cloudTemplates = rowsToPayload('templates');
+    if (cloudTemplates.length || !mergeMode) {
+        const merged = mergeMode ? mergeArraySettings(cloudTemplates, templates || [], 'id') : cloudTemplates;
+        templates.length = 0;
+        templates.push(...merged);
+    }
+
+    const feeRows = grouped['other_fee_types'] || [];
+    const feeObj = {};
+    feeRows.forEach(function (r) {
+        const key = String(r.item_id || '');
+        if (!key) return;
+        feeObj[key] = mgSafeClone(r.payload || {}, {});
+    });
+    if (!defaultSettings.otherFees || typeof defaultSettings.otherFees !== 'object') defaultSettings.otherFees = {};
+    if (mergeMode) {
+        defaultSettings.otherFees = { ...defaultSettings.otherFees, ...feeObj };
+    } else {
+        defaultSettings.otherFees = feeObj;
+    }
+}
+
+async function mgTryLoadSettingsFromCloudV2(client, artistId, mergeMode) {
+    try {
+        const [{ data: singletons, error: sErr }, { data: items, error: iErr }] = await Promise.all([
+            client.from('artist_settings_singleton').select('domain,payload,updated_at').eq('artist_id', artistId),
+            client.from('artist_settings_items').select('domain,item_id,payload,updated_at,deleted_at').eq('artist_id', artistId)
+        ]);
+
+        if (sErr || iErr) {
+            const code = (sErr && sErr.code) || (iErr && iErr.code) || '';
+            const msg = (sErr && sErr.message) || (iErr && iErr.message) || '';
+            if (code === 'PGRST205' || String(msg).includes('relation') || String(msg).includes('does not exist')) {
+                return { supported: false };
+            }
+            throw (sErr || iErr);
+        }
+
+        mgApplySettingsV2(singletons || [], items || [], mergeMode);
+        return { supported: true, hasData: (singletons && singletons.length) || (items && items.length) };
+    } catch (err) {
+        throw err;
+    }
+}
+
+async function mgTrySyncSettingsToCloudV2(client, artistId) {
+    const state = mgBuildSettingsV2LocalState();
+    const now = new Date().toISOString();
+
+    const singletonRows = (state.singletons || []).map(function (row) {
+        return { artist_id: artistId, domain: row.domain, payload: row.payload, updated_at: now };
+    });
+
+    const activeRows = [];
+    Object.entries(state.itemsByDomain || {}).forEach(function (entry) {
+        const domain = entry[0];
+        const rows = entry[1] || [];
+        rows.forEach(function (r) {
+            activeRows.push({
+                artist_id: artistId,
+                domain: domain,
+                item_id: String(r.item_id),
+                payload: r.payload,
+                updated_at: now,
+                deleted_at: null
+            });
+        });
+    });
+
+    const { data: existingItems, error: fetchErr } = await client
+        .from('artist_settings_items')
+        .select('domain,item_id,deleted_at')
+        .eq('artist_id', artistId);
+
+    if (fetchErr) {
+        const code = fetchErr.code || '';
+        const msg = fetchErr.message || '';
+        if (code === 'PGRST205' || String(msg).includes('relation') || String(msg).includes('does not exist')) {
+            return { supported: false };
+        }
+        throw fetchErr;
+    }
+
+    const activeKeySet = new Set(activeRows.map(function (r) { return r.domain + '::' + r.item_id; }));
+    const tombstoneRows = (existingItems || [])
+        .filter(function (row) {
+            const key = String(row.domain) + '::' + String(row.item_id);
+            return !activeKeySet.has(key);
+        })
+        .map(function (row) {
+            return {
+                artist_id: artistId,
+                domain: row.domain,
+                item_id: String(row.item_id),
+                payload: null,
+                updated_at: now,
+                deleted_at: now
+            };
+        });
+
+    const allItemRows = activeRows.concat(tombstoneRows);
+
+    const [{ error: sUpsertErr }, { error: iUpsertErr }] = await Promise.all([
+        singletonRows.length
+            ? client.from('artist_settings_singleton').upsert(singletonRows, { onConflict: 'artist_id,domain' })
+            : Promise.resolve({ error: null }),
+        allItemRows.length
+            ? client.from('artist_settings_items').upsert(allItemRows, { onConflict: 'artist_id,domain,item_id' })
+            : Promise.resolve({ error: null })
+    ]);
+
+    if (sUpsertErr || iUpsertErr) {
+        const err = sUpsertErr || iUpsertErr;
+        const code = err.code || '';
+        const msg = err.message || '';
+        if (code === 'PGRST205' || String(msg).includes('relation') || String(msg).includes('does not exist')) {
+            return { supported: false };
+        }
+        throw err;
+    }
+
+    return { supported: true };
+}
+
 // ====== 设置同步：artist_settings ======
 async function mgSyncSettingsToCloud(silent = false) {
     if (!mgIsCloudEnabled()) {
@@ -18184,12 +18395,20 @@ async function mgSyncSettingsToCloud(silent = false) {
 
     // 以本地为准：直接上传当前本地设置到云端（包含删除），不从云端先合并
     try {
-        // 1. 直接使用本地设置上传到云端
-        // 清理数据，确保可序列化（移除undefined、函数等）
-        // 注意：这里不调用 mgLoadSettingsFromCloud(true)，避免把云端已存在但本地已删除的项合并回来
-        
-        // 2. 使用本地设置上传到云端
-        // 清理数据，确保可序列化（移除undefined、函数等）
+        const artistId = session.user.id;
+
+        // 优先尝试 V2（分表分条目 + 软删除）
+        const v2Result = await mgTrySyncSettingsToCloudV2(client, artistId);
+        if (v2Result && v2Result.supported) {
+            if (!silent) {
+                if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已上传到云端（V2）');
+                else alert('设置已上传到云端（V2）');
+            }
+            window._isSyncingSettings = false;
+            return;
+        }
+
+        // V2 不可用时回退到旧版 artist_settings 整包
         const cleanPayload = {
             calculatorSettings: JSON.parse(JSON.stringify(defaultSettings || {})),
             productSettings: JSON.parse(JSON.stringify(productSettings || [])),
@@ -18199,7 +18418,6 @@ async function mgSyncSettingsToCloud(silent = false) {
         };
 
         const now = new Date().toISOString();
-        const artistId = session.user.id;
         
         // 检查是否已存在设置（不查询 created_at，因为该列可能不存在）
         const { data: existing, error: checkError } = await client
@@ -18222,7 +18440,6 @@ async function mgSyncSettingsToCloud(silent = false) {
         // 使用 upsert，兼容Safari：先尝试更新，如果不存在则插入
         let error;
         if (existing) {
-            // 已存在，使用 update
             const { error: updateError } = await client
                 .from('artist_settings')
                 .update({
@@ -18232,7 +18449,6 @@ async function mgSyncSettingsToCloud(silent = false) {
                 .eq('artist_id', artistId);
             error = updateError;
         } else {
-            // 不存在，使用 insert
             const { error: insertError } = await client
                 .from('artist_settings')
                 .insert(settingsData);
@@ -18251,10 +18467,9 @@ async function mgSyncSettingsToCloud(silent = false) {
             return;
         }
 
-        // 只在非静默模式下显示提示
         if (!silent) {
-            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已智能合并并上传到云端');
-            else alert('设置已智能合并并上传到云端');
+            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已上传到云端');
+            else alert('设置已上传到云端');
         }
         window._isSyncingSettings = false;
     } catch (err) {
@@ -18414,6 +18629,26 @@ async function mgLoadSettingsFromCloud(mergeMode = false) {
         return;
     }
 
+    // 优先读取 V2（分表分条目 + 软删除）
+    try {
+        const v2 = await mgTryLoadSettingsFromCloudV2(client, session.user.id, mergeMode);
+        if (v2 && v2.supported) {
+            clearTimeout(_saveDataTimer);
+            if (typeof doSaveData === 'function') doSaveData();
+
+            if (mergeMode) {
+                if (typeof updateDisplay === 'function') updateDisplay();
+            } else {
+                if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已从云端恢复设置（V2），正在刷新');
+                else alert('已从云端恢复设置（V2），正在刷新');
+                setTimeout(function () { location.reload(); }, 400);
+            }
+            return;
+        }
+    } catch (v2Err) {
+        console.error('读取 V2 设置失败，回退到旧版:', v2Err);
+    }
+
     const { data, error } = await client
         .from('artist_settings')
         .select('payload')
@@ -18422,7 +18657,6 @@ async function mgLoadSettingsFromCloud(mergeMode = false) {
 
     if (error) {
         console.error('从云端获取设置失败:', error);
-        // 如果是 PGRST116（未找到记录），这是正常的（首次使用）
         if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
             if (!mergeMode) {
                 console.log('云端尚无设置，这是正常的（首次使用）');
