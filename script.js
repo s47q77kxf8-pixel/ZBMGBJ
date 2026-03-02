@@ -397,7 +397,8 @@ function getSearchableSelectValue(containerId) {
 const defaultSettings = {
     // 基础详细信息
     artistInfo: {
-        id: '',           // 美工ID
+        id: '',           // 用户ID
+        role: '美工',     // 身份：美工/画师
         contact: '',      // 联系方式
         defaultDuration: 7                // 默认工期（天）
     },
@@ -6257,9 +6258,10 @@ function generateQuote() {
         receiptInfoHtml += `<p class="receipt-text-sm">DEADLINE: ${quoteData.deadline}</p>`;
     }
         
-    // 设计师
+    // 身份（美工/画师）
     if (receiptInfo.showDesigner !== false && defaultSettings.artistInfo.id) {  // 默认为true
-        receiptInfoHtml += `<p class="receipt-text-sm">DESIGNER: ${defaultSettings.artistInfo.id}</p>`;
+        const roleLabel = (defaultSettings.artistInfo.role === '画师') ? 'ARTIST' : 'DESIGNER';
+        receiptInfoHtml += `<p class="receipt-text-sm">${roleLabel}: ${defaultSettings.artistInfo.id}</p>`;
     }
         
     // 联系方式
@@ -14000,7 +14002,7 @@ function renderDynamicOtherFees() {
 
 
 
-// 从云端读取 display_name，回填到“我的-美工ID”（可选，不阻塞）
+// 从云端读取 display_name，回填到“我的-用户ID”（可选，不阻塞）
 async function mgHydrateArtistIdFromCloud() {
     if (!mgIsCloudEnabled()) return;
 
@@ -14025,7 +14027,7 @@ async function mgHydrateArtistIdFromCloud() {
             if (typeof saveData === 'function') saveData();
         }
     } catch (err) {
-        console.error('读取云端美工ID失败:', err);
+        console.error('读取云端用户ID失败:', err);
     }
 }
 
@@ -14033,6 +14035,8 @@ async function mgHydrateArtistIdFromCloud() {
 function loadSettings() {
     document.getElementById('artistId').value = defaultSettings.artistInfo.id;
     document.getElementById('artistContact').value = defaultSettings.artistInfo.contact;
+    const roleEl = document.getElementById('artistRole');
+    if (roleEl) roleEl.value = defaultSettings.artistInfo.role || '美工';
     document.getElementById('defaultDuration').value = defaultSettings.artistInfo.defaultDuration;
     // 结算规则配置
     var sr = defaultSettings.settlementRules || {};

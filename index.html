@@ -1641,10 +1641,10 @@
                         <textarea id="cloudDebugLogText" readonly style="width:100%;height:160px;margin-top:8px;box-sizing:border-box;font-size:12px;line-height:1.4;padding:10px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-color);color:var(--text-color);"></textarea>
                     </div>
                 </div>
-                <!-- 美工信息 -->
+                <!-- 用户信息 -->
                 <div class="section">
                     <div class="section-title-row d-flex justify-between items-center">
-                        <h2>美工信息</h2>
+                        <h2>用户信息</h2>
                         <a href="操作指南.html" target="_blank" rel="noopener" class="guide-link-with-icon" title="操作指南">
                             <svg class="icon sm" aria-hidden="true"><use href="#i-note"></use></svg>
                             <span>操作指南</span>
@@ -1652,12 +1652,19 @@
                     </div>
                     <div class="form-row artist-info-row-1">
                         <div class="form-group">
-                            <label for="artistId">美工ID</label>
-                            <input type="text" id="artistId" placeholder="请输入美工ID">
+                            <label for="artistId">用户ID</label>
+                            <input type="text" id="artistId" placeholder="请输入用户ID">
                         </div>
                         <div class="form-group">
                             <label for="artistContact">联系方式</label>
                             <input type="text" id="artistContact" placeholder="请输入联系方式" onchange="updateArtistInfo('contact', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label for="artistRole">身份</label>
+                            <select id="artistRole" onchange="updateArtistInfo('role', this.value)">
+                                <option value="美工">美工</option>
+                                <option value="画师">画师</option>
+                            </select>
                         </div>
                     </div>
                     <div class="form-row artist-info-row-2">
