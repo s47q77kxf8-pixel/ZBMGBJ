@@ -5295,9 +5295,11 @@ function renderStatsReportPreview() {
     // 获取与小票一致的字体设置
     const fontSettings = defaultSettings && defaultSettings.receiptCustomization && defaultSettings.receiptCustomization.fontSettings ? defaultSettings.receiptCustomization.fontSettings : {};
     const reportFontFamily = fontSettings.fontFamily ? String(fontSettings.fontFamily) : 'Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif';
-    const reportFontSize = fontSettings.fontSize ? fontSettings.fontSize + 'px' : '.94rem';
+    // 读取用户通过滑杆设置的字体大小
+    const fontSizeEl = document.getElementById('statsReportFontSize');
+    const reportFontSize = fontSizeEl ? fontSizeEl.value + 'rem' : (fontSettings.fontSize ? fontSettings.fontSize + 'px' : '1.2rem');
     const reportFontWeight = fontSettings.fontWeight ? fontSettings.fontWeight : 'normal';
-    const reportLineHeight = fontSettings.lineHeight ? fontSettings.lineHeight : '1.5'; // 减小默认行间距
+    const reportLineHeight = '1.8'; // 固定行间距和段间距相同
     const reportLetterSpacing = fontSettings.letterSpacing ? fontSettings.letterSpacing : '.01em';
 
     // 随机文案
@@ -5321,7 +5323,7 @@ function renderStatsReportPreview() {
     let maxOrder = null;
     records.forEach(function (item) {
         const amt = getStatsAmount(item, filters.amountBasis, filters.giftMode);
-        if (!maxOrder || amt > maxOrder.amount) maxOrder = { amount: amt, client: item.clientId || '匿名客户' };
+        if (!maxOrder || amt > maxOrder.amount) maxOrder = { amount: amt, client: item.clientId || '匿名单主' };
     });
 
     function formatMonthLabel(monthStr) {
@@ -5472,7 +5474,7 @@ function renderStatsReportPreview() {
             } else if (topProductCount < 5) {
                 topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件。';
             } else if (topProductCount < 10) {
-                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期的爆款制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件，深受客户喜爱。';
+                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期的爆款制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件，深受单主喜爱。';
             } else {
                 topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期的超级爆款，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件，展现了你的专业实力。';
             }
@@ -5514,52 +5516,41 @@ function saveStatsReportAsImage() {
         scale: Math.max(2, window.devicePixelRatio || 1),
         useCORS: true
     }).then(function (canvas) {
-        // 检查是否在移动设备上
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const filename = '时光报告-' + new Date().toISOString().slice(0, 10) + '.png';
+        // 更精确地区分"手机/平板"与"桌面端"
+        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+        const isMobile = isTouchDevice && window.innerWidth <= 768;
         
-        // 创建下载链接
-        const link = document.createElement('a');
-        link.download = '时光报告-' + new Date().toISOString().slice(0, 10) + '.png';
-        
-        // 尝试使用toBlob方法获取图片数据
-        canvas.toBlob(function(blob) {
-            const url = URL.createObjectURL(blob);
-            link.href = url;
-            
-            // 在移动设备上，尝试直接触发下载
-            if (isMobile) {
-                // 对于iOS设备，使用特殊处理
-                if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-                    // 创建一个临时的图片元素，然后触发点击
-                    const img = document.createElement('img');
-                    img.src = url;
-                    img.style.position = 'fixed';
-                    img.style.top = '-9999px';
-                    img.style.left = '-9999px';
-                    document.body.appendChild(img);
-                    
-                    // 触发下载
-                    setTimeout(function() {
-                        link.click();
-                        // 清理
-                        setTimeout(function() {
-                            URL.revokeObjectURL(url);
-                            if (img.parentNode) {
-                                img.parentNode.removeChild(img);
-                            }
-                        }, 1000);
-                    }, 100);
+        if (isMobile) {
+            // 手机端：直接触发系统分享，用户在分享界面选"保存图片"即可
+            canvas.toBlob(async function (blob) {
+                const file = new File([blob], filename, { type: 'image/png' });
+                
+                // 检查是否支持分享文件
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({ files: [file], title: '时光报告' });
+                        // 分享成功（用户选择了保存或发送）
+                        showGlobalToast('时光报告图片保存成功');
+                    } catch (err) {
+                        // 用户取消分享，不做任何提示
+                        if (err.name !== 'AbortError') {
+                            // 其他错误，尝试直接下载
+                            triggerDownload(canvas.toDataURL('image/png'), filename);
+                            showGlobalToast('时光报告图片保存成功');
+                        }
+                    }
                 } else {
-                    // 对于Android设备，直接触发下载
-                    link.click();
-                    URL.revokeObjectURL(url);
+                    // 不支持分享，直接下载（图片会存到"下载"文件夹）
+                    triggerDownload(canvas.toDataURL('image/png'), filename);
+                    showGlobalToast('时光报告图片保存成功');
                 }
-            } else {
-                // 桌面设备：使用传统下载方式
-                link.click();
-                URL.revokeObjectURL(url);
-            }
-        }, 'image/png');
+            }, 'image/png');
+        } else {
+            // 桌面端：直接下载
+            triggerDownload(canvas.toDataURL('image/png'), filename);
+            showGlobalToast('时光报告图片保存成功');
+        }
     }).catch(function (e) {
         console.error('保存时光报告失败:', e);
         alert('保存失败，请重试');
