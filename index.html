@@ -634,6 +634,10 @@
                                     <span id="incomingDot" class="todo-filter-dot d-none"></span>
                                 </button>
                             </div>
+                            <div class="schedule-todo-wrap-toggle" data-mode="wrap">
+                                <button type="button" class="schedule-todo-wrap-btn active" data-mode="wrap" onclick="setScheduleTodoWrapMode('wrap')">换行</button>
+                                <button type="button" class="schedule-todo-wrap-btn" data-mode="scroll" onclick="setScheduleTodoWrapMode('scroll')">滑动</button>
+                            </div>
                         </div>
                         <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
                         <div id="scheduleTodoModules" class="schedule-todo-modules">
@@ -2261,9 +2265,13 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-image-line-c"></use></svg>
                             <span>小票</span>
                         </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('remark')" title="备注">
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('remark')" title="编辑备注">
                             <svg class="icon" aria-hidden="true"><use href="#i-note"></use></svg>
                             <span>备注</span>
+                        </button>
+                        <button type="button" class="schedule-todo-card-modal-btn danger" onclick="scheduleTodoCardAction('delete')" title="删除">
+                            <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                            <span>删除</span>
                         </button>
                     </div>
                     <div class="schedule-todo-card-modal-row">
@@ -2489,7 +2497,7 @@
                 <textarea id="orderRemarkText" rows="10" placeholder="粘贴订单备注，再点下方「智能提取」自动识别&#10;&#10;示例：&#10;拍立得 单面 2个&#10;吧唧 10个 双面 带背景&#10;赠品：头像 3个"></textarea>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-compact primary" onclick="smartParseOrderRemark()" title="根据备注内容自动识别制品、赠品并填入计算表">智能提取</button>
+                <button type="button" id="smartExtractBtn" class="btn btn-compact primary" onclick="smartParseOrderRemark()" title="根据备注内容自动识别制品、赠品并填入计算表">智能提取</button>
                 <button type="button" class="btn btn-compact secondary" onclick="copyOrderRemark()">复制</button>
                 <button type="button" class="btn btn-compact" onclick="closeOrderRemarkModal()">确定</button>
             </div>

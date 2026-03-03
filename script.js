@@ -909,11 +909,96 @@ function loadData() {
                     return;
                 }
                 
-                // 其他情况直接赋值
-                defaultSettings[key] = loadedSettings[key];
+                // 对于receiptCustomization，需要特殊处理，确保结构完整
+                if (key === 'receiptCustomization' && loadedSettings[key] && typeof loadedSettings[key] === 'object') {
+                    // 合并receiptCustomization对象，而不是完全替换
+                    Object.keys(loadedSettings[key]).forEach(subKey => {
+                        // 对于receiptInfo，也需要合并
+                        if (subKey === 'receiptInfo' && loadedSettings[key][subKey] && typeof loadedSettings[key][subKey] === 'object') {
+                            if (!defaultSettings.receiptCustomization.receiptInfo) {
+                                defaultSettings.receiptCustomization.receiptInfo = {};
+                            }
+                            Object.keys(loadedSettings[key][subKey]).forEach(infoKey => {
+                                defaultSettings.receiptCustomization.receiptInfo[infoKey] = loadedSettings[key][subKey][infoKey];
+                            });
+                        } else {
+                            defaultSettings.receiptCustomization[subKey] = loadedSettings[key][subKey];
+                        }
+                    });
+                } else {
+                    // 其他情况直接赋值
+                    defaultSettings[key] = loadedSettings[key];
+                }
             });
             if (!Array.isArray(defaultSettings.extraPricingUp)) defaultSettings.extraPricingUp = [];
             if (!Array.isArray(defaultSettings.extraPricingDown)) defaultSettings.extraPricingDown = [];
+            
+            // 确保receiptCustomization结构完整
+            if (!defaultSettings.receiptCustomization) {
+                defaultSettings.receiptCustomization = {
+                    theme: 'classic',
+                    headerImage: null,
+                    titleText: 'LIST',
+                    receiptInfo: {
+                        orderNotification: '',
+                        showStartTime: true,
+                        showDeadline: true,
+                        showOrderTime: true,
+                        showDesigner: true,
+                        showContactInfo: true,
+                        customText: '',
+                        followSystemTheme: false
+                    },
+                    footerText1: '温馨提示',
+                    footerText2: '感谢惠顾',
+                    footerImage: null,
+                    fontSettings: {
+                        fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+                        fontSize: 13,
+                        fontWeight: 400,
+                        lineHeight: 1.3,
+                        categoryFonts: {
+                            enabled: false,
+                            title: '',
+                            body: '',
+                            number: '',
+                            summary: '',
+                            footer: ''
+                        }
+                    }
+                };
+            } else {
+                // 确保receiptInfo结构完整
+                if (!defaultSettings.receiptCustomization.receiptInfo) {
+                    defaultSettings.receiptCustomization.receiptInfo = {
+                        orderNotification: '',
+                        showStartTime: true,
+                        showDeadline: true,
+                        showOrderTime: true,
+                        showDesigner: true,
+                        showContactInfo: true,
+                        customText: '',
+                        followSystemTheme: false
+                    };
+                }
+                // 确保fontSettings结构完整
+                if (!defaultSettings.receiptCustomization.fontSettings) {
+                    defaultSettings.receiptCustomization.fontSettings = {
+                        fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
+                        fontSize: 13,
+                        fontWeight: 400,
+                        lineHeight: 1.3,
+                        categoryFonts: {
+                            enabled: false,
+                            title: '',
+                            body: '',
+                            number: '',
+                            summary: '',
+                            footer: ''
+                        }
+                    };
+                }
+            }
         }
         
         if (savedProductSettings) {
@@ -3379,10 +3464,6 @@ function applyRecordFilters() {
                     ${amountHtml}
                     ${depositTagHtml}
                     <span class="record-status ${status.className}">${status.text}</span>
-                    <button type="button" class="icon-action-btn delete record-item-delete" onclick="event.stopPropagation(); if(confirm('确定删除该记录？')) deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
-                        <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
-                        <span class="sr-only">删除</span>
-                    </button>
                 </div>
             </div>
         `;
@@ -5211,9 +5292,13 @@ function renderStatsReportPreview() {
     const userId = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.id) ? String(defaultSettings.artistInfo.id) : '你';
     const periodLabel = getStatsReportPeriodLabel(filters);
     const reportTheme = getReportThemeColors();
-    const reportFontFamily = (defaultSettings && defaultSettings.receiptCustomization && defaultSettings.receiptCustomization.fontSettings && defaultSettings.receiptCustomization.fontSettings.fontFamily)
-        ? String(defaultSettings.receiptCustomization.fontSettings.fontFamily)
-        : 'Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif';
+    // 获取与小票一致的字体设置
+    const fontSettings = defaultSettings && defaultSettings.receiptCustomization && defaultSettings.receiptCustomization.fontSettings ? defaultSettings.receiptCustomization.fontSettings : {};
+    const reportFontFamily = fontSettings.fontFamily ? String(fontSettings.fontFamily) : 'Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif';
+    const reportFontSize = fontSettings.fontSize ? fontSettings.fontSize + 'px' : '.94rem';
+    const reportFontWeight = fontSettings.fontWeight ? fontSettings.fontWeight : 'normal';
+    const reportLineHeight = fontSettings.lineHeight ? fontSettings.lineHeight : '1.5'; // 减小默认行间距
+    const reportLetterSpacing = fontSettings.letterSpacing ? fontSettings.letterSpacing : '.01em';
 
     // 随机文案
     const subheadings = [
@@ -5225,7 +5310,13 @@ function renderStatsReportPreview() {
         '专业的态度，让每一份委托都成为精品。'
     ];
 
-    const topProduct = (dataset.byProduct && dataset.byProduct.length > 0) ? (dataset.byProduct[0].productName || '这份托付') : '这份托付';
+    // 获取最受欢迎的主力制品及其数量
+    let topProduct = '这份托付';
+    let topProductCount = 0;
+    if (dataset.byProduct && dataset.byProduct.length > 0) {
+        topProduct = dataset.byProduct[0].productName || '这份托付';
+        topProductCount = dataset.byProduct[0].count || 0;
+    }
     const records = dataset.filteredRecords || [];
     let maxOrder = null;
     records.forEach(function (item) {
@@ -5354,38 +5445,56 @@ function renderStatsReportPreview() {
     const randomClosingLine = closingLines[Math.floor(Math.random() * closingLines.length)];
 
     let html = '';
-    html += '<div id="statsReportExportArea" style="background:' + reportTheme.bg + ';border-radius:0;padding:60px 50px;color:' + reportTheme.text + ';font-family:' + reportFontFamily + ';font-size:.94rem;line-height:1.85;letter-spacing:.01em;">';
+    html += '<div id="statsReportExportArea" style="background:' + reportTheme.bg + ';border-radius:0;padding:60px 50px;color:' + reportTheme.text + ';font-family:' + reportFontFamily + ';font-size:' + reportFontSize + ';font-weight:' + reportFontWeight + ';line-height:' + reportLineHeight + ';letter-spacing:' + reportLetterSpacing + ';max-width:800px;margin:0 auto;">';
+    html += '<style>@media (max-width: 768px) { #statsReportExportArea { padding: 40px 30px !important; } }</style>';
+    // 确保段落间距一致
+    html += '<style>p { margin: 8px 0 !important; line-height: ' + reportLineHeight + ' !important; }</style>';
     html += '  <div style="font-size:.72rem;color:' + reportTheme.accent + ';letter-spacing:.08em;">TIME REPORT</div>';
     html += '  <div style="font-size:1.28rem;font-weight:700;margin-top:4px;color:' + reportTheme.title + ';">' + reportTitle + '</div>';
     html += '  <div style="color:' + reportTheme.text + ';opacity:.8;font-size:.84rem;margin-top:6px;">@' + escapeHtml(userId) + ' · ' + escapeHtml(periodLabel) + '</div>';
     html += '  <div style="height:1px;background:' + reportTheme.divider + ';margin:14px 0 16px 0;"></div>';
 
     if (st.modules.opening) {
-        html += '<p style="margin:12px 0 10px 0;line-height:1.9;">' + randomSubheading + '</p>';
+        html += '<p>' + randomSubheading + '</p>';
     }
     if (st.modules.kpi) {
-        html += '<p style="margin:0 0 10px 0;line-height:1.9;">这段时间，你接受了<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderCount || 0) + '</span>单委托，已完成<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderSettledCount || 0) + '</span>单委托，累计交付<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.itemDone || 0) + '</span>个制品。</p>';
+        html += '<p>这段时间，你接受了<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderCount || 0) + '</span>单委托，已完成<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderSettledCount || 0) + '</span>单委托，累计交付<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.itemDone || 0) + '</span>个制品。</p>';
     }
     if (st.modules.busy) {
-        html += '<p style="margin:0 0 10px 0;">你最忙的' + busyUnitLabel + '是<span style="font-weight:700;">' + escapeHtml(busyPeriodLabel) + '</span>，当' + busyUnitPrefix + '处理了<span style="font-weight:700;">' + busyOrderCount + '</span>单，完成了<span style="font-weight:700;">' + busyItemDone + '</span>个制品。</p>';
+        html += '<p>你最忙的' + busyUnitLabel + '是<span style="font-weight:700;">' + escapeHtml(busyPeriodLabel) + '</span>，当' + busyUnitPrefix + '处理了<span style="font-weight:700;">' + busyOrderCount + '</span>单，完成了<span style="font-weight:700;">' + busyItemDone + '</span>个制品。</p>';
     }
     if (st.modules.topProduct) {
-        html += '<p style="margin:0 0 8px 0;line-height:1.8;"><span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品。</p>';
+        let topProductText = '';
+        if (topProductCount > 0) {
+            // 根据数量生成不同的文案
+            if (topProductCount === 1) {
+                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件。';
+            } else if (topProductCount < 5) {
+                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件。';
+            } else if (topProductCount < 10) {
+                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期的爆款制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件，深受客户喜爱。';
+            } else {
+                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期的超级爆款，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件，展现了你的专业实力。';
+            }
+        } else {
+            topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品。';
+        }
+        html += '<p>' + topProductText + '</p>';
     }
     if (st.modules.aov) {
-        html += '<p style="margin:0 0 8px 0;line-height:1.8;">你的平均客单价为<span style="font-size:1.1em;font-weight:700;color:' + reportTheme.accent + ';">' + money(dataset.totals.aov || 0) + '</span>，每一单都在稳稳沉淀价值。</p>';
+        html += '<p>你的平均客单价为<span style="font-size:1.1em;font-weight:700;color:' + reportTheme.accent + ';">' + money(dataset.totals.aov || 0) + '</span>，每一单都在稳稳沉淀价值。</p>';
     }
     if (st.modules.revenue) {
-        html += '<p style="margin:0 0 8px 0;line-height:1.8;">这段时间，你累计营收<span style="font-size:1.1em;font-weight:700;color:' + reportTheme.accent + ';">' + money(nowRevenue) + '</span>。</p>';
+        html += '<p>这段时间，你累计营收<span style="font-size:1.1em;font-weight:700;color:' + reportTheme.accent + ';">' + money(nowRevenue) + '</span>。</p>';
         if (maxOrder) {
-            html += '<p style="margin:0 0 8px 0;line-height:1.8;">你本期最高单笔金额是<span style="font-weight:700;">' + money(maxOrder.amount) + '</span>。</p>';
+            html += '<p>你本期最高单笔金额是<span style="font-weight:700;">' + money(maxOrder.amount) + '</span>。</p>';
         }
         if (prevRevenue > 0) {
-            html += '<p style="margin:0 0 8px 0;line-height:1.8;">相比上期，营收' + trendWord + '<span style="font-weight:700;">' + Math.abs(change).toFixed(1) + '%</span>，你的节奏正在被看见。</p>';
+            html += '<p>相比上期，营收' + trendWord + '<span style="font-weight:700;">' + Math.abs(change).toFixed(1) + '%</span>，你的节奏正在被看见。</p>';
         }
     }
     if (st.modules.closing) {
-        html += '<p style="margin:10px 0 0 0;padding-top:8px;border-top:1px dashed rgba(0,0,0,.16);color:#666;">' + randomClosingLine + '</p>';
+        html += '<p style="padding-top:8px;border-top:1px dashed rgba(0,0,0,.16);color:#666;">' + randomClosingLine + '</p>';
     }
 
     html += '</div>';
@@ -5405,10 +5514,52 @@ function saveStatsReportAsImage() {
         scale: Math.max(2, window.devicePixelRatio || 1),
         useCORS: true
     }).then(function (canvas) {
+        // 检查是否在移动设备上
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        // 创建下载链接
         const link = document.createElement('a');
         link.download = '时光报告-' + new Date().toISOString().slice(0, 10) + '.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
+        
+        // 尝试使用toBlob方法获取图片数据
+        canvas.toBlob(function(blob) {
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            
+            // 在移动设备上，尝试直接触发下载
+            if (isMobile) {
+                // 对于iOS设备，使用特殊处理
+                if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+                    // 创建一个临时的图片元素，然后触发点击
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.style.position = 'fixed';
+                    img.style.top = '-9999px';
+                    img.style.left = '-9999px';
+                    document.body.appendChild(img);
+                    
+                    // 触发下载
+                    setTimeout(function() {
+                        link.click();
+                        // 清理
+                        setTimeout(function() {
+                            URL.revokeObjectURL(url);
+                            if (img.parentNode) {
+                                img.parentNode.removeChild(img);
+                            }
+                        }, 1000);
+                    }, 100);
+                } else {
+                    // 对于Android设备，直接触发下载
+                    link.click();
+                    URL.revokeObjectURL(url);
+                }
+            } else {
+                // 桌面设备：使用传统下载方式
+                link.click();
+                URL.revokeObjectURL(url);
+            }
+        }, 'image/png');
     }).catch(function (e) {
         console.error('保存时光报告失败:', e);
         alert('保存失败，请重试');
@@ -6615,7 +6766,7 @@ function generateQuote() {
     // 订单通知
     if (receiptInfo.orderNotification) {
         const orderNotification = receiptInfo.orderNotification.replace('XXX', quoteData.clientId);
-        receiptInfoHtml += `<p class="receipt-text-sm">${orderNotification}</p>`;
+        receiptInfoHtml += `<p class="receipt-text-sm receipt-text-sm-center">${orderNotification}</p>`;
     }
     // 下单时间（小票用英文、仅日期 YYYY-MM-DD，不显示时分；放在开始时间前面）
     if (receiptInfo.showOrderTime !== false && quoteData.timestamp) {
@@ -8619,6 +8770,41 @@ function setScheduleTodoFilter(f) {
     debouncedRefreshScheduleView();
 }
 
+// 初始化换行模式
+window.scheduleTodoWrapMode = localStorage.getItem('scheduleTodoWrapMode') || 'wrap';
+
+function setScheduleTodoWrapMode(mode) {
+    window.scheduleTodoWrapMode = mode;
+    
+    // 切换按钮状态
+    document.querySelectorAll('.schedule-todo-wrap-btn').forEach(btn => {
+        btn.classList.toggle('active', (btn.dataset.mode || '') === mode);
+    });
+    
+    // 更新容器的data-mode属性，触发滑动效果
+    const toggleContainer = document.querySelector('.schedule-todo-wrap-toggle');
+    if (toggleContainer) {
+        toggleContainer.setAttribute('data-mode', mode);
+    }
+    
+    // 应用模式到所有chips wrap
+    const chipsWraps = document.querySelectorAll('.schedule-todo-chips-wrap');
+    chipsWraps.forEach(wrap => {
+        if (mode === 'wrap') {
+            wrap.classList.add('force-wrap');
+            wrap.style.flexWrap = 'wrap';
+            wrap.style.overflowX = 'hidden';
+        } else {
+            wrap.classList.remove('force-wrap');
+            wrap.style.flexWrap = 'nowrap';
+            wrap.style.overflowX = 'auto';
+        }
+    });
+    
+    // 保存到localStorage
+    localStorage.setItem('scheduleTodoWrapMode', mode);
+}
+
 function getScheduleItemsByFilter() {
     const f = window.scheduleTodoFilter || 'today';
     const now = new Date();
@@ -9668,6 +9854,9 @@ async function mgRenderIncomingProjectsTodo(titleEl, modulesEl) {
     });
 
     modulesEl.innerHTML = cards.join('');
+    
+    // 应用当前的换行模式
+    setScheduleTodoWrapMode(window.scheduleTodoWrapMode);
 }
 
 async function mgUpdateProjectStatus(projectId, status, extraPatch) {
@@ -10056,6 +10245,9 @@ async function renderScheduleTodoSection() {
             + '</div>');
     });
     modulesEl.innerHTML = cardHtmls.join('');
+    
+    // 应用当前的换行模式
+    setScheduleTodoWrapMode(window.scheduleTodoWrapMode);
 }
 
 function toggleScheduleTodoDone(checkbox) {
@@ -10244,9 +10436,13 @@ function scheduleTodoCardAction(action) {
     if (id == null) return;
     if (action === 'edit') editHistoryItem(id);
     else if (action === 'receipt') { setReceiptFromRecord(); loadQuoteFromHistory(id); }
-    else if (action === 'remark') openOrderRemarkViewModal(id);
+    else if (action === 'remark') openOrderRemarkModal(id);
     else if (action === 'cancel' || action === 'waste_fee' || action === 'normal') {
         openSettlementModal(id, action);
+    } else if (action === 'delete') {
+        if(confirm('确定删除该记录？')) {
+            deleteHistoryItem(id);
+        }
     }
 }
 function needDepositChecked() {
@@ -14609,20 +14805,54 @@ function deleteDiscountReason(id) {
 }
 
 // 订单备注弹窗：打开
-function openOrderRemarkModal() {
+function openOrderRemarkModal(recordId) {
     var el = document.getElementById('orderRemarkText');
     var modal = document.getElementById('orderRemarkModal');
-    if (el) el.value = (defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '';
+    var smartExtractBtn = document.getElementById('smartExtractBtn');
+    var smartExtractHint = document.querySelector('.order-remark-hint');
+    
+    // 设置当前记录ID
+    currentRemarkRecordId = recordId || null;
+    
+    if (recordId) {
+        // 从记录页打开，隐藏智能提取
+        var item = history.find(function (h) { return h.id === recordId; });
+        if (el) el.value = (item && item.orderRemark != null) ? String(item.orderRemark) : '';
+        if (smartExtractBtn) smartExtractBtn.classList.add('d-none');
+        if (smartExtractHint) smartExtractHint.classList.add('d-none');
+    } else {
+        // 从计算页打开，显示智能提取
+        if (el) el.value = (defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '';
+        if (smartExtractBtn) smartExtractBtn.classList.remove('d-none');
+        if (smartExtractHint) smartExtractHint.classList.remove('d-none');
+    }
+    
     if (modal) modal.classList.remove('d-none');
 }
 
 // 订单备注弹窗：关闭并保存
+var currentRemarkRecordId = null;
+
 function closeOrderRemarkModal() {
     var el = document.getElementById('orderRemarkText');
     var modal = document.getElementById('orderRemarkModal');
-    if (el) defaultSettings.orderRemark = el.value;
+    
+    if (el) {
+        if (currentRemarkRecordId) {
+            // 保存到记录
+            var item = history.find(function (h) { return h.id === currentRemarkRecordId; });
+            if (item) {
+                item.orderRemark = el.value;
+            }
+            currentRemarkRecordId = null;
+        } else {
+            // 保存到默认设置
+            defaultSettings.orderRemark = el.value;
+            updateOrderRemarkPreview();
+        }
+    }
+    
     if (modal) modal.classList.add('d-none');
-    updateOrderRemarkPreview();
     saveData();
 }
 
