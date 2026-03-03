@@ -2998,6 +2998,10 @@ function showPage(pageId) {
         mgInitArtistInfoBindings();
         // 异步回填云端 display_name（不阻塞页面渲染）
         mgHydrateArtistIdFromCloud();
+        // 自动同步本地美工ID到云端（如果已设置）
+        if (defaultSettings.artistInfo && defaultSettings.artistInfo.id) {
+            mgSyncArtistDisplayNameToCloud(defaultSettings.artistInfo.id);
+        }
         renderProductSettings();
         renderProcessSettings();
         renderCoefficientSettings();
@@ -16862,6 +16866,13 @@ function importCoefficientsFromExcel(event) {
 window.addEventListener('load', function () {
     init();
     mgInitNetworkGuard();
+    
+    // 应用启动后，自动同步本地美工ID到云端（如果已设置）
+    setTimeout(async function() {
+        if (mgIsCloudEnabled() && defaultSettings.artistInfo && defaultSettings.artistInfo.id) {
+            await mgSyncArtistDisplayNameToCloud(defaultSettings.artistInfo.id);
+        }
+    }, 2000); // 延迟2秒执行，确保应用完全初始化
 });
 
 // 赠品相关函数
