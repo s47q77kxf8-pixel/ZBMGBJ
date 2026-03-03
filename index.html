@@ -1486,6 +1486,14 @@
                                     <small class="text-gray">按0元：计入件数/完成率，金额为0；按原价：计入金额贡献（工作量）</small>
                                 </div>
                                 <div class="filter-section">
+                                    <label class="filter-label">曾经逾期统计</label>
+                                    <select id="statsOverdueMode" class="filter-select" onchange="onStatsFilterChange()">
+                                        <option value="all">包含修改截稿日</option>
+                                        <option value="strict">仅原始截稿日</option>
+                                    </select>
+                                    <small class="text-gray">包含修改截稿日：修改过截稿日的订单也计入曾经逾期；仅原始截稿日：仅按首次设置的截稿日判断</small>
+                                </div>
+                                <div class="filter-section">
                                     <label class="filter-label">订单状态</label>
                                     <select id="statsStatusFilter" class="filter-select" onchange="onStatsFilterChange()">
                                         <option value="all">全部</option>

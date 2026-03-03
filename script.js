@@ -3963,14 +3963,21 @@ function isStatsOrderOverdue(item) {
 }
 
 // 曾经逾期过：当前逾期 或 已完成但截止日已过（说明逾期后才完成）
-function isStatsOrderEverOverdue(item) {
+function isStatsOrderEverOverdue(item, overdueMode) {
     if (!item || !item.deadline) return false;
     if (isStatsOrderOverdue(item)) return true;
     const status = getStatsOrderStatus(item);
     if (status !== '已完成') return false;
+    
+    // 如果是严格模式（仅原始截稿日），但没有原始截稿日记录，则不计算
+    if (overdueMode === 'strict' && !item.originalDeadline) return false;
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const d = new Date(item.deadline);
+    
+    // 严格模式使用原始截稿日，否则使用当前截稿日
+    const deadlineToUse = overdueMode === 'strict' && item.originalDeadline ? item.originalDeadline : item.deadline;
+    const d = new Date(deadlineToUse);
     d.setHours(0, 0, 0, 0);
     return d < today;
 }
@@ -3983,6 +3990,7 @@ function getStatsFiltersFromUI() {
     const amountBasis = document.getElementById('statsAmountBasis');
     const giftMode = document.getElementById('statsGiftMode');
     const statusFilter = document.getElementById('statsStatusFilter');
+    const overdueMode = document.getElementById('statsOverdueMode');
     const quickStart = document.getElementById('statsStartDate');
     const quickEnd = document.getElementById('statsEndDate');
     const viewYearEl = document.getElementById('statsViewYear');
@@ -4001,7 +4009,8 @@ function getStatsFiltersFromUI() {
         endDate: (quickEnd && quickEnd.value) ? quickEnd.value : '',
         amountBasis: amountBasis ? amountBasis.value : 'finalTotal',
         giftMode: giftMode ? giftMode.value : 'exclude',
-        statusFilter: statusFilter ? statusFilter.value : 'all'
+        statusFilter: statusFilter ? statusFilter.value : 'all',
+        overdueMode: overdueMode ? overdueMode.value : 'all'
     };
 }
 
@@ -4165,7 +4174,7 @@ function getStatsDataset(historySource, filters) {
         const orderStatus = getStatsOrderStatus(item);
         if (orderStatus === '已完成') orderDoneCount++;
         if (isStatsOrderOverdue(item)) overdueOrderCount++;
-        if (isStatsOrderEverOverdue(item)) everOverdueOrderCount++;
+        if (isStatsOrderEverOverdue(item, filters.overdueMode)) everOverdueOrderCount++;
         if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee' || item.settlement.type === 'waste_fee' || item.settlement.type === 'normal')) orderSettledCount++;
         if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
             cancelOrderCount++;
@@ -4946,6 +4955,7 @@ function resetStatsFilters() {
     const amountEl = document.getElementById('statsAmountBasis');
     const giftEl = document.getElementById('statsGiftMode');
     const statusEl = document.getElementById('statsStatusFilter');
+    const overdueEl = document.getElementById('statsOverdueMode');
     const quickStart = document.getElementById('statsStartDate');
     const quickEnd = document.getElementById('statsEndDate');
     const viewYearEl = document.getElementById('statsViewYear');
@@ -4958,6 +4968,7 @@ function resetStatsFilters() {
     if (amountEl) amountEl.value = 'finalTotal';
     if (giftEl) giftEl.value = 'exclude';
     if (statusEl) statusEl.value = 'all';
+    if (overdueEl) overdueEl.value = 'all';
     if (quickStart) quickStart.value = '';
     if (quickEnd) quickEnd.value = '';
     updateStatsFilterBadge();
@@ -5084,6 +5095,7 @@ function renderStatsPage() {
         const amountEl = document.getElementById('statsAmountBasis');
         const giftEl = document.getElementById('statsGiftMode');
         const statusEl = document.getElementById('statsStatusFilter');
+        const overdueEl = document.getElementById('statsOverdueMode');
         const quickStart = document.getElementById('statsStartDate');
         const quickEnd = document.getElementById('statsEndDate');
         const viewYearEl = document.getElementById('statsViewYear');
@@ -5093,6 +5105,7 @@ function renderStatsPage() {
         if (amountEl && saved.amountBasis) amountEl.value = saved.amountBasis;
         if (giftEl && saved.giftMode) giftEl.value = saved.giftMode;
         if (statusEl && saved.statusFilter) statusEl.value = saved.statusFilter;
+        if (overdueEl && saved.overdueMode) overdueEl.value = saved.overdueMode;
         if (viewYearEl && typeof saved.viewYear === 'number') viewYearEl.value = String(saved.viewYear);
         if (viewMonthEl && typeof saved.viewMonth === 'number') viewMonthEl.value = String(saved.viewMonth);
         if (saved.startDate && quickStart) quickStart.value = saved.startDate;
