@@ -3226,6 +3226,25 @@ function formatRecordShortDate(timestamp) {
     return m + '/' + day;
 }
 
+function formatRecordDotDate(timestamp) {
+    if (!timestamp) return '—';
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return '—';
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return m + '.' + day;
+}
+
+function formatRecordScheduleRange(item) {
+    if (!item) return '待排单';
+    const start = item.startTime ? formatRecordShortDate(item.startTime).replace('/', '.') : null;
+    const end = item.deadline ? formatRecordShortDate(item.deadline).replace('/', '.') : null;
+    if (start && end) return start === end ? start : (start + ' → ' + end);
+    if (start) return start;
+    if (end) return end;
+    return '待排单';
+}
+
 function escapeHtml(str) {
     if (str == null) return '';
     const s = String(str);
@@ -3421,7 +3440,8 @@ function applyRecordFilters() {
         const platformLabel = escapeHtml((item && item.contact) ? String(item.contact).trim() : '');
         const clientId = escapeHtml((item && item.clientId) ? String(item.clientId) : '—');
         const clientDisplay = platformLabel ? (platformLabel + ' ' + clientId) : clientId;
-        const shortDate = formatRecordShortDate(item && item.timestamp);
+        const shortDate = formatRecordDotDate(item && item.timestamp);
+        const scheduleRange = formatRecordScheduleRange(item);
         const receivableAmount = item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal);
         var actualAmount = receivableAmount;
         if (item && item.settlement && item.settlement.amount != null) {
@@ -3444,6 +3464,9 @@ function applyRecordFilters() {
                     <span class="record-item-client">${clientDisplay}</span>
                     <div class="record-item-meta">
                         <span class="record-item-date">${shortDate}</span>
+                        <span class="record-item-meta-sep">|</span>
+                        <span class="record-item-schedule">${escapeHtml(scheduleRange)}</span>
+                        <span class="record-item-meta-sep">|</span>
                         <span class="record-item-id">${item.id}</span>
                     </div>
                 </div>
@@ -4073,7 +4096,7 @@ function getStatsDataset(historySource, filters) {
     if (!Array.isArray(historySource) || historySource.length === 0) {
         return {
             filteredRecords: [],
-            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0, discountAmountTotal: 0, discountByReason: {}, discountTotal: 0 },
+            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0, discountAmountTotal: 0, discountByReason: {}, discountTotal: 0, productUnitPriceWithSameModel: 0, productUnitPriceWithoutSameModel: 0 },
             dailyAgg: [],
             weeklyAgg: [],
             monthlyAgg: [],
@@ -4150,6 +4173,8 @@ function getStatsDataset(historySource, filters) {
     const usageMap = {};
     const urgentMap = {};
     const processMap = {};
+    // 其他费用聚合：记录每种其他费用的「出现次数」和「金额」
+    const otherFeesMap = {};
     // 制品小类聚合：按制品名（小类）统计主设 / 同模 / 合计数量 / 金额
     const categoryMap = {};
     let categoryMainCountTotal = 0;
@@ -4166,13 +4191,48 @@ function getStatsDataset(historySource, filters) {
         const products = Array.isArray(item.productPrices) ? item.productPrices : [];
         const gifts = includeGifts && Array.isArray(item.giftPrices) ? item.giftPrices : [];
         const states = item.productDoneStates || [];
+        const doneQuantities = item.productDoneQuantities || [];
         let nItems = products.length + gifts.length;
         let nDone = 0;
-        for (let i = 0; i < nItems && i < states.length; i++) if (states[i]) nDone++;
-        itemTotal += nItems;
-        itemDone += nDone;
+
+        // 计算实际的制品总数量（与赠品筛选一致）
+        let actualItemTotal = 0;
+        const allPrices = products.concat(gifts);
+        for (let i = 0; i < allPrices.length; i++) {
+            const qty = Math.max(1, parseInt(allPrices[i] && allPrices[i].quantity, 10) || 1);
+            actualItemTotal += qty;
+        }
+
+        // 优先使用按数量记录的完成数据
+        for (let i = 0; i < nItems; i++) {
+            nDone += Number(doneQuantities[i]) || 0;
+        }
+        // 无数量记录时，按勾选完成状态折算数量
+        if (nDone <= 0) {
+            for (let i = 0; i < nItems; i++) {
+                if (!states[i]) continue;
+                const qty = Math.max(1, parseInt(allPrices[i] && allPrices[i].quantity, 10) || 1);
+                nDone += qty;
+            }
+        }
+
         const orderStatus = getStatsOrderStatus(item);
+        // 已完成/已结单订单兜底视为全部完成，避免趋势完成率异常为 0
+        if ((orderStatus === '已完成' || orderStatus === '已结单') && actualItemTotal > 0) {
+            nDone = Math.max(nDone, actualItemTotal);
+        }
+
+        itemTotal += actualItemTotal;
+        itemDone += nDone;
         if (orderStatus === '已完成') orderDoneCount++;
+        // 对于已结单的订单，只有当所有制品都完成时才计入制品全完成
+        else if (orderStatus === '已结单') {
+            const states = item.productDoneStates || [];
+            const total = states.length;
+            let doneCount = 0;
+            for (let i = 0; i < total; i++) if (states[i]) doneCount++;
+            if (total > 0 && doneCount === total) orderDoneCount++;
+        }
         if (isStatsOrderOverdue(item)) overdueOrderCount++;
         if (isStatsOrderEverOverdue(item, filters.overdueMode)) everOverdueOrderCount++;
         if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee' || item.settlement.type === 'waste_fee' || item.settlement.type === 'normal')) orderSettledCount++;
@@ -4313,8 +4373,23 @@ function getStatsDataset(historySource, filters) {
                 }
             }
         }
-        totalOtherFeesSum += (item.totalOtherFees != null ? Number(item.totalOtherFees) : 0) || 0;
+        // 统计其他费用总额
+        const itemOtherFees = (item.totalOtherFees != null ? Number(item.totalOtherFees) : 0) || 0;
+        totalOtherFeesSum += itemOtherFees;
         totalPlatformFeeSum += (item.platformFeeAmount != null ? Number(item.platformFeeAmount) : 0) || 0;
+        
+        // 统计其他费用明细
+        if (item.otherFees && Array.isArray(item.otherFees)) {
+            item.otherFees.forEach(fee => {
+                const feeName = fee.name || '其他费用';
+                const feeAmount = (fee.amount != null ? Number(fee.amount) : 0) || 0;
+                if (!otherFeesMap[feeName]) {
+                    otherFeesMap[feeName] = { name: feeName, count: 0, amountTotal: 0 };
+                }
+                otherFeesMap[feeName].count += 1;
+                otherFeesMap[feeName].amountTotal += feeAmount;
+            });
+        }
         const status = orderStatus;
         if (!statusMap[status]) statusMap[status] = { status: status, orderCount: 0, amountTotal: 0 };
         statusMap[status].orderCount += 1;
@@ -4325,7 +4400,7 @@ function getStatsDataset(historySource, filters) {
             if (!dailyMap[dateStr]) dailyMap[dateStr] = { date: dateStr, revenue: 0, orders: 0, itemTotal: 0, itemDone: 0 };
             dailyMap[dateStr].revenue += revenue;
             dailyMap[dateStr].orders += 1;
-            dailyMap[dateStr].itemTotal += nItems;
+            dailyMap[dateStr].itemTotal += actualItemTotal;
             dailyMap[dateStr].itemDone += nDone;
         }
 
@@ -4371,91 +4446,93 @@ function getStatsDataset(historySource, filters) {
             });
         });
 
-        // ===== 按制品小类汇总（如拍立得） =====
-        // 制品：使用 productPrices 中的 product（制品名）/ quantity / sameModelCount / productTotal
+        // ===== 按制品项汇总（按制品名，如普通吧唧/拍立得） =====
+        // 金额口径联动：先按制品口径算订单基准金额，再按当前金额口径的订单金额按比例分摊到各制品项
+        const orderCategoryRows = [];
+        let orderCategoryBaseAmountTotal = 0;
+
         products.forEach(p => {
             const subCatName = p.product || '其他';
-            if (!categoryMap[subCatName]) {
-                categoryMap[subCatName] = {
-                    category: subCatName,
-                    itemCount: 0,        // 主设件数
-                    sameModelCount: 0,   // 同模件数
-                    quantityTotal: 0,   // 合计件数
-                    mainAmount: 0,      // 主设金额
-                    sameModelAmount: 0,  // 同模金额
-                    amountTotal: 0       // 金额合计
-                };
-            }
             const qty = Number(p.quantity) || 0;
             const same = Number(p.sameModelCount) || 0;
             const main = Math.max(qty - same, 0);
-            const amount = Number(p.productTotal) || 0;
-            // 将整单金额按件数平均拆分为主设金额和同模金额，便于统计
-            let mainAmount = 0;
-            let sameAmount = 0;
-            if (qty > 0 && amount) {
-                const per = amount / qty;
-                mainAmount = per * main;
-                sameAmount = amount - mainAmount;
-            }
+            const amountBase = Number(p.productTotal) || 0;
 
-            categoryMap[subCatName].itemCount += main;
-            categoryMap[subCatName].sameModelCount += same;
-            categoryMap[subCatName].quantityTotal += qty;
-            categoryMap[subCatName].mainAmount += mainAmount;
-            categoryMap[subCatName].sameModelAmount += sameAmount;
-            categoryMap[subCatName].amountTotal += amount;
+            let sameAmountBase = Number(p.sameModelTotal) || 0;
+            sameAmountBase = Math.max(0, Math.min(sameAmountBase, amountBase));
+            const mainAmountBase = Math.max(0, amountBase - sameAmountBase);
 
-            categoryMainCountTotal += main;
-            categorySameModelTotal += same;
-            categoryQuantityTotal += qty;
-            categoryMainAmountTotal += mainAmount;
-            categorySameAmountTotal += sameAmount;
-            categoryAmountTotal += amount;
+            orderCategoryRows.push({
+                subCatName,
+                qty,
+                same,
+                main,
+                amountBase,
+                sameAmountBase,
+                mainAmountBase
+            });
+            orderCategoryBaseAmountTotal += amountBase;
         });
 
         // 赠品：是否计入由 giftMode 决定；金额基于 giftOriginalPrice
         if (includeGifts) {
             gifts.forEach(p => {
                 const subCatName = p.product || '其他';
-                if (!categoryMap[subCatName]) {
-                    categoryMap[subCatName] = {
-                        category: subCatName,
-                        itemCount: 0,
-                        sameModelCount: 0,
-                        quantityTotal: 0,
-                        mainAmount: 0,
-                        sameModelAmount: 0,
-                        amountTotal: 0
-                    };
-                }
                 const qty = Number(p.quantity) || 0;
                 const same = Number(p.sameModelCount) || 0;
                 const main = Math.max(qty - same, 0);
-                const amount = giftRevenueAsZero ? 0 : (Number(p.giftOriginalPrice) || 0);
-                let mainAmount = 0;
-                let sameAmount = 0;
-                if (qty > 0 && amount) {
-                    const per = amount / qty;
-                    mainAmount = per * main;
-                    sameAmount = amount - mainAmount;
-                }
+                const amountBase = giftRevenueAsZero ? 0 : (Number(p.giftOriginalPrice) || 0);
 
-                categoryMap[subCatName].itemCount += main;
-                categoryMap[subCatName].sameModelCount += same;
-                categoryMap[subCatName].quantityTotal += qty;
-                categoryMap[subCatName].mainAmount += mainAmount;
-                categoryMap[subCatName].sameModelAmount += sameAmount;
-                categoryMap[subCatName].amountTotal += amount;
+                let sameAmountBase = giftRevenueAsZero ? 0 : (Number(p.sameModelTotal) || 0);
+                sameAmountBase = Math.max(0, Math.min(sameAmountBase, amountBase));
+                const mainAmountBase = Math.max(0, amountBase - sameAmountBase);
 
-                categoryMainCountTotal += main;
-                categorySameModelTotal += same;
-                categoryQuantityTotal += qty;
-                categoryMainAmountTotal += mainAmount;
-                categorySameAmountTotal += sameAmount;
-                categoryAmountTotal += amount;
+                orderCategoryRows.push({
+                    subCatName,
+                    qty,
+                    same,
+                    main,
+                    amountBase,
+                    sameAmountBase,
+                    mainAmountBase
+                });
+                orderCategoryBaseAmountTotal += amountBase;
             });
         }
+
+        const orderAmountRatio = orderCategoryBaseAmountTotal > 0 ? (revenue / orderCategoryBaseAmountTotal) : 0;
+        orderCategoryRows.forEach(row => {
+            const subCatName = row.subCatName;
+            if (!categoryMap[subCatName]) {
+                categoryMap[subCatName] = {
+                    category: subCatName,
+                    itemCount: 0,
+                    sameModelCount: 0,
+                    quantityTotal: 0,
+                    mainAmount: 0,
+                    sameModelAmount: 0,
+                    amountTotal: 0
+                };
+            }
+
+            const scaledMainAmount = row.mainAmountBase * orderAmountRatio;
+            const scaledSameAmount = row.sameAmountBase * orderAmountRatio;
+            const scaledAmount = row.amountBase * orderAmountRatio;
+
+            categoryMap[subCatName].itemCount += row.main;
+            categoryMap[subCatName].sameModelCount += row.same;
+            categoryMap[subCatName].quantityTotal += row.qty;
+            categoryMap[subCatName].mainAmount += scaledMainAmount;
+            categoryMap[subCatName].sameModelAmount += scaledSameAmount;
+            categoryMap[subCatName].amountTotal += scaledAmount;
+
+            categoryMainCountTotal += row.main;
+            categorySameModelTotal += row.same;
+            categoryQuantityTotal += row.qty;
+            categoryMainAmountTotal += scaledMainAmount;
+            categorySameAmountTotal += scaledSameAmount;
+            categoryAmountTotal += scaledAmount;
+        });
     });
 
     const orderCount = list.length;
@@ -4463,6 +4540,10 @@ function getStatsDataset(historySource, filters) {
     const itemDoneRate = itemTotal > 0 ? (itemDone / itemTotal) * 100 : 0;
     const orderDoneRate = orderCount > 0 ? (orderDoneCount / orderCount) * 100 : 0;
     const orderSettledRate = orderCount > 0 ? (orderSettledCount / orderCount) * 100 : 0;
+    // 制品单价（含同模）：所有制品的平均单价
+    const productUnitPriceWithSameModel = categoryQuantityTotal > 0 ? categoryAmountTotal / categoryQuantityTotal : 0;
+    // 制品单价（不含同模）：主设制品的平均单价
+    const productUnitPriceWithoutSameModel = categoryMainCountTotal > 0 ? categoryMainAmountTotal / categoryMainCountTotal : 0;
 
     const dailyAgg = Object.keys(dailyMap).sort().map(k => dailyMap[k]);
     var weeklyMap = {};
@@ -4494,6 +4575,7 @@ function getStatsDataset(historySource, filters) {
     const byStatus = ['待排单', '未开始', '进行中', '已完成', '已逾期', '已撤单', '有废稿', '已结单'].map(s => statusMap[s] || { status: s, orderCount: 0, amountTotal: 0 });
     const byUsage = Object.values(usageMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byUrgent = Object.values(urgentMap).sort((a, b) => b.amountTotal - a.amountTotal);
+    const byOtherFees = Object.values(otherFeesMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byProcess = Object.values(processMap).sort((a, b) => b.feeTotal - a.feeTotal);
 
     const categoryRows = Object.values(categoryMap).sort((a, b) => {
@@ -4536,7 +4618,9 @@ function getStatsDataset(historySource, filters) {
             totalPlatformFeeSum,
             discountAmountTotal,
             discountByReason,
-            discountTotal: discountAmountTotal + discountByCoefficientTotal
+            discountTotal: discountAmountTotal + discountByCoefficientTotal,
+            productUnitPriceWithSameModel,
+            productUnitPriceWithoutSameModel
         },
         dailyAgg,
         weeklyAgg,
@@ -4546,6 +4630,7 @@ function getStatsDataset(historySource, filters) {
         byStatus,
         byUsage,
         byUrgent,
+        byOtherFees,
         byProcess,
         categorySummary
     };
@@ -4585,12 +4670,13 @@ function renderStatsComparison(filters, totals) {
     wrap.innerHTML = '<p class="stats-comparison">' + label + '：订单 <span class="' + o.cls + '">' + o.text + '</span>，收入 <span class="' + r.cls + '">' + r.text + '</span></p>';
 }
 
-function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess, discountByReason) {
+function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, discountByReason) {
     const container = document.getElementById('statsDistribution');
     if (!container) return;
     var hasStatus = byStatus && byStatus.some(function (s) { return s.orderCount > 0 || s.amountTotal > 0; });
     var hasUsage = byUsage && byUsage.length > 0;
     var hasUrgent = byUrgent && byUrgent.length > 0;
+    var hasOtherFees = byOtherFees && byOtherFees.length > 0;
     var hasProcess = byProcess && byProcess.length > 0;
     // 折扣原因：与「用途」「加急」类似，按「单数 / 金额」展示
     var discountReasons = (discountByReason && typeof discountByReason === 'object')
@@ -4599,7 +4685,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess, discoun
         })
         : [];
     var hasDiscount = discountReasons.length > 0;
-    if (!hasStatus && !hasUsage && !hasUrgent && !hasProcess && !hasDiscount) { container.innerHTML = ''; container.classList.add('d-none'); return; }
+    if (!hasStatus && !hasUsage && !hasUrgent && !hasOtherFees && !hasProcess && !hasDiscount) { container.innerHTML = ''; container.classList.add('d-none'); return; }
     container.classList.remove('d-none');
     var tabs = [];
     var panels = [];
@@ -4624,6 +4710,12 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byProcess, discoun
         var ghtml = '';
         byUrgent.forEach(function (r) { ghtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span></div>'; });
         panels.push({ id: 'urgent', html: '<div class="stats-dim-list">' + ghtml + '</div>' });
+    }
+    if (hasOtherFees) {
+        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="otherFees">其他费用</button>');
+        var ofhtml = '';
+        byOtherFees.forEach(function (r) { ofhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.count + ' 次 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span></div>'; });
+        panels.push({ id: 'otherFees', html: '<div class="stats-dim-list">' + ofhtml + '</div>' });
     }
     if (hasProcess) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="process">工艺</button>');
@@ -4677,9 +4769,13 @@ function renderStatsKpis(totals) {
         <div class="kpi-card kpi-card-primary"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div></div>
         <div class="kpi-card kpi-card-primary"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div></div>
         <div class="kpi-card kpi-card-primary"><div class="kpi-label">制品项</div><div class="kpi-value" id="kpiItemTotal">${totals.itemTotal}</div></div>
+        <div class="kpi-card kpi-card-primary">
+            <div class="kpi-label">制品单价<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
+            <div class="kpi-value kpi-value-compare" id="kpiProductUnitPriceCompare">${fmt(totals.productUnitPriceWithSameModel, true)} / ${fmt(totals.productUnitPriceWithoutSameModel, true)}</div>
+        </div>
         <div class="kpi-section-title">进度与结算</div>
-        <div class="kpi-card"><div class="kpi-label">制品项完成率</div><div class="kpi-value" id="kpiItemDoneRate">${fmt(totals.itemDoneRate)}%</div></div>
-        <div class="kpi-card"><div class="kpi-label">订单完结率</div><div class="kpi-value" id="kpiOrderSettledRate">${fmt(totals.orderSettledRate || 0)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">制品项完成率</div><div class="kpi-value" id="kpiItemDoneRate">${totals.itemDone}/${fmt(totals.itemDoneRate)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">订单完结率</div><div class="kpi-value" id="kpiOrderSettledRate">${totals.orderSettledCount || 0}/${fmt(totals.orderSettledRate || 0)}%</div></div>
         <div class="kpi-card"><div class="kpi-label">逾期</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div></div>
         <div class="kpi-card"><div class="kpi-label">曾经逾期</div><div class="kpi-value" id="kpiEverOverdueOrders">${totals.everOverdueOrderCount ?? 0}</div></div>
         <div class="kpi-card"><div class="kpi-label">撤单</div><div class="kpi-value kpi-value-small" id="kpiCancel">${totals.cancelOrderCount || 0} 单 / ${fmt(totals.cancelAmountTotal || 0, true)}</div></div>
@@ -4697,13 +4793,38 @@ function renderStatsKpis(totals) {
         grid.parentNode.insertBefore(orderRateEl, grid.nextSibling);
     }
     orderRateEl.textContent = '制品全完成率：' + fmt(totals.orderDoneRate) + '%（制品全完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）；订单完结率：' + fmt(totals.orderSettledRate || 0) + '%（已结算 ' + (totals.orderSettledCount || 0) + ' / ' + totals.orderCount + '）';
+
 }
+
 
 function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     const container = document.getElementById('statsTrends');
     if (!container) return;
-    var currentTab = (window.statsTrendGranularity || 'month');
-    if (currentTab !== 'month' && currentTab !== 'year') currentTab = 'month';
+    
+    // 获取当前时间范围
+    const filters = getStatsFiltersFromUI();
+    const timeRange = filters.timeRange;
+    
+    // 根据时间范围确定可用的粒度选项
+    var availableGranularities = [];
+    if (timeRange === 'thisMonth') {
+        // 本月只显示按日
+        availableGranularities = ['day'];
+    } else if (timeRange === 'thisYear') {
+        // 本年显示按日、按月
+        availableGranularities = ['day', 'month'];
+    } else {
+        // 全部和自定义显示按日、按月、按年
+        availableGranularities = ['day', 'month', 'year'];
+    }
+    
+    // 确定当前选中的粒度
+    var currentTab = (window.statsTrendGranularity || availableGranularities[0]);
+    if (!availableGranularities.includes(currentTab)) {
+        currentTab = availableGranularities[0];
+    }
+    
+    // 准备不同粒度的数据
     var yearlyMap = {};
     (monthlyAgg || []).forEach(function (d) {
         var y = d.month ? String(d.month).slice(0, 4) : '';
@@ -4715,30 +4836,89 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
         yearlyMap[y].itemDone += d.itemDone || 0;
     });
     var yearlyAgg = Object.keys(yearlyMap).sort().map(function (k) { return yearlyMap[k]; });
-    var agg = currentTab === 'year' ? yearlyAgg : (monthlyAgg || []);
+    
+    // 根据当前粒度选择数据
+    var agg, labelKey;
+    switch (currentTab) {
+        case 'day':
+            agg = dailyAgg || [];
+            labelKey = 'date';
+            break;
+        case 'month':
+            agg = monthlyAgg || [];
+            labelKey = 'month';
+            break;
+        case 'year':
+            agg = yearlyAgg || [];
+            labelKey = 'year';
+            break;
+        default:
+            agg = monthlyAgg || [];
+            labelKey = 'month';
+    }
+    
     if (!agg || agg.length === 0) {
         container.innerHTML = '<p class="text-gray">暂无趋势数据</p>';
         return;
     }
-    var labelKey = currentTab === 'year' ? 'year' : 'month';
+    
+    // 计算最大值用于条形图宽度
     const maxRev = Math.max(1, ...agg.map(d => d.revenue));
     const maxOrd = Math.max(1, ...agg.map(d => d.orders));
+    const maxItem = Math.max(1, ...agg.map(d => d.itemTotal || 0));
     const maxRate = 100;
+    const fmtMoneyCompact = (v) => {
+        const n = Number(v) || 0;
+        return '¥' + n.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
+    };
+    const fmtRate = (v) => {
+        const n = Number(v) || 0;
+        return n.toFixed(1) + '%';
+    };
+    
+    // 构建HTML
     var html = '<h3 class="stats-block-title">趋势</h3>';
-    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small' + (currentTab === 'month' ? ' active' : '') + '" data-gran="month">按月</button><button type="button" class="btn secondary small' + (currentTab === 'year' ? ' active' : '') + '" data-gran="year">按年</button></div>';
-    html += '<div class="stats-mini-bars">';
+    
+    // 生成粒度选择按钮
+    html += '<div class="stats-top-tabs">';
+    if (availableGranularities.includes('day')) {
+        html += '<button type="button" class="btn secondary small' + (currentTab === 'day' ? ' active' : '') + '" data-gran="day">按日</button>';
+    }
+    if (availableGranularities.includes('month')) {
+        html += '<button type="button" class="btn secondary small' + (currentTab === 'month' ? ' active' : '') + '" data-gran="month">按月</button>';
+    }
+    if (availableGranularities.includes('year')) {
+        html += '<button type="button" class="btn secondary small' + (currentTab === 'year' ? ' active' : '') + '" data-gran="year">按年</button>';
+    }
+    html += '</div>';
+
+    // 生成趋势数据（添加垂直滚动）
+    html += '<div class="stats-mini-bars scrollable">';
+
+    // 指标说明，放在滚动容器内并吸顶，避免条形与数值对应产生歧义
+    html += '<div class="stats-bar-head">';
+    html += '<span class="stats-bar-head-label">日期</span>';
+    html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-rev"></i>收入</span>';
+    html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-ord"></i>订单</span>';
+    html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-item"></i>制品</span>';
+    html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-rate"></i>完成率</span>';
+    html += '</div>';
     agg.forEach(function (d) {
         var rate = d.itemTotal > 0 ? (d.itemDone / d.itemTotal) * 100 : 0;
-        var lbl = d[labelKey] || d.month || d.year || '—';
+        var lbl = d[labelKey] || d.date || d.month || d.year || '—';
         html += '<div class="stats-bar-row">';
         html += '<span class="stats-bar-label">' + lbl + '</span>';
-        html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-rev" style="width:' + (d.revenue / maxRev * 100) + '%"></div></div><span class="stats-bar-legend">¥' + (d.revenue || 0).toFixed(0) + '</span>';
-        html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-ord" style="width:' + (d.orders / maxOrd * 100) + '%"></div></div><span class="stats-bar-legend">' + d.orders + '单</span>';
-        html += '<div class="stats-bar-wrap"><div class="stats-bar stats-bar-rate" style="width:' + (rate / maxRate * 100) + '%"></div></div><span class="stats-bar-legend">' + rate.toFixed(0) + '%</span>';
+        html += '<div class="stats-bar-metric"><div class="stats-bar-wrap"><div class="stats-bar stats-bar-rev" style="width:' + (d.revenue / maxRev * 100) + '%"></div></div><span class="stats-bar-legend">' + fmtMoneyCompact(d.revenue || 0) + '</span></div>';
+        html += '<div class="stats-bar-metric"><div class="stats-bar-wrap"><div class="stats-bar stats-bar-ord" style="width:' + (d.orders / maxOrd * 100) + '%"></div></div><span class="stats-bar-legend">' + (d.orders || 0) + '</span></div>';
+        html += '<div class="stats-bar-metric"><div class="stats-bar-wrap"><div class="stats-bar stats-bar-item" style="width:' + ((d.itemTotal || 0) / maxItem * 100) + '%"></div></div><span class="stats-bar-legend">' + (d.itemTotal || 0) + '</span></div>';
+        html += '<div class="stats-bar-metric"><div class="stats-bar-wrap"><div class="stats-bar stats-bar-rate" style="width:' + (rate / maxRate * 100) + '%"></div></div><span class="stats-bar-legend">' + fmtRate(rate) + '</span></div>';
         html += '</div>';
     });
     html += '</div>';
+    
     container.innerHTML = html;
+    
+    // 添加事件监听器
     container.querySelectorAll('.stats-top-tabs button[data-gran]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             window.statsTrendGranularity = this.dataset.gran;
@@ -4852,7 +5032,7 @@ function renderStatsCategorySummary(summary) {
     };
 
     if (!rows.length || !totals) {
-        container.innerHTML = '<div class="stats-category-summary-card"><div class="stats-category-summary-header"><div class="stats-category-summary-title">制品小类汇总</div><div class="stats-category-summary-total">暂无数据</div></div></div>';
+        container.innerHTML = '<div class="stats-category-summary-card"><div class="stats-category-summary-header"><div class="stats-category-summary-title">制品项汇总</div><div class="stats-category-summary-total">暂无数据</div></div></div>';
         return;
     }
 
@@ -4876,12 +5056,12 @@ function renderStatsCategorySummary(summary) {
 
     let html = '<div class="stats-category-summary-card">';
     html += '<div class="stats-category-summary-header">';
-    html += '<div class="stats-category-summary-title">制品小类汇总</div>';
+    html += '<div class="stats-category-summary-title">制品项汇总</div>';
     html += '</div>';
     html += '<div class="stats-category-summary-table-wrap">';
     html += '<table class="stats-category-summary-table">';
     html += '<thead><tr>';
-    html += sortLabel('制品小类', 'category');
+    html += sortLabel('制品项', 'category');
     html += sortLabel('主设数', 'itemCount');
     html += sortLabel('主设金额', 'mainAmount');
     html += sortLabel('同模数', 'sameModelCount');
@@ -5083,7 +5263,7 @@ function applyStatsFilters() {
     renderStatsTrends(dataset.dailyAgg, dataset.weeklyAgg, dataset.monthlyAgg);
     renderStatsTopLists(dataset.byClient, dataset.byProduct);
     renderStatsCategorySummary(dataset.categorySummary);
-    renderStatsDistribution(dataset.byStatus, dataset.byUsage, dataset.byUrgent, dataset.byProcess, dataset.totals.discountByReason);
+    renderStatsDistribution(dataset.byStatus, dataset.byUsage, dataset.byUrgent, dataset.byOtherFees, dataset.byProcess, dataset.totals.discountByReason);
 }
 
 function renderStatsPage() {
@@ -8642,6 +8822,20 @@ function setScheduleProductDone(scheduleId, productIndex, done) {
     }
     
     saveData();
+    
+    // 如果当前在统计页面，重新渲染统计数据
+    if (document.getElementById('stats') && document.getElementById('stats').classList.contains('active')) {
+        setTimeout(() => {
+            applyStatsFilters();
+        }, 100);
+    }
+    
+    // 更新排单页面左上角的统计数据
+    if (window.scheduleCalendarYear && window.scheduleCalendarMonth) {
+        setTimeout(() => {
+            renderScheduleMonthTitleStats(window.scheduleCalendarYear, window.scheduleCalendarMonth);
+        }, 100);
+    }
 }
 
 // 更新某条排单的制品完成数量（支持部分完成）
@@ -8667,6 +8861,20 @@ function setScheduleProductDoneQty(scheduleId, productIndex, doneQty) {
     }
 
     saveData();
+    
+    // 如果当前在统计页面，重新渲染统计数据
+    if (document.getElementById('stats') && document.getElementById('stats').classList.contains('active')) {
+        setTimeout(() => {
+            applyStatsFilters();
+        }, 100);
+    }
+    
+    // 更新排单页面左上角的统计数据
+    if (window.scheduleCalendarYear && window.scheduleCalendarMonth) {
+        setTimeout(() => {
+            renderScheduleMonthTitleStats(window.scheduleCalendarYear, window.scheduleCalendarMonth);
+        }, 100);
+    }
 }
 
 // 订单是否已完结（撤稿/废稿/结单后归档，不再在 todo/日历中显示）
@@ -12525,22 +12733,124 @@ function loadHistory(searchKeyword = '', filters = {}) {
     }
 }
 
-// 渲染列表形式的历史记录
+// 虚拟列表配置
+const VIRTUAL_LIST_CONFIG = {
+  itemHeight: 150, // 每个历史记录项的高度（px）
+  buffer: 2 // 缓冲区大小，上下各多渲染2个项目
+};
+
+// 渲染列表形式的历史记录（虚拟列表）
 function renderListHistory(filteredHistory) {
     const container = document.getElementById('historyContainer');
-    let html = '';
     
     if (filteredHistory.length === 0) {
-        html = '<p>未找到匹配的历史记录</p>';
-    } else {
-        filteredHistory.forEach(item => {
-            html += generateHistoryItemHTML(item);
-        });
+        container.innerHTML = '<p>未找到匹配的历史记录</p>';
+        updateBatchDeleteButton();
+        return;
     }
     
-    container.innerHTML = html;
+    // 计算基本参数
+    const containerHeight = container.clientHeight || 600; // 默认高度
+    const itemHeight = VIRTUAL_LIST_CONFIG.itemHeight;
+    const visibleCount = Math.ceil(containerHeight / itemHeight);
+    const totalCount = filteredHistory.length;
+    const totalHeight = totalCount * itemHeight;
+    
+    // 创建滚动容器
+    const scrollContainer = document.createElement('div');
+    scrollContainer.style.position = 'relative';
+    scrollContainer.style.height = `${totalHeight}px`;
+    scrollContainer.style.width = '100%';
+    
+    // 创建可见元素容器
+    const visibleContainer = document.createElement('div');
+    visibleContainer.style.position = 'absolute';
+    visibleContainer.style.top = '0';
+    visibleContainer.style.left = '0';
+    visibleContainer.style.width = '100%';
+    
+    container.innerHTML = '';
+    container.appendChild(scrollContainer);
+    scrollContainer.appendChild(visibleContainer);
+    
+    // 渲染可见元素
+    function renderVisibleItems() {
+        const scrollTop = container.scrollTop;
+        const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - VIRTUAL_LIST_CONFIG.buffer);
+        const endIndex = Math.min(totalCount, startIndex + visibleCount + VIRTUAL_LIST_CONFIG.buffer * 2);
+        
+        // 计算偏移量
+        const offsetY = startIndex * itemHeight;
+        visibleContainer.style.transform = `translateY(${offsetY}px)`;
+        
+        // 渲染可见元素
+        visibleContainer.innerHTML = '';
+        for (let i = startIndex; i < endIndex; i++) {
+            const item = filteredHistory[i];
+            if (item) {
+                const itemElement = generateHistoryItemElement(item);
+                visibleContainer.appendChild(itemElement);
+            }
+        }
+        
+        // 恢复复选框状态
+        restoreCheckboxStates();
+    }
+    
+    // 初始渲染
+    renderVisibleItems();
+    
+    // 监听滚动事件（使用节流优化）
+    let scrollTimeout;
+    container.addEventListener('scroll', function() {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(renderVisibleItems, 16); // 约60fps
+    });
+    
+    // 监听容器大小变化
+    const resizeObserver = new ResizeObserver(() => {
+        renderVisibleItems();
+    });
+    resizeObserver.observe(container);
+    
     updateBatchDeleteButton();
-    restoreCheckboxStates();
+}
+
+// 生成历史记录项元素
+function generateHistoryItemElement(item) {
+    const element = document.createElement('div');
+    element.className = `history-item${selectedHistoryIds.has(item.id) ? ' selected' : ''}`;
+    element.dataset.id = item.id;
+    
+    element.innerHTML = `
+        <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${selectedHistoryIds.has(item.id) ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
+        <div class="history-item-header">
+            <div class="history-item-title">报价单 - ${item.clientId}</div>
+            <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
+        </div>
+        <div class="history-item-content">
+            接单平台: ${item.contact || ''}\n
+            联系方式: ${item.contactInfo || ''}\n
+            截稿日: ${item.deadline}\n
+            实收: ¥${(item.agreedAmount != null ? item.agreedAmount : item.finalTotal).toFixed(2)}
+        </div>
+        <div class="history-item-actions">
+            <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
+                <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+                <span class="sr-only">查看详情</span>
+            </button>
+            <button class="icon-action-btn edit" onclick="editHistoryItem(${item.id})" aria-label="编辑" title="编辑">
+                <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
+                <span class="sr-only">编辑</span>
+            </button>
+            <button class="icon-action-btn delete" onclick="if(confirm('确定删除该记录？')) deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
+                <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                    <span class="sr-only">删除</span>
+            </button>
+        </div>
+    `;
+    
+    return element;
 }
 
 // 渲染分组形式的历史记录
