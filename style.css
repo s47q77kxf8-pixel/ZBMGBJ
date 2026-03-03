@@ -8650,7 +8650,7 @@ html.theme-dark .settlement-preview {
 .stats-mini-bars.scrollable {
     max-height: 640px; /* 至少可视约20条数据 */
     overflow-y: auto;
-    overflow-x: auto;
+    overflow-x: hidden;
     padding-right: 0.5rem;
     margin-top: 0.5rem;
 }
@@ -9057,12 +9057,33 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
     .kpi-value {
         font-size: 1.1rem;
     }
+    .stats-mini-bars.scrollable {
+        padding-right: 0.15rem;
+    }
+    .stats-bar-head,
     .stats-bar-row {
-        font-size: 0.72rem;
-        min-width: 760px;
+        min-width: 0;
+        grid-template-columns: 68px repeat(4, minmax(0, 1fr));
+        gap: 0.16rem;
     }
     .stats-bar-head {
-        min-width: 760px;
+        font-size: 0.64rem;
+    }
+    .stats-bar-row {
+        font-size: 0.66rem;
+    }
+    .stats-bar-label {
+        font-size: 0.62rem;
+    }
+    .stats-bar-metric {
+        gap: 0.12rem;
+    }
+    .stats-bar-row .stats-bar-metric + .stats-bar-metric,
+    .stats-bar-head .stats-bar-head-metric + .stats-bar-head-metric {
+        margin-left: 0.35rem;
+    }
+    .stats-bar-legend {
+        font-size: 0.64rem;
     }
     .stats-bar-wrap {
         height: 6px;
