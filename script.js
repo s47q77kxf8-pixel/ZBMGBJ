@@ -3273,21 +3273,8 @@ function onRecordFilterChange() {
 function updateRecordFilterBadge() {
     const badge = document.getElementById('recordFilterBadge');
     if (!badge) return;
-    let count = 0;
-    const timeFilter = document.getElementById('recordTimeFilter');
-    const statusFilter = document.getElementById('recordStatusFilter');
-    const minPrice = document.getElementById('recordMinPrice');
-    const maxPrice = document.getElementById('recordMaxPrice');
-    if (timeFilter && timeFilter.value && timeFilter.value !== 'all') count++;
-    if (statusFilter && statusFilter.value && statusFilter.value !== 'all') count++;
-    if (minPrice && minPrice.value) count++;
-    if (maxPrice && maxPrice.value) count++;
-    if (count > 0) {
-        badge.textContent = count;
-        badge.classList.remove('d-none');
-    } else {
-        badge.classList.add('d-none');
-    }
+    // 始终隐藏筛选徽章
+    badge.classList.add('d-none');
 }
 
 function resetRecordFilters() {
@@ -4929,15 +4916,8 @@ function renderStatsCategorySummary(summary) {
 function updateStatsFilterBadge() {
     const badge = document.getElementById('statsFilterBadge');
     if (!badge) return;
-    const f = getStatsFiltersFromUI();
-    let n = 0;
-    if (f.timeRange !== 'thisMonth') n++;
-    if (f.timeBasis !== 'timestamp') n++;
-    if (f.amountBasis !== 'finalTotal') n++;
-    if (f.giftMode !== 'exclude') n++;
-    if (f.statusFilter !== 'all') n++;
-    if (f.startDate || f.endDate) n++;
-    if (n > 0) { badge.textContent = n; badge.classList.remove('d-none'); } else { badge.classList.add('d-none'); }
+    // 始终隐藏筛选徽章
+    badge.classList.add('d-none');
 }
 
 function toggleStatsFilterDrawer() {
@@ -12693,26 +12673,8 @@ function onHistoryFilterChange() {
 function updateHistoryFilterBadge() {
     const badge = document.getElementById('historyFilterBadge');
     if (!badge) return;
-    
-    let count = 0;
-    const timeFilter = document.getElementById('historyTimeFilter');
-    const minPrice = document.getElementById('historyMinPrice');
-    const maxPrice = document.getElementById('historyMaxPrice');
-    const sortBy = document.getElementById('historySortBy');
-    const groupBy = document.getElementById('historyGroupBy');
-    
-    if (timeFilter && timeFilter.value && timeFilter.value !== 'all') count++;
-    if (minPrice && minPrice.value) count++;
-    if (maxPrice && maxPrice.value) count++;
-    if (sortBy && sortBy.value && sortBy.value !== 'time-desc') count++;
-    if (groupBy && groupBy.value && groupBy.value !== 'none') count++;
-    
-    if (count > 0) {
-        badge.textContent = count;
-        badge.classList.remove('d-none');
-    } else {
-        badge.classList.add('d-none');
-    }
+    // 始终隐藏筛选徽章
+    badge.classList.add('d-none');
 }
 
 // 重置所有筛选条件
