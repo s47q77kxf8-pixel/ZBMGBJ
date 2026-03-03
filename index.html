@@ -745,8 +745,12 @@
                     <div class="receipt-customization-overlay" onclick="closeReceiptCustomizationPanel()"></div>
                     <div class="receipt-customization-content">
                         <div class="receipt-customization-header">
-                            <h2>小票设置</h2>
                             <button class="btn-icon" onclick="closeReceiptCustomizationPanel()">×</button>
+                            <h2>小票设置</h2>
+                            <div class="header-buttons">
+                                <button class="btn btn-sm" onclick="clearReceiptCustomization()">清除</button>
+                                <button class="btn btn-sm" onclick="closeReceiptCustomizationPanel()">保存</button>
+                            </div>
                         </div>
                         <div class="receipt-customization-body">
                             <div class="receipt-customization-tabs">
@@ -1155,10 +1159,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="receipt-customization-footer">
-                            <button class="btn" onclick="clearReceiptCustomization()">清除设置</button>
-                            <button class="btn" onclick="closeReceiptCustomizationPanel()">保存设置</button>
-                        </div>
+
                     </div>
                 </div>
                 <!-- 历史记录弹窗 -->

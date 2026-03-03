@@ -4676,6 +4676,25 @@ input:checked + .toggle-slider:before {
     font-weight: 700;
     margin: 0;
     color: var(--text-color);
+    flex: 1;
+    text-align: center;
+}
+
+.receipt-customization-header .header-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.receipt-customization-header .btn-sm {
+    padding: 0.35em 0.7em;
+    font-size: 0.8rem;
+    height: auto;
+    line-height: 1.2;
+}
+
+.receipt-customization-header .btn-icon {
+    flex-shrink: 0;
 }
 
 .receipt-customization-body {
@@ -4684,24 +4703,7 @@ input:checked + .toggle-slider:before {
     overflow-y: auto;
 }
 
-.receipt-customization-footer {
-    display: flex;
-    justify-content: space-between;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border-color);
-    background: var(--card-bg);
-    gap: 1rem;
-    flex-shrink: 0;
-}
 
-.receipt-customization-footer .btn {
-    flex: 1;
-    padding: 0.5em 0.9em;
-    font-size: 0.95rem;
-    height: auto;
-    line-height: 1.35;
-    text-align: center;
-}
 
 /* 标签页样式 */
 .receipt-customization-tabs {
