@@ -1413,9 +1413,9 @@
                     <header class="stats-header d-flex justify-between items-center">
                         <h1 class="stats-title">统计</h1>
                         <div class="stats-actions d-flex gap-2 items-center">
-                            <button type="button" class="btn secondary btn--icon" onclick="exportStatsToExcel()" aria-label="导出" title="导出Excel">
-                                <svg class="icon" aria-hidden="true"><use href="#i-export"></use></svg>
-                                <span class="sr-only">导出Excel</span>
+                            <button type="button" class="btn secondary page-filter-btn-with-label" id="statsReportBtn" onclick="openStatsReportModal()" aria-label="生成时光报告" title="生成时光报告">
+                                <svg class="icon" aria-hidden="true"><use href="#i-note"></use></svg>
+                                <span class="page-action-label">时光报告</span>
                             </button>
                             <button type="button" class="btn secondary page-filter-btn-with-label" id="statsFilterBtn" onclick="toggleStatsFilterDrawer()" aria-label="筛选" title="筛选">
                                 <svg class="icon" aria-hidden="true"><use href="#i-filter"></use></svg>
@@ -1525,6 +1525,35 @@
                     </div>
                     <div id="statsTopLists" class="stats-top-lists">
                         <!-- Top 单主由 JS 渲染，默认前3，更多显示全部 -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="statsReportModal" class="history-filter-drawer">
+                <div class="filter-drawer-overlay" onclick="closeStatsReportModal()"></div>
+                <div class="filter-drawer-content">
+                    <div class="filter-drawer-header">
+                        <h3>生成时光报告</h3>
+                        <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeStatsReportModal()" aria-label="关闭" title="关闭"><svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg><span class="sr-only">关闭</span></button>
+                    </div>
+                    <div class="filter-drawer-body">
+                        <div class="filter-section">
+                            <label class="filter-label">样式选择（同步小票设置）</label>
+                            <select id="statsReportThemeSelect" class="filter-select" onchange="handleStatsReportThemeChange(this.value)"></select>
+                            <small class="text-gray">默认跟随小票主题，也可临时选择其他样式</small>
+                        </div>
+                        <div class="filter-section">
+                            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid rgba(0,0,0,.08);border-radius:10px;background:#fff;"><span class="filter-label" style="margin:0;">金额显示</span><label class="custom-toggle" style="flex-shrink:0;"><input type="checkbox" id="statsReportShowAmount" checked onchange="renderStatsReportPreview()"><span class="toggle-slider"></span></label></div>
+                            <small class="text-gray">关闭后金额将脱敏为 ***</small>
+                        </div>
+                        <div class="filter-section">
+                            <label class="filter-label">预览</label>
+                            <div id="statsReportPreview" style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:10px;line-height:1.7;color:#111;"></div>
+                        </div>
+                    </div>
+                    <div class="filter-drawer-footer">
+                        <button type="button" class="btn secondary flex-1" onclick="closeStatsReportModal()">关闭</button>
+                        <button type="button" class="btn flex-1" onclick="saveStatsReportAsImage()">保存为图片</button>
                     </div>
                 </div>
             </div>

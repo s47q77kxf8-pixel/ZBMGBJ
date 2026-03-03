@@ -5038,6 +5038,379 @@ function renderStatsPage() {
     applyStatsFilters();
 }
 
+function getStatsReportPeriodLabel(filters) {
+    if (!filters) return '这段时间';
+    function fmtYmd(d) {
+        if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        return y + '年' + m + '月' + day + '日';
+    }
+    var now = new Date();
+    if (filters.timeRange === 'thisMonth') {
+        var y = isFinite(filters.viewYear) ? filters.viewYear : now.getFullYear();
+        var m = isFinite(filters.viewMonth) ? filters.viewMonth : now.getMonth();
+        return y + '年' + (m + 1) + '月';
+    }
+    if (filters.timeRange === 'thisYear') {
+        var yy = isFinite(filters.viewYear) ? filters.viewYear : now.getFullYear();
+        return yy + '年';
+    }
+    if (filters.timeRange === 'custom' && (filters.startDate || filters.endDate)) {
+        var cStart = filters.startDate ? new Date(filters.startDate + 'T00:00:00') : null;
+        var cEnd = filters.endDate ? new Date(filters.endDate + 'T00:00:00') : null;
+        return (cStart ? fmtYmd(cStart) : '起') + ' 至 ' + (cEnd ? fmtYmd(cEnd) : '今');
+    }
+    if (filters.timeRange === 'all') return '全部时间';
+    return '这段时间';
+}
+
+function getStatsReportState() {
+    if (!window.statsReportState) {
+        window.statsReportState = {
+            preset: 'social',
+            modules: { opening: true, kpi: true, busy: true, topProduct: true, aov: true, revenue: true, closing: true },
+            showAmount: true,
+            themeId: 'follow'
+        };
+    }
+    return window.statsReportState;
+}
+
+function buildStatsReportThemeOptions() {
+    const st = getStatsReportState();
+    const select = document.getElementById('statsReportThemeSelect');
+    if (!select) return;
+    const currentReceiptTheme = (defaultSettings && defaultSettings.receiptCustomization && defaultSettings.receiptCustomization.theme) || 'classic';
+    const preset = [
+        { id: 'classic', name: '经典' },
+        { id: 'modern', name: '现代' },
+        { id: 'warm', name: '暖色' },
+        { id: 'dark', name: '暗色' },
+        { id: 'nature', name: '自然' },
+        { id: 'vintage', name: '复古' },
+        { id: 'sakura', name: '樱色' },
+        { id: 'iceBlue', name: '冰蓝' }
+    ];
+    let html = '<option value="follow">跟随小票（当前：' + currentReceiptTheme + '）</option>';
+    preset.forEach(function (t) { html += '<option value="' + t.id + '">' + t.name + '</option>'; });
+    if (defaultSettings && defaultSettings.customThemes) {
+        Object.keys(defaultSettings.customThemes).forEach(function (id) {
+            const t = defaultSettings.customThemes[id] || {};
+            const name = t.name ? String(t.name) : id;
+            html += '<option value="' + id + '">自定义 · ' + name + '</option>';
+        });
+    }
+    select.innerHTML = html;
+    select.value = st.themeId || 'follow';
+}
+
+function handleStatsReportThemeChange(themeId) {
+    const st = getStatsReportState();
+    st.themeId = themeId || 'follow';
+    renderStatsReportPreview();
+}
+
+function openStatsReportModal() {
+    const modal = document.getElementById('statsReportModal');
+    if (!modal) return;
+    const st = getStatsReportState();
+    buildStatsReportThemeOptions();
+    const amountEl = document.getElementById('statsReportShowAmount');
+    if (amountEl) amountEl.checked = !!st.showAmount;
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    renderStatsReportPreview();
+}
+
+function closeStatsReportModal() {
+    const modal = document.getElementById('statsReportModal');
+    if (!modal) return;
+    modal.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function applyStatsReportPreset(preset) {
+    const st = getStatsReportState();
+    st.preset = preset;
+    if (preset === 'social') {
+        st.modules = { opening: true, kpi: true, busy: true, topProduct: true, aov: true, revenue: true, closing: true };
+        st.showAmount = false;
+    } else if (preset === 'group') {
+        st.modules = { opening: true, kpi: true, busy: true, topProduct: true, aov: true, revenue: true, closing: false };
+        st.showAmount = true;
+    } else {
+        st.modules = { opening: true, kpi: true, busy: true, topProduct: true, aov: true, revenue: true, closing: true };
+        st.showAmount = true;
+    }
+    const amountEl = document.getElementById('statsReportShowAmount');
+    if (amountEl) amountEl.checked = !!st.showAmount;
+    const moduleWrap = document.getElementById('statsReportModules');
+    if (moduleWrap) {
+        moduleWrap.querySelectorAll('input[type="checkbox"][data-module]').forEach(function (cb) {
+            const key = cb.getAttribute('data-module');
+            cb.checked = !!st.modules[key];
+        });
+    }
+    renderStatsReportPreview();
+}
+
+function renderStatsReportPreview() {
+    const preview = document.getElementById('statsReportPreview');
+    if (!preview) return;
+    const filters = getStatsFiltersFromUI();
+    const dataset = getStatsDataset(history, filters);
+    const st = getStatsReportState();
+    const amountEl = document.getElementById('statsReportShowAmount');
+    st.showAmount = amountEl ? !!amountEl.checked : !!st.showAmount;
+
+
+    if (!dataset || !dataset.filteredRecords || dataset.filteredRecords.length === 0) {
+        preview.innerHTML = '<p class="text-gray">当前统计条件暂无可生成的时光报告。</p>';
+        return;
+    }
+
+    function money(v) {
+        return st.showAmount ? formatMoney(v) : '¥***';
+    }
+    function getReportThemeColors() {
+        var preset = {
+            classic: { bg: '#fdfdfd', text: '#2d3748', accent: '#4a5568', title: '#2d3748', divider: '#cbd5e0', borderRadius: 0 },
+            modern: { bg: '#ffffff', text: '#2c3e50', accent: '#2563eb', title: '#2c3e50', divider: '#cbd5e0', borderRadius: 0 },
+            warm: { bg: '#fff7ed', text: '#9a3412', accent: '#fb923c', title: '#92400e', divider: '#fed7aa', borderRadius: 0 },
+            dark: { bg: '#1a1a2e', text: '#e2e8f0', accent: '#fbbf24', title: '#e2e8f0', divider: '#475569', borderRadius: 0 },
+            nature: { bg: '#f6fdf7', text: '#2f855a', accent: '#48bb78', title: '#15803d', divider: '#c6f6d5', borderRadius: 0 },
+            vintage: { bg: '#f8f0e3', text: '#5c1a1a', accent: '#8b3e2f', title: '#5c1a1a', divider: '#c89b6e', borderRadius: 0 },
+            sakura: { bg: '#fef7fb', text: '#4a5568', accent: '#be185d', title: '#be185d', divider: '#fecdd3', borderRadius: 0 },
+            iceBlue: { bg: '#f0f9ff', text: '#1f2933', accent: '#0284c7', title: '#075985', divider: '#bae6fd', borderRadius: 0 }
+        };
+        var stateThemeId = (st && st.themeId) ? st.themeId : 'follow';
+        var themeId = stateThemeId === 'follow'
+            ? ((defaultSettings && defaultSettings.receiptCustomization && defaultSettings.receiptCustomization.theme) || 'classic')
+            : stateThemeId;
+        if (defaultSettings && defaultSettings.customThemes && defaultSettings.customThemes[themeId]) {
+            var t = defaultSettings.customThemes[themeId];
+            return {
+                bg: t.bg || '#fff7ed',
+                text: t.text || '#222',
+                accent: t.accent || '#2563eb',
+                title: t.title || t.text || '#222',
+                divider: t.divider || 'rgba(0,0,0,.16)',
+                borderRadius: isFinite(t.borderRadius) ? Number(t.borderRadius) : 12
+            };
+        }
+        return preset[themeId] || preset.classic;
+    }
+    const role = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.role) ? String(defaultSettings.artistInfo.role) : '美工';
+    const reportTitle = role === '画师' ? '你的绘图时光' : '你的设计时光';
+    const userId = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.id) ? String(defaultSettings.artistInfo.id) : '你';
+    const periodLabel = getStatsReportPeriodLabel(filters);
+    const reportTheme = getReportThemeColors();
+    const reportFontFamily = (defaultSettings && defaultSettings.receiptCustomization && defaultSettings.receiptCustomization.fontSettings && defaultSettings.receiptCustomization.fontSettings.fontFamily)
+        ? String(defaultSettings.receiptCustomization.fontSettings.fontFamily)
+        : 'Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif';
+
+    // 随机文案
+    const subheadings = [
+        '这不是一张报表，是你这段时间被信任的证明。',
+        '你交付的不只是制品，也是被看见的专业。',
+        '把热爱变成作品的每一天，都值得被记录。',
+        '每一份作品，都是你对专业的坚持与热爱。',
+        '这段时光里，你的每一份努力都在被看见。',
+        '专业的态度，让每一份委托都成为精品。'
+    ];
+
+    const topProduct = (dataset.byProduct && dataset.byProduct.length > 0) ? (dataset.byProduct[0].productName || '这份托付') : '这份托付';
+    const records = dataset.filteredRecords || [];
+    let maxOrder = null;
+    records.forEach(function (item) {
+        const amt = getStatsAmount(item, filters.amountBasis, filters.giftMode);
+        if (!maxOrder || amt > maxOrder.amount) maxOrder = { amount: amt, client: item.clientId || '匿名客户' };
+    });
+
+    function formatMonthLabel(monthStr) {
+        if (!monthStr || typeof monthStr !== 'string') return monthStr || '-';
+        var parts = monthStr.split('-');
+        if (parts.length >= 2) {
+            var y = parts[0];
+            var m = String(parseInt(parts[1], 10) || parts[1]);
+            return y + '年' + m + '月';
+        }
+        return monthStr;
+    }
+    function formatDateLabel(dateStr) {
+        if (!dateStr || typeof dateStr !== 'string') return dateStr || '-';
+        var parts = dateStr.split('-');
+        if (parts.length >= 3) {
+            var y = parts[0];
+            var m = String(parseInt(parts[1], 10) || parts[1]);
+            var d = String(parseInt(parts[2], 10) || parts[2]);
+            return y + '年' + m + '月' + d + '日';
+        }
+        return dateStr;
+    }
+
+    let busyUnitLabel = '一天';
+    let busyUnitPrefix = '天';
+    let busyPeriodLabel = '-';
+    let busyOrderCount = 0;
+    let busyItemDone = 0;
+    if (filters.timeRange === 'thisYear') {
+        busyUnitLabel = '一月';
+        busyUnitPrefix = '月';
+        (dataset.monthlyAgg || []).forEach(function (r) {
+            if (!busyOrderCount || r.orders > busyOrderCount) {
+                busyOrderCount = r.orders || 0;
+                busyItemDone = r.itemDone || 0;
+                busyPeriodLabel = formatMonthLabel(r.month || '-');
+            }
+        });
+    } else if (filters.timeRange === 'all') {
+        busyUnitLabel = '一年';
+        busyUnitPrefix = '年';
+        const yearMap = {};
+        (dataset.dailyAgg || []).forEach(function (d) {
+            const y = (d.date || '').slice(0, 4) || '未知';
+            if (!yearMap[y]) yearMap[y] = { orders: 0, itemDone: 0 };
+            yearMap[y].orders += d.orders || 0;
+            yearMap[y].itemDone += d.itemDone || 0;
+        });
+        Object.keys(yearMap).forEach(function (y) {
+            if (!busyOrderCount || yearMap[y].orders > busyOrderCount) {
+                busyOrderCount = yearMap[y].orders;
+                busyItemDone = yearMap[y].itemDone;
+                busyPeriodLabel = y + '年';
+            }
+        });
+    } else {
+        (dataset.dailyAgg || []).forEach(function (r) {
+            if (!busyOrderCount || r.orders > busyOrderCount) {
+                busyOrderCount = r.orders || 0;
+                busyItemDone = r.itemDone || 0;
+                busyPeriodLabel = formatDateLabel(r.date || '-');
+            }
+        });
+    }
+
+    const nowRevenue = dataset.totals.revenueTotal || 0;
+    const range = getStatsDateRange(filters);
+    let prevFilters = Object.assign({}, filters);
+    if (filters.timeRange === 'thisMonth') {
+        let y = filters.viewYear, m = filters.viewMonth - 1;
+        if (m < 0) { m = 11; y -= 1; }
+        prevFilters.viewYear = y; prevFilters.viewMonth = m;
+    } else if (filters.timeRange === 'thisYear') {
+        prevFilters.viewYear = filters.viewYear - 1;
+    }
+    const prevDataset = getStatsDataset(history, prevFilters);
+    const prevRevenue = prevDataset && prevDataset.totals ? (prevDataset.totals.revenueTotal || 0) : 0;
+    let change = 0;
+    if (prevRevenue > 0) change = ((nowRevenue - prevRevenue) / prevRevenue) * 100;
+    const trendWord = change > 0.1 ? '增长' : (change < -0.1 ? '放缓' : '持平');
+    
+    // 根据数据情况生成个性化收尾句
+    let closingLines = [];
+    if (change > 10) {
+        closingLines = [
+            '你的努力，正在以肉眼可见的速度成长。',
+            '这样的增长势头，未来可期。',
+            '保持这样的节奏，你会越来越好。'
+        ];
+    } else if (change > 0) {
+        closingLines = [
+            '稳步前进的每一步，都在积累你的专业价值。',
+            '持续增长的背后，是你对专业的坚持。',
+            '每一点进步，都值得被肯定。'
+        ];
+    } else if (change > -10) {
+        closingLines = [
+            '调整节奏，厚积薄发，未来会更好。',
+            '暂时的放缓，是为了更好的突破。',
+            '保持热爱，坚持专业，一切都会好起来。'
+        ];
+    } else {
+        closingLines = [
+            '低谷只是暂时的，专业的你一定会反弹。',
+            '沉淀期也是成长的一部分，相信自己。',
+            '重新出发，你会发现新的机会。'
+        ];
+    }
+    
+    // 添加通用收尾句
+    closingLines = closingLines.concat([
+        '这份成绩单，记录了你被信任的每一天。',
+        '下一段时间，继续把热爱做成作品。',
+        '专业的路上，每一步都值得被铭记。',
+        '你的努力，终会成为最亮眼的成绩。',
+        '保持热爱，继续创造更多精彩。'
+    ]);
+    
+    const randomSubheading = subheadings[Math.floor(Math.random() * subheadings.length)];
+    const randomClosingLine = closingLines[Math.floor(Math.random() * closingLines.length)];
+
+    let html = '';
+    html += '<div id="statsReportExportArea" style="background:' + reportTheme.bg + ';border-radius:0;padding:60px 50px;color:' + reportTheme.text + ';font-family:' + reportFontFamily + ';font-size:.94rem;line-height:1.85;letter-spacing:.01em;">';
+    html += '  <div style="font-size:.72rem;color:' + reportTheme.accent + ';letter-spacing:.08em;">TIME REPORT</div>';
+    html += '  <div style="font-size:1.28rem;font-weight:700;margin-top:4px;color:' + reportTheme.title + ';">' + reportTitle + '</div>';
+    html += '  <div style="color:' + reportTheme.text + ';opacity:.8;font-size:.84rem;margin-top:6px;">@' + escapeHtml(userId) + ' · ' + escapeHtml(periodLabel) + '</div>';
+    html += '  <div style="height:1px;background:' + reportTheme.divider + ';margin:14px 0 16px 0;"></div>';
+
+    if (st.modules.opening) {
+        html += '<p style="margin:12px 0 10px 0;line-height:1.9;">' + randomSubheading + '</p>';
+    }
+    if (st.modules.kpi) {
+        html += '<p style="margin:0 0 10px 0;line-height:1.9;">这段时间，你接受了<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderCount || 0) + '</span>单委托，已完成<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderSettledCount || 0) + '</span>单委托，累计交付<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.itemDone || 0) + '</span>个制品。</p>';
+    }
+    if (st.modules.busy) {
+        html += '<p style="margin:0 0 10px 0;">你最忙的' + busyUnitLabel + '是<span style="font-weight:700;">' + escapeHtml(busyPeriodLabel) + '</span>，当' + busyUnitPrefix + '处理了<span style="font-weight:700;">' + busyOrderCount + '</span>单，完成了<span style="font-weight:700;">' + busyItemDone + '</span>个制品。</p>';
+    }
+    if (st.modules.topProduct) {
+        html += '<p style="margin:0 0 8px 0;line-height:1.8;"><span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品。</p>';
+    }
+    if (st.modules.aov) {
+        html += '<p style="margin:0 0 8px 0;line-height:1.8;">你的平均客单价为<span style="font-size:1.1em;font-weight:700;color:' + reportTheme.accent + ';">' + money(dataset.totals.aov || 0) + '</span>，每一单都在稳稳沉淀价值。</p>';
+    }
+    if (st.modules.revenue) {
+        html += '<p style="margin:0 0 8px 0;line-height:1.8;">这段时间，你累计营收<span style="font-size:1.1em;font-weight:700;color:' + reportTheme.accent + ';">' + money(nowRevenue) + '</span>。</p>';
+        if (maxOrder) {
+            html += '<p style="margin:0 0 8px 0;line-height:1.8;">你本期最高单笔金额是<span style="font-weight:700;">' + money(maxOrder.amount) + '</span>。</p>';
+        }
+        if (prevRevenue > 0) {
+            html += '<p style="margin:0 0 8px 0;line-height:1.8;">相比上期，营收' + trendWord + '<span style="font-weight:700;">' + Math.abs(change).toFixed(1) + '%</span>，你的节奏正在被看见。</p>';
+        }
+    }
+    if (st.modules.closing) {
+        html += '<p style="margin:10px 0 0 0;padding-top:8px;border-top:1px dashed rgba(0,0,0,.16);color:#666;">' + randomClosingLine + '</p>';
+    }
+
+    html += '</div>';
+
+    preview.innerHTML = html;
+}
+
+function saveStatsReportAsImage() {
+    const exportArea = document.getElementById('statsReportExportArea');
+    if (!exportArea) return;
+    if (typeof html2canvas !== 'function') {
+        alert('未检测到截图能力，请稍后重试');
+        return;
+    }
+    html2canvas(exportArea, {
+        backgroundColor: null,
+        scale: Math.max(2, window.devicePixelRatio || 1),
+        useCORS: true
+    }).then(function (canvas) {
+        const link = document.createElement('a');
+        link.download = '时光报告-' + new Date().toISOString().slice(0, 10) + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }).catch(function (e) {
+        console.error('保存时光报告失败:', e);
+        alert('保存失败，请重试');
+    });
+}
+
 function exportStatsToExcel() {
     const f = getStatsFiltersFromUI();
     const dataset = getStatsDataset(history, f);
