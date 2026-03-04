@@ -1,144 +1,3 @@
-// ========== 文件版本标识 ==========
-console.log('🔧🔧🔧 script.js 文件版本: 2026-02-15-cloud-debug 🔧🔧🔧');
-console.log('🔧 如果看不到这条日志，说明浏览器加载的是旧版本！');
-// ========== 文件版本标识结束 ==========
-
-// ====== 云端调试面板（必须尽早初始化，避免按钮找不到函数） ======
-(function mgInitCloudDebug() {
-    if (window.__mgCloudDebugInited) return;
-    window.__mgCloudDebugInited = true;
-
-    const MAX_LINES = 400;
-    const SYNC_LOG_KEYWORDS = [
-        'sync', 'cloud', 'supabase', 'artist_settings', 'artist_settings_singleton', 'artist_settings_items',
-        '上传', '下载', '拉取', '推送', '同步', '云端', '设置', '回退', 'merge', 'v2'
-    ];
-    const state = {
-        lines: [],
-        lastFlush: 0,
-        dayKey: ''
-    };
-
-    function safeToString(v) {
-        try {
-            if (v == null) return String(v);
-            if (typeof v === 'string') return v;
-            if (v instanceof Error) return (v.stack || v.message || String(v));
-            return JSON.stringify(v);
-        } catch (_) {
-            try { return String(v); } catch (__) { return '[unprintable]'; }
-        }
-    }
-
-    function getDayKey(dateObj) {
-        const y = dateObj.getFullYear();
-        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const d = String(dateObj.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }
-
-    function ensureTodayLogsOnly() {
-        const today = getDayKey(new Date());
-        if (!state.dayKey) {
-            state.dayKey = today;
-            return;
-        }
-        if (state.dayKey !== today) {
-            state.lines = [];
-            state.dayKey = today;
-        }
-    }
-
-    function isSyncRelated(args) {
-        const msg = Array.prototype.slice.call(args || []).map(safeToString).join(' ').toLowerCase();
-        return SYNC_LOG_KEYWORDS.some(function (kw) { return msg.includes(String(kw).toLowerCase()); });
-    }
-
-    function appendLine(level, args) {
-        ensureTodayLogsOnly();
-        if (!isSyncRelated(args)) return;
-        const ts = new Date().toISOString();
-        const msg = Array.prototype.slice.call(args || []).map(safeToString).join(' ');
-        state.lines.push(`[${ts}] [${level}] ${msg}`);
-        if (state.lines.length > MAX_LINES) state.lines.splice(0, state.lines.length - MAX_LINES);
-        scheduleFlush();
-    }
-
-    function scheduleFlush() {
-        const now = Date.now();
-        if (now - state.lastFlush < 250) return;
-        state.lastFlush = now;
-        setTimeout(() => {
-            const ta = document.getElementById('cloudDebugLogText');
-            if (ta) {
-                ta.value = state.lines.join('\n');
-                ta.scrollTop = ta.scrollHeight;
-            }
-        }, 0);
-    }
-
-    // hook console（保留原行为）
-    const origLog = console.log;
-    const origError = console.error;
-    const origWarn = console.warn;
-    console.log = function () {
-        appendLine('log', arguments);
-        try { return origLog.apply(console, arguments); } catch (_) {}
-    };
-    console.error = function () {
-        appendLine('error', arguments);
-        try { return origError.apply(console, arguments); } catch (_) {}
-    };
-    console.warn = function () {
-        appendLine('warn', arguments);
-        try { return origWarn.apply(console, arguments); } catch (_) {}
-    };
-
-    // 写入一条可见日志，确保面板不是空的
-    appendLine('log', ['cloud debug ready']);
-
-    window.addEventListener('error', (ev) => {
-        try {
-            appendLine('window.error', [ev.message, ev.filename + ':' + ev.lineno + ':' + ev.colno]);
-        } catch (_) {}
-    });
-    window.addEventListener('unhandledrejection', (ev) => {
-        try {
-            appendLine('unhandledrejection', [ev.reason]);
-        } catch (_) {}
-    });
-
-    window.mgToggleCloudDebugPanel = function () {
-        const panel = document.getElementById('cloudDebugPanel');
-        if (!panel) return;
-        panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
-        scheduleFlush();
-    };
-    window.mgClearCloudDebugLog = function () {
-        state.lines = [];
-        scheduleFlush();
-    };
-    window.mgCopyCloudDebugLog = async function () {
-        const text = state.lines.join('\n');
-        try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(text);
-            } else {
-                const ta = document.getElementById('cloudDebugLogText');
-                if (ta) {
-                    ta.focus();
-                    ta.select();
-                    document.execCommand('copy');
-                }
-            }
-            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已复制调试日志');
-            else alert('已复制调试日志');
-        } catch (e) {
-            console.error('复制失败:', e);
-            alert('复制失败，请长按文本框手动复制');
-        }
-    };
-})();
 
 // 全局变量
 let products = [];
@@ -16974,9 +16833,33 @@ function deleteProductSetting(id) {
     if (!confirm('确定要删除这个制品设置吗？')) {
         return;
     }
-    
-    productSettings = productSettings.filter(p => p.id !== id);
+
+    const idStr = String(id);
+    const target = (productSettings || []).find(function (p) { return String(p && p.id) === idStr; });
+    const targetName = mgNormalizeTextKey(target && target.name);
+    const targetCategory = mgNormalizeTextKey(target && target.category);
+
+    productSettings = (productSettings || []).filter(function (p) {
+        // 先按 ID 直接删除
+        if (String(p && p.id) === idStr) return false;
+
+        // 强删：同名+同分类视为同一制品，全部删除（兼容历史错ID/脏数据）
+        if (targetName) {
+            const pName = mgNormalizeTextKey(p && p.name);
+            const pCategory = mgNormalizeTextKey(p && p.category);
+            if (pName === targetName && pCategory === targetCategory) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    // 保险再去重，避免渲染层残留
+    mgSanitizeSettingsDuplicates();
+
     renderProductSettings();
+    saveData();
 }
 
 // 打开添加工艺设置弹窗
@@ -19064,7 +18947,6 @@ function updateCloudSyncStatus() {
     const actionsContainer = document.getElementById('cloudSyncActions');
     const syncBtn = document.getElementById('syncCloudBtn');
     const loadBtn = document.getElementById('loadCloudBtn');
-    const debugBtn = document.getElementById('cloudDebugBtn');
     
     if (!statusText) return;
     
@@ -19091,11 +18973,9 @@ function updateCloudSyncStatus() {
     if (!isEnabled) {
         statusText.textContent = '请先登录';
         if (actionsContainer) actionsContainer.style.display = 'none';
-        if (debugBtn) debugBtn.style.display = 'inline-block';
     } else if (!isCloudModeOn) {
         statusText.textContent = '开启开关以启用智能同步';
         if (actionsContainer) actionsContainer.style.display = 'none';
-        if (debugBtn) debugBtn.style.display = 'inline-block';
     } else {
         // 加载未同步订单列表
         loadUnsyncedOrders();
@@ -19258,7 +19138,8 @@ function mgEnsureStableIdForItem(item, prefix) {
     if (item.id == null || item.id === '') {
         item.id = String(prefix + '_' + Date.now() + '_' + Math.random());
     }
-    return String(item.id);
+    item.id = String(item.id);
+    return item.id;
 }
 
 function mgObjectToDomainItems(obj) {
@@ -19269,6 +19150,9 @@ function mgObjectToDomainItems(obj) {
 }
 
 function mgBuildSettingsV2LocalState() {
+    // 先做一次本地去重+ID字符串标准化，避免同名不同ID与数字/字符串ID不一致导致“删除失效”
+    try { mgSanitizeSettingsDuplicates(); } catch (_) {}
+
     const calc = mgSafeClone(defaultSettings || {}, {});
     const artistInfo = mgSafeClone((defaultSettings && defaultSettings.artistInfo) || {}, {});
     delete calc.otherFees;
@@ -19582,6 +19466,14 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
         });
     });
 
+    // 再次按 domain+item_id 去重，保留最后一条（最近状态）
+    const activeRowsDedupMap = new Map();
+    activeRows.forEach(function (r) {
+        const k = String(r.domain) + '::' + String(r.item_id);
+        activeRowsDedupMap.set(k, r);
+    });
+    const activeRowsDedup = Array.from(activeRowsDedupMap.values());
+
     const { data: existingItems, error: fetchErr } = await client
         .from('artist_settings_items')
         .select('domain,item_id,deleted_at')
@@ -19596,7 +19488,7 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
         throw fetchErr;
     }
 
-    const activeKeySet = new Set(activeRows.map(function (r) { return r.domain + '::' + r.item_id; }));
+    const activeKeySet = new Set(activeRowsDedup.map(function (r) { return r.domain + '::' + r.item_id; }));
     const tombstoneRows = (existingItems || [])
         .filter(function (row) {
             const key = String(row.domain) + '::' + String(row.item_id);
@@ -19613,7 +19505,7 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
             };
         });
 
-    const allItemRows = activeRows.concat(tombstoneRows);
+    const allItemRows = activeRowsDedup.concat(tombstoneRows);
 
     const [{ error: sUpsertErr }, { error: iUpsertErr }] = await Promise.all([
         singletonRows.length
