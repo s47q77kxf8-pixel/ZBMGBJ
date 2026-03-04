@@ -1665,6 +1665,7 @@
                     <div id="cloudSyncActions" style="display:none;gap:8px;flex-wrap:wrap;">
                         <button type="button" id="syncCloudBtn" class="btn" onclick="mgSyncAllToCloud()" style="display:none;font-size:13px;padding:6px 12px;">上传</button>
                         <button type="button" id="loadCloudBtn" class="btn secondary" onclick="mgRestoreAllFromCloud()" style="display:none;font-size:13px;padding:6px 12px;">恢复</button>
+                        <button type="button" id="cleanupDupBtn" class="btn secondary" onclick="mgCleanupDuplicateSettingsAndSync()" style="display:inline-block;font-size:13px;padding:6px 12px;">清理重复</button>
                         <button type="button" id="reselectSyncBtn" class="btn secondary" onclick="mgReselectFirstSyncPolicy()" style="display:none;font-size:13px;padding:6px 12px;">重选策略</button>
                         <button type="button" id="cloudDebugBtn" class="btn secondary" onclick="mgToggleCloudDebugPanel()" style="display:inline-block;font-size:13px;padding:6px 12px;">调试</button>
                     </div>

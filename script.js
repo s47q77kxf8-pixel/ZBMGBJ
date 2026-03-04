@@ -483,6 +483,8 @@ const defaultSettings = {
     // 小票自定义设置
     receiptCustomization: {
         theme: 'classic',  // 主题名称：classic, modern, warm, dark, minimal
+        // 小票配置更新时间戳（用于跨端合并时避免互相覆盖）
+        updatedAt: 0,
         headerImage: null,  // 头部图片的base64数据
         headerImageWidth: 300,  // 头部图片显示宽度（最大400px）
         titleText: 'LIST',  // 标题文本
@@ -727,6 +729,9 @@ function init() {
     
     // 应用字体设置
     applyFontSettings();
+
+    // 保险：初始化后做一次去重清理（防止 UI 展示双份）
+    mgSanitizeSettingsDuplicates();
     
     // 更新主题选择器（添加自定义主题选项）
     updateThemeSelector();
@@ -1029,7 +1034,11 @@ function loadData() {
     } catch (error) {
         console.error('加载数据失败:', error);
     }
+
+    // 保险：清理历史脏数据导致的重复项
+    mgSanitizeSettingsDuplicates();
 }
+
 
 // 保存数据到本地存储（防抖：短时间多次调用只写入一次）
 var _saveDataTimer;
@@ -1158,6 +1167,12 @@ function addDefaultProcessSettings() {
     }
 }
 
+// 标记小票设置发生变更（用于跨端合并时判定新旧）
+function touchReceiptCustomizationUpdatedAt() {
+    if (!defaultSettings.receiptCustomization) defaultSettings.receiptCustomization = {};
+    defaultSettings.receiptCustomization.updatedAt = Date.now();
+}
+
 // 更新小票自定义设置
 function updateReceiptCustomization(field, value) {
     if (field === 'headerImage' || field === 'footerImage') {
@@ -1166,6 +1181,7 @@ function updateReceiptCustomization(field, value) {
             const reader = new FileReader();
             reader.onload = function(e) {
                 defaultSettings.receiptCustomization[field] = e.target.result;
+                touchReceiptCustomizationUpdatedAt();
                 saveData();
                 debouncedRefreshReceipt(); // 实时预览
             };
@@ -1181,6 +1197,7 @@ function updateReceiptCustomization(field, value) {
             // 如果是文本内容，直接更新
             defaultSettings.receiptCustomization[field] = value;
         }
+        touchReceiptCustomizationUpdatedAt();
         saveData();
         debouncedRefreshReceipt(); // 实时预览（标题、尾部文本等）
     }
@@ -1508,6 +1525,7 @@ function applyCustomTheme(themeId) {
     }
     
     defaultSettings.receiptCustomization.theme = themeId;
+    touchReceiptCustomizationUpdatedAt();
     saveData();
     
     // 应用主题样式
@@ -2425,6 +2443,7 @@ function deleteReceiptImage(field) {
         // 删除图片数据
         delete defaultSettings.receiptCustomization[field];
         delete defaultSettings.receiptCustomization[field + 'Original'];
+        touchReceiptCustomizationUpdatedAt();
         saveData();
         debouncedRefreshReceipt(); // 实时预览
 
@@ -2479,6 +2498,7 @@ function updateReceiptInfo(field, value) {
     }
     
     defaultSettings.receiptCustomization.receiptInfo[field] = value;
+    touchReceiptCustomizationUpdatedAt();
     saveData();
     debouncedRefreshReceipt(); // 实时预览（通知文本、开关等）
 
@@ -2822,6 +2842,7 @@ function processImageForTheme(img, field, expectedTheme) {
     if (expectedTheme && finalTheme !== expectedTheme) return;
 
     defaultSettings.receiptCustomization[field] = adjustedImageData;
+    touchReceiptCustomizationUpdatedAt();
     saveData();
 
     // 更新预览（包含尺寸信息）
@@ -2958,6 +2979,7 @@ function applyReceiptTheme(themeName) {
         defaultSettings.receiptCustomization = {};
     }
     defaultSettings.receiptCustomization.theme = themeName;
+    touchReceiptCustomizationUpdatedAt();
     
     // 保存到本地存储
     saveData();
@@ -3022,6 +3044,7 @@ function clearReceiptCustomization() {
         };
         
         // 保存设置
+        touchReceiptCustomizationUpdatedAt();
         saveData();
         
         // 重新加载表单以反映更改
@@ -4163,7 +4186,7 @@ function getStatsDataset(historySource, filters) {
     if (!Array.isArray(historySource) || historySource.length === 0) {
         return {
             filteredRecords: [],
-            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0, discountAmountTotal: 0, discountByReason: {}, discountTotal: 0, productUnitPriceWithSameModel: 0, productUnitPriceWithoutSameModel: 0 },
+            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0, discountAmountTotal: 0, discountByReason: {}, discountTotal: 0, productUnitPriceWithSameModel: 0, productUnitPriceWithoutSameModel: 0, productItemCountWithSameModel: 0, productItemCountWithoutSameModel: 0 },
             dailyAgg: [],
             weeklyAgg: [],
             monthlyAgg: [],
@@ -4687,7 +4710,9 @@ function getStatsDataset(historySource, filters) {
             discountByReason,
             discountTotal: discountAmountTotal + discountByCoefficientTotal,
             productUnitPriceWithSameModel,
-            productUnitPriceWithoutSameModel
+            productUnitPriceWithoutSameModel,
+            productItemCountWithSameModel: categoryQuantityTotal,
+            productItemCountWithoutSameModel: categoryMainCountTotal
         },
         dailyAgg,
         weeklyAgg,
@@ -4835,7 +4860,10 @@ function renderStatsKpis(totals) {
         <div class="kpi-card kpi-card-primary"><div class="kpi-label">订单数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div></div>
         <div class="kpi-card kpi-card-primary"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div></div>
         <div class="kpi-card kpi-card-primary"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div></div>
-        <div class="kpi-card kpi-card-primary"><div class="kpi-label">制品项</div><div class="kpi-value" id="kpiItemTotal">${totals.itemTotal}</div></div>
+        <div class="kpi-card kpi-card-primary">
+            <div class="kpi-label">制品项<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
+            <div class="kpi-value kpi-value-compare" id="kpiItemTotalCompare">${totals.productItemCountWithSameModel || 0} / ${totals.productItemCountWithoutSameModel || 0}</div>
+        </div>
         <div class="kpi-card kpi-card-primary">
             <div class="kpi-label">制品单价<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
             <div class="kpi-value kpi-value-compare" id="kpiProductUnitPriceCompare">${fmt(totals.productUnitPriceWithSameModel, true)} / ${fmt(totals.productUnitPriceWithoutSameModel, true)}</div>
@@ -19340,11 +19368,22 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     }
 
     const grouped = {};
+    const deletedByDomain = {};
     (items || []).forEach(function (row) {
-        if (!row || !row.domain || row.deleted_at) return;
-        if (!grouped[row.domain]) grouped[row.domain] = [];
-        grouped[row.domain].push(row);
+        if (!row || !row.domain) return;
+        const domain = String(row.domain);
+        if (row.deleted_at) {
+            if (!deletedByDomain[domain]) deletedByDomain[domain] = new Set();
+            deletedByDomain[domain].add(String(row.item_id || ''));
+            return;
+        }
+        if (!grouped[domain]) grouped[domain] = [];
+        grouped[domain].push(row);
     });
+
+    function getDeletedSet(domain) {
+        return deletedByDomain[String(domain)] || new Set();
+    }
 
     function rowsToPayload(domain) {
         return (grouped[domain] || []).map(function (r) { return mgSafeClone(r.payload || {}, {}); });
@@ -19352,21 +19391,42 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
 
     const cloudProducts = rowsToPayload('product_settings');
     if (cloudProducts.length || !mergeMode) {
-        const merged = mergeMode ? mergeArraySettings(cloudProducts, productSettings || [], 'id') : cloudProducts;
+        const deletedSet = getDeletedSet('product_settings');
+        const localFiltered = mergeMode
+            ? (productSettings || []).filter(function (it) {
+                const k = it && it.id != null ? String(it.id) : '';
+                return !k || !deletedSet.has(k);
+            })
+            : (productSettings || []);
+        const merged = mergeMode ? mergeArraySettings(cloudProducts, localFiltered, 'id') : cloudProducts;
         productSettings.length = 0;
         productSettings.push(...merged);
     }
 
     const cloudProcess = rowsToPayload('process_settings');
     if (cloudProcess.length || !mergeMode) {
-        const merged = mergeMode ? mergeArraySettings(cloudProcess, processSettings || [], 'id') : cloudProcess;
+        const deletedSet = getDeletedSet('process_settings');
+        const localFiltered = mergeMode
+            ? (processSettings || []).filter(function (it) {
+                const k = it && it.id != null ? String(it.id) : '';
+                return !k || !deletedSet.has(k);
+            })
+            : (processSettings || []);
+        const merged = mergeMode ? mergeArraySettings(cloudProcess, localFiltered, 'id') : cloudProcess;
         processSettings.length = 0;
         processSettings.push(...merged);
     }
 
     const cloudTemplates = rowsToPayload('templates');
     if (cloudTemplates.length || !mergeMode) {
-        const merged = mergeMode ? mergeArraySettings(cloudTemplates, templates || [], 'id') : cloudTemplates;
+        const deletedSet = getDeletedSet('templates');
+        const localFiltered = mergeMode
+            ? (templates || []).filter(function (it) {
+                const k = it && it.id != null ? String(it.id) : '';
+                return !k || !deletedSet.has(k);
+            })
+            : (templates || []);
+        const merged = mergeMode ? mergeArraySettings(cloudTemplates, localFiltered, 'id') : cloudTemplates;
         templates.length = 0;
         templates.push(...merged);
     }
@@ -19380,59 +19440,99 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     });
     if (!defaultSettings.otherFees || typeof defaultSettings.otherFees !== 'object') defaultSettings.otherFees = {};
     if (mergeMode) {
-        defaultSettings.otherFees = { ...defaultSettings.otherFees, ...feeObj };
+        const deletedSet = getDeletedSet('other_fee_types');
+        const localFiltered = { ...defaultSettings.otherFees };
+        deletedSet.forEach(function (k) { delete localFiltered[k]; });
+        defaultSettings.otherFees = { ...localFiltered, ...feeObj };
     } else {
         defaultSettings.otherFees = feeObj;
     }
 
     const usageObj = mgDomainItemsToObject(grouped, 'usage_coefficients');
     if (Object.keys(usageObj).length || !mergeMode) {
-        defaultSettings.usageCoefficients = mergeMode
-            ? mergeObjectSettings(usageObj, defaultSettings.usageCoefficients || {})
-            : usageObj;
+        if (mergeMode) {
+            const localFiltered = { ...(defaultSettings.usageCoefficients || {}) };
+            getDeletedSet('usage_coefficients').forEach(function (k) { delete localFiltered[k]; });
+            defaultSettings.usageCoefficients = mergeObjectSettings(usageObj, localFiltered);
+        } else {
+            defaultSettings.usageCoefficients = usageObj;
+        }
     }
 
     const urgentObj = mgDomainItemsToObject(grouped, 'urgent_coefficients');
     if (Object.keys(urgentObj).length || !mergeMode) {
-        defaultSettings.urgentCoefficients = mergeMode
-            ? mergeObjectSettings(urgentObj, defaultSettings.urgentCoefficients || {})
-            : urgentObj;
+        if (mergeMode) {
+            const localFiltered = { ...(defaultSettings.urgentCoefficients || {}) };
+            getDeletedSet('urgent_coefficients').forEach(function (k) { delete localFiltered[k]; });
+            defaultSettings.urgentCoefficients = mergeObjectSettings(urgentObj, localFiltered);
+        } else {
+            defaultSettings.urgentCoefficients = urgentObj;
+        }
     }
 
     const sameModelObj = mgDomainItemsToObject(grouped, 'same_model_coefficients');
     if (Object.keys(sameModelObj).length || !mergeMode) {
-        defaultSettings.sameModelCoefficients = mergeMode
-            ? mergeObjectSettings(sameModelObj, defaultSettings.sameModelCoefficients || {})
-            : sameModelObj;
+        if (mergeMode) {
+            const localFiltered = { ...(defaultSettings.sameModelCoefficients || {}) };
+            getDeletedSet('same_model_coefficients').forEach(function (k) { delete localFiltered[k]; });
+            defaultSettings.sameModelCoefficients = mergeObjectSettings(sameModelObj, localFiltered);
+        } else {
+            defaultSettings.sameModelCoefficients = sameModelObj;
+        }
     }
 
     const discountObj = mgDomainItemsToObject(grouped, 'discount_coefficients');
     if (Object.keys(discountObj).length || !mergeMode) {
-        defaultSettings.discountCoefficients = mergeMode
-            ? mergeObjectSettings(discountObj, defaultSettings.discountCoefficients || {})
-            : discountObj;
+        if (mergeMode) {
+            const localFiltered = { ...(defaultSettings.discountCoefficients || {}) };
+            getDeletedSet('discount_coefficients').forEach(function (k) { delete localFiltered[k]; });
+            defaultSettings.discountCoefficients = mergeObjectSettings(discountObj, localFiltered);
+        } else {
+            defaultSettings.discountCoefficients = discountObj;
+        }
     }
 
     const platformObj = mgDomainItemsToObject(grouped, 'platform_fees');
     if (Object.keys(platformObj).length || !mergeMode) {
-        defaultSettings.platformFees = mergeMode
-            ? mergeObjectSettings(platformObj, defaultSettings.platformFees || {})
-            : platformObj;
+        if (mergeMode) {
+            const localFiltered = { ...(defaultSettings.platformFees || {}) };
+            getDeletedSet('platform_fees').forEach(function (k) { delete localFiltered[k]; });
+            defaultSettings.platformFees = mergeObjectSettings(platformObj, localFiltered);
+        } else {
+            defaultSettings.platformFees = platformObj;
+        }
     }
 
     const upRows = grouped['extra_pricing_up'] || [];
     const cloudUp = upRows.map(function (r) { return mgSafeClone(r.payload || {}, {}); });
     if (cloudUp.length || !mergeMode) {
-        const mergedUp = mergeMode ? mergeArraySettings(cloudUp, defaultSettings.extraPricingUp || [], 'id') : cloudUp;
+        const deletedSet = getDeletedSet('extra_pricing_up');
+        const localFiltered = mergeMode
+            ? (defaultSettings.extraPricingUp || []).filter(function (it) {
+                const k = it && it.id != null ? String(it.id) : '';
+                return !k || !deletedSet.has(k);
+            })
+            : (defaultSettings.extraPricingUp || []);
+        const mergedUp = mergeMode ? mergeArraySettings(cloudUp, localFiltered, 'id') : cloudUp;
         defaultSettings.extraPricingUp = mergedUp;
     }
 
     const downRows = grouped['extra_pricing_down'] || [];
     const cloudDown = downRows.map(function (r) { return mgSafeClone(r.payload || {}, {}); });
     if (cloudDown.length || !mergeMode) {
-        const mergedDown = mergeMode ? mergeArraySettings(cloudDown, defaultSettings.extraPricingDown || [], 'id') : cloudDown;
+        const deletedSet = getDeletedSet('extra_pricing_down');
+        const localFiltered = mergeMode
+            ? (defaultSettings.extraPricingDown || []).filter(function (it) {
+                const k = it && it.id != null ? String(it.id) : '';
+                return !k || !deletedSet.has(k);
+            })
+            : (defaultSettings.extraPricingDown || []);
+        const mergedDown = mergeMode ? mergeArraySettings(cloudDown, localFiltered, 'id') : cloudDown;
         defaultSettings.extraPricingDown = mergedDown;
     }
+
+    // 保险：V2 合并后再次去重，避免跨端脏数据复现
+    mgSanitizeSettingsDuplicates();
 }
 
 async function mgTryLoadSettingsFromCloudV2(client, artistId, mergeMode) {
@@ -19716,6 +19816,104 @@ async function mgSyncSettingsToCloud(silent = false) {
     }
 }
 
+function mgNormalizeTextKey(v) {
+    return String(v == null ? '' : v)
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\s+/g, '')
+        .trim()
+        .toLowerCase();
+}
+
+function mgDedupeCoefficientObject(obj, byDisplayName) {
+    const src = (obj && typeof obj === 'object') ? obj : {};
+    const out = {};
+    const seenKey = new Set();
+    const seenName = new Set();
+
+    Object.entries(src).forEach(function (entry) {
+        const rawKey = String(entry[0]);
+        const val = entry[1];
+        const normKey = mgNormalizeTextKey(rawKey);
+        const displayName = (val && typeof val === 'object' && val.name != null) ? String(val.name) : rawKey;
+        const normName = mgNormalizeTextKey(displayName);
+
+        if (!normKey) return;
+        if (seenKey.has(normKey)) return;
+        if (byDisplayName && normName && seenName.has(normName)) return;
+
+        seenKey.add(normKey);
+        if (byDisplayName && normName) seenName.add(normName);
+        out[rawKey] = val;
+    });
+
+    return out;
+}
+
+function mgSanitizeSettingsDuplicates() {
+    let changed = false;
+
+    // 制品去重：按“分类+名称”保险去重，保留最后一个（通常是最新编辑）
+    if (Array.isArray(productSettings)) {
+        const before = productSettings.length;
+        const seen = new Set();
+        const deduped = [];
+        for (let i = productSettings.length - 1; i >= 0; i--) {
+            const p = productSettings[i] || {};
+            const sig = mgNormalizeTextKey((p.category || '') + '|' + (p.name || ''));
+            if (!sig) continue;
+            if (seen.has(sig)) continue;
+            seen.add(sig);
+            deduped.push(p);
+        }
+        deduped.reverse();
+        if (deduped.length !== before) changed = true;
+        productSettings.length = 0;
+        productSettings.push(...deduped);
+    }
+
+    // 工艺去重：按名称保险去重
+    if (Array.isArray(processSettings)) {
+        const before = processSettings.length;
+        const seen = new Set();
+        const deduped = [];
+        for (let i = processSettings.length - 1; i >= 0; i--) {
+            const p = processSettings[i] || {};
+            const sig = mgNormalizeTextKey(p.name || '');
+            if (!sig) continue;
+            if (seen.has(sig)) continue;
+            seen.add(sig);
+            deduped.push(p);
+        }
+        deduped.reverse();
+        if (deduped.length !== before) changed = true;
+        processSettings.length = 0;
+        processSettings.push(...deduped);
+    }
+
+    // 系数对象保险去重：
+    // 1) key 归一化去重（防隐形字符/空格）
+    // 2) 显示名去重（防不同 key 展示成同一项）
+    const usageBefore = JSON.stringify(defaultSettings.usageCoefficients || {});
+    const urgentBefore = JSON.stringify(defaultSettings.urgentCoefficients || {});
+    const sameModelBefore = JSON.stringify(defaultSettings.sameModelCoefficients || {});
+    const discountBefore = JSON.stringify(defaultSettings.discountCoefficients || {});
+    const platformBefore = JSON.stringify(defaultSettings.platformFees || {});
+
+    defaultSettings.usageCoefficients = mgDedupeCoefficientObject(defaultSettings.usageCoefficients, true);
+    defaultSettings.urgentCoefficients = mgDedupeCoefficientObject(defaultSettings.urgentCoefficients, true);
+    defaultSettings.sameModelCoefficients = mgDedupeCoefficientObject(defaultSettings.sameModelCoefficients, true);
+    defaultSettings.discountCoefficients = mgDedupeCoefficientObject(defaultSettings.discountCoefficients, true);
+    defaultSettings.platformFees = mgDedupeCoefficientObject(defaultSettings.platformFees, true);
+
+    if (JSON.stringify(defaultSettings.usageCoefficients || {}) !== usageBefore) changed = true;
+    if (JSON.stringify(defaultSettings.urgentCoefficients || {}) !== urgentBefore) changed = true;
+    if (JSON.stringify(defaultSettings.sameModelCoefficients || {}) !== sameModelBefore) changed = true;
+    if (JSON.stringify(defaultSettings.discountCoefficients || {}) !== discountBefore) changed = true;
+    if (JSON.stringify(defaultSettings.platformFees || {}) !== platformBefore) changed = true;
+
+    return changed;
+}
+
 // 智能合并数组设置（按id去重，保留最新的）
 function mergeArraySettings(cloudArray, localArray, key = 'id') {
     if (!Array.isArray(cloudArray)) return localArray || [];
@@ -19753,6 +19951,21 @@ function mergeArraySettings(cloudArray, localArray, key = 'id') {
 function mergeObjectSettings(cloudObj, localObj) {
     if (!cloudObj || typeof cloudObj !== 'object') return localObj || {};
     if (!localObj || typeof localObj !== 'object') return cloudObj;
+
+    // 关键修复：小票设置按 updatedAt 决定胜出，避免跨端互相覆盖
+    // 如果云端小票比本地新，采用云端；否则保留本地
+    if (cloudObj.receiptCustomization || localObj.receiptCustomization) {
+        const cloudReceipt = cloudObj.receiptCustomization;
+        const localReceipt = localObj.receiptCustomization;
+        const cloudTs = Number(cloudReceipt && cloudReceipt.updatedAt) || 0;
+        const localTs = Number(localReceipt && localReceipt.updatedAt) || 0;
+
+        if (cloudReceipt && (!localReceipt || cloudTs >= localTs)) {
+            cloudObj = { ...cloudObj, receiptCustomization: cloudReceipt };
+        } else if (localReceipt) {
+            cloudObj = { ...cloudObj, receiptCustomization: localReceipt };
+        }
+    }
     
     const merged = { ...localObj }; // 先复制本地设置
     
@@ -20036,6 +20249,42 @@ async function mgSyncAllToCloud() {
         alert('同步到云端失败，请稍后重试');
     }
 }
+
+// ====== 一键清理设置重复并回写云端 ======
+async function mgCleanupDuplicateSettingsAndSync() {
+    if (!mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+
+    const ok = confirm('将清理历史重复制品/工艺/系数并同步到云端，是否继续？');
+    if (!ok) return;
+
+    try {
+        if (typeof showGlobalToast === 'function') showGlobalToast('正在清理重复数据...');
+
+        const changed = mgSanitizeSettingsDuplicates();
+        if (changed && typeof saveData === 'function') saveData();
+
+        // 先从云端做一次智能拉取（含删除态），再回写，减少跨端冲突
+        await mgLoadSettingsFromCloud(true);
+        const changedAfterMerge = mgSanitizeSettingsDuplicates();
+        if (changedAfterMerge && typeof saveData === 'function') saveData();
+
+        await mgSyncSettingsToCloud();
+
+        if (typeof updateDisplay === 'function') updateDisplay();
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast(changed || changedAfterMerge ? '✅ 已清理重复并同步到云端' : '✅ 未发现重复，已完成云端校准');
+        } else {
+            alert(changed || changedAfterMerge ? '已清理重复并同步到云端' : '未发现重复，已完成云端校准');
+        }
+    } catch (err) {
+        console.error('清理重复并同步失败:', err);
+        alert('清理重复失败，请稍后重试');
+    }
+}
+window.mgCleanupDuplicateSettingsAndSync = mgCleanupDuplicateSettingsAndSync;
 
 // ====== 统一恢复入口：一键从云端恢复所有（设置+订单） ======
 /**
