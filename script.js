@@ -484,6 +484,7 @@ const defaultSettings = {
     receiptCustomization: {
         theme: 'classic',  // 主题名称：classic, modern, warm, dark, minimal
         headerImage: null,  // 头部图片的base64数据
+        headerImageWidth: 400,  // 头部图片显示宽度（最大400px）
         titleText: 'LIST',  // 标题文本
         receiptInfo: {  // 小票信息行
             orderNotification: '',  // 订单通知
@@ -498,6 +499,7 @@ const defaultSettings = {
         footerText1: '温馨提示',  // 尾部文本1
         footerText2: '感谢惠顾',  // 尾部文本2
         footerImage: null,  // 尾部图片的base64数据
+        footerImageWidth: 400,  // 尾部图片显示宽度（最大400px）
         fontSettings: {  // 字体设置
             fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
             fontSize: 13,
@@ -938,6 +940,7 @@ function loadData() {
                 defaultSettings.receiptCustomization = {
                     theme: 'classic',
                     headerImage: null,
+                    headerImageWidth: 400,
                     titleText: 'LIST',
                     receiptInfo: {
                         orderNotification: '',
@@ -952,6 +955,7 @@ function loadData() {
                     footerText1: '温馨提示',
                     footerText2: '感谢惠顾',
                     footerImage: null,
+                    footerImageWidth: 400,
                     fontSettings: {
                         fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
                         fontSize: 13,
@@ -997,6 +1001,13 @@ function loadData() {
                             footer: ''
                         }
                     };
+                }
+                // 确保图片宽度设置存在
+                if (typeof defaultSettings.receiptCustomization.headerImageWidth !== 'number') {
+                    defaultSettings.receiptCustomization.headerImageWidth = 400;
+                }
+                if (typeof defaultSettings.receiptCustomization.footerImageWidth !== 'number') {
+                    defaultSettings.receiptCustomization.footerImageWidth = 400;
                 }
             }
         }
@@ -1154,8 +1165,15 @@ function updateReceiptCustomization(field, value) {
             reader.readAsDataURL(value);
         }
     } else {
-        // 如果是文本内容，直接更新
-        defaultSettings.receiptCustomization[field] = value;
+        if (field === 'headerImageWidth' || field === 'footerImageWidth') {
+            let width = parseInt(value, 10);
+            if (!Number.isFinite(width)) width = 400;
+            width = Math.max(1, Math.min(400, width));
+            defaultSettings.receiptCustomization[field] = width;
+        } else {
+            // 如果是文本内容，直接更新
+            defaultSettings.receiptCustomization[field] = value;
+        }
         saveData();
         debouncedRefreshReceipt(); // 实时预览（标题、尾部文本等）
     }
@@ -2841,6 +2859,18 @@ function loadReceiptCustomizationToForm() {
         if (document.getElementById('receiptFooterText2')) {
             document.getElementById('receiptFooterText2').value = settings.footerText2 || '感谢惠顾';
         }
+
+        // 设置头尾图片宽度控件
+        const headerWidth = Math.max(1, Math.min(400, parseInt(settings.headerImageWidth, 10) || 400));
+        const footerWidth = Math.max(1, Math.min(400, parseInt(settings.footerImageWidth, 10) || 400));
+        const headerWidthInput = document.getElementById('headerImageWidth');
+        const headerWidthRange = document.getElementById('headerImageWidthRange');
+        const footerWidthInput = document.getElementById('footerImageWidth');
+        const footerWidthRange = document.getElementById('footerImageWidthRange');
+        if (headerWidthInput) headerWidthInput.value = String(headerWidth);
+        if (headerWidthRange) headerWidthRange.value = String(headerWidth);
+        if (footerWidthInput) footerWidthInput.value = String(footerWidth);
+        if (footerWidthRange) footerWidthRange.value = String(footerWidth);
         
         // 设置小票信息字段
         if (settings.receiptInfo) {
@@ -2965,11 +2995,13 @@ function clearReceiptCustomization() {
             theme: 'classic',
             headerImage: null,
             headerImageOriginal: null,
+            headerImageWidth: 400,
             titleText: 'LIST',
             footerText1: '温馨提示',
             footerText2: '感谢惠顾',
             footerImage: null,
             footerImageOriginal: null,
+            footerImageWidth: 400,
             receiptInfo: {
                 orderNotification: '',
                 showStartTime: true,
@@ -6913,7 +6945,8 @@ function generateQuote() {
     
     // 添加头部图片（如果设置了）
     if (defaultSettings.receiptCustomization.headerImage) {
-        html += `<div class="receipt-header-image"><img src="${defaultSettings.receiptCustomization.headerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="头部图片" style="max-width: 300px; height: auto;" /></div>`;
+        const headerImageWidth = Math.max(1, Math.min(400, parseInt(defaultSettings.receiptCustomization.headerImageWidth, 10) || 400));
+        html += `<div class="receipt-header-image"><img src="${defaultSettings.receiptCustomization.headerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="头部图片" style="width: ${headerImageWidth}px; max-width: 400px; height: auto;" /></div>`;
     }
     
     // 添加自定义标题（如果设置了）——附带主题类，方便按主题控制标题颜色
@@ -7673,7 +7706,8 @@ function generateQuote() {
                         
             // 添加底部图片（如果设置了）
             if (defaultSettings.receiptCustomization.footerImage) {
-                html += `<div class="receipt-footer-image"><img src="${defaultSettings.receiptCustomization.footerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="尾部图片" style="max-width: 200px; height: auto; margin-top: 0.5rem;" /></div>`;
+                const footerImageWidth = Math.max(1, Math.min(400, parseInt(defaultSettings.receiptCustomization.footerImageWidth, 10) || 400));
+                html += `<div class="receipt-footer-image"><img src="${defaultSettings.receiptCustomization.footerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="尾部图片" style="width: ${footerImageWidth}px; max-width: 400px; height: auto; margin-top: 0.5rem;" /></div>`;
             }
                         
             // 添加自定义底部文本2（如果设置了）

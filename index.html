@@ -768,7 +768,12 @@
                                             <div class="image-upload-area" id="headerImageUploadArea" ondrop="handleImageDrop(event, 'headerImage')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
                                                 <input type="file" id="receiptHeaderImage" accept="image/*" onchange="handleReceiptImageUpload('headerImage', this.files[0])" title="推荐尺寸: 宽度不超过300px" style="display: none;">
                                                 <button type="button" class="upload-btn" onclick="document.getElementById('receiptHeaderImage').click()">上传图片</button>
-                                                <small class="text-gray">推荐尺寸: 宽度不超过300px，高度自适应 | 支持拖拽上传</small>
+                                                <small class="text-gray">最大宽度400px，高度自适应 | 支持拖拽上传</small>
+                                                <div class="form-row" style="margin-top:0.5rem; gap:0.5rem; align-items:center;">
+                                                    <label for="headerImageWidth" style="min-width:72px;">图片宽度</label>
+                                                    <input type="range" id="headerImageWidthRange" min="1" max="400" step="1" value="400" oninput="document.getElementById('headerImageWidth').value=this.value;updateReceiptCustomization('headerImageWidth', this.value)">
+                                                    <input type="number" id="headerImageWidth" min="1" max="400" step="1" value="400" style="width:80px;" oninput="document.getElementById('headerImageWidthRange').value=this.value;updateReceiptCustomization('headerImageWidth', this.value)">
+                                                </div>
                                                 <div class="checkbox-row">
                                                     <div class="checkbox-item">
                                                         <span>跟随系统主题颜色</span>
@@ -861,7 +866,12 @@
                                             <div class="image-upload-area" id="footerImageUploadArea" ondrop="handleImageDrop(event, 'footerImage')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
                                                 <input type="file" id="receiptFooterImage" accept="image/*" onchange="handleReceiptImageUpload('footerImage', this.files[0])" title="推荐尺寸: 宽度不超过200px" style="display: none;">
                                                 <button type="button" class="upload-btn" onclick="document.getElementById('receiptFooterImage').click()">上传图片</button>
-                                                <small class="text-gray">推荐尺寸: 宽度不超过200px，高度自适应 | 支持拖拽上传</small>
+                                                <small class="text-gray">最大宽度400px，高度自适应 | 支持拖拽上传</small>
+                                                <div class="form-row" style="margin-top:0.5rem; gap:0.5rem; align-items:center;">
+                                                    <label for="footerImageWidth" style="min-width:72px;">图片宽度</label>
+                                                    <input type="range" id="footerImageWidthRange" min="1" max="400" step="1" value="400" oninput="document.getElementById('footerImageWidth').value=this.value;updateReceiptCustomization('footerImageWidth', this.value)">
+                                                    <input type="number" id="footerImageWidth" min="1" max="400" step="1" value="400" style="width:80px;" oninput="document.getElementById('footerImageWidthRange').value=this.value;updateReceiptCustomization('footerImageWidth', this.value)">
+                                                </div>
                                                 <small class="text-gray" style="display:block;margin-top:0.25rem">头尾图跟随系统主题颜色由上方「小票头部」中开关统一控制</small>
                                                 <div id="footerImagePreview" class="image-preview"></div>
                                             </div>
