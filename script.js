@@ -484,7 +484,7 @@ const defaultSettings = {
     receiptCustomization: {
         theme: 'classic',  // 主题名称：classic, modern, warm, dark, minimal
         headerImage: null,  // 头部图片的base64数据
-        headerImageWidth: 400,  // 头部图片显示宽度（最大400px）
+        headerImageWidth: 300,  // 头部图片显示宽度（最大400px）
         titleText: 'LIST',  // 标题文本
         receiptInfo: {  // 小票信息行
             orderNotification: '',  // 订单通知
@@ -499,7 +499,7 @@ const defaultSettings = {
         footerText1: '温馨提示',  // 尾部文本1
         footerText2: '感谢惠顾',  // 尾部文本2
         footerImage: null,  // 尾部图片的base64数据
-        footerImageWidth: 400,  // 尾部图片显示宽度（最大400px）
+        footerImageWidth: 300,  // 尾部图片显示宽度（最大400px）
         fontSettings: {  // 字体设置
             fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
             fontSize: 13,
@@ -819,9 +819,16 @@ function init() {
         });
     });
 
-    // 默认进入时渲染排单页（报价页），确保刷新后排单日历正常显示
+    // 默认进入上次页面；若无记录则进入排单页
     if (typeof showPage === 'function') {
-        showPage('quote');
+        let initialPage = 'quote';
+        try {
+            const savedPage = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
+            if (savedPage === 'quote' || savedPage === 'record' || savedPage === 'stats' || savedPage === 'settings') {
+                initialPage = savedPage;
+            }
+        } catch (e) {}
+        showPage(initialPage);
     }
 }
 
@@ -940,7 +947,7 @@ function loadData() {
                 defaultSettings.receiptCustomization = {
                     theme: 'classic',
                     headerImage: null,
-                    headerImageWidth: 400,
+                    headerImageWidth: 300,
                     titleText: 'LIST',
                     receiptInfo: {
                         orderNotification: '',
@@ -955,7 +962,7 @@ function loadData() {
                     footerText1: '温馨提示',
                     footerText2: '感谢惠顾',
                     footerImage: null,
-                    footerImageWidth: 400,
+                    footerImageWidth: 300,
                     fontSettings: {
                         fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
                         fontSize: 13,
@@ -1004,10 +1011,10 @@ function loadData() {
                 }
                 // 确保图片宽度设置存在
                 if (typeof defaultSettings.receiptCustomization.headerImageWidth !== 'number') {
-                    defaultSettings.receiptCustomization.headerImageWidth = 400;
+                    defaultSettings.receiptCustomization.headerImageWidth = 300;
                 }
                 if (typeof defaultSettings.receiptCustomization.footerImageWidth !== 'number') {
-                    defaultSettings.receiptCustomization.footerImageWidth = 400;
+                    defaultSettings.receiptCustomization.footerImageWidth = 300;
                 }
             }
         }
@@ -1167,7 +1174,7 @@ function updateReceiptCustomization(field, value) {
     } else {
         if (field === 'headerImageWidth' || field === 'footerImageWidth') {
             let width = parseInt(value, 10);
-            if (!Number.isFinite(width)) width = 400;
+            if (!Number.isFinite(width)) width = 300;
             width = Math.max(1, Math.min(400, width));
             defaultSettings.receiptCustomization[field] = width;
         } else {
@@ -2861,8 +2868,8 @@ function loadReceiptCustomizationToForm() {
         }
 
         // 设置头尾图片宽度控件
-        const headerWidth = Math.max(1, Math.min(400, parseInt(settings.headerImageWidth, 10) || 400));
-        const footerWidth = Math.max(1, Math.min(400, parseInt(settings.footerImageWidth, 10) || 400));
+        const headerWidth = Math.max(1, Math.min(400, parseInt(settings.headerImageWidth, 10) || 300));
+        const footerWidth = Math.max(1, Math.min(400, parseInt(settings.footerImageWidth, 10) || 300));
         const headerWidthInput = document.getElementById('headerImageWidth');
         const headerWidthRange = document.getElementById('headerImageWidthRange');
         const footerWidthInput = document.getElementById('footerImageWidth');
@@ -2995,13 +3002,13 @@ function clearReceiptCustomization() {
             theme: 'classic',
             headerImage: null,
             headerImageOriginal: null,
-            headerImageWidth: 400,
+            headerImageWidth: 300,
             titleText: 'LIST',
             footerText1: '温馨提示',
             footerText2: '感谢惠顾',
             footerImage: null,
             footerImageOriginal: null,
-            footerImageWidth: 400,
+            footerImageWidth: 300,
             receiptInfo: {
                 orderNotification: '',
                 showStartTime: true,
@@ -3027,13 +3034,30 @@ function clearReceiptCustomization() {
 }
 
 // ===== 页面与计算 / 小票抽屉切换状态 =====
+const ACTIVE_PAGE_STORAGE_KEY = 'mg_active_page';
 let activeTab = 'quote';              // 'quote' | 'record' | 'stats' | 'settings'
 let isCalculatorOpen = false;         // 计算抽屉是否打开
 let isReceiptDrawerOpen = false;      // 小票抽屉是否打开
 let isCurrentQuoteScheduled = false;  // 当前报价是否已排单保存（用于小票页关闭确认）
+window.pageBeforeReceiptDrawer = null;
+window.pageBeforeCalculatorDrawer = null;
+window.pageBeforeClientTemplateEditor = null;
+window.pageBeforeHistoryFilterDrawer = null;
+window.pageBeforeRecordFilterDrawer = null;
+window.pageBeforeStatsFilterDrawer = null;
 
 // 页面切换功能（底层：报价 / 设置）
 function showPage(pageId) {
+    // 记录当前活动页面（用于关闭抽屉/二级页返回）
+    if (pageId !== 'clientTemplateEditor') {
+        activeTab = pageId;
+    }
+
+    // 持久化当前页面，刷新后回到上次页面（仅保存一级页面）
+    if (pageId === 'quote' || pageId === 'record' || pageId === 'stats' || pageId === 'settings') {
+        try { localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, pageId); } catch (e) {}
+    }
+
     // 隐藏所有页面
     document.querySelectorAll('.page').forEach(page => {
         page.classList.remove('active');
@@ -3294,10 +3318,16 @@ function toggleRecordFilterDrawer() {
     if (drawer) {
         drawer.classList.toggle('active');
         if (drawer.classList.contains('active')) {
+            window.pageBeforeRecordFilterDrawer = activeTab;
             document.body.style.overflow = 'hidden';
             updateRecordFilterBadge();
         } else {
+            const returnPage = (window.pageBeforeRecordFilterDrawer === 'quote' || window.pageBeforeRecordFilterDrawer === 'record' || window.pageBeforeRecordFilterDrawer === 'stats' || window.pageBeforeRecordFilterDrawer === 'settings')
+                ? window.pageBeforeRecordFilterDrawer
+                : 'record';
             document.body.style.overflow = '';
+            showPage(returnPage);
+            window.pageBeforeRecordFilterDrawer = null;
         }
     }
 }
@@ -3307,6 +3337,11 @@ function closeRecordFilterDrawer() {
     if (drawer) {
         drawer.classList.remove('active');
         document.body.style.overflow = '';
+        const returnPage = (window.pageBeforeRecordFilterDrawer === 'quote' || window.pageBeforeRecordFilterDrawer === 'record' || window.pageBeforeRecordFilterDrawer === 'stats' || window.pageBeforeRecordFilterDrawer === 'settings')
+            ? window.pageBeforeRecordFilterDrawer
+            : 'record';
+        showPage(returnPage);
+        window.pageBeforeRecordFilterDrawer = null;
     }
 }
 
@@ -5146,15 +5181,31 @@ function toggleStatsFilterDrawer() {
     if (drawer) {
         drawer.classList.toggle('active');
         if (drawer.classList.contains('active')) {
+            window.pageBeforeStatsFilterDrawer = activeTab;
             document.body.style.overflow = 'hidden';
             updateStatsFilterBadge();
-        } else document.body.style.overflow = '';
+        } else {
+            const returnPage = (window.pageBeforeStatsFilterDrawer === 'quote' || window.pageBeforeStatsFilterDrawer === 'record' || window.pageBeforeStatsFilterDrawer === 'stats' || window.pageBeforeStatsFilterDrawer === 'settings')
+                ? window.pageBeforeStatsFilterDrawer
+                : 'stats';
+            document.body.style.overflow = '';
+            showPage(returnPage);
+            window.pageBeforeStatsFilterDrawer = null;
+        }
     }
 }
 
 function closeStatsFilterDrawer() {
     const drawer = document.getElementById('statsFilterDrawer');
-    if (drawer) { drawer.classList.remove('active'); document.body.style.overflow = ''; }
+    if (drawer) {
+        drawer.classList.remove('active');
+        document.body.style.overflow = '';
+        const returnPage = (window.pageBeforeStatsFilterDrawer === 'quote' || window.pageBeforeStatsFilterDrawer === 'record' || window.pageBeforeStatsFilterDrawer === 'stats' || window.pageBeforeStatsFilterDrawer === 'settings')
+            ? window.pageBeforeStatsFilterDrawer
+            : 'stats';
+        showPage(returnPage);
+        window.pageBeforeStatsFilterDrawer = null;
+    }
 }
 
 function onStatsFilterChange() {
@@ -5841,6 +5892,8 @@ function openCalculatorDrawer(skipOrderTimeReset) {
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
 
+    window.pageBeforeCalculatorDrawer = activeTab;
+
     // 下单时间与备注：新建时清空，不填的默认为小票保存时间；编辑模式由 editHistoryItem 填充
     if (!skipOrderTimeReset) {
         var orderTimeInput = document.getElementById('orderTimeInput');
@@ -5866,11 +5919,19 @@ function openCalculatorDrawer(skipOrderTimeReset) {
 }
 
 // 关闭计算抽屉
-function closeCalculatorDrawer() {
+function closeCalculatorDrawer(returnToPreviousPage) {
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
     drawer.classList.remove('open');
     isCalculatorOpen = false;
+
+    if (returnToPreviousPage) {
+        const returnPage = (window.pageBeforeCalculatorDrawer === 'quote' || window.pageBeforeCalculatorDrawer === 'record' || window.pageBeforeCalculatorDrawer === 'stats' || window.pageBeforeCalculatorDrawer === 'settings')
+            ? window.pageBeforeCalculatorDrawer
+            : 'quote';
+        showPage(returnPage);
+    }
+    window.pageBeforeCalculatorDrawer = null;
 }
 
 // 添加制品项
@@ -6945,7 +7006,7 @@ function generateQuote() {
     
     // 添加头部图片（如果设置了）
     if (defaultSettings.receiptCustomization.headerImage) {
-        const headerImageWidth = Math.max(1, Math.min(400, parseInt(defaultSettings.receiptCustomization.headerImageWidth, 10) || 400));
+        const headerImageWidth = Math.max(1, Math.min(400, parseInt(defaultSettings.receiptCustomization.headerImageWidth, 10) || 300));
         html += `<div class="receipt-header-image"><img src="${defaultSettings.receiptCustomization.headerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="头部图片" style="width: ${headerImageWidth}px; max-width: 400px; height: auto;" /></div>`;
     }
     
@@ -7706,7 +7767,7 @@ function generateQuote() {
                         
             // 添加底部图片（如果设置了）
             if (defaultSettings.receiptCustomization.footerImage) {
-                const footerImageWidth = Math.max(1, Math.min(400, parseInt(defaultSettings.receiptCustomization.footerImageWidth, 10) || 400));
+                const footerImageWidth = Math.max(1, Math.min(400, parseInt(defaultSettings.receiptCustomization.footerImageWidth, 10) || 300));
                 html += `<div class="receipt-footer-image"><img src="${defaultSettings.receiptCustomization.footerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="尾部图片" style="width: ${footerImageWidth}px; max-width: 400px; height: auto; margin-top: 0.5rem;" /></div>`;
             }
                         
@@ -8109,6 +8170,7 @@ function openReceiptDrawer() {
     const drawer = document.getElementById('receiptDrawer');
     if (!drawer) return;
 
+    window.pageBeforeReceiptDrawer = activeTab;
     isReceiptDrawerOpen = true;
 
     // 确保先显示容器，再做开启动画
@@ -8150,11 +8212,20 @@ function closeReceiptDrawer() {
 window.receiptOpenedFromRecord = false;
 function setReceiptFromRecord() { window.receiptOpenedFromRecord = true; }
 function maybeReturnToRecordAndCloseReceipt() {
-    if (window.receiptOpenedFromRecord) {
-        window.receiptOpenedFromRecord = false;
-        showPage('record');
-    }
+    const fromRecord = !!window.receiptOpenedFromRecord;
+    window.receiptOpenedFromRecord = false;
     closeReceiptDrawer();
+
+    const returnPage = fromRecord
+        ? 'record'
+        : ((window.pageBeforeReceiptDrawer === 'quote' || window.pageBeforeReceiptDrawer === 'record' || window.pageBeforeReceiptDrawer === 'stats' || window.pageBeforeReceiptDrawer === 'settings')
+            ? window.pageBeforeReceiptDrawer
+            : null);
+
+    if (returnPage) {
+        showPage(returnPage);
+    }
+    window.pageBeforeReceiptDrawer = null;
 }
 
 // 处理小票抽屉关闭（遮罩点击或关闭按钮）
@@ -12972,10 +13043,16 @@ function toggleHistoryFilterDrawer() {
     if (drawer) {
         drawer.classList.toggle('active');
         if (drawer.classList.contains('active')) {
+            window.pageBeforeHistoryFilterDrawer = activeTab;
             document.body.style.overflow = 'hidden'; // 防止背景滚动
             updateHistoryFilterBadge(); // 打开时更新徽章
         } else {
+            const returnPage = (window.pageBeforeHistoryFilterDrawer === 'quote' || window.pageBeforeHistoryFilterDrawer === 'record' || window.pageBeforeHistoryFilterDrawer === 'stats' || window.pageBeforeHistoryFilterDrawer === 'settings')
+                ? window.pageBeforeHistoryFilterDrawer
+                : 'quote';
             document.body.style.overflow = '';
+            showPage(returnPage);
+            window.pageBeforeHistoryFilterDrawer = null;
         }
     }
 }
@@ -12986,6 +13063,11 @@ function closeHistoryFilterDrawer() {
     if (drawer) {
         drawer.classList.remove('active');
         document.body.style.overflow = '';
+        const returnPage = (window.pageBeforeHistoryFilterDrawer === 'quote' || window.pageBeforeHistoryFilterDrawer === 'record' || window.pageBeforeHistoryFilterDrawer === 'stats' || window.pageBeforeHistoryFilterDrawer === 'settings')
+            ? window.pageBeforeHistoryFilterDrawer
+            : 'quote';
+        showPage(returnPage);
+        window.pageBeforeHistoryFilterDrawer = null;
     }
 }
 
@@ -17820,11 +17902,16 @@ function openAllClientSubmissions() {
 }
 
 function openClientTemplateEditorPage() {
+    window.pageBeforeClientTemplateEditor = activeTab;
     showPage('clientTemplateEditor');
 }
 
 function backToSettingsPage() {
-    showPage('settings');
+    const returnPage = (window.pageBeforeClientTemplateEditor === 'quote' || window.pageBeforeClientTemplateEditor === 'record' || window.pageBeforeClientTemplateEditor === 'stats' || window.pageBeforeClientTemplateEditor === 'settings')
+        ? window.pageBeforeClientTemplateEditor
+        : 'settings';
+    window.pageBeforeClientTemplateEditor = null;
+    showPage(returnPage);
 }
 
 // ========== 设置页：表单模板编辑器 ==========
