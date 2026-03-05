@@ -902,6 +902,16 @@ function loadData() {
 // 保存数据到本地存储（防抖：短时间多次调用只写入一次）
 var _saveDataTimer;
 function doSaveData() {
+    // 保存前兜底防重：避免任何入口写入重复数据
+    try {
+        const changed = !!mgSanitizeSettingsDuplicates();
+        if (changed) {
+            console.log('[dedupe] 保存前检测到重复并已自动清理');
+        }
+    } catch (e) {
+        console.warn('保存前去重失败（已忽略）:', e);
+    }
+
     try {
         localStorage.setItem('quoteHistory', JSON.stringify(history));
         localStorage.setItem('calculatorSettings', JSON.stringify(defaultSettings));
@@ -15629,6 +15639,16 @@ function saveNewProduct() {
         return;
     }
     
+    // 不允许同名制品（跨分类也不允许）
+    const normalizedName = mgNormalizeTextKey(name);
+    const duplicated = (productSettings || []).find(function (p) {
+        return mgNormalizeTextKey(p && p.name) === normalizedName;
+    });
+    if (duplicated) {
+        alert('已存在同名制品，请直接编辑原有制品，或换一个名称。');
+        return;
+    }
+
     // 创建新制品对象
     const newProduct = {
         id: Date.now(),
