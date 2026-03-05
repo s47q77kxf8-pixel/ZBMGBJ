@@ -17572,7 +17572,7 @@ function updateProcessOptions(productId, isGift = false) {
     // 生成工艺选项，每个工艺可以选择并设置层数
     processSettings.forEach(setting => {
         const processIdStr = String(setting.id);
-        const processIdJs = JSON.stringify(processIdStr);
+        const processIdArg = `'${processIdStr.replace(/'/g, "\\'")}'`;
         const isChecked = item.processes && item.processes[processIdStr] ? 'checked' : '';
         const layers = item.processes && item.processes[processIdStr] ? item.processes[processIdStr].layers : 1;
 
@@ -17580,18 +17580,18 @@ function updateProcessOptions(productId, isGift = false) {
             <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem;">
                 <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
                     <input type="checkbox" id="${isGift ? 'gift' : 'product'}Process-${productId}-${processIdStr}" ${isChecked}
-                           onchange="toggleProcess(${productId}, ${processIdJs}, this.checked, ${isGift})"
+                           onchange="toggleProcess(${productId}, ${processIdArg}, this.checked, ${isGift})"
                            style="cursor: pointer; width: 14px; height: 14px;">
                     <span>${setting.name}</span>
                 </label>
                 <div id="${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${processIdStr}"
                      class="process-layers-stepper-wrap" style="display: ${isChecked ? 'flex' : 'none'}; align-items: center; gap: 0.25rem; margin-left: 1rem;">
                     <button type="button" class="process-layers-stepper-btn" aria-label="减一层"
-                            onclick="adjustProcessLayers(${productId}, ${processIdJs}, -1, ${isGift})">−</button>
+                            onclick="adjustProcessLayers(${productId}, ${processIdArg}, -1, ${isGift})">−</button>
                     <input type="number" id="processLayers-${productId}-${processIdStr}" class="process-layers-stepper-input" value="${layers}" min="1" step="1"
-                           onchange="var v = Math.max(1, parseInt(this.value) || 1); this.value = v; updateProcessLayers(${productId}, ${processIdJs}, v, ${isGift})">
+                           onchange="var v = Math.max(1, parseInt(this.value) || 1); this.value = v; updateProcessLayers(${productId}, ${processIdArg}, v, ${isGift})">
                     <button type="button" class="process-layers-stepper-btn" aria-label="加一层"
-                            onclick="adjustProcessLayers(${productId}, ${processIdJs}, 1, ${isGift})">+</button>
+                            onclick="adjustProcessLayers(${productId}, ${processIdArg}, 1, ${isGift})">+</button>
                     <span style="font-size: 0.75rem; color: #666;">层</span>
                 </div>
             </div>
