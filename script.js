@@ -5927,6 +5927,12 @@ function renderGift(gift) {
     updateProcessOptions(gift.id, true);
 }
 
+function mgFindProductSettingByTypeId(typeId) {
+    const idStr = String(typeId == null ? '' : typeId);
+    if (!idStr) return null;
+    return (productSettings || []).find(function (s) { return String(s && s.id) === idStr; }) || null;
+}
+
 // 添加赠品项
 function addGift() {
     giftIdCounter++;
@@ -5965,6 +5971,7 @@ function renderProduct(product) {
             <div class="form-group">
                 <label>制品类型</label>
                 <div id="productTypeSelect-${product.id}"></div>
+                <div id="productTypeDebug-${product.id}" style="margin-top:6px;font-size:12px;color:#888;"></div>
             </div>
             <div class="form-group">
                 <label for="productQuantity-${product.id}">制品数</label>
@@ -6030,7 +6037,18 @@ function updateProductForm(productId) {
     if (!product) return;
     
     const container = document.getElementById(`formOptions-${productId}`);
-    const productSetting = productSettings.find(p => p.id === parseInt(product.type));
+    const debugEl = document.getElementById(`productTypeDebug-${productId}`);
+    const productSetting = mgFindProductSettingByTypeId(product.type);
+
+    if (debugEl) {
+        if (!product.type) {
+            debugEl.textContent = '未选择制品类型';
+        } else if (!productSetting) {
+            debugEl.textContent = `当前type=${String(product.type)}，未命中设置`;
+        } else {
+            debugEl.textContent = `当前type=${String(product.type)}，命中：${productSetting.name || '-'}（${productSetting.priceType || 'fixed'}）`;
+        }
+    }
     
     if (!productSetting) {
         container.innerHTML = '<p>请先选择制品类型</p>';
@@ -6176,7 +6194,7 @@ function updateProduct(id, field, value) {
 function updateProductNodePercent(productId, index, value) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
-    const productSetting = productSettings.find(p => p.id === parseInt(product.type));
+    const productSetting = mgFindProductSettingByTypeId(product.type);
     const baseNodes = (product && Array.isArray(product.nodes) && product.nodes.length)
         ? product.nodes
         : (productSetting && productSetting.nodes) ? productSetting.nodes : [];
@@ -6190,7 +6208,7 @@ function updateProductNodePercent(productId, index, value) {
 function addProductNodeInstance(productId) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
-    const productSetting = productSettings.find(p => p.id === parseInt(product.type));
+    const productSetting = mgFindProductSettingByTypeId(product.type);
     const baseNodes = (productSetting && productSetting.nodes) ? productSetting.nodes : [];
     if (!Array.isArray(product.nodes) || product.nodes.length === 0) {
         product.nodes = baseNodes.map(function (n) {
@@ -6390,7 +6408,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         
         const productTypeId = parseInt(productType);
         // 使用 == 进行比较，忽略类型差异
-        const productSetting = productSettings.find(p => p.id == productTypeId);
+        const productSetting = mgFindProductSettingByTypeId(productTypeId);
         if (!productSetting) {
             alert(`制品${i+1}的制品类型无效，请重新选择！`);
             return;
@@ -6602,7 +6620,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         
         const giftTypeId = parseInt(giftType);
         // 使用 == 进行比较，忽略类型差异
-        const productSetting = productSettings.find(p => p.id == giftTypeId);
+        const productSetting = mgFindProductSettingByTypeId(giftTypeId);
         if (!productSetting) {
             alert(`赠品${i+1}的制品类型无效，请重新选择！`);
             return;
@@ -16743,7 +16761,7 @@ function addNewCategory() {
 
 // 更新制品设置
 function updateProductSetting(id, field, value) {
-    const setting = productSettings.find(p => p.id === id);
+    const setting = mgFindProductSettingByTypeId(id);
     if (setting) {
         setting[field] = value;
         // 如果计价方式改变，重新渲染
@@ -16755,7 +16773,7 @@ function updateProductSetting(id, field, value) {
 
 // 添加递增配置项
 function addProductAdditionalConfigSetting(productId) {
-    const setting = productSettings.find(p => p.id === productId);
+    const setting = mgFindProductSettingByTypeId(productId);
     if (setting) {
         if (!setting.additionalConfigs) {
             setting.additionalConfigs = [];
@@ -16771,7 +16789,7 @@ function addProductAdditionalConfigSetting(productId) {
 
 // 更新递增配置项
 function updateProductAdditionalConfigSetting(productId, index, field, value) {
-    const setting = productSettings.find(p => p.id === productId);
+    const setting = mgFindProductSettingByTypeId(productId);
     if (setting && setting.additionalConfigs && setting.additionalConfigs[index]) {
         if (field === 'price') {
             setting.additionalConfigs[index][field] = parseFloat(value) || 0;
@@ -16788,7 +16806,7 @@ function removeProductAdditionalConfigSetting(productId, index) {
         return;
     }
     
-    const setting = productSettings.find(p => p.id === productId);
+    const setting = mgFindProductSettingByTypeId(productId);
     if (setting && setting.additionalConfigs && setting.additionalConfigs[index]) {
         setting.additionalConfigs.splice(index, 1);
         renderProductSettings();
@@ -16797,7 +16815,7 @@ function removeProductAdditionalConfigSetting(productId, index) {
 
 // 按节点收费：添加节点
 function addProductNodeSetting(settingId) {
-    const setting = productSettings.find(p => p.id === settingId);
+    const setting = mgFindProductSettingByTypeId(settingId);
     if (setting) {
         if (!setting.nodes) setting.nodes = [];
         setting.nodes.push({ name: '新节点', percent: 0 });
@@ -16807,7 +16825,7 @@ function addProductNodeSetting(settingId) {
 
 // 按节点收费：更新节点
 function updateProductNodeSetting(settingId, index, field, value) {
-    const setting = productSettings.find(p => p.id === settingId);
+    const setting = mgFindProductSettingByTypeId(settingId);
     if (setting && setting.nodes && setting.nodes[index]) {
         if (field === 'percent') {
             setting.nodes[index][field] = parseFloat(value) || 0;
@@ -16820,7 +16838,7 @@ function updateProductNodeSetting(settingId, index, field, value) {
 // 按节点收费：删除节点
 function removeProductNodeSetting(settingId, index) {
     if (!confirm('确定要删除该节点吗？')) return;
-    const setting = productSettings.find(p => p.id === settingId);
+    const setting = mgFindProductSettingByTypeId(settingId);
     if (setting && setting.nodes && setting.nodes[index]) {
         setting.nodes.splice(index, 1);
         renderProductSettings();
@@ -16835,24 +16853,10 @@ function deleteProductSetting(id) {
     }
 
     const idStr = String(id);
-    const target = (productSettings || []).find(function (p) { return String(p && p.id) === idStr; });
-    const targetName = mgNormalizeTextKey(target && target.name);
-    const targetCategory = mgNormalizeTextKey(target && target.category);
 
+    // 强删收敛：仅按 ID 删除，避免误删“同名但不同配置（单双面/递增节点等）”的合法制品
     productSettings = (productSettings || []).filter(function (p) {
-        // 先按 ID 直接删除
-        if (String(p && p.id) === idStr) return false;
-
-        // 强删：同名+同分类视为同一制品，全部删除（兼容历史错ID/脏数据）
-        if (targetName) {
-            const pName = mgNormalizeTextKey(p && p.name);
-            const pCategory = mgNormalizeTextKey(p && p.category);
-            if (pName === targetName && pCategory === targetCategory) {
-                return false;
-            }
-        }
-
-        return true;
+        return String(p && p.id) !== idStr;
     });
 
     // 保险再去重，避免渲染层残留
@@ -19744,39 +19748,41 @@ function mgDedupeCoefficientObject(obj, byDisplayName) {
 function mgSanitizeSettingsDuplicates() {
     let changed = false;
 
-    // 制品去重：按“分类+名称”保险去重，保留最后一个（通常是最新编辑）
+    // 制品去重：仅按 id 去重，避免误删“同名但配置不同”的合法项
     if (Array.isArray(productSettings)) {
         const before = productSettings.length;
-        const seen = new Set();
+        const seenId = new Set();
         const deduped = [];
-        for (let i = productSettings.length - 1; i >= 0; i--) {
-            const p = productSettings[i] || {};
-            const sig = mgNormalizeTextKey((p.category || '') + '|' + (p.name || ''));
-            if (!sig) continue;
-            if (seen.has(sig)) continue;
-            seen.add(sig);
+        productSettings.forEach(function (p) {
+            const idKey = (p && p.id != null && p.id !== '') ? String(p.id) : '';
+            if (!idKey) {
+                deduped.push(p); // 无 id 的项不在这里删，避免丢配置
+                return;
+            }
+            if (seenId.has(idKey)) return;
+            seenId.add(idKey);
             deduped.push(p);
-        }
-        deduped.reverse();
+        });
         if (deduped.length !== before) changed = true;
         productSettings.length = 0;
         productSettings.push(...deduped);
     }
 
-    // 工艺去重：按名称保险去重
+    // 工艺去重：仅按 id 去重，避免按名称误删
     if (Array.isArray(processSettings)) {
         const before = processSettings.length;
-        const seen = new Set();
+        const seenId = new Set();
         const deduped = [];
-        for (let i = processSettings.length - 1; i >= 0; i--) {
-            const p = processSettings[i] || {};
-            const sig = mgNormalizeTextKey(p.name || '');
-            if (!sig) continue;
-            if (seen.has(sig)) continue;
-            seen.add(sig);
+        processSettings.forEach(function (p) {
+            const idKey = (p && p.id != null && p.id !== '') ? String(p.id) : '';
+            if (!idKey) {
+                deduped.push(p);
+                return;
+            }
+            if (seenId.has(idKey)) return;
+            seenId.add(idKey);
             deduped.push(p);
-        }
-        deduped.reverse();
+        });
         if (deduped.length !== before) changed = true;
         processSettings.length = 0;
         processSettings.push(...deduped);
