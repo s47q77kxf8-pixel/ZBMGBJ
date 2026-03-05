@@ -728,6 +728,10 @@
                                         <svg class="icon" aria-hidden="true"><use href="#i-settings-line-c3-l3"></use></svg>
                                         <span class="sr-only">设置</span>
                                     </button>
+                                    <button class="btn secondary btn--icon" onclick="copyQuoteAsImage()" aria-label="复制图片" title="复制">
+                                        <svg class="icon" aria-hidden="true"><use href="#i-copy-new"></use></svg>
+                                        <span class="sr-only">复制</span>
+                                    </button>
                                     <button class="btn secondary btn--icon" onclick="saveQuoteAsImage()" aria-label="保存图片" title="存图">
                                         <svg class="icon" aria-hidden="true"><use href="#i-image-line-c"></use></svg>
                                         <span class="sr-only">存图</span>
@@ -1661,6 +1665,7 @@
                     <div id="cloudSyncStatusText" style="font-size:13px;color:#666;margin-bottom:12px;min-height:18px;">
                         正在检测云端状态...
                     </div>
+                    <div id="cloudSyncLastSummary" style="display:none;margin-bottom:12px;padding:10px 12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;background:rgba(0,0,0,0.02);font-size:12px;line-height:1.6;color:#555;"></div>
                     <!-- 操作按钮（仅在启用时显示） -->
                     <div id="cloudSyncActions" style="display:none;gap:8px;flex-wrap:wrap;">
                         <button type="button" id="syncCloudBtn" class="btn" onclick="mgSyncAllToCloud()" style="display:none;font-size:13px;padding:6px 12px;">上传</button>

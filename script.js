@@ -8280,94 +8280,161 @@ window.addEventListener('resize', function() {
     }
 });
 
-// 保存报价为图片
-async function saveQuoteAsImage() {
+// 等待小票渲染稳定（字体 + 图片加载完成）
+async function waitReceiptReadyForCapture(receipt) {
+    if (!receipt) return;
+
+    // 先确保 DOM 与样式已应用
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    // 等待字体
+    try {
+        if (document.fonts && document.fonts.ready) {
+            await document.fonts.ready;
+        }
+    } catch (e) {}
+
+    // 等待图片
+    const imgs = Array.from(receipt.querySelectorAll('img'));
+    await Promise.all(imgs.map(img => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+        return new Promise(resolve => {
+            const done = () => resolve();
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', done, { once: true });
+            try {
+                if (img.decode) {
+                    img.decode().then(done).catch(done);
+                }
+            } catch (e) {}
+        });
+    }));
+
+    // 再等一帧，避免刚 load 完就截图导致错位
+    await new Promise(resolve => requestAnimationFrame(resolve));
+}
+
+// 生成小票截图 Canvas（保存/复制共用）
+async function renderReceiptCanvasForExport() {
     if (!quoteData) {
         alert('请先生成报价单！');
-        return;
+        return null;
     }
-    
-    // 优先使用隐藏的主小票真源（避免抽屉样式干扰截图）
+
+    // 先强制重绘一次，避免上传图片后未及时进入小票 DOM
+    generateQuote();
+    syncReceiptDrawerContent();
+
+    // 优先使用抽屉内正在显示的小票（避免隐藏离屏节点导致布局错乱）
     const receipt =
-        document.querySelector('.quote-main-receipt-section .receipt') ||
         document.querySelector('#receiptDrawerContent .receipt') ||
+        document.querySelector('.quote-main-receipt-section .receipt') ||
         document.querySelector('.receipt');
+
     if (!receipt) {
         alert('找不到报价单元素！');
-        return;
+        return null;
     }
-    
-    // 截图前固定宽度和移除缩放，确保保存原始400px尺寸的高清图片
+
     const oldWidth = receipt.style.width;
     const oldMinWidth = receipt.style.minWidth;
     const oldTransform = receipt.style.transform;
     const oldTransformOrigin = receipt.style.transformOrigin;
-    
+
     receipt.style.width = '400px';
     receipt.style.minWidth = '400px';
-    receipt.style.transform = ''; // 移除缩放，确保是原始400px大小
+    receipt.style.transform = '';
     receipt.style.transformOrigin = '';
-    
-    // 等待一下，确保样式生效
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     try {
+        await waitReceiptReadyForCapture(receipt);
+
         const canvas = await html2canvas(receipt, {
-            scale: 3, // 提高分辨率：3倍缩放，400px -> 1200px，更清晰
+            scale: 3,
             useCORS: true,
             logging: false,
-            width: 400, // 明确指定宽度
-            height: receipt.scrollHeight // 使用实际高度
+            width: 400,
+            height: receipt.scrollHeight,
+            backgroundColor: null
         });
-        
+
+        return canvas;
+    } finally {
+        receipt.style.width = oldWidth;
+        receipt.style.minWidth = oldMinWidth;
+        receipt.style.transform = oldTransform;
+        receipt.style.transformOrigin = oldTransformOrigin;
+        if (window.innerWidth <= 768) adjustReceiptScale();
+    }
+}
+
+// 保存报价为图片
+async function saveQuoteAsImage() {
+    try {
+        const canvas = await renderReceiptCanvasForExport();
+        if (!canvas) return;
+
         const filename = `报价单_${quoteData.clientId}_${Date.now()}.png`;
-        // 更精确地区分“手机/平板”与“桌面端”，避免桌面浏览器也走分享流程
         const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
         const isMobile = isTouchDevice && window.innerWidth <= 768;
-        
+
         if (isMobile) {
-            // 手机端：直接触发系统分享，用户在分享界面选"保存图片"即可
             canvas.toBlob(async function (blob) {
+                if (!blob) {
+                    alert('生成图片失败，请重试');
+                    return;
+                }
                 const file = new File([blob], filename, { type: 'image/png' });
-                
-                // 检查是否支持分享文件
                 if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
                     try {
                         await navigator.share({ files: [file], title: '报价单' });
-                        // 分享成功（用户选择了保存或发送）
                         showGlobalToast('小票图片保存成功');
                     } catch (err) {
-                        // 用户取消分享，不做任何提示
                         if (err.name !== 'AbortError') {
-                            // 其他错误，尝试直接下载
                             triggerDownload(canvas.toDataURL('image/png'), filename);
                             showGlobalToast('小票图片保存成功');
                         }
                     }
                 } else {
-                    // 不支持分享，直接下载（图片会存到"下载"文件夹）
                     triggerDownload(canvas.toDataURL('image/png'), filename);
                     showGlobalToast('小票图片保存成功');
                 }
             }, 'image/png');
         } else {
-            // 桌面端：直接下载
             triggerDownload(canvas.toDataURL('image/png'), filename);
             showGlobalToast('小票图片保存成功');
         }
     } catch (error) {
         console.error('保存图片失败:', error);
         alert('保存图片失败，请重试！');
-    } finally {
-        // 恢复原始样式
-        receipt.style.width = oldWidth;
-        receipt.style.minWidth = oldMinWidth;
-        receipt.style.transform = oldTransform;
-        receipt.style.transformOrigin = oldTransformOrigin;
-        // 如果是手机端，重新应用缩放
-        if (window.innerWidth <= 768) {
-            adjustReceiptScale();
+    }
+}
+
+// 复制小票图片到剪贴板
+async function copyQuoteAsImage() {
+    try {
+        if (!(navigator.clipboard && window.ClipboardItem && navigator.clipboard.write)) {
+            alert('当前环境不支持直接复制图片，请使用存图后发送');
+            return;
         }
+
+        const canvas = await renderReceiptCanvasForExport();
+        if (!canvas) return;
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) {
+            alert('生成图片失败，请重试');
+            return;
+        }
+
+        await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+        ]);
+
+        showGlobalToast('小票图片已复制，可直接粘贴发送');
+    } catch (error) {
+        console.error('复制图片失败:', error);
+        alert('复制图片失败：可能是浏览器权限限制，请改用“存图”');
     }
 }
 
@@ -18475,14 +18542,63 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
     }
 }
 
+// 限并发执行任务（避免串行过慢或无限并发打爆网络）
+async function mgRunWithConcurrency(items, worker, concurrency = 6) {
+    const list = Array.isArray(items) ? items : [];
+    const limit = Math.max(1, Math.min(12, parseInt(concurrency, 10) || 6));
+    if (list.length === 0) return [];
+
+    const results = new Array(list.length);
+    let nextIndex = 0;
+
+    async function runner() {
+        while (true) {
+            const idx = nextIndex++;
+            if (idx >= list.length) break;
+            try {
+                results[idx] = await worker(list[idx], idx);
+            } catch (err) {
+                results[idx] = { error: err };
+            }
+        }
+    }
+
+    const runners = Array(Math.min(limit, list.length)).fill(0).map(() => runner());
+    await Promise.all(runners);
+    return results;
+}
+
+function mgIsRetriableSyncError(err) {
+    if (!err) return false;
+    const msg = String(err.message || err.error_description || '').toLowerCase();
+    const code = String(err.code || '').toLowerCase();
+    const status = Number(err.status || err.statusCode || 0);
+
+    if (status === 429 || status >= 500) return true;
+    if (msg.includes('network') || msg.includes('fetch') || msg.includes('timeout') || msg.includes('failed to fetch')) return true;
+    if (code.includes('econn') || code.includes('etimedout') || code.includes('ecanceled')) return true;
+    return false;
+}
+
+function mgMakeProgressReporter(prefix, total) {
+    let last = 0;
+    return function report(done, force) {
+        if (typeof showGlobalToast !== 'function') return;
+        const now = Date.now();
+        if (!force && now - last < 600) return;
+        last = now;
+        showGlobalToast(`${prefix} ${done}/${total}`);
+    };
+}
+
 // 保存/更新订单到云端（在 saveToHistory 后调用）
-async function mgCloudUpsertOrder(item, retryCount = 0) {
+async function mgCloudUpsertOrder(item, retryCount = 0, context = null) {
     if (!mgIsCloudEnabled()) {
         if (item && item.id) markOrderUnsynced(item.id);
         return;
     }
     
-    const client = mgGetSupabaseClient();
+    const client = (context && context.client) || mgGetSupabaseClient();
     if (!client || !item) {
         if (item && item.id) markOrderUnsynced(item.id);
         return;
@@ -18494,32 +18610,23 @@ async function mgCloudUpsertOrder(item, retryCount = 0) {
             if (item && item.id) markOrderUnsynced(item.id);
             return;
         }
-        
-        // 获取当前登录用户的 artist_id
-        const { data: { session } } = await client.auth.getSession();
-        if (!session || !session.user) {
-            if (item && item.id) markOrderUnsynced(item.id);
-            return;
+
+        let artistId = context && context.artistId;
+        if (!artistId) {
+            const { data: { session } } = await client.auth.getSession();
+            if (!session || !session.user) {
+                if (item && item.id) markOrderUnsynced(item.id);
+                return;
+            }
+            artistId = session.user.id;
         }
         
-        mapped.artist_id = session.user.id;
+        mapped.artist_id = artistId;
         const now = new Date().toISOString();
         mapped.updated_at = now;
+        // 直接 upsert，避免每条订单先 select 一次导致 2x 往返
+        mapped.created_at = now;
         
-        // 检查是否已存在（用于判断是插入还是更新）
-        const { data: existing } = await client
-            .from('orders')
-            .select('external_id, created_at')
-            .eq('external_id', mapped.external_id)
-            .eq('artist_id', session.user.id)
-            .single();
-        
-        // 如果是新记录，设置 created_at
-        if (!existing) {
-            mapped.created_at = now;
-        }
-        
-        // 使用 upsert（如果 external_id 存在则更新，否则插入）
         const { error } = await client
             .from('orders')
             .upsert(mapped, { onConflict: 'external_id' });
@@ -18527,12 +18634,12 @@ async function mgCloudUpsertOrder(item, retryCount = 0) {
         if (error) {
             console.error('云端同步失败:', error);
             if (item && item.id) markOrderUnsynced(item.id);
-            
-            // 重试机制（最多重试2次）
-            if (retryCount < 2) {
+
+            // 仅可重试错误重试（最多2次，指数退避）
+            if (retryCount < 2 && mgIsRetriableSyncError(error)) {
                 setTimeout(() => {
-                    mgCloudUpsertOrder(item, retryCount + 1);
-                }, 3000 * (retryCount + 1)); // 3秒、6秒后重试
+                    mgCloudUpsertOrder(item, retryCount + 1, context);
+                }, 1000 * Math.pow(2, retryCount + 1));
             }
         } else {
             console.log('✅ 云端同步成功:', mapped.external_id);
@@ -18541,12 +18648,12 @@ async function mgCloudUpsertOrder(item, retryCount = 0) {
     } catch (err) {
         console.error('云端同步出错:', err);
         if (item && item.id) markOrderUnsynced(item.id);
-        
-        // 网络错误时重试
-        if (retryCount < 2 && (err.message?.includes('network') || err.message?.includes('fetch'))) {
+
+        // 仅网络/超时/服务端错误等可重试错误
+        if (retryCount < 2 && mgIsRetriableSyncError(err)) {
             setTimeout(() => {
-                mgCloudUpsertOrder(item, retryCount + 1);
-            }, 3000 * (retryCount + 1));
+                mgCloudUpsertOrder(item, retryCount + 1, context);
+            }, 1000 * Math.pow(2, retryCount + 1));
         }
     }
 }
@@ -18848,6 +18955,9 @@ async function mgReselectFirstSyncPolicy() {
 
 // 执行首次同步（根据选择的策略）
 async function mgExecuteFirstSync(policy, conflictInfo) {
+    window.__mgCloudSyncBusy = true;
+    updateCloudSyncStatus();
+
     if (typeof showGlobalToast === 'function') {
         showGlobalToast('正在执行首次同步...');
     }
@@ -18872,20 +18982,32 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
             
             const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
             
-            // 上传本地独有的订单
+            // 上传本地独有的订单（限并发）
+            const client = mgGetSupabaseClient();
+            if (!client) {
+                throw new Error('云端客户端未初始化，请稍后重试');
+            }
+            const { data: { session } } = await client.auth.getSession();
+            const ctx = (session && session.user) ? { client, artistId: session.user.id } : null;
+            const localOnlyItems = (history || []).filter(function (item) {
+                const extId = mgEnsureExternalId(item);
+                return extId && !cloudIds.has(extId);
+            });
+
             let uploadCount = 0;
-            for (const item of history) {
+            const total = localOnlyItems.length;
+            const report = mgMakeProgressReporter('首次合并上传', total);
+            report(0, true);
+            await mgRunWithConcurrency(localOnlyItems, async function (item) {
                 try {
-                    const extId = mgEnsureExternalId(item);
-                    if (extId && !cloudIds.has(extId)) {
-                        await mgCloudUpsertOrder(item);
-                        uploadCount++;
-                    }
+                    await mgCloudUpsertOrder(item, 0, ctx);
+                    uploadCount++;
+                    report(uploadCount, false);
                 } catch (err) {
                     console.error('上传订单失败:', item.id, err);
-                    // 继续上传其他订单，不中断流程
                 }
-            }
+            }, 6);
+            report(uploadCount, true);
             
             // 拉取所有订单并合并
             try {
@@ -18925,16 +19047,27 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
                 throw new Error('上传设置失败: ' + (err.message || '未知错误'));
             }
             
+            const client = mgGetSupabaseClient();
+            if (!client) {
+                throw new Error('云端客户端未初始化，请稍后重试');
+            }
+            const { data: { session } } = await client.auth.getSession();
+            const ctx = (session && session.user) ? { client, artistId: session.user.id } : null;
+
             let uploadCount = 0;
-            for (const item of history) {
+            const total = Array.isArray(history) ? history.length : 0;
+            const report = mgMakeProgressReporter('首次本地上传', total);
+            report(0, true);
+            await mgRunWithConcurrency(history || [], async function (item) {
                 try {
-                    await mgCloudUpsertOrder(item);
+                    await mgCloudUpsertOrder(item, 0, ctx);
                     uploadCount++;
+                    report(uploadCount, false);
                 } catch (err) {
                     console.error('上传订单失败:', item.id, err);
-                    // 继续上传其他订单
                 }
-            }
+            }, 6);
+            report(uploadCount, true);
             
             if (typeof showGlobalToast === 'function') {
                 showGlobalToast(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，本地数据已覆盖云端`);
@@ -18983,6 +19116,9 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
             alert('首次同步失败: ' + errorMsg + '，请稍后重试');
         }
         // 不设置迁移标记，允许用户重试
+    } finally {
+        window.__mgCloudSyncBusy = false;
+        updateCloudSyncStatus();
     }
 }
 
@@ -18994,6 +19130,8 @@ function updateCloudSyncStatus() {
     const actionsContainer = document.getElementById('cloudSyncActions');
     const syncBtn = document.getElementById('syncCloudBtn');
     const loadBtn = document.getElementById('loadCloudBtn');
+    const restoreBtn = document.getElementById('restoreAllCloudBtn');
+    const summaryEl = document.getElementById('cloudSyncLastSummary');
     
     if (!statusText) return;
     
@@ -19020,21 +19158,26 @@ function updateCloudSyncStatus() {
     if (!isEnabled) {
         statusText.textContent = '请先登录';
         if (actionsContainer) actionsContainer.style.display = 'none';
+        if (summaryEl) summaryEl.style.display = 'none';
     } else if (!isCloudModeOn) {
         statusText.textContent = '开启开关以启用智能同步';
         if (actionsContainer) actionsContainer.style.display = 'none';
+        if (summaryEl) summaryEl.style.display = 'none';
     } else {
         // 加载未同步订单列表
         loadUnsyncedOrders();
         const unsyncedCount = unsyncedOrderIds.size;
-        
+        const isBusy = window.__mgCloudSyncBusy === true;
+
         // 简化状态文本
         let statusMsg = '已启用';
-        if (unsyncedCount > 0) {
+        if (isBusy) {
+            statusMsg = '同步中...';
+        } else if (unsyncedCount > 0) {
             statusMsg = `${unsyncedCount} 条未同步`;
         }
         statusText.textContent = statusMsg;
-        statusText.style.color = unsyncedCount > 0 ? '#ff6b6b' : '#666';
+        statusText.style.color = isBusy ? '#4f7cff' : (unsyncedCount > 0 ? '#ff6b6b' : '#666');
         
         // 显示操作按钮
         if (actionsContainer) {
@@ -19043,6 +19186,9 @@ function updateCloudSyncStatus() {
         
         if (syncBtn) {
             syncBtn.style.display = 'inline-block';
+            syncBtn.disabled = isBusy;
+            syncBtn.style.opacity = isBusy ? '0.6' : '1';
+            syncBtn.style.cursor = isBusy ? 'not-allowed' : 'pointer';
             // 简化按钮文字
             if (unsyncedCount > 0) {
                 syncBtn.textContent = `同步（${unsyncedCount}）`;
@@ -19050,9 +19196,58 @@ function updateCloudSyncStatus() {
                 syncBtn.textContent = '上传';
             }
         }
-        if (loadBtn) loadBtn.style.display = 'inline-block';
+        if (loadBtn) {
+            loadBtn.style.display = 'inline-block';
+            loadBtn.disabled = isBusy;
+            loadBtn.style.opacity = isBusy ? '0.6' : '1';
+            loadBtn.style.cursor = isBusy ? 'not-allowed' : 'pointer';
+        }
+        const restoreBtn = document.getElementById('restoreAllCloudBtn');
+        if (restoreBtn) {
+            restoreBtn.style.display = 'inline-block';
+            restoreBtn.disabled = isBusy;
+            restoreBtn.style.opacity = isBusy ? '0.6' : '1';
+            restoreBtn.style.cursor = isBusy ? 'not-allowed' : 'pointer';
+        }
         const reselectBtn = document.getElementById('reselectSyncBtn');
-        if (reselectBtn) reselectBtn.style.display = 'inline-block';
+        if (reselectBtn) {
+            reselectBtn.style.display = 'inline-block';
+            reselectBtn.disabled = isBusy;
+            reselectBtn.style.opacity = isBusy ? '0.6' : '1';
+            reselectBtn.style.cursor = isBusy ? 'not-allowed' : 'pointer';
+        }
+
+        if (summaryEl) {
+            const settingsSummary = window.__mgLastSettingsMergeSummary || null;
+            const ordersSummary = window.__mgLastOrderSyncSummary || null;
+            const ts = window.__mgLastSyncSummaryAt ? new Date(window.__mgLastSyncSummaryAt) : null;
+            const timeText = (ts && !isNaN(ts.getTime()))
+                ? (String(ts.getMonth() + 1).padStart(2, '0') + '-' + String(ts.getDate()).padStart(2, '0') + ' ' + String(ts.getHours()).padStart(2, '0') + ':' + String(ts.getMinutes()).padStart(2, '0') + ':' + String(ts.getSeconds()).padStart(2, '0'))
+                : '';
+
+            if (!settingsSummary && !ordersSummary) {
+                summaryEl.style.display = 'none';
+                summaryEl.innerHTML = '';
+            } else {
+                const settingsLine = settingsSummary
+                    ? ('设置：云端优先合并；本地补入 制品 ' + (settingsSummary.productsAddedFromLocal || 0) + ' / 工艺 ' + (settingsSummary.processesAddedFromLocal || 0) + ' / 模板 ' + (settingsSummary.templatesAddedFromLocal || 0))
+                    : '设置：暂无本次同步摘要';
+                const ordersLine = ordersSummary
+                    ? ('订单：模式 ' + (ordersSummary.mode === 'unsynced_only' ? '仅未同步' : '全量合并') + '，上传 ' + (ordersSummary.uploadedCount || 0) + ' 条')
+                    : '订单：暂无本次同步摘要';
+                const extraLine = ordersSummary && ordersSummary.mode === 'full_merge'
+                    ? ('云端数量：同步前 ' + (ordersSummary.cloudCountBefore != null ? ordersSummary.cloudCountBefore : '-') + '，同步后 ' + (ordersSummary.cloudCountAfter != null ? ordersSummary.cloudCountAfter : '-'))
+                    : '';
+
+                let html = '';
+                if (timeText) html += '<div style="font-weight:600;margin-bottom:4px;">最近一次同步：' + timeText + '</div>';
+                html += '<div>' + settingsLine + '</div>';
+                html += '<div>' + ordersLine + '</div>';
+                if (extraLine) html += '<div>' + extraLine + '</div>';
+                summaryEl.innerHTML = html;
+                summaryEl.style.display = 'block';
+            }
+        }
     }
 }
 
@@ -19121,25 +19316,47 @@ async function handleSyncCloud() {
         alert('请先登录');
         return;
     }
-    
+    if (window.__mgCloudSyncBusy) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('正在同步中，请稍候...');
+        return;
+    }
+
+    window.__mgCloudSyncBusy = true;
+    updateCloudSyncStatus();
+
     if (typeof showGlobalToast === 'function') {
         showGlobalToast('正在同步到云端...');
     }
     
-    // 同步所有本地 history 到云端
+    try {
     const client = mgGetSupabaseClient();
     if (!client) return;
-    
-    let synced = 0;
-    for (const item of history) {
-        await mgCloudUpsertOrder(item);
-        synced++;
+    const { data: { session } } = await client.auth.getSession();
+    if (!session || !session.user) {
+        alert('登录状态已失效，请重新登录');
+        return;
     }
+
+    const ctx = { client, artistId: session.user.id };
+    const total = Array.isArray(history) ? history.length : 0;
+    const report = mgMakeProgressReporter('上传中', total);
+    let synced = 0;
+    report(0, true);
+    await mgRunWithConcurrency(history || [], async function (item) {
+        await mgCloudUpsertOrder(item, 0, ctx);
+        synced++;
+        report(synced, false);
+    }, 6);
+    report(synced, true);
     
     if (typeof showGlobalToast === 'function') {
         showGlobalToast(`✅ 已同步 ${synced} 条排单到云端`);
     } else {
         alert(`✅ 已同步 ${synced} 条排单到云端`);
+    }
+    } finally {
+        window.__mgCloudSyncBusy = false;
+        updateCloudSyncStatus();
     }
 }
 
@@ -19149,29 +19366,45 @@ async function handleLoadCloud() {
         alert('请先登录');
         return;
     }
-    
-    if (typeof showGlobalToast === 'function') {
-        showGlobalToast('正在从云端加载...');
+    if (window.__mgCloudSyncBusy) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('正在同步中，请稍候...');
+        return;
     }
-    
-    const cloudHistory = await mgCloudFetchOrders();
-    if (cloudHistory.length > 0) {
-        history = cloudHistory;
-        saveData();
-        if (typeof updateDisplay === 'function') updateDisplay();
-        if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
-        
+
+    window.__mgCloudSyncBusy = true;
+    updateCloudSyncStatus();
+
+    if (typeof showGlobalToast === 'function') {
+        showGlobalToast('加载中 1/3：拉取云端订单');
+    }
+
+    try {
+        const cloudHistory = await mgCloudFetchOrders();
         if (typeof showGlobalToast === 'function') {
-            showGlobalToast(`✅ 已从云端加载 ${cloudHistory.length} 条排单`);
-        } else {
-            alert(`✅ 已从云端加载 ${cloudHistory.length} 条排单`);
+            showGlobalToast('加载中 2/3：应用本地数据');
         }
-    } else {
-        if (typeof showGlobalToast === 'function') {
-            showGlobalToast('云端暂无数据');
+
+        if (cloudHistory.length > 0) {
+            history = cloudHistory;
+            saveData();
+            if (typeof updateDisplay === 'function') updateDisplay();
+            if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+
+            if (typeof showGlobalToast === 'function') {
+                showGlobalToast(`✅ 加载完成 3/3：已加载 ${cloudHistory.length} 条排单`);
+            } else {
+                alert(`✅ 已从云端加载 ${cloudHistory.length} 条排单`);
+            }
         } else {
-            alert('云端暂无数据');
+            if (typeof showGlobalToast === 'function') {
+                showGlobalToast('✅ 加载完成 3/3：云端暂无数据');
+            } else {
+                alert('云端暂无数据');
+            }
         }
+    } finally {
+        window.__mgCloudSyncBusy = false;
+        updateCloudSyncStatus();
     }
 }
 
@@ -19964,7 +20197,7 @@ function mergeObjectSettings(cloudObj, localObj) {
     return merged;
 }
 
-async function mgLoadSettingsFromCloud(mergeMode = false) {
+async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false) {
     if (!mgIsCloudEnabled()) {
         if (!mergeMode) {
             alert('请先登录');
@@ -19998,9 +20231,11 @@ async function mgLoadSettingsFromCloud(mergeMode = false) {
             if (mergeMode) {
                 if (typeof updateDisplay === 'function') updateDisplay();
             } else {
-                if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已从云端恢复设置（V2），正在刷新');
-                else alert('已从云端恢复设置（V2），正在刷新');
-                setTimeout(function () { location.reload(); }, 400);
+                if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已从云端恢复设置（V2）');
+                else alert('已从云端恢复设置（V2）');
+                if (!suppressReload) {
+                    setTimeout(function () { location.reload(); }, 400);
+                }
             }
             return;
         }
@@ -20044,26 +20279,54 @@ async function mgLoadSettingsFromCloud(mergeMode = false) {
         
         if (mergeMode) {
             // 合并模式：智能合并设置
+            const mergeSummary = {
+                productsAddedFromLocal: 0,
+                processesAddedFromLocal: 0,
+                templatesAddedFromLocal: 0
+            };
+
             if (p.calculatorSettings && typeof p.calculatorSettings === 'object') {
                 // 使用 Object.assign 更新 defaultSettings，而不是重新赋值
                 Object.assign(defaultSettings, mergeObjectSettings(p.calculatorSettings, defaultSettings || {}));
             }
             if (Array.isArray(p.productSettings)) {
+                const cloudLen = p.productSettings.length;
+                const localLen = (productSettings || []).length;
                 // 清空数组后添加新元素，而不是重新赋值
                 const merged = mergeArraySettings(p.productSettings, productSettings || [], 'id');
+                mergeSummary.productsAddedFromLocal = Math.max(0, merged.length - cloudLen);
                 productSettings.length = 0;
                 productSettings.push(...merged);
+                mergeSummary.productsCloudCount = cloudLen;
+                mergeSummary.productsLocalCount = localLen;
+                mergeSummary.productsMergedCount = merged.length;
             }
             if (Array.isArray(p.processSettings)) {
+                const cloudLen = p.processSettings.length;
+                const localLen = (processSettings || []).length;
                 const merged = mergeArraySettings(p.processSettings, processSettings || [], 'id');
+                mergeSummary.processesAddedFromLocal = Math.max(0, merged.length - cloudLen);
                 processSettings.length = 0;
                 processSettings.push(...merged);
+                mergeSummary.processesCloudCount = cloudLen;
+                mergeSummary.processesLocalCount = localLen;
+                mergeSummary.processesMergedCount = merged.length;
             }
             if (Array.isArray(p.templates)) {
+                const cloudLen = p.templates.length;
+                const localLen = (templates || []).length;
                 const merged = mergeArraySettings(p.templates, templates || [], 'id');
+                mergeSummary.templatesAddedFromLocal = Math.max(0, merged.length - cloudLen);
                 templates.length = 0;
                 templates.push(...merged);
+                mergeSummary.templatesCloudCount = cloudLen;
+                mergeSummary.templatesLocalCount = localLen;
+                mergeSummary.templatesMergedCount = merged.length;
             }
+
+            window.__mgLastSettingsMergeSummary = mergeSummary;
+            window.__mgLastSyncSummaryAt = Date.now();
+            console.log('[sync-summary][settings-merge]', mergeSummary);
         } else {
             // 非合并模式：直接覆盖
             if (p.calculatorSettings && typeof p.calculatorSettings === 'object') {
@@ -20094,9 +20357,11 @@ async function mgLoadSettingsFromCloud(mergeMode = false) {
             // 合并模式不刷新页面，只更新显示
             if (typeof updateDisplay === 'function') updateDisplay();
         } else {
-            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已从云端恢复设置，正在刷新');
-            else alert('已从云端恢复设置，正在刷新');
-            setTimeout(function () { location.reload(); }, 400);
+            if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已从云端恢复设置');
+            else alert('已从云端恢复设置');
+            if (!suppressReload) {
+                setTimeout(function () { location.reload(); }, 400);
+            }
         }
     } catch (e) {
         console.error('应用云端设置失败:', e);
@@ -20135,6 +20400,13 @@ async function mgSyncAllToCloud() {
         alert('请先登录');
         return;
     }
+    if (window.__mgCloudSyncBusy) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('正在同步中，请稍候...');
+        return;
+    }
+
+    window.__mgCloudSyncBusy = true;
+    updateCloudSyncStatus();
     
     // 确保已初始化智能同步模式
     await mgEnsureSyncPolicy();
@@ -20167,36 +20439,65 @@ async function mgSyncAllToCloud() {
         
         // 2. 优先同步未同步的订单
         let syncedCount = 0;
+        const orderSyncSummary = {
+            mode: unsyncedCount > 0 ? 'unsynced_only' : 'full_merge',
+            unsyncedCount: unsyncedCount,
+            localCountBefore: Array.isArray(history) ? history.length : 0,
+            cloudCountBefore: null,
+            uploadedCount: 0,
+            cloudCountAfter: null
+        };
+        const ctx = { client, artistId: session.user.id };
+
         if (unsyncedCount > 0) {
-            // 只同步未同步的订单
-            for (const orderId of unsyncedOrderIds) {
-                const item = history.find(h => h.id == orderId);
-                if (item) {
-                    await mgCloudUpsertOrder(item);
-                    syncedCount++;
-                }
-            }
+            // 只同步未同步的订单（限并发）
+            const unsyncedItems = [...unsyncedOrderIds]
+                .map(orderId => history.find(h => h.id == orderId))
+                .filter(Boolean);
+            const total = unsyncedItems.length;
+            const report = mgMakeProgressReporter('同步未同步订单', total);
+            report(0, true);
+
+            await mgRunWithConcurrency(unsyncedItems, async function (item) {
+                await mgCloudUpsertOrder(item, 0, ctx);
+                syncedCount++;
+                report(syncedCount, false);
+            }, 6);
+            report(syncedCount, true);
+            orderSyncSummary.uploadedCount = syncedCount;
         } else {
             // 没有未同步数据，执行完整同步
             const cloudHistory = await mgCloudFetchOrders();
+            orderSyncSummary.cloudCountBefore = Array.isArray(cloudHistory) ? cloudHistory.length : 0;
             const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
-            
-            // 合并逻辑：本地有但云端没有的，上传到云端
-            for (const item of history) {
+
+            const localOnlyItems = (history || []).filter(function (item) {
                 const extId = mgEnsureExternalId(item);
-                if (extId && !cloudIds.has(extId)) {
-                    await mgCloudUpsertOrder(item);
-                    syncedCount++;
-                }
-            }
+                return extId && !cloudIds.has(extId);
+            });
+            const total = localOnlyItems.length;
+            const report = mgMakeProgressReporter('同步本地增量', total);
+            report(0, true);
+            await mgRunWithConcurrency(localOnlyItems, async function (item) {
+                await mgCloudUpsertOrder(item, 0, ctx);
+                syncedCount++;
+                report(syncedCount, false);
+            }, 6);
+            report(syncedCount, true);
+            orderSyncSummary.uploadedCount = syncedCount;
             
             // 拉取云端所有订单（包含合并后的）
             const mergedHistory = await mgCloudFetchOrders();
+            orderSyncSummary.cloudCountAfter = Array.isArray(mergedHistory) ? mergedHistory.length : 0;
             if (mergedHistory.length > 0) {
                 history = mergedHistory;
                 if (typeof saveData === 'function') saveData();
             }
         }
+
+        window.__mgLastOrderSyncSummary = orderSyncSummary;
+        window.__mgLastSyncSummaryAt = Date.now();
+        console.log('[sync-summary][orders-merge]', orderSyncSummary);
         
         // 3. 上传合并后的设置到云端
         await mgSyncSettingsToCloud();
@@ -20227,6 +20528,9 @@ async function mgSyncAllToCloud() {
     } catch (err) {
         console.error('同步到云端失败:', err);
         alert('同步到云端失败，请稍后重试');
+    } finally {
+        window.__mgCloudSyncBusy = false;
+        updateCloudSyncStatus();
     }
 }
 
@@ -20275,52 +20579,63 @@ async function mgRestoreAllFromCloud() {
         alert('请先登录');
         return;
     }
-    
+    if (window.__mgCloudSyncBusy) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('正在同步中，请稍候...');
+        return;
+    }
+
     if (!confirm('确定要从云端恢复所有数据吗？这将覆盖本地数据。')) {
         return;
     }
-    
+
+    window.__mgCloudSyncBusy = true;
+    updateCloudSyncStatus();
+
     if (typeof showGlobalToast === 'function') {
-        showGlobalToast('正在从云端恢复...');
+        showGlobalToast('恢复中 0/3：准备中');
     }
-    
+
     try {
-        // 1. 恢复设置
-        await mgLoadSettingsFromCloud();
-        
-        // 2. 恢复订单
-        const cloudHistory = await mgCloudFetchOrders();
-        if (cloudHistory.length > 0) {
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast('恢复中 1/3：拉取云端设置与订单');
+        }
+
+        // 并行拉取设置和订单，减少总等待时间
+        const [_, cloudHistory] = await Promise.all([
+            mgLoadSettingsFromCloud(false, true),
+            mgCloudFetchOrders()
+        ]);
+
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast('恢复中 2/3：应用本地数据');
+        }
+
+        if (Array.isArray(cloudHistory) && cloudHistory.length > 0) {
             history = cloudHistory;
             if (typeof saveData === 'function') saveData();
-            
-            if (typeof showGlobalToast === 'function') {
-                showGlobalToast(`✅ 已从云端恢复设置和 ${cloudHistory.length} 条排单，正在刷新`);
-            } else {
-                alert(`✅ 已从云端恢复设置和 ${cloudHistory.length} 条排单`);
-            }
-            
-            // 刷新页面以应用云端数据
-            setTimeout(() => {
-                if (typeof updateDisplay === 'function') updateDisplay();
-                if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
-                location.reload();
-            }, 400);
-        } else {
-            if (typeof showGlobalToast === 'function') {
-                showGlobalToast('云端暂无订单数据');
-            } else {
-                alert('云端暂无订单数据');
-            }
-            // 即使没有订单，设置已恢复，也需要刷新
-            setTimeout(() => {
-                location.reload();
-            }, 400);
         }
-        
+
+        if (typeof showGlobalToast === 'function') {
+            if (Array.isArray(cloudHistory) && cloudHistory.length > 0) {
+                showGlobalToast(`恢复中 3/3：已恢复 ${cloudHistory.length} 条排单，准备刷新`);
+            } else {
+                showGlobalToast('恢复中 3/3：设置已恢复，云端暂无订单，准备刷新');
+            }
+        }
+
+        // 统一刷新，避免重复刷新造成额外等待
+        setTimeout(() => {
+            if (typeof updateDisplay === 'function') updateDisplay();
+            if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
+            location.reload();
+        }, 250);
+
     } catch (err) {
         console.error('从云端恢复失败:', err);
         alert('从云端恢复失败，请稍后重试');
+    } finally {
+        window.__mgCloudSyncBusy = false;
+        updateCloudSyncStatus();
     }
 }
 
@@ -20357,20 +20672,29 @@ init = function() {
                 
                 const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
                 
-                // 上传本地独有的订单
+                // 上传本地独有的订单（限并发）
+                const client = mgGetSupabaseClient();
+                if (!client) {
+                    console.warn('启动时云端客户端未初始化，跳过本地补传');
+                    updateCloudSyncStatus();
+                    return;
+                }
+                const { data: { session } } = await client.auth.getSession();
+                const ctx = (session && session.user) ? { client, artistId: session.user.id } : null;
+                const localOnlyItems = (history || []).filter(function (item) {
+                    const extId = mgEnsureExternalId(item);
+                    return extId && !cloudIds.has(extId);
+                });
+
                 let uploadCount = 0;
-                for (const item of history) {
+                await mgRunWithConcurrency(localOnlyItems, async function (item) {
                     try {
-                        const extId = mgEnsureExternalId(item);
-                        if (extId && !cloudIds.has(extId)) {
-                            await mgCloudUpsertOrder(item);
-                            uploadCount++;
-                        }
+                        await mgCloudUpsertOrder(item, 0, ctx);
+                        uploadCount++;
                     } catch (err) {
                         console.error('启动时上传订单失败:', item.id, err);
-                        // 继续上传其他订单
                     }
-                }
+                }, 4);
                 
                 // 拉取所有订单（包含刚上传的）
                 try {
