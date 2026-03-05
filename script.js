@@ -12208,7 +12208,12 @@ function settlementUpdateNormalPreview(skipAmountUpdate) {
     var amountEl = document.getElementById('settlementNormalAmount');
     var newPlatformEl = document.getElementById('settlementNewPlatformFeeText');
     var ownerPayEl = document.getElementById('settlementOwnerPayText');
-    var receivable = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
+    // 与结算预览保持一致：优先约定实收（抹零后），其次报价金额（不含平台费）
+    var receivable = (item.agreedAmount != null)
+        ? Number(item.agreedAmount)
+        : (item.totalBeforePlatformFee != null
+            ? Number(item.totalBeforePlatformFee)
+            : (item.finalTotal != null && item.platformFeeAmount != null ? Number(item.finalTotal) - Number(item.platformFeeAmount) : Number(item.finalTotal || 0)));
     var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
     var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
     var deposit = Number(item.depositReceived || 0);
