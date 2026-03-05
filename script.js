@@ -7535,7 +7535,8 @@ function generateQuote() {
         var st = quoteData.settlement;
         var dep = Number(quoteData.depositReceived || 0);
         if (!isFinite(dep) || dep < 0) dep = 0;
-        var receivable = Number(quoteData.agreedAmount != null ? quoteData.agreedAmount : (quoteData.finalTotal || 0)) || 0;
+        // 订单应收口径：优先约定实收（抹零后），其次报价金额（不含平台费）
+        var receivable = Number(quoteData.agreedAmount != null ? quoteData.agreedAmount : (quoteData.totalBeforePlatformFee || 0)) || 0;
         var actual = st.amount != null ? Number(st.amount) : 0;
         if (!isFinite(actual) || actual < 0) actual = 0;
         var totalReceived = dep + actual;
@@ -11193,7 +11194,8 @@ function settlementUpdatePreview() {
     previewPanel.classList.remove('d-none');
     
     // 基础数据
-    var receivable = Number(item.agreedAmount != null ? item.agreedAmount : (item.finalTotal || 0)) || 0;
+    // 结算应收口径：优先约定实收（抹零后），其次报价金额（不含平台费）
+    var receivable = Number(item.agreedAmount != null ? item.agreedAmount : (item.totalBeforePlatformFee || 0)) || 0;
     var deposit = Number(item.depositReceived || 0);
     if (!isFinite(deposit) || deposit < 0) deposit = 0;
     
@@ -14146,7 +14148,8 @@ function exportHistoryToExcel() {
         var st = item.settlement;
         var dep = Number(item.depositReceived || 0);
         if (!isFinite(dep) || dep < 0) dep = 0;
-        var receivable = Number(item.agreedAmount != null ? item.agreedAmount : (item.finalTotal || 0)) || 0;
+        // 详情页结算显示口径：优先约定实收（抹零后），其次报价金额（不含平台费）
+        var receivable = Number(item.agreedAmount != null ? item.agreedAmount : (item.totalBeforePlatformFee || 0)) || 0;
         var actual = st && st.amount != null ? Number(st.amount) : 0;
         if (!isFinite(actual) || actual < 0) actual = 0;
         var totalReceived = dep + actual;
