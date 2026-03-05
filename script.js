@@ -9804,6 +9804,18 @@ function renderScheduleCalendar() {
             segments.push({ startCol: startCol, endCol: endCol, bar: b.bar });
         });
         const weekTracks = assignWeekBarsToTracks(segments, getScheduleMaxTracks());
+
+        // 选中列高亮层：覆盖该列全部彩条区域（展开/收起态都生效）
+        let selectedCol = -1;
+        if (window.scheduleSelectedDate) {
+            const selectedDateObj = new Date(window.scheduleSelectedDate);
+            if (!isNaN(selectedDateObj.getTime()) && selectedDateObj.getFullYear() === y && (selectedDateObj.getMonth() + 1) === m) {
+                const selectedDay = selectedDateObj.getDate();
+                if (selectedDay >= weekFirstDay && selectedDay <= weekLastDay) {
+                    selectedCol = selectedDay - weekFirstDay;
+                }
+            }
+        }
         // 展开模式下按需增高本周块，避免彩条轨道重叠
         if (window.scheduleExpandAllBars) {
             const blockMinHeight = 22 + (weekTracks.length * 12) + 8;
@@ -9814,6 +9826,9 @@ function renderScheduleCalendar() {
             var barColors = isDark && SCHEDULE_BAR_COLORS_DARK ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
             var barTextColors = isDark && SCHEDULE_BAR_TEXT_COLORS_DARK ? SCHEDULE_BAR_TEXT_COLORS_DARK : SCHEDULE_BAR_TEXT_COLORS;
             html += '<div class="schedule-week-bars">';
+            if (selectedCol >= 0) {
+                html += '<div class="schedule-selected-column-overlay" style="grid-column:' + (selectedCol + 1) + ';grid-row:1 / -1;"></div>';
+            }
             weekTracks.forEach(function (track, ti) {
                 track.forEach(function (s) {
                     const b = s.bar;
@@ -19238,12 +19253,18 @@ function updateCloudSyncStatus() {
                 const extraLine = ordersSummary && ordersSummary.mode === 'full_merge'
                     ? ('云端数量：同步前 ' + (ordersSummary.cloudCountBefore != null ? ordersSummary.cloudCountBefore : '-') + '，同步后 ' + (ordersSummary.cloudCountAfter != null ? ordersSummary.cloudCountAfter : '-'))
                     : '';
+                const durationLine = (ordersSummary && typeof ordersSummary.durationMs === 'number')
+                    ? ('耗时：' + (ordersSummary.durationMs < 1000
+                        ? (ordersSummary.durationMs + 'ms')
+                        : ((ordersSummary.durationMs / 1000).toFixed(2) + 's')))
+                    : '';
 
                 let html = '';
                 if (timeText) html += '<div style="font-weight:600;margin-bottom:4px;">最近一次同步：' + timeText + '</div>';
                 html += '<div>' + settingsLine + '</div>';
                 html += '<div>' + ordersLine + '</div>';
                 if (extraLine) html += '<div>' + extraLine + '</div>';
+                if (durationLine) html += '<div>' + durationLine + '</div>';
                 summaryEl.innerHTML = html;
                 summaryEl.style.display = 'block';
             }
@@ -20407,6 +20428,7 @@ async function mgSyncAllToCloud() {
 
     window.__mgCloudSyncBusy = true;
     updateCloudSyncStatus();
+    const syncStartedAt = Date.now();
     
     // 确保已初始化智能同步模式
     await mgEnsureSyncPolicy();
@@ -20495,6 +20517,7 @@ async function mgSyncAllToCloud() {
             }
         }
 
+        orderSyncSummary.durationMs = Date.now() - syncStartedAt;
         window.__mgLastOrderSyncSummary = orderSyncSummary;
         window.__mgLastSyncSummaryAt = Date.now();
         console.log('[sync-summary][orders-merge]', orderSyncSummary);

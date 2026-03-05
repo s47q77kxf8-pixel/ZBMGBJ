@@ -6548,6 +6548,15 @@ input:checked + .toggle-slider:before {
     overflow: visible;
     box-sizing: border-box;
 }
+.schedule-selected-column-overlay {
+    align-self: stretch;
+    justify-self: stretch;
+    background: #111827;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px #000;
+    z-index: 0;
+    pointer-events: none;
+}
 /* 彩条样式：参考日程颜色例图，圆角条带、略透明 */
 .schedule-bar-strip {
     min-width: 0;
@@ -6563,6 +6572,8 @@ input:checked + .toggle-slider:before {
     letter-spacing: 0.01em;
     pointer-events: auto;
     margin-bottom: 0.2px; /* 减小间距以显示更多彩条 */
+    position: relative;
+    z-index: 1;
 }
 .schedule-bar-strip:hover {
     filter: brightness(0.92);
