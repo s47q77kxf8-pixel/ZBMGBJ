@@ -17571,25 +17571,27 @@ function updateProcessOptions(productId, isGift = false) {
     
     // 生成工艺选项，每个工艺可以选择并设置层数
     processSettings.forEach(setting => {
-        const isChecked = item.processes && item.processes[setting.id] ? 'checked' : '';
-        const layers = item.processes && item.processes[setting.id] ? item.processes[setting.id].layers : 1;
-        
+        const processIdStr = String(setting.id);
+        const processIdJs = JSON.stringify(processIdStr);
+        const isChecked = item.processes && item.processes[processIdStr] ? 'checked' : '';
+        const layers = item.processes && item.processes[processIdStr] ? item.processes[processIdStr].layers : 1;
+
         html += `
             <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem;">
                 <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
-                    <input type="checkbox" id="${isGift ? 'gift' : 'product'}Process-${productId}-${setting.id}" ${isChecked} 
-                           onchange="toggleProcess(${productId}, ${setting.id}, this.checked, ${isGift})" 
+                    <input type="checkbox" id="${isGift ? 'gift' : 'product'}Process-${productId}-${processIdStr}" ${isChecked}
+                           onchange="toggleProcess(${productId}, ${processIdJs}, this.checked, ${isGift})"
                            style="cursor: pointer; width: 14px; height: 14px;">
                     <span>${setting.name}</span>
                 </label>
-                <div id="${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${setting.id}" 
+                <div id="${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${processIdStr}"
                      class="process-layers-stepper-wrap" style="display: ${isChecked ? 'flex' : 'none'}; align-items: center; gap: 0.25rem; margin-left: 1rem;">
-                    <button type="button" class="process-layers-stepper-btn" aria-label="减一层" 
-                            onclick="adjustProcessLayers(${productId}, ${setting.id}, -1, ${isGift})">−</button>
-                    <input type="number" id="processLayers-${productId}-${setting.id}" class="process-layers-stepper-input" value="${layers}" min="1" step="1" 
-                           onchange="var v = Math.max(1, parseInt(this.value) || 1); this.value = v; updateProcessLayers(${productId}, ${setting.id}, v, ${isGift})">
-                    <button type="button" class="process-layers-stepper-btn" aria-label="加一层" 
-                            onclick="adjustProcessLayers(${productId}, ${setting.id}, 1, ${isGift})">+</button>
+                    <button type="button" class="process-layers-stepper-btn" aria-label="减一层"
+                            onclick="adjustProcessLayers(${productId}, ${processIdJs}, -1, ${isGift})">−</button>
+                    <input type="number" id="processLayers-${productId}-${processIdStr}" class="process-layers-stepper-input" value="${layers}" min="1" step="1"
+                           onchange="var v = Math.max(1, parseInt(this.value) || 1); this.value = v; updateProcessLayers(${productId}, ${processIdJs}, v, ${isGift})">
+                    <button type="button" class="process-layers-stepper-btn" aria-label="加一层"
+                            onclick="adjustProcessLayers(${productId}, ${processIdJs}, 1, ${isGift})">+</button>
                     <span style="font-size: 0.75rem; color: #666;">层</span>
                 </div>
             </div>
@@ -17617,33 +17619,35 @@ function toggleProcess(productId, processId, checked, isGift = false) {
     const items = isGift ? gifts : products;
     const item = items.find(p => p.id === productId);
     if (!item) return;
-    
+
+    const processIdStr = String(processId);
+
     // 初始化工艺选择对象
     if (!item.processes) {
         item.processes = {};
     }
-    
-    // 获取工艺设置
-    const processSetting = processSettings.find(p => p.id === processId);
+
+    // 获取工艺设置（字符串/数字 id 兼容）
+    const processSetting = processSettings.find(p => String(p && p.id) === processIdStr);
     if (!processSetting) return;
-    
+
     if (checked) {
-        item.processes[processId] = {
-            id: processId,
+        item.processes[processIdStr] = {
+            id: processIdStr,
             layers: 1, // 默认1层
             price: processSetting.price || 10
         };
-        
+
         // 显示层数设置
-        const layersContainer = document.getElementById(`${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${processId}`);
+        const layersContainer = document.getElementById(`${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${processIdStr}`);
         if (layersContainer) {
             layersContainer.style.display = 'flex';
         }
     } else {
-        delete item.processes[processId];
-        
+        delete item.processes[processIdStr];
+
         // 隐藏层数设置
-        const layersContainer = document.getElementById(`${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${processId}`);
+        const layersContainer = document.getElementById(`${isGift ? 'gift' : 'product'}ProcessLayersContainer-${productId}-${processIdStr}`);
         if (layersContainer) {
             layersContainer.style.display = 'none';
         }
@@ -17654,23 +17658,25 @@ function toggleProcess(productId, processId, checked, isGift = false) {
 function updateProcessLayers(productId, processId, layers, isGift = false) {
     const items = isGift ? gifts : products;
     const item = items.find(p => p.id === productId);
-    if (!item || !item.processes || !item.processes[processId]) return;
-    
+    const processIdStr = String(processId);
+    if (!item || !item.processes || !item.processes[processIdStr]) return;
+
     const clamped = Math.max(1, parseInt(layers, 10) || 1);
-    item.processes[processId].layers = clamped;
+    item.processes[processIdStr].layers = clamped;
 }
 
 // 快捷增减工艺层数（支持赠品）
 function adjustProcessLayers(productId, processId, delta, isGift = false) {
     const items = isGift ? gifts : products;
     const item = items.find(p => p.id === productId);
-    if (!item || !item.processes || !item.processes[processId]) return;
-    
-    const current = item.processes[processId].layers || 1;
+    const processIdStr = String(processId);
+    if (!item || !item.processes || !item.processes[processIdStr]) return;
+
+    const current = item.processes[processIdStr].layers || 1;
     const next = Math.max(1, current + delta);
-    updateProcessLayers(productId, processId, next, isGift);
-    
-    const input = document.getElementById('processLayers-' + productId + '-' + processId);
+    updateProcessLayers(productId, processIdStr, next, isGift);
+
+    const input = document.getElementById('processLayers-' + productId + '-' + processIdStr);
     if (input) input.value = next;
 }
 
