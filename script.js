@@ -906,7 +906,16 @@ function doSaveData() {
     try {
         const changed = !!mgSanitizeSettingsDuplicates();
         if (changed) {
-            console.log('[dedupe] 保存前检测到重复并已自动清理');
+            const s = window.__mgLastDedupeSummary || {};
+            console.log('[dedupe] 已自动清理重复:',
+                '制品=' + (s.product || 0),
+                '工艺=' + (s.process || 0),
+                '用途=' + (s.usage || 0),
+                '加急=' + (s.urgent || 0),
+                '同模=' + (s.sameModel || 0),
+                '折扣=' + (s.discount || 0),
+                '平台=' + (s.platform || 0)
+            );
         }
     } catch (e) {
         console.warn('保存前去重失败（已忽略）:', e);
@@ -19767,6 +19776,15 @@ function mgDedupeCoefficientObject(obj, byDisplayName) {
 
 function mgSanitizeSettingsDuplicates() {
     let changed = false;
+    const summary = {
+        product: 0,
+        process: 0,
+        usage: 0,
+        urgent: 0,
+        sameModel: 0,
+        discount: 0,
+        platform: 0
+    };
 
     // 制品去重：仅按 id 去重，避免误删“同名但配置不同”的合法项
     if (Array.isArray(productSettings)) {
@@ -19783,7 +19801,11 @@ function mgSanitizeSettingsDuplicates() {
             seenId.add(idKey);
             deduped.push(p);
         });
-        if (deduped.length !== before) changed = true;
+        const removed = Math.max(0, before - deduped.length);
+        if (removed > 0) {
+            changed = true;
+            summary.product += removed;
+        }
         productSettings.length = 0;
         productSettings.push(...deduped);
     }
@@ -19803,7 +19825,11 @@ function mgSanitizeSettingsDuplicates() {
             seenId.add(idKey);
             deduped.push(p);
         });
-        if (deduped.length !== before) changed = true;
+        const removed = Math.max(0, before - deduped.length);
+        if (removed > 0) {
+            changed = true;
+            summary.process += removed;
+        }
         processSettings.length = 0;
         processSettings.push(...deduped);
     }
@@ -19811,24 +19837,46 @@ function mgSanitizeSettingsDuplicates() {
     // 系数对象保险去重：
     // 1) key 归一化去重（防隐形字符/空格）
     // 2) 显示名去重（防不同 key 展示成同一项）
-    const usageBefore = JSON.stringify(defaultSettings.usageCoefficients || {});
-    const urgentBefore = JSON.stringify(defaultSettings.urgentCoefficients || {});
-    const sameModelBefore = JSON.stringify(defaultSettings.sameModelCoefficients || {});
-    const discountBefore = JSON.stringify(defaultSettings.discountCoefficients || {});
-    const platformBefore = JSON.stringify(defaultSettings.platformFees || {});
+    const usageBeforeObj = defaultSettings.usageCoefficients || {};
+    const urgentBeforeObj = defaultSettings.urgentCoefficients || {};
+    const sameModelBeforeObj = defaultSettings.sameModelCoefficients || {};
+    const discountBeforeObj = defaultSettings.discountCoefficients || {};
+    const platformBeforeObj = defaultSettings.platformFees || {};
 
-    defaultSettings.usageCoefficients = mgDedupeCoefficientObject(defaultSettings.usageCoefficients, true);
-    defaultSettings.urgentCoefficients = mgDedupeCoefficientObject(defaultSettings.urgentCoefficients, true);
-    defaultSettings.sameModelCoefficients = mgDedupeCoefficientObject(defaultSettings.sameModelCoefficients, true);
-    defaultSettings.discountCoefficients = mgDedupeCoefficientObject(defaultSettings.discountCoefficients, true);
-    defaultSettings.platformFees = mgDedupeCoefficientObject(defaultSettings.platformFees, true);
+    const usageBefore = JSON.stringify(usageBeforeObj);
+    const urgentBefore = JSON.stringify(urgentBeforeObj);
+    const sameModelBefore = JSON.stringify(sameModelBeforeObj);
+    const discountBefore = JSON.stringify(discountBeforeObj);
+    const platformBefore = JSON.stringify(platformBeforeObj);
 
-    if (JSON.stringify(defaultSettings.usageCoefficients || {}) !== usageBefore) changed = true;
-    if (JSON.stringify(defaultSettings.urgentCoefficients || {}) !== urgentBefore) changed = true;
-    if (JSON.stringify(defaultSettings.sameModelCoefficients || {}) !== sameModelBefore) changed = true;
-    if (JSON.stringify(defaultSettings.discountCoefficients || {}) !== discountBefore) changed = true;
-    if (JSON.stringify(defaultSettings.platformFees || {}) !== platformBefore) changed = true;
+    defaultSettings.usageCoefficients = mgDedupeCoefficientObject(usageBeforeObj, true);
+    defaultSettings.urgentCoefficients = mgDedupeCoefficientObject(urgentBeforeObj, true);
+    defaultSettings.sameModelCoefficients = mgDedupeCoefficientObject(sameModelBeforeObj, true);
+    defaultSettings.discountCoefficients = mgDedupeCoefficientObject(discountBeforeObj, true);
+    defaultSettings.platformFees = mgDedupeCoefficientObject(platformBeforeObj, true);
 
+    if (JSON.stringify(defaultSettings.usageCoefficients || {}) !== usageBefore) {
+        changed = true;
+        summary.usage += Math.max(0, Object.keys(usageBeforeObj).length - Object.keys(defaultSettings.usageCoefficients || {}).length);
+    }
+    if (JSON.stringify(defaultSettings.urgentCoefficients || {}) !== urgentBefore) {
+        changed = true;
+        summary.urgent += Math.max(0, Object.keys(urgentBeforeObj).length - Object.keys(defaultSettings.urgentCoefficients || {}).length);
+    }
+    if (JSON.stringify(defaultSettings.sameModelCoefficients || {}) !== sameModelBefore) {
+        changed = true;
+        summary.sameModel += Math.max(0, Object.keys(sameModelBeforeObj).length - Object.keys(defaultSettings.sameModelCoefficients || {}).length);
+    }
+    if (JSON.stringify(defaultSettings.discountCoefficients || {}) !== discountBefore) {
+        changed = true;
+        summary.discount += Math.max(0, Object.keys(discountBeforeObj).length - Object.keys(defaultSettings.discountCoefficients || {}).length);
+    }
+    if (JSON.stringify(defaultSettings.platformFees || {}) !== platformBefore) {
+        changed = true;
+        summary.platform += Math.max(0, Object.keys(platformBeforeObj).length - Object.keys(defaultSettings.platformFees || {}).length);
+    }
+
+    window.__mgLastDedupeSummary = summary;
     return changed;
 }
 
