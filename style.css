@@ -1036,7 +1036,60 @@ body {
     opacity: 1;
 }
 
+#perItemExtraSelectsRow .form-group {
+    width: 100%;
+}
+#calculatorPerItemExtraSelects {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+#calculatorPerItemExtraSelects .chip-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 0;
+    white-space: nowrap;
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+#calculatorPerItemExtraSelects .chip-option input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+}
+
 @media (max-width: 768px) {
+    #perItemExtraSelectsRow:not(.d-none) {
+        display: flex !important;
+        flex-direction: row !important;
+        margin-bottom: 0.5rem !important;
+    }
+    #perItemExtraSelectsRow .form-group {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+    #calculatorPerItemExtraSelects {
+        gap: 6px 10px;
+    }
+    #calculatorPerItemExtraSelects .chip-option {
+        font-size: 0.85rem;
+    }
+    #calculatorPerItemExtraSelects .chip-option input[type="checkbox"] {
+        width: 13px;
+        height: 13px;
+    }
+    .platform-deposit-row {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+    }
+    .platform-deposit-row .form-group {
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+    }
     .calculator-drawer-panel {
         max-width: 100%;
         border-radius: 0;
@@ -2463,8 +2516,34 @@ input:focus, select:focus {
     #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) .form-group {
         min-width: 0;
     }
+    /* 同模优惠单独占一行 */
+    #calculator .section:nth-of-type(2) .form-row:has(#sameModel) {
+        display: flex !important;
+        flex-direction: row !important;
+        grid-column: 1 / -1;
+    }
+    #calculator .section:nth-of-type(2) .form-row:has(#sameModel) .form-group {
+        flex: 1 1 100% !important;
+        min-width: 0;
+    }
+    /* 每制品增加、平台手续费+是否付定金保持单独一行 */
     #calculator .section:nth-of-type(2) .form-row:last-of-type {
         grid-column: 1 / -1;
+    }
+
+    /* 手机端：每制品增加、平台手续费+是否付定金都单独占一整行 */
+    #calculator .section:nth-of-type(2) #perItemExtraSelectsRow,
+    #calculator .section:nth-of-type(2) .platform-deposit-row {
+        grid-column: 1 / -1;
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 0.5rem;
+    }
+    #calculator .section:nth-of-type(2) #perItemExtraSelectsRow .form-group,
+    #calculator .section:nth-of-type(2) .platform-deposit-row .form-group {
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
     }
     
     /* 联系方式选择框和输入框在同一行 - 手机端优化 */
@@ -8627,9 +8706,20 @@ html.theme-dark .settlement-preview {
     color: var(--text-color);
 }
 .stats-status-val,
-.stats-dim-item span:last-child {
+.stats-dim-val {
     font-variant-numeric: tabular-nums;
     color: var(--text-light);
+}
+.stats-dim-right {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    margin-left: auto;
+}
+.stats-dim-val {
+    min-width: 110px;
+    text-align: right;
 }
 .stats-block-title {
     font-size: 0.8rem;

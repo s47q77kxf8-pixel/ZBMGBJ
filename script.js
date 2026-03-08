@@ -9,7 +9,10 @@ let history = [];
 let productIdCounter = 0;
 let giftIdCounter = 0;
 let selectedHistoryIds = new Set(); // 存储选中的历史记录ID
+let statsFocusedOrderIds = null; // 统计页“查看订单”后，记录页仅显示这些订单
+let statsFocusedLabel = ''; // 统计页“查看订单”后的筛选说明
 let templates = []; // 存储模板列表
+let selectedPerItemExtraFeeIds = []; // 计算页全单级“每制品新增”勾选
 let expandedCategories = new Set(); // 存储展开的分类状态
 
 // ========== 自定义搜索下拉组件 ==========
@@ -335,8 +338,10 @@ const defaultSettings = {
             }
         }
     ],
-    // 背景费（元）
-    backgroundFee: 5,
+    // 每制品新增费用（可在设置中增删，如背景费）
+    perItemExtraFees: [
+        { id: 'bg', name: '背景费', amount: 5 }
+    ],
     // 可扩展的折扣类系数（折扣为内置；此处为后期添加的）
     extraPricingDown: [],
     // 小票自定义设置
@@ -646,11 +651,8 @@ function init() {
             updateOtherFeeAmount();
         }
         
-        // 初始化背景费输入框
-        const backgroundFeeInput = document.getElementById('backgroundFeeInput');
-        if (backgroundFeeInput) {
-            backgroundFeeInput.value = defaultSettings.backgroundFee || 10;
-        }
+        // 初始化每制品新增费用设置
+        renderPerItemExtraFees();
         
         // 初始化主题选择器
         const themeSelector = document.getElementById('themeSelector');
@@ -805,6 +807,11 @@ function loadData() {
             });
             if (!Array.isArray(defaultSettings.extraPricingUp)) defaultSettings.extraPricingUp = [];
             if (!Array.isArray(defaultSettings.extraPricingDown)) defaultSettings.extraPricingDown = [];
+            // 兼容旧版背景费：仅在“字段不存在”时迁移；如果用户已清空为 []，则保持为空
+            if (!Array.isArray(defaultSettings.perItemExtraFees)) {
+                var oldBg = Number(defaultSettings.backgroundFee);
+                defaultSettings.perItemExtraFees = [{ id: 'bg', name: '背景费', amount: isFinite(oldBg) ? Math.max(0, oldBg) : 5 }];
+            }
             
             // 确保receiptCustomization结构完整
             if (!defaultSettings.receiptCustomization) {
@@ -3364,6 +3371,13 @@ function getFilteredHistoryForRecord() {
         filteredHistory = filteredHistory.filter(item => getRecordProgressStatus(item).text === filters.statusFilter);
     }
 
+    // 统计页“查看订单”聚焦：仅显示命中的订单
+    if (statsFocusedOrderIds && statsFocusedOrderIds.size > 0) {
+        filteredHistory = filteredHistory.filter(function (item) {
+            return item && statsFocusedOrderIds.has(Number(item.id));
+        });
+    }
+
     if (filters.minPrice !== undefined && filters.minPrice !== '') {
         filteredHistory = filteredHistory.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(filters.minPrice));
     }
@@ -3396,6 +3410,24 @@ function applyRecordFilters() {
     toggleRecordSearchClear();
     const container = document.getElementById('recordContainer');
     if (!container) return;
+
+    var focusHintEl = document.getElementById('recordStatsFocusHint');
+    if (focusHintEl) focusHintEl.remove();
+    if (statsFocusedOrderIds && statsFocusedOrderIds.size > 0) {
+        var parent = container.parentNode;
+        if (parent) {
+            var hint = document.createElement('div');
+            hint.id = 'recordStatsFocusHint';
+            hint.className = 'record-empty';
+            hint.style.display = 'flex';
+            hint.style.justifyContent = 'space-between';
+            hint.style.alignItems = 'center';
+            hint.style.gap = '8px';
+            var labelText = statsFocusedLabel ? ('：' + escapeHtml(statsFocusedLabel)) : '';
+            hint.innerHTML = '<span>当前仅显示统计筛选的 ' + statsFocusedOrderIds.size + ' 条订单' + labelText + '</span><button type="button" class="btn secondary small" onclick="clearStatsFocusedOrders()">恢复全部</button>';
+            parent.insertBefore(hint, container);
+        }
+    }
 
     const { list, groupBy } = getFilteredHistoryForRecord();
     if (!Array.isArray(list) || list.length === 0) {
@@ -4146,6 +4178,14 @@ function getStatsDataset(historySource, filters) {
     // 制品小类聚合：按制品名（小类）统计主设 / 同模 / 合计数量 / 金额
     const categoryMap = {};
     let categoryMainCountTotal = 0;
+
+    // 记录分组对应的订单ID（用于统计页“查看订单”）
+    function pushOrderId(bucket, orderId) {
+        if (!bucket) return;
+        if (!Array.isArray(bucket.orderIds)) bucket.orderIds = [];
+        if (orderId == null) return;
+        if (bucket.orderIds.indexOf(orderId) === -1) bucket.orderIds.push(orderId);
+    }
     let categorySameModelTotal = 0;
     let categoryQuantityTotal = 0;
     let categoryMainAmountTotal = 0;
@@ -4236,8 +4276,9 @@ function getStatsDataset(historySource, filters) {
                         var amt = (e.amount != null && isFinite(e.amount)) ? Number(e.amount) : 0;
                         if (amt > 0) {
                             if (!discountByReason[name]) {
-                                discountByReason[name] = { name: name, orderCount: 0, amountTotal: 0 };
+                                discountByReason[name] = { name: name, orderCount: 0, amountTotal: 0, orderIds: [] };
                             }
+                            pushOrderId(discountByReason[name], item.id);
                             discountByReason[name].orderCount += 1;
                             discountByReason[name].amountTotal += amt;
                             reasonAmountSum += amt;
@@ -4248,8 +4289,9 @@ function getStatsDataset(historySource, filters) {
                 if (remainder > 0) {
                     var otherLabel = '其他';
                     if (!discountByReason[otherLabel]) {
-                        discountByReason[otherLabel] = { name: otherLabel, orderCount: 0, amountTotal: 0 };
+                        discountByReason[otherLabel] = { name: otherLabel, orderCount: 0, amountTotal: 0, orderIds: [] };
                     }
+                    pushOrderId(discountByReason[otherLabel], item.id);
                     discountByReason[otherLabel].orderCount += 1;
                     discountByReason[otherLabel].amountTotal += remainder;
                 }
@@ -4268,8 +4310,9 @@ function getStatsDataset(historySource, filters) {
             if (manualDiff >= 0.005) { // 超过 0.5 分钱视作有效差额
                 var manualLabel = '手动调价/抹零';
                 if (!discountByReason[manualLabel]) {
-                    discountByReason[manualLabel] = { name: manualLabel, orderCount: 0, amountTotal: 0 };
+                    discountByReason[manualLabel] = { name: manualLabel, orderCount: 0, amountTotal: 0, orderIds: [] };
                 }
+                pushOrderId(discountByReason[manualLabel], item.id);
                 discountByReason[manualLabel].orderCount += 1;
                 discountByReason[manualLabel].amountTotal += manualDiff;
                 discountByCoefficientTotal += manualDiff;
@@ -4300,8 +4343,9 @@ function getStatsDataset(historySource, filters) {
                     hadAnyCoeff = true;
                     var mainReduction = running * (1 - mainVal);
                     if (!discountByReason[mainName]) {
-                        discountByReason[mainName] = { name: mainName, orderCount: 0, amountTotal: 0 };
+                        discountByReason[mainName] = { name: mainName, orderCount: 0, amountTotal: 0, orderIds: [] };
                     }
+                    pushOrderId(discountByReason[mainName], item.id);
                     discountByReason[mainName].orderCount += 1;
                     discountByReason[mainName].amountTotal += mainReduction;
                     discountByCoefficientTotal += mainReduction;
@@ -4318,8 +4362,9 @@ function getStatsDataset(historySource, filters) {
                         hadAnyCoeff = true;
                         var extReduction = running * (1 - v);
                         if (!discountByReason[nm]) {
-                            discountByReason[nm] = { name: nm, orderCount: 0, amountTotal: 0 };
+                            discountByReason[nm] = { name: nm, orderCount: 0, amountTotal: 0, orderIds: [] };
                         }
+                        pushOrderId(discountByReason[nm], item.id);
                         discountByReason[nm].orderCount += 1;
                         discountByReason[nm].amountTotal += extReduction;
                         discountByCoefficientTotal += extReduction;
@@ -4332,8 +4377,9 @@ function getStatsDataset(historySource, filters) {
                     if (fallbackReduction > 0) {
                         var fallbackName = '折扣类系数';
                         if (!discountByReason[fallbackName]) {
-                            discountByReason[fallbackName] = { name: fallbackName, orderCount: 0, amountTotal: 0 };
+                            discountByReason[fallbackName] = { name: fallbackName, orderCount: 0, amountTotal: 0, orderIds: [] };
                         }
+                        pushOrderId(discountByReason[fallbackName], item.id);
                         discountByReason[fallbackName].orderCount += 1;
                         discountByReason[fallbackName].amountTotal += fallbackReduction;
                         discountByCoefficientTotal += fallbackReduction;
@@ -4352,14 +4398,16 @@ function getStatsDataset(historySource, filters) {
                 const feeName = fee.name || '其他费用';
                 const feeAmount = (fee.amount != null ? Number(fee.amount) : 0) || 0;
                 if (!otherFeesMap[feeName]) {
-                    otherFeesMap[feeName] = { name: feeName, count: 0, amountTotal: 0 };
+                    otherFeesMap[feeName] = { name: feeName, count: 0, amountTotal: 0, orderIds: [] };
                 }
+                pushOrderId(otherFeesMap[feeName], item.id);
                 otherFeesMap[feeName].count += 1;
                 otherFeesMap[feeName].amountTotal += feeAmount;
             });
         }
         const status = orderStatus;
-        if (!statusMap[status]) statusMap[status] = { status: status, orderCount: 0, amountTotal: 0 };
+        if (!statusMap[status]) statusMap[status] = { status: status, orderCount: 0, amountTotal: 0, orderIds: [] };
+        pushOrderId(statusMap[status], item.id);
         statusMap[status].orderCount += 1;
         statusMap[status].amountTotal += revenue;
 
@@ -4394,13 +4442,15 @@ function getStatsDataset(historySource, filters) {
         const usageType = item.usageType || '—';
         const usageDisplayName = (usageType !== '—' && defaultSettings.usageCoefficients && defaultSettings.usageCoefficients[usageType] && defaultSettings.usageCoefficients[usageType].name)
             ? defaultSettings.usageCoefficients[usageType].name : usageType;
-        if (!usageMap[usageType]) usageMap[usageType] = { name: usageDisplayName, orderCount: 0, amountTotal: 0 };
+        if (!usageMap[usageType]) usageMap[usageType] = { name: usageDisplayName, orderCount: 0, amountTotal: 0, orderIds: [] };
+        pushOrderId(usageMap[usageType], item.id);
         usageMap[usageType].orderCount += 1;
         usageMap[usageType].amountTotal += revenue;
         const urgentType = item.urgentType || '—';
         const urgentDisplayName = (urgentType !== '—' && defaultSettings.urgentCoefficients && defaultSettings.urgentCoefficients[urgentType] && defaultSettings.urgentCoefficients[urgentType].name)
             ? defaultSettings.urgentCoefficients[urgentType].name : urgentType;
-        if (!urgentMap[urgentType]) urgentMap[urgentType] = { name: urgentDisplayName, orderCount: 0, amountTotal: 0 };
+        if (!urgentMap[urgentType]) urgentMap[urgentType] = { name: urgentDisplayName, orderCount: 0, amountTotal: 0, orderIds: [] };
+        pushOrderId(urgentMap[urgentType], item.id);
         urgentMap[urgentType].orderCount += 1;
         urgentMap[urgentType].amountTotal += revenue;
         const allItems = products.concat(includeGifts ? gifts : []);
@@ -4408,7 +4458,8 @@ function getStatsDataset(historySource, filters) {
             const details = p.processDetails || [];
             details.forEach(proc => {
                 const pname = proc.name || '工艺';
-                if (!processMap[pname]) processMap[pname] = { name: pname, count: 0, feeTotal: 0 };
+                if (!processMap[pname]) processMap[pname] = { name: pname, count: 0, feeTotal: 0, orderIds: [] };
+                pushOrderId(processMap[pname], item.id);
                 processMap[pname].count += 1;
                 processMap[pname].feeTotal += (Number(proc.fee) || 0);
             });
@@ -4540,7 +4591,7 @@ function getStatsDataset(historySource, filters) {
     var monthlyAgg = Object.keys(monthlyMap).sort().map(function (k) { return monthlyMap[k]; });
     const byClient = Object.values(clientMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
     const byProduct = Object.values(productMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
-    const byStatus = ['待排单', '未开始', '进行中', '已完成', '已逾期', '已撤单', '有废稿', '已结单'].map(s => statusMap[s] || { status: s, orderCount: 0, amountTotal: 0 });
+    const byStatus = ['待排单', '未开始', '进行中', '已完成', '已逾期', '已撤单', '有废稿', '已结单'].map(s => statusMap[s] || { status: s, orderCount: 0, amountTotal: 0, orderIds: [] });
     const byUsage = Object.values(usageMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byUrgent = Object.values(urgentMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byOtherFees = Object.values(otherFeesMap).sort((a, b) => b.amountTotal - a.amountTotal);
@@ -4640,6 +4691,31 @@ function renderStatsComparison(filters, totals) {
     wrap.innerHTML = '<p class="stats-comparison">' + label + '：订单 <span class="' + o.cls + '">' + o.text + '</span>，收入 <span class="' + r.cls + '">' + r.text + '</span></p>';
 }
 
+function clearStatsFocusedOrders(silent) {
+    statsFocusedOrderIds = null;
+    statsFocusedLabel = '';
+    if (typeof applyRecordFilters === 'function') applyRecordFilters();
+    if (!silent && typeof showGlobalToast === 'function') showGlobalToast('已恢复显示全部记录');
+}
+
+function openStatsDistributionOrders(orderIds, focusLabel) {
+    var ids = Array.isArray(orderIds) ? orderIds.map(function (x) { return Number(x); }).filter(function (x) { return isFinite(x); }) : [];
+    if (!ids.length) {
+        alert('未找到对应订单');
+        return;
+    }
+    statsFocusedOrderIds = new Set(ids);
+    statsFocusedLabel = focusLabel ? String(focusLabel) : '';
+    showPage('record');
+    try {
+        selectedHistoryIds.clear();
+        ids.forEach(function (id) { selectedHistoryIds.add(id); });
+    } catch (e) {}
+    if (typeof applyRecordFilters === 'function') applyRecordFilters();
+    if (typeof updateRecordBatchActionsVisibility === 'function') updateRecordBatchActionsVisibility();
+    if (typeof showGlobalToast === 'function') showGlobalToast('已切换为仅显示这 ' + ids.length + ' 条统计订单');
+}
+
 function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, discountByReason) {
     const container = document.getElementById('statsDistribution');
     if (!container) return;
@@ -4659,12 +4735,20 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
     container.classList.remove('d-none');
     var tabs = [];
     var panels = [];
+    var buildViewOrdersBtn = function (orderIds, label) {
+        var ids = Array.isArray(orderIds) ? orderIds.map(function (x) { return Number(x); }).filter(function (x) { return isFinite(x); }) : [];
+        if (!ids.length) return '';
+        var encoded = encodeURIComponent(JSON.stringify(ids));
+        var encodedLabel = encodeURIComponent(label || '');
+        return '<button type="button" class="btn secondary tiny" style="padding:2px 6px;font-size:11px;line-height:1.2;min-height:auto;" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '">查看订单</button>';
+    };
+
     if (hasStatus) {
         tabs.push('<button type="button" class="btn secondary small active" data-dist-tab="status">状态</button>');
         var shtml = '';
         byStatus.forEach(function (s) {
             if (s.orderCount > 0 || s.amountTotal > 0) {
-                shtml += '<div class="stats-status-item"><span class="stats-status-name">' + (s.status || '—') + '</span><span class="stats-status-val">' + s.orderCount + ' 单 / ¥' + (s.amountTotal || 0).toFixed(2) + '</span></div>';
+                shtml += '<div class="stats-status-item"><span class="stats-status-name">' + (s.status || '—') + '</span><div class="stats-dim-right"><span class="stats-status-val stats-dim-val">' + s.orderCount + ' 单 / ¥' + (s.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(s.orderIds, '状态：' + (s.status || '—')) + '</div></div>';
             }
         });
         panels.push({ id: 'status', html: '<div class="stats-status-list">' + shtml + '</div>' });
@@ -4672,25 +4756,25 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
     if (hasUsage) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="usage">用途</button>');
         var uhtml = '';
-        byUsage.forEach(function (r) { uhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span></div>'; });
+        byUsage.forEach(function (r) { uhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '用途：' + (r.name || '—')) + '</div></div>'; });
         panels.push({ id: 'usage', html: '<div class="stats-dim-list">' + uhtml + '</div>' });
     }
     if (hasUrgent) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="urgent">加急</button>');
         var ghtml = '';
-        byUrgent.forEach(function (r) { ghtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span></div>'; });
+        byUrgent.forEach(function (r) { ghtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '加急：' + (r.name || '—')) + '</div></div>'; });
         panels.push({ id: 'urgent', html: '<div class="stats-dim-list">' + ghtml + '</div>' });
     }
     if (hasOtherFees) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="otherFees">其他费用</button>');
         var ofhtml = '';
-        byOtherFees.forEach(function (r) { ofhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.count + ' 次 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span></div>'; });
+        byOtherFees.forEach(function (r) { ofhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '其他费用：' + (r.name || '—')) + '</div></div>'; });
         panels.push({ id: 'otherFees', html: '<div class="stats-dim-list">' + ofhtml + '</div>' });
     }
     if (hasProcess) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="process">工艺</button>');
         var prhtml = '';
-        byProcess.forEach(function (r) { prhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><span>' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span></div>'; });
+        byProcess.forEach(function (r) { prhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '工艺：' + (r.name || '—')) + '</div></div>'; });
         panels.push({ id: 'process', html: '<div class="stats-dim-list">' + prhtml + '</div>' });
     }
     if (hasDiscount) {
@@ -4699,7 +4783,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             var name = (r && r.name) ? r.name : '—';
             var count = (r && r.orderCount) ? r.orderCount : 0;
             var amt = (r && r.amountTotal != null && isFinite(r.amountTotal)) ? Number(r.amountTotal) : 0;
-            return '<div class="stats-dim-item"><span>' + name + '</span><span>' + count + ' 单 / -¥' + amt.toFixed(2) + '</span></div>';
+            return '<div class="stats-dim-item"><span>' + name + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + count + ' 单 / -¥' + amt.toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '折扣：' + name) + '</div></div>';
         }).join('');
         panels.push({ id: 'discount', html: '<div class="stats-dim-list">' + dhtml + '</div>' });
     }
@@ -4718,6 +4802,21 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             container.querySelectorAll('.stats-dist-panel-wrap').forEach(function (w) { w.classList.add('d-none'); });
             var panel = document.getElementById('statsDistPanel' + tab);
             if (panel) panel.classList.remove('d-none');
+        });
+    });
+    container.querySelectorAll('[data-stats-order-ids]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var encoded = this.getAttribute('data-stats-order-ids') || '';
+            if (!encoded) return;
+            try {
+                var ids = JSON.parse(decodeURIComponent(encoded));
+                var labelEncoded = this.getAttribute('data-stats-focus-label') || '';
+                var focusLabel = labelEncoded ? decodeURIComponent(labelEncoded) : '';
+                openStatsDistributionOrders(ids, focusLabel);
+            } catch (e) {
+                console.error('解析订单列表失败:', e);
+                alert('订单列表解析失败');
+            }
         });
     });
 }
@@ -5802,6 +5901,8 @@ function openCalculatorDrawer(skipOrderTimeReset) {
 
     // 下单时间与备注：新建时清空，不填的默认为小票保存时间；编辑模式由 editHistoryItem 填充
     if (!skipOrderTimeReset) {
+        selectedPerItemExtraFeeIds = [];
+        renderCalculatorPerItemExtraSelects();
         var orderTimeInput = document.getElementById('orderTimeInput');
         if (orderTimeInput) orderTimeInput.value = '';
         if (defaultSettings) defaultSettings.orderRemark = '';
@@ -5851,7 +5952,7 @@ function addProduct() {
         sides: 'single',
         quantity: 1,
         sameModel: true, // 默认同模为是
-        hasBackground: false,
+        extraFeeIds: [],
         processes: {}
     };
     
@@ -5905,13 +6006,6 @@ function renderGift(gift) {
                     <option value="true" ${gift.sameModel ? 'selected' : ''}>是</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label for="giftHasBackground-${gift.id}">是否需要背景</label>
-                <select id="giftHasBackground-${gift.id}" onchange="updateGift(${gift.id}, 'hasBackground', this.value === 'true')">
-                    <option value="false" ${gift.hasBackground ? '' : 'selected'}>否</option>
-                    <option value="true" ${gift.hasBackground ? 'selected' : ''}>是</option>
-                </select>
-            </div>
         </div>
         <div id="giftFormOptions-${gift.id}"></div>
         <div class="form-row">
@@ -5963,7 +6057,7 @@ function addGift() {
         sides: 'single',
         quantity: 1,
         sameModel: true, // 默认同模为是
-        hasBackground: false, // 默认不需要背景
+        extraFeeIds: [],
         processes: {}
     };
     
@@ -5990,7 +6084,6 @@ function renderProduct(product) {
             <div class="form-group">
                 <label>制品类型</label>
                 <div id="productTypeSelect-${product.id}"></div>
-                <div id="productTypeDebug-${product.id}" style="margin-top:6px;font-size:12px;color:#888;"></div>
             </div>
             <div class="form-group">
                 <label for="productQuantity-${product.id}">制品数</label>
@@ -6007,13 +6100,6 @@ function renderProduct(product) {
                 <select id="productSameModel-${product.id}" onchange="updateProduct(${product.id}, 'sameModel', this.value === 'true')">
                     <option value="false" ${product.sameModel ? '' : 'selected'}>否</option>
                     <option value="true" ${product.sameModel ? 'selected' : ''}>是</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="productHasBackground-${product.id}">是否需要背景</label>
-                <select id="productHasBackground-${product.id}" onchange="updateProduct(${product.id}, 'hasBackground', this.value === 'true')">
-                    <option value="false" ${product.hasBackground ? '' : 'selected'}>否</option>
-                    <option value="true" ${product.hasBackground ? 'selected' : ''}>是</option>
                 </select>
             </div>
         </div>
@@ -6056,18 +6142,7 @@ function updateProductForm(productId) {
     if (!product) return;
     
     const container = document.getElementById(`formOptions-${productId}`);
-    const debugEl = document.getElementById(`productTypeDebug-${productId}`);
     const productSetting = mgFindProductSettingByTypeId(product.type);
-
-    if (debugEl) {
-        if (!product.type) {
-            debugEl.textContent = '未选择制品类型';
-        } else if (!productSetting) {
-            debugEl.textContent = `当前type=${String(product.type)}，未命中设置`;
-        } else {
-            debugEl.textContent = `当前type=${String(product.type)}，命中：${productSetting.name || '-'}（${productSetting.priceType || 'fixed'}）`;
-        }
-    }
     
     if (!productSetting) {
         container.innerHTML = '<p>请先选择制品类型</p>';
@@ -6206,6 +6281,35 @@ function updateProduct(id, field, value) {
     if (product) {
         // 确保值是字符串类型，避免类型转换问题
         product[field] = value;
+    }
+}
+
+function renderCalculatorPerItemExtraSelects() {
+    normalizePerItemExtraFees();
+    var wrap = document.getElementById('calculatorPerItemExtraSelects');
+    var row = document.getElementById('perItemExtraSelectsRow');
+    if (!wrap || !row) return;
+    var list = defaultSettings.perItemExtraFees || [];
+    if (!list.length) {
+        row.classList.add('d-none');
+        wrap.innerHTML = '';
+        selectedPerItemExtraFeeIds = [];
+        return;
+    }
+    row.classList.remove('d-none');
+    var html = list.map(function (fee) {
+        var checked = selectedPerItemExtraFeeIds.indexOf(fee.id) !== -1;
+        return '<label class="chip-option" style="display:inline-flex;align-items:center;gap:6px;margin-right:10px;white-space:nowrap;"><input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleCalculatorPerItemExtraFee(\'' + String(fee.id).replace(/'/g, "\\'") + '\',this.checked)"><span>' + String(fee.name || '新增费用').replace(/</g, '&lt;') + ' (¥' + ((Number(fee.amount) || 0).toFixed(2)) + ')</span></label>';
+    }).join('');
+    wrap.innerHTML = html;
+}
+
+function toggleCalculatorPerItemExtraFee(feeId, checked) {
+    if (!Array.isArray(selectedPerItemExtraFeeIds)) selectedPerItemExtraFeeIds = [];
+    if (checked) {
+        if (selectedPerItemExtraFeeIds.indexOf(feeId) === -1) selectedPerItemExtraFeeIds.push(feeId);
+    } else {
+        selectedPerItemExtraFeeIds = selectedPerItemExtraFeeIds.filter(function (x) { return String(x) !== String(feeId); });
     }
 }
 
@@ -6500,15 +6604,17 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         const sameModelUnitPrice = (sameModelMode === 'minus') ? Math.max(0, basePrice - sameModelMinusAmount) : (basePrice * sameModelCoefficient);
         const sameModelTotal = sameModelCount * sameModelUnitPrice;
         
-        // 计算背景费（按节点收费不参与背景费）
-        let backgroundFee = 0;
-        if (productSetting.priceType !== 'nodes' && product.hasBackground) {
-            const backgroundFeePerProduct = defaultSettings.backgroundFee || 0;
-            // 主制品全额背景费，同模制品应用同模系数
-            const mainBackgroundFee = backgroundFeePerProduct;
-            const sameModelBackgroundUnitPrice = backgroundFeePerProduct * sameModelCoefficient;
-            const sameModelBackgroundTotal = sameModelCount * sameModelBackgroundUnitPrice;
-            backgroundFee = mainBackgroundFee + sameModelBackgroundTotal;
+        // 计算每制品新增费用（按节点收费不参与）
+        var extraFeeList = (defaultSettings.perItemExtraFees || []).filter(function (x) {
+            return Array.isArray(selectedPerItemExtraFeeIds) && selectedPerItemExtraFeeIds.indexOf(x.id) !== -1;
+        });
+        var extraFeeBase = extraFeeList.reduce(function (sum, x) { return sum + (Number(x.amount) || 0); }, 0);
+        let totalExtraFee = 0;
+        if (productSetting.priceType !== 'nodes' && extraFeeBase > 0) {
+            const mainExtraFee = extraFeeBase;
+            const sameModelExtraUnit = extraFeeBase * sameModelCoefficient;
+            const sameModelExtraTotal = sameModelCount * sameModelExtraUnit;
+            totalExtraFee = mainExtraFee + sameModelExtraTotal;
         }
         
         // 计算工艺费用（按节点收费不参与工艺）
@@ -6547,7 +6653,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         const baseProductTotal = sameModelCount > 0
             ? (basePrice + sameModelTotal)
             : (basePrice * product.quantity);
-        const productTotal = baseProductTotal + totalProcessFee + backgroundFee;
+        const productTotal = baseProductTotal + totalProcessFee + totalExtraFee;
         
         // 按节点收费：生成节点明细
         let nodeDetails = [];
@@ -6577,6 +6683,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             productTotal: productTotal,
             processDetails: processDetails,
             totalProcessFee: totalProcessFee,
+            extraFees: extraFeeList.map(function (x) { return { id: x.id, name: x.name, amount: Number(x.amount) || 0 }; }),
+            totalExtraFee: totalExtraFee,
             // 添加基础配置信息（如果是基础+递增价类型）
             productType: productSetting.priceType,
             baseConfig: productSetting.baseConfig,
@@ -6693,20 +6801,22 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             });
         }
         
-        // 计算背景费
-        let backgroundFee = 0;
-        if (gift.hasBackground) {
-            const backgroundFeePerProduct = defaultSettings.backgroundFee || 0;
-            // 主制品全额背景费，同模制品应用同模系数
-            const mainBackgroundFee = backgroundFeePerProduct;
-            const sameModelBackgroundUnitPrice = backgroundFeePerProduct * sameModelCoefficient;
-            const sameModelBackgroundTotal = sameModelCount * sameModelBackgroundUnitPrice;
-            backgroundFee = mainBackgroundFee + sameModelBackgroundTotal;
+        // 计算每制品新增费用
+        var giftExtraFeeList = (defaultSettings.perItemExtraFees || []).filter(function (x) {
+            return Array.isArray(selectedPerItemExtraFeeIds) && selectedPerItemExtraFeeIds.indexOf(x.id) !== -1;
+        });
+        var giftExtraFeeBase = giftExtraFeeList.reduce(function (sum, x) { return sum + (Number(x.amount) || 0); }, 0);
+        let totalGiftExtraFee = 0;
+        if (giftExtraFeeBase > 0) {
+            const mainExtraFee = giftExtraFeeBase;
+            const sameModelExtraUnit = giftExtraFeeBase * sameModelCoefficient;
+            const sameModelExtraTotal = sameModelCount * sameModelExtraUnit;
+            totalGiftExtraFee = mainExtraFee + sameModelExtraTotal;
         }
         
         // 计算赠品原价
         const baseGiftTotal = basePrice + sameModelTotal;
-        const giftOriginalPrice = baseGiftTotal + totalProcessFee + backgroundFee;
+        const giftOriginalPrice = baseGiftTotal + totalProcessFee + totalGiftExtraFee;
         
         // 保存赠品价格信息
         const giftPriceInfo = {
@@ -6779,9 +6889,13 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             suggestedDeposit = Math.round(baseForDeposit * 0.3 * 100) / 100;
         }
     }
-    // 3）已收定金：计算报价时不自动填充（避免“先看报价就显示已收定金”）
-    // 只在你点击“确认已收定金”后，才会写入 quoteData.depositReceived
-    var depositReceived = 0;
+    // 3）已收定金：
+    // - 新建单时默认 0（避免“先看报价就显示已收定金”）
+    // - 编辑覆盖时，若已有已收定金则保留，避免改排单时间后丢失
+    var prevDepositReceived = quoteData && Number.isFinite(Number(quoteData.depositReceived))
+        ? Math.max(0, Number(quoteData.depositReceived))
+        : 0;
+    var depositReceived = (window.editingHistoryId && prevDepositReceived > 0) ? prevDepositReceived : 0;
     quoteData = {
         clientId: clientId,
         contact: contactDisplay,
@@ -6820,6 +6934,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         hasManualAgreed: keepManualAgreed,
         manualAgreedBase: keepManualAgreed ? totalBeforePlatformFee : null,
         needDeposit: needDepositFlag,
+        perItemExtraFeeIds: Array.isArray(selectedPerItemExtraFeeIds) ? selectedPerItemExtraFeeIds.slice() : [],
         depositReceived: depositReceived,
         scheduleColorIndex: window.currentScheduleColorIndex,
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
@@ -7051,14 +7166,20 @@ function generateQuote() {
             }
         } else if (canMerge) {
         // 总览行
-            // fixed/double 无同模无工艺：合并到总览行
-            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${fullPriceUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+            // fixed/double 无同模无工艺：合并到总览行（方案A下单价应包含每制品增加）
+            var mergedExtraPerPiece = (item.quantity > 0) ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
+            var mergedUnitPrice = fullPriceUnitPrice + mergedExtraPerPiece;
+            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${mergedUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
         } else {
             // 需要拆明细
             if (item.productType === 'config') {
-                // config：无同模无工艺时显示成品单价，有同模或工艺时显示"—"（规范要求）
+                // config：当“首行项(制品行)单价 == 全价制品单价”时，首行显示“—”避免重复
                 if (!hasSameModel && !hasProcess) {
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${finishedProductUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                    var configExtraPerPiece = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
+                    var configUnitWithExtra = finishedProductUnitPrice + configExtraPerPiece;
+                    var fullUnitNoSameNoProcess = configUnitWithExtra;
+                    var hideTopUnit = Math.abs(configUnitWithExtra - fullUnitNoSameNoProcess) < 0.001;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${hideTopUnit ? '<span style="color:#999;">—</span>' : ('¥' + configUnitWithExtra.toFixed(2))}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
                 } else {
                     html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
                 }
@@ -7067,8 +7188,16 @@ function generateQuote() {
                 html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
             }
             
-            // 明细：全价制品行
-            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${fullPriceUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">¥${(fullPriceUnitPrice * fullPriceQuantity).toFixed(2)}</div></div>`;
+            // 明细：全价制品行（方案A：每制品增加并入全价/同模单价，不单列）
+            var extraBase = (item.extraFees || []).reduce(function (sum, f) { return sum + (Number(f.amount) || 0); }, 0);
+            var fullPriceExtraTotal = hasSameModel
+                ? extraBase
+                : (Number(item.totalExtraFee) || 0);
+            var fullUnitWithExtra = fullPriceQuantity > 0
+                ? (fullPriceUnitPrice + (fullPriceExtraTotal / fullPriceQuantity))
+                : fullPriceUnitPrice;
+            var fullSubtotalWithExtra = (fullPriceUnitPrice * fullPriceQuantity) + fullPriceExtraTotal;
+            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${fullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">¥${fullSubtotalWithExtra.toFixed(2)}</div></div>`;
             
             // config：树形明细（仅单价，不显示数量和小计）
             if (item.productType === 'config' && item.baseConfig) {
@@ -7084,7 +7213,10 @@ function generateQuote() {
                     }
                     baseConfigVal = item.basePrice - additionalTotal;
                 }
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">¥${baseConfigVal.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                var baseConfigExtraPerPiece = fullPriceQuantity > 0 ? (fullPriceExtraTotal / fullPriceQuantity) : 0;
+                var baseConfigDisplayVal = baseConfigVal + baseConfigExtraPerPiece;
+                var shouldHideBaseConfigPrice = Math.abs(baseConfigDisplayVal - fullUnitWithExtra) < 0.001;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                 
                 // 配件明细（仅单价）
                 if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
@@ -7105,9 +7237,13 @@ function generateQuote() {
                 const _sameMode = quoteData.sameModelMode || defaultSettings.sameModelMode;
                 const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
                 const sameModelHint = (_sameMode === 'minus') ? `−¥${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHint})</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
+                var sameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - extraBase);
+                var sameUnitWithExtra = item.sameModelCount > 0
+                    ? (item.sameModelUnitPrice + (sameExtraTotal / item.sameModelCount))
+                    : item.sameModelUnitPrice;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHint})</div><div class="receipt-col-1">¥${sameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${(item.sameModelTotal + sameExtraTotal).toFixed(2)}</div></div>`;
             }
-            
+
             // 工艺行（按每层单价分组，同单价的工艺合并为一行）
             if (hasProcess) {
                 // 先显示"工艺"标题行
@@ -7210,8 +7346,16 @@ function generateQuote() {
                     html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
                 }
                 
-                // 明细：全价制品行（赠品显示原价）
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1">¥${(fullPriceUnitPriceGift * fullPriceQuantityGift).toFixed(2)}</div></div>`;
+                // 明细：全价制品行（赠品，方案A并入每制品增加）
+                var giftExtraBase = (item.extraFees || []).reduce(function (sum, f) { return sum + (Number(f.amount) || 0); }, 0);
+                var giftFullExtraTotal = hasSameModelGift
+                    ? giftExtraBase
+                    : (Number(item.totalExtraFee) || 0);
+                var giftFullUnitWithExtra = fullPriceQuantityGift > 0
+                    ? (fullPriceUnitPriceGift + (giftFullExtraTotal / fullPriceQuantityGift))
+                    : fullPriceUnitPriceGift;
+                var giftFullSubtotalWithExtra = (fullPriceUnitPriceGift * fullPriceQuantityGift) + giftFullExtraTotal;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${giftFullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1">¥${giftFullSubtotalWithExtra.toFixed(2)}</div></div>`;
                 
                 // config：树形明细（仅单价，不显示数量和小计）
                 if (item.productType === 'config' && item.baseConfig) {
@@ -7225,7 +7369,10 @@ function generateQuote() {
                         }
                         baseConfigValGift = item.basePrice - additionalTotalGift;
                     }
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">¥${baseConfigValGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    var baseConfigGiftExtraPerPiece = fullPriceQuantityGift > 0 ? (giftFullExtraTotal / fullPriceQuantityGift) : 0;
+                    var baseConfigGiftDisplayVal = baseConfigValGift + baseConfigGiftExtraPerPiece;
+                    var shouldHideGiftBaseConfigPrice = Math.abs(baseConfigGiftDisplayVal - giftFullUnitWithExtra) < 0.001;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideGiftBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigGiftDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     
                     // 配件明细（仅单价）
                     if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
@@ -7239,14 +7386,18 @@ function generateQuote() {
                     }
                 }
                 
-                // 同模制品行（赠品显示原价）
+                // 同模制品行（赠品显示原价，方案A并入每制品增加）
                 if (hasSameModelGift) {
                     const _sameModeGift = quoteData.sameModelMode || defaultSettings.sameModelMode;
                     const _sameMinusGift = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
                     const sameModelHintGift = (_sameModeGift === 'minus') ? `−¥${_sameMinusGift.toFixed(2)}` : `${sameModelRateGift}x`;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">¥${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${item.sameModelTotal.toFixed(2)}</div></div>`;
+                    var giftSameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - giftExtraBase);
+                    var giftSameUnitWithExtra = item.sameModelCount > 0
+                        ? (item.sameModelUnitPrice + (giftSameExtraTotal / item.sameModelCount))
+                        : item.sameModelUnitPrice;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">¥${giftSameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${(item.sameModelTotal + giftSameExtraTotal).toFixed(2)}</div></div>`;
                 }
-                
+
                 // 工艺行（按每层单价分组，同单价的工艺合并为一行）
                 if (hasProcessGift) {
                     // 先显示"工艺"标题行
@@ -10243,6 +10394,8 @@ async function mgLoadIncomingProjectToCalculator(projectId) {
     // 清空当前制品和赠品
     products = [];
     gifts = [];
+    selectedPerItemExtraFeeIds = [];
+    renderCalculatorPerItemExtraSelects();
     productIdCounter = 0;
     giftIdCounter = 0;
     const productsContainer = document.getElementById('productsContainer');
@@ -10285,7 +10438,7 @@ async function mgLoadIncomingProjectToCalculator(projectId) {
             sides: 'single',
             quantity: it.quantity || 1,
             sameModel: true,
-            hasBackground: false,
+            extraFeeIds: [],
             processes: {}
         };
         products.push(product);
@@ -13522,6 +13675,8 @@ function editHistoryItem(id) {
     if (quote.startTime) {
         document.getElementById('startTime').value = quote.startTime;
     }
+    selectedPerItemExtraFeeIds = Array.isArray(quote.perItemExtraFeeIds) ? quote.perItemExtraFeeIds.slice() : [];
+    renderCalculatorPerItemExtraSelects();
     if (quote.deadline) {
         document.getElementById('deadline').value = quote.deadline;
     }
@@ -13638,7 +13793,7 @@ function editHistoryItem(id) {
                     sides: productPrice.sides || 'single',
                     quantity: productPrice.quantity || 1,
                     sameModel: productPrice.sameModelCount > 0,
-                    hasBackground: false,
+                    extraFeeIds: Array.isArray(productPrice.extraFees) ? productPrice.extraFees.map(function (x) { return x.id; }) : [],
                     processes: {}
                 };
                 
@@ -13700,7 +13855,7 @@ function editHistoryItem(id) {
                     sides: giftPrice.sides || 'single',
                     quantity: giftPrice.quantity || 1,
                     sameModel: giftPrice.sameModelCount > 0,
-                    hasBackground: false, // 默认不需要背景
+                    extraFeeIds: Array.isArray(giftPrice.extraFees) ? giftPrice.extraFees.map(function (x) { return x.id; }) : [],
                     processes: {}
                 };
                 
@@ -13743,6 +13898,24 @@ function editHistoryItem(id) {
     
     // 保存当前编辑的历史记录ID，用于更新
     window.editingHistoryId = id;
+
+    // 关键修复：进入编辑后，先把 quoteData 对齐到当前被编辑订单
+    // 避免后续仅改排单时间/轻微字段时，沿用上一单的 quoteData（导致金额串单、定金丢失）
+    quoteData = {
+        ...quote,
+        productPrices: quote.productPrices || [],
+        giftPrices: quote.giftPrices || [],
+        otherFees: quote.otherFees || [],
+        totalOtherFees: quote.totalOtherFees || 0,
+        agreedAmount: quote.agreedAmount != null
+            ? Number(quote.agreedAmount)
+            : (quote.totalBeforePlatformFee != null
+                ? Number(quote.totalBeforePlatformFee)
+                : Number(quote.finalTotal || 0)),
+        depositReceived: quote.depositReceived != null ? Number(quote.depositReceived) : 0,
+        hasManualAgreed: !!quote.hasManualAgreed,
+        manualAgreedBase: quote.manualAgreedBase != null ? Number(quote.manualAgreedBase) : null
+    };
 }
 
 // 从数据添加其他费用（用于编辑历史记录）
@@ -13811,6 +13984,7 @@ function saveTemplate() {
             platformType: platformType,
             extraUpSelections: extraUpSelections,
             extraDownSelections: extraDownSelections,
+            perItemExtraFeeIds: Array.isArray(selectedPerItemExtraFeeIds) ? selectedPerItemExtraFeeIds.slice() : [],
             otherFees: otherFees
         },
         timestamp: Date.now()
@@ -13906,7 +14080,7 @@ function loadSelectedTemplate() {
                 sides: productData.sides || 'single',
                 quantity: productData.quantity || 1,
                 sameModel: productData.sameModel !== undefined ? productData.sameModel : true,
-                hasBackground: productData.hasBackground !== undefined ? productData.hasBackground : false,
+                extraFeeIds: Array.isArray(productData.extraFeeIds) ? productData.extraFeeIds : (productData.hasBackground ? ['bg'] : []),
                 processes: productData.processes || {}
             };
             products.push(product);
@@ -13940,6 +14114,8 @@ function loadSelectedTemplate() {
         setSel('sameModel', s.sameModelType || '');
         setSel('discount', s.discountType || '');
         setSel('platform', s.platformType || '');
+        selectedPerItemExtraFeeIds = Array.isArray(s.perItemExtraFeeIds) ? s.perItemExtraFeeIds.slice() : [];
+        renderCalculatorPerItemExtraSelects();
         var orderPlatformEl = document.getElementById('orderPlatform');
         if (orderPlatformEl) {
             orderPlatformEl.value = (s.platformType && defaultSettings.platformFees && defaultSettings.platformFees[s.platformType])
@@ -14585,9 +14761,86 @@ function updatePlatformFeeName(type, name) {
     }
 }
 
-// 更新背景费
-function updateBackgroundFee(value) {
-    defaultSettings.backgroundFee = parseFloat(value) || 0;
+function normalizePerItemExtraFees() {
+    if (!Array.isArray(defaultSettings.perItemExtraFees)) defaultSettings.perItemExtraFees = [];
+    defaultSettings.perItemExtraFees = defaultSettings.perItemExtraFees
+        .map(function (f, i) {
+            if (!f || typeof f !== 'object') return null;
+            var id = f.id != null ? String(f.id) : ('fee_' + Date.now() + '_' + i);
+            var name = f.name != null ? String(f.name).trim() : '';
+            var amount = Number(f.amount);
+            return {
+                id: id,
+                name: name || ('新增费用' + (i + 1)),
+                amount: isFinite(amount) ? Math.max(0, amount) : 0
+            };
+        })
+        .filter(Boolean);
+    // 清理不存在的勾选，避免“列表为空但标题还在”的残留状态
+    if (!Array.isArray(selectedPerItemExtraFeeIds)) selectedPerItemExtraFeeIds = [];
+    var validIds = new Set(defaultSettings.perItemExtraFees.map(function (f) { return String(f.id); }));
+    selectedPerItemExtraFeeIds = selectedPerItemExtraFeeIds.filter(function (id) { return validIds.has(String(id)); });
+}
+
+function renderPerItemExtraFees() {
+    normalizePerItemExtraFees();
+    var container = document.getElementById('perItemExtraFeesContainer');
+    if (!container) return;
+    var html = '';
+    defaultSettings.perItemExtraFees.forEach(function (fee) {
+        var fid = String(fee.id).replace(/'/g, "\\'");
+        html += '<div class="mb-2 d-flex items-center gap-2">'
+            + '<input type="text" value="' + String(fee.name).replace(/"/g, '&quot;') + '" class="flex-1" onchange="updatePerItemExtraFee(\'' + fid + '\',\'name\',this.value)">'
+            + '<input type="number" value="' + (Number(fee.amount) || 0) + '" min="0" step="1" class="w-80" onchange="updatePerItemExtraFee(\'' + fid + '\',\'amount\',this.value)">'
+            + '<button type="button" class="icon-action-btn delete" onclick="deletePerItemExtraFee(\'' + fid + '\')" aria-label="删除费用" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button>'
+            + '</div>';
+    });
+    container.innerHTML = html;
+}
+
+function addPerItemExtraFee() {
+    normalizePerItemExtraFees();
+    var nameEl = document.getElementById('newPerItemExtraFeeName');
+    var amountEl = document.getElementById('newPerItemExtraFeeAmount');
+    var name = nameEl ? String(nameEl.value || '').trim() : '';
+    var amount = amountEl ? Number(amountEl.value) : 0;
+    if (!name) {
+        alert('请输入费用名称');
+        return;
+    }
+    defaultSettings.perItemExtraFees.push({
+        id: 'fee_' + Date.now(),
+        name: name,
+        amount: isFinite(amount) ? Math.max(0, amount) : 0
+    });
+    if (nameEl) nameEl.value = '';
+    if (amountEl) amountEl.value = '';
+    saveData();
+    renderPerItemExtraFees();
+    renderCalculatorPerItemExtraSelects();
+}
+
+function updatePerItemExtraFee(id, field, value) {
+    normalizePerItemExtraFees();
+    var target = defaultSettings.perItemExtraFees.find(function (x) { return String(x.id) === String(id); });
+    if (!target) return;
+    if (field === 'name') {
+        target.name = String(value || '').trim() || target.name;
+    } else if (field === 'amount') {
+        var n = Number(value);
+        target.amount = isFinite(n) ? Math.max(0, n) : 0;
+    }
+    saveData();
+}
+
+function deletePerItemExtraFee(id) {
+    normalizePerItemExtraFees();
+    defaultSettings.perItemExtraFees = defaultSettings.perItemExtraFees.filter(function (x) { return String(x.id) !== String(id); });
+    // 删除后，同步清理当前勾选
+    selectedPerItemExtraFeeIds = (selectedPerItemExtraFeeIds || []).filter(function (x) { return String(x) !== String(id); });
+    saveData();
+    renderPerItemExtraFees();
+    renderCalculatorPerItemExtraSelects();
 }
 
 // 添加其他费用
@@ -16247,6 +16500,8 @@ function renderCoefficientSettings() {
     renderPlatformFees();
     renderExtraPricingUp();
     renderExtraPricingDown();
+    renderPerItemExtraFees();
+    renderCalculatorPerItemExtraSelects();
     updateCalculatorBuiltinSelects();
     updateCalculatorCoefficientSelects();
 }
@@ -17551,6 +17806,17 @@ function updateGift(giftId, field, value) {
     const gift = gifts.find(g => g.id === giftId);
     if (gift) {
         gift[field] = value;
+    }
+}
+
+function toggleGiftExtraFee(giftId, feeId, checked) {
+    var g = gifts.find(function (x) { return x.id === giftId; });
+    if (!g) return;
+    if (!Array.isArray(g.extraFeeIds)) g.extraFeeIds = [];
+    if (checked) {
+        if (g.extraFeeIds.indexOf(feeId) === -1) g.extraFeeIds.push(feeId);
+    } else {
+        g.extraFeeIds = g.extraFeeIds.filter(function (x) { return String(x) !== String(feeId); });
     }
 }
 

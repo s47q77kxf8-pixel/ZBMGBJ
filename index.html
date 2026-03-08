@@ -537,6 +537,13 @@
                             <select id="sameModel"><option value="">--</option></select>
                         </div>
                     </div>
+                    <!-- 每制品增加（可多选） -->
+                    <div class="form-row" id="perItemExtraSelectsRow">
+                        <div class="form-group">
+                            <label>每制品增加</label>
+                            <div id="calculatorPerItemExtraSelects" class="d-flex gap-2 flex-wrap"></div>
+                        </div>
+                    </div>
                     <!-- 平台费、是否付定金 -->
                     <div class="form-row platform-deposit-row">
                         <div class="form-group">
@@ -1994,21 +2001,20 @@
                             </div>
                         </div>
                     </div>
-                    <!-- 背景费设置 -->
+                    <!-- 每制品增加设置 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('backgroundFee')">
-                            <div class="category-title">背景费</div>
+                            <div class="category-title">每制品增加</div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="backgroundFee-content">
                             <div class="form-row">
                                 <div class="form-group">
-                                    <div class="coefficient-settings">
-                                        <div class="mb-2 d-flex items-center gap-2">
-                                            <input type="text" value="背景费" class="flex-1" readonly>
-                                            <input type="number" id="backgroundFeeInput" min="0" step="1" class="w-80" 
-                                                   onchange="updateBackgroundFee(this.value)">
-                                        </div>
+                                    <div class="coefficient-settings" id="perItemExtraFeesContainer"></div>
+                                    <div class="mb-2 d-flex items-center gap-2">
+                                        <input type="text" id="newPerItemExtraFeeName" class="flex-1" placeholder="新增费用名称（如：背景费/描边费）">
+                                        <input type="number" id="newPerItemExtraFeeAmount" min="0" step="1" class="w-80" placeholder="金额">
+                                        <button type="button" class="btn small" onclick="addPerItemExtraFee()">新增</button>
                                     </div>
                                 </div>
                             </div>
