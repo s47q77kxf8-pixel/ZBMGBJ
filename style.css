@@ -3556,6 +3556,30 @@ input[type="range"]#customThemeTextureOpacity {
     text-align: center;
     color: var(--receipt-text, #333);
 }
+
+/* 小票头图/尾图：左右满版，上下保留留白 */
+.receipt-header-image,
+.receipt-footer-image {
+    width: calc(100% + 5rem);
+    margin-left: -2.5rem;
+    margin-right: -2.5rem;
+    text-align: center;
+}
+.receipt-header-image {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+}
+.receipt-footer-image {
+    margin-top: 0.75rem;
+    margin-bottom: 0;
+}
+.receipt-header-image .receipt-img,
+.receipt-footer-image .receipt-img {
+    display: block;
+    margin: 0 auto;
+    height: auto;
+}
+
 .receipt-title {
     text-align: center;
     margin: 0.5rem auto;
