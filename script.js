@@ -10503,6 +10503,8 @@ async function renderScheduleTodoSection() {
     const modulesEl = document.getElementById('scheduleTodoModules');
     if (!titleEl || !modulesEl) return;
 
+    updateScheduleTodoWrapToggleLabel(window.scheduleTodoWrapMode);
+
     // 每次渲染 Todo 区时尝试异步更新红点状态
     mgUpdateIncomingDot();
 
