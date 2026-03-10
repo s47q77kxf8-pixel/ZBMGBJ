@@ -8332,6 +8332,13 @@ html.theme-dark .settlement-preview {
     flex-shrink: 0;
 }
 
+.record-item-amount-placeholder {
+    color: var(--text-light);
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 /* 记录列表：标签基础样式与“已收定”标签 */
 .record-tag {
     display: inline-flex;
@@ -8374,6 +8381,12 @@ html.theme-dark .settlement-preview {
     font-weight: 600;
     color: var(--text-color);
     white-space: nowrap;
+}
+
+.schedule-todo-chip.schedule-todo-placeholder {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #b45309;
 }
 
 .record-item-right .record-status {

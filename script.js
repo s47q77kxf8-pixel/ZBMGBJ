@@ -3450,10 +3450,13 @@ function applyRecordFilters() {
                 ? Number(item.depositReceived) + Number(item.settlement.amount)
                 : Number(item.settlement.amount);
         }
+        var expectedCount = item && item.expectedProductCount ? Number(item.expectedProductCount) : 0;
         const hasSettlementWithDiff = item && item.settlement && (receivableAmount == null || Math.abs((actualAmount || 0) - (receivableAmount || 0)) > 0.001);
-        const amountHtml = hasSettlementWithDiff
-            ? `<div class="record-item-amount-wrap"><span class="record-item-amount">${formatMoney(actualAmount)}</span><span class="record-item-date">${formatMoney(receivableAmount)}</span></div>`
-            : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`;
+        const amountHtml = (item && item.isSchedulePlaceholder)
+            ? `<span class="record-item-amount record-item-amount-placeholder">${expectedCount > 0 ? expectedCount : '—'} 件</span>`
+            : (hasSettlementWithDiff
+                ? `<div class="record-item-amount-wrap"><span class="record-item-amount">${formatMoney(actualAmount)}</span><span class="record-item-date">${formatMoney(receivableAmount)}</span></div>`
+                : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`);
         const status = getRecordProgressStatus(item);
         const hasDeposit = item && item.depositReceived != null && Number(item.depositReceived) > 0;
         const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
@@ -10740,6 +10743,11 @@ async function renderScheduleTodoSection() {
 
         // 渲染制品与赠品（极简单行布局）
         let allChipsHtml = '';
+        var expectedCount = item && item.expectedProductCount ? Number(item.expectedProductCount) : 0;
+        if (item && item.isSchedulePlaceholder) {
+            var expectedLabel = expectedCount > 0 ? ('预计制品 ' + expectedCount + ' 件') : '预计制品';
+            allChipsHtml = '<div class="schedule-todo-chip schedule-todo-placeholder"><span class="schedule-todo-label">' + expectedLabel + '</span></div>';
+        }
         
         // 1. 处理制品（未完成在前，已完成自动排后）
         const sortedProductEntries = products
@@ -10750,7 +10758,7 @@ async function renderScheduleTodoSection() {
             })
             .sort((a, b) => Number(a.isDone) - Number(b.isDone));
 
-        sortedProductEntries.forEach(({ p, i, qty, doneQty, isDone }) => {
+        if (!(item && item.isSchedulePlaceholder)) sortedProductEntries.forEach(({ p, i, qty, doneQty, isDone }) => {
             const productLabel = (p.product || '制品');
             
             // 父节点（制品）
@@ -10805,7 +10813,7 @@ async function renderScheduleTodoSection() {
             })
             .sort((a, b) => Number(a.isDone) - Number(b.isDone));
 
-        sortedGiftEntries.forEach(({ g, i, giftIdx, qty, doneQty, isDone }) => {
+        if (!(item && item.isSchedulePlaceholder)) sortedGiftEntries.forEach(({ g, i, giftIdx, qty, doneQty, isDone }) => {
             const giftLabel = '[赠品] ' + (g.product || '赠品');
             
             allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}">
