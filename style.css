@@ -1176,6 +1176,18 @@ body {
     color: var(--text-color);
     white-space: nowrap;
 }
+
+#calculator .section:first-of-type .schedule-placeholder-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+
+@media (max-width: 480px) {
+    #calculator .section:first-of-type .schedule-placeholder-toggle input[type="checkbox"] {
+        width: 14px;
+        height: 14px;
+    }
+}
 #calculator .section:first-of-type .schedule-placeholder-count {
     flex: 0 0 auto;
     display: inline-flex;
