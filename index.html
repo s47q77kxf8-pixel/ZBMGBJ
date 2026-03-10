@@ -486,6 +486,22 @@
                             <input type="date" id="deadline" placeholder="yyyy/mm/dd">
                         </div>
                     </div>
+                    <div class="form-row schedule-placeholder-row">
+                        <div class="form-group schedule-placeholder-toggle">
+                            <label class="checkbox-line">
+                                <input type="checkbox" id="schedulePlaceholderToggle" onchange="handleSchedulePlaceholderToggle()">
+                                <span>档期占位</span>
+                            </label>
+                        </div>
+                        <div class="form-group schedule-placeholder-count">
+                            <label for="expectedProductCount">预计制品数</label>
+                            <div class="process-layers-stepper-wrap" id="expectedProductCountWrap">
+                                <button type="button" class="process-layers-stepper-btn" onclick="changeExpectedProductCount(-1)" aria-label="减少预计制品数">−</button>
+                                <input type="number" id="expectedProductCount" class="process-layers-stepper-input" min="1" step="1" value="1" oninput="handleExpectedProductCountInput(this.value)">
+                                <button type="button" class="process-layers-stepper-btn" onclick="changeExpectedProductCount(1)" aria-label="增加预计制品数">+</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="section">
                     <div class="section-title-row d-flex justify-between items-center">
@@ -2300,15 +2316,15 @@
                         </button>
                     </div>
                     <div class="schedule-todo-card-modal-row">
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('cancel')" title="撤单">
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnCancel" onclick="scheduleTodoCardAction('cancel')" title="撤单">
                             <svg class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>
                             <span>撤单</span>
                         </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('waste_fee')" title="废稿">
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnWaste" onclick="scheduleTodoCardAction('waste_fee')" title="废稿">
                             <svg class="icon" aria-hidden="true"><use href="#i-minus-circle"></use></svg>
                             <span>废稿</span>
                         </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('normal')" title="结单">
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnNormal" onclick="scheduleTodoCardAction('normal')" title="结单">
                             <svg class="icon" aria-hidden="true"><use href="#i-check-circle"></use></svg>
                             <span>结单</span>
                         </button>

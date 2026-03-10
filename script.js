@@ -14,6 +14,7 @@ let statsFocusedLabel = ''; // 统计页“查看订单”后的筛选说明
 let templates = []; // 存储模板列表
 let selectedPerItemExtraFeeIds = []; // 计算页全单级“每制品新增”勾选
 let expandedCategories = new Set(); // 存储展开的分类状态
+let schedulePlaceholderAutoSync = true; // 预计制品数是否跟随制品变动自动同步
 
 // ========== 自定义搜索下拉组件 ==========
 /**
@@ -3456,6 +3457,7 @@ function applyRecordFilters() {
         const status = getRecordProgressStatus(item);
         const hasDeposit = item && item.depositReceived != null && Number(item.depositReceived) > 0;
         const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
+        const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
         const isSelected = selectedHistoryIds.has(item.id);
         return `
             <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}">
@@ -3473,6 +3475,7 @@ function applyRecordFilters() {
                 <div class="record-item-right">
                     ${amountHtml}
                     ${depositTagHtml}
+                    ${placeholderTagHtml}
                     <span class="record-status ${status.className}">${status.text}</span>
                 </div>
             </div>
@@ -4096,7 +4099,7 @@ function getStatsDataset(historySource, filters) {
     if (!Array.isArray(historySource) || historySource.length === 0) {
         return {
             filteredRecords: [],
-            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0, discountAmountTotal: 0, discountByReason: {}, discountTotal: 0, productUnitPriceWithSameModel: 0, productUnitPriceWithoutSameModel: 0, productItemCountWithSameModel: 0, productItemCountWithoutSameModel: 0 },
+            totals: { orderCount: 0, revenueTotal: 0, aov: 0, itemTotal: 0, itemDone: 0, itemDoneRate: 0, orderDoneCount: 0, orderDoneRate: 0, overdueOrderCount: 0, everOverdueOrderCount: 0, orderSettledCount: 0, orderSettledRate: 0, cancelOrderCount: 0, cancelAmountTotal: 0, wasteOrderCount: 0, wasteAmountTotal: 0, totalOtherFeesSum: 0, totalPlatformFeeSum: 0, discountAmountTotal: 0, discountByReason: {}, discountTotal: 0, productUnitPriceWithSameModel: 0, productUnitPriceWithoutSameModel: 0, productItemCountWithSameModel: 0, productItemCountWithoutSameModel: 0, allOrderIds: [], overdueOrderIds: [], everOverdueOrderIds: [], cancelOrderIds: [], wasteOrderIds: [], otherFeesOrderIds: [], platformFeeOrderIds: [], discountOrderIds: [] },
             dailyAgg: [],
             weeklyAgg: [],
             monthlyAgg: [],
@@ -4164,6 +4167,14 @@ function getStatsDataset(historySource, filters) {
     let totalPlatformFeeSum = 0;
     let discountAmountTotal = 0;
     let discountByCoefficientTotal = 0;
+    const allOrderIds = [];
+    const overdueOrderIds = [];
+    const everOverdueOrderIds = [];
+    const cancelOrderIds = [];
+    const wasteOrderIds = [];
+    const otherFeesOrderIds = [];
+    const platformFeeOrderIds = [];
+    const discountOrderIds = [];
     // 折扣原因聚合：记录每个原因对应的「出现单数」和「优惠金额」
     const discountByReason = {};
     const dailyMap = {};
@@ -4194,6 +4205,7 @@ function getStatsDataset(historySource, filters) {
 
     list.forEach(item => {
         ensureProductDoneStates(item);
+        pushOrderId({ orderIds: allOrderIds }, item.id);
         const revenue = getAmount(item);
         revenueTotal += revenue;
         const products = Array.isArray(item.productPrices) ? item.productPrices : [];
@@ -4241,15 +4253,23 @@ function getStatsDataset(historySource, filters) {
             for (let i = 0; i < total; i++) if (states[i]) doneCount++;
             if (total > 0 && doneCount === total) orderDoneCount++;
         }
-        if (isStatsOrderOverdue(item)) overdueOrderCount++;
-        if (isStatsOrderEverOverdue(item, filters.overdueMode)) everOverdueOrderCount++;
+        if (isStatsOrderOverdue(item)) {
+            overdueOrderCount++;
+            pushOrderId({ orderIds: overdueOrderIds }, item.id);
+        }
+        if (isStatsOrderEverOverdue(item, filters.overdueMode)) {
+            everOverdueOrderCount++;
+            pushOrderId({ orderIds: everOverdueOrderIds }, item.id);
+        }
         if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee' || item.settlement.type === 'waste_fee' || item.settlement.type === 'normal')) orderSettledCount++;
         if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
             cancelOrderCount++;
+            pushOrderId({ orderIds: cancelOrderIds }, item.id);
             cancelAmountTotal += (item.settlement.amount != null ? Number(item.settlement.amount) : 0) || 0;
         }
         if (item.settlement && item.settlement.type === 'waste_fee') {
             wasteOrderCount++;
+            pushOrderId({ orderIds: wasteOrderIds }, item.id);
             var wf = item.settlement.wasteFee || {};
             var wasteFeeAmt = (wf.feeAmount != null && isFinite(wf.feeAmount)) ? Number(wf.feeAmount) : (wf.totalReceivable != null && isFinite(wf.totalReceivable)) ? Number(wf.totalReceivable) : (wf.totalWasteReceivable != null && isFinite(wf.totalWasteReceivable)) ? Number(wf.totalWasteReceivable) : null;
             if (wasteFeeAmt == null || !isFinite(wasteFeeAmt)) {
@@ -4268,6 +4288,7 @@ function getStatsDataset(historySource, filters) {
             if (receivable > actual) {
                 var orderDiscount = receivable - actual;
                 discountAmountTotal += orderDiscount;
+                pushOrderId({ orderIds: discountOrderIds }, item.id);
                 var reasonAmountSum = 0;
                 if (Array.isArray(item.settlement.discountReasons) && item.settlement.discountReasons.length) {
                     item.settlement.discountReasons.forEach(function (e) {
@@ -4316,6 +4337,7 @@ function getStatsDataset(historySource, filters) {
                 discountByReason[manualLabel].orderCount += 1;
                 discountByReason[manualLabel].amountTotal += manualDiff;
                 discountByCoefficientTotal += manualDiff;
+                pushOrderId({ orderIds: discountOrderIds }, item.id);
             }
         }
         // --- 手动优惠统计结束 ---
@@ -4349,6 +4371,7 @@ function getStatsDataset(historySource, filters) {
                     discountByReason[mainName].orderCount += 1;
                     discountByReason[mainName].amountTotal += mainReduction;
                     discountByCoefficientTotal += mainReduction;
+                    pushOrderId({ orderIds: discountOrderIds }, item.id);
                     running *= mainVal;
                 }
                 // 扩展折扣类系数（顺序与报价一致）
@@ -4368,6 +4391,7 @@ function getStatsDataset(historySource, filters) {
                         discountByReason[nm].orderCount += 1;
                         discountByReason[nm].amountTotal += extReduction;
                         discountByCoefficientTotal += extReduction;
+                        pushOrderId({ orderIds: discountOrderIds }, item.id);
                         running *= v;
                     }
                 });
@@ -4383,6 +4407,7 @@ function getStatsDataset(historySource, filters) {
                         discountByReason[fallbackName].orderCount += 1;
                         discountByReason[fallbackName].amountTotal += fallbackReduction;
                         discountByCoefficientTotal += fallbackReduction;
+                        pushOrderId({ orderIds: discountOrderIds }, item.id);
                     }
                 }
             }
@@ -4390,7 +4415,14 @@ function getStatsDataset(historySource, filters) {
         // 统计其他费用总额
         const itemOtherFees = (item.totalOtherFees != null ? Number(item.totalOtherFees) : 0) || 0;
         totalOtherFeesSum += itemOtherFees;
-        totalPlatformFeeSum += (item.platformFeeAmount != null ? Number(item.platformFeeAmount) : 0) || 0;
+        if (itemOtherFees > 0) {
+            pushOrderId({ orderIds: otherFeesOrderIds }, item.id);
+        }
+        const platformFeeAmount = (item.platformFeeAmount != null ? Number(item.platformFeeAmount) : 0) || 0;
+        totalPlatformFeeSum += platformFeeAmount;
+        if (platformFeeAmount > 0) {
+            pushOrderId({ orderIds: platformFeeOrderIds }, item.id);
+        }
         
         // 统计其他费用明细
         if (item.otherFees && Array.isArray(item.otherFees)) {
@@ -4641,7 +4673,15 @@ function getStatsDataset(historySource, filters) {
             productUnitPriceWithSameModel,
             productUnitPriceWithoutSameModel,
             productItemCountWithSameModel: categoryQuantityTotal,
-            productItemCountWithoutSameModel: categoryMainCountTotal
+            productItemCountWithoutSameModel: categoryMainCountTotal,
+            allOrderIds,
+            overdueOrderIds,
+            everOverdueOrderIds,
+            cancelOrderIds,
+            wasteOrderIds,
+            otherFeesOrderIds,
+            platformFeeOrderIds,
+            discountOrderIds
         },
         dailyAgg,
         weeklyAgg,
@@ -4740,7 +4780,9 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         if (!ids.length) return '';
         var encoded = encodeURIComponent(JSON.stringify(ids));
         var encodedLabel = encodeURIComponent(label || '');
-        return '<button type="button" class="btn secondary tiny" style="padding:2px 6px;font-size:11px;line-height:1.2;min-height:auto;" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '">查看订单</button>';
+        return '<button type="button" class="stats-row-action" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '" aria-label="查看订单">' +
+            '<svg class="icon"><use href="#i-filter"></use></svg>' +
+            '</button>';
     };
 
     if (hasStatus) {
@@ -4748,7 +4790,11 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         var shtml = '';
         byStatus.forEach(function (s) {
             if (s.orderCount > 0 || s.amountTotal > 0) {
-                shtml += '<div class="stats-status-item"><span class="stats-status-name">' + (s.status || '—') + '</span><div class="stats-dim-right"><span class="stats-status-val stats-dim-val">' + s.orderCount + ' 单 / ¥' + (s.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(s.orderIds, '状态：' + (s.status || '—')) + '</div></div>';
+                var ids = Array.isArray(s.orderIds) ? s.orderIds.slice() : [];
+                var encoded = encodeURIComponent(JSON.stringify(ids));
+                var label = '状态：' + (s.status || '—');
+                var encodedLabel = encodeURIComponent(label);
+                shtml += '<div class="stats-status-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span class="stats-status-name">' + (s.status || '—') + '</span><div class="stats-dim-right"><span class="stats-status-val stats-dim-val">' + s.orderCount + ' 单 / ¥' + (s.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(s.orderIds, label) + '</div></div>';
             }
         });
         panels.push({ id: 'status', html: '<div class="stats-status-list">' + shtml + '</div>' });
@@ -4756,25 +4802,25 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
     if (hasUsage) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="usage">用途</button>');
         var uhtml = '';
-        byUsage.forEach(function (r) { uhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '用途：' + (r.name || '—')) + '</div></div>'; });
+        byUsage.forEach(function (r) { var label = '用途：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); uhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'usage', html: '<div class="stats-dim-list">' + uhtml + '</div>' });
     }
     if (hasUrgent) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="urgent">加急</button>');
         var ghtml = '';
-        byUrgent.forEach(function (r) { ghtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '加急：' + (r.name || '—')) + '</div></div>'; });
+        byUrgent.forEach(function (r) { var label = '加急：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ghtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'urgent', html: '<div class="stats-dim-list">' + ghtml + '</div>' });
     }
     if (hasOtherFees) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="otherFees">其他费用</button>');
         var ofhtml = '';
-        byOtherFees.forEach(function (r) { ofhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '其他费用：' + (r.name || '—')) + '</div></div>'; });
+        byOtherFees.forEach(function (r) { var label = '其他费用：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ofhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'otherFees', html: '<div class="stats-dim-list">' + ofhtml + '</div>' });
     }
     if (hasProcess) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="process">工艺</button>');
         var prhtml = '';
-        byProcess.forEach(function (r) { prhtml += '<div class="stats-dim-item"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '工艺：' + (r.name || '—')) + '</div></div>'; });
+        byProcess.forEach(function (r) { var label = '工艺：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); prhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'process', html: '<div class="stats-dim-list">' + prhtml + '</div>' });
     }
     if (hasDiscount) {
@@ -4783,7 +4829,11 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             var name = (r && r.name) ? r.name : '—';
             var count = (r && r.orderCount) ? r.orderCount : 0;
             var amt = (r && r.amountTotal != null && isFinite(r.amountTotal)) ? Number(r.amountTotal) : 0;
-            return '<div class="stats-dim-item"><span>' + name + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + count + ' 单 / -¥' + amt.toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, '折扣：' + name) + '</div></div>';
+            var label = '折扣：' + name;
+            var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : [];
+            var encoded = encodeURIComponent(JSON.stringify(ids));
+            var encodedLabel = encodeURIComponent(label);
+            return '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + name + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + count + ' 单 / -¥' + amt.toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>';
         }).join('');
         panels.push({ id: 'discount', html: '<div class="stats-dim-list">' + dhtml + '</div>' });
     }
@@ -4804,21 +4854,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             if (panel) panel.classList.remove('d-none');
         });
     });
-    container.querySelectorAll('[data-stats-order-ids]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var encoded = this.getAttribute('data-stats-order-ids') || '';
-            if (!encoded) return;
-            try {
-                var ids = JSON.parse(decodeURIComponent(encoded));
-                var labelEncoded = this.getAttribute('data-stats-focus-label') || '';
-                var focusLabel = labelEncoded ? decodeURIComponent(labelEncoded) : '';
-                openStatsDistributionOrders(ids, focusLabel);
-            } catch (e) {
-                console.error('解析订单列表失败:', e);
-                alert('订单列表解析失败');
-            }
-        });
-    });
+    bindStatsCardOrderLinks(container);
 }
 
 function renderStatsKpis(totals) {
@@ -4834,9 +4870,9 @@ function renderStatsKpis(totals) {
     const discountTotalDisplay = discountTotalVal > 0 ? ('-¥' + discountTotalVal.toFixed(2)) : fmt(discountTotalVal, true);
     grid.innerHTML = `
         <div class="kpi-section-title">核心指标</div>
-        <div class="kpi-card kpi-card-primary"><div class="kpi-label">订单数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div></div>
-        <div class="kpi-card kpi-card-primary"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div></div>
-        <div class="kpi-card kpi-card-primary"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div></div>
+        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('订单数')}" role="button" tabindex="0"><div class="kpi-label">订单数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('总收入')}" role="button" tabindex="0"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('客单价')}" role="button" tabindex="0"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
         <div class="kpi-card kpi-card-primary">
             <div class="kpi-label">制品项<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
             <div class="kpi-value kpi-value-compare" id="kpiItemTotalCompare">${totals.productItemCountWithSameModel || 0} / ${totals.productItemCountWithoutSameModel || 0}</div>
@@ -4848,14 +4884,14 @@ function renderStatsKpis(totals) {
         <div class="kpi-section-title">进度与结算</div>
         <div class="kpi-card"><div class="kpi-label">制品项完成率</div><div class="kpi-value" id="kpiItemDoneRate">${totals.itemDone}/${fmt(totals.itemDoneRate)}%</div></div>
         <div class="kpi-card"><div class="kpi-label">订单完结率</div><div class="kpi-value" id="kpiOrderSettledRate">${totals.orderSettledCount || 0}/${fmt(totals.orderSettledRate || 0)}%</div></div>
-        <div class="kpi-card"><div class="kpi-label">逾期</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div></div>
-        <div class="kpi-card"><div class="kpi-label">曾经逾期</div><div class="kpi-value" id="kpiEverOverdueOrders">${totals.everOverdueOrderCount ?? 0}</div></div>
-        <div class="kpi-card"><div class="kpi-label">撤单</div><div class="kpi-value kpi-value-small" id="kpiCancel">${totals.cancelOrderCount || 0} 单 / ${fmt(totals.cancelAmountTotal || 0, true)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">废稿</div><div class="kpi-value kpi-value-small" id="kpiWaste">${totals.wasteOrderCount || 0} 单 / ${fmt(totals.wasteAmountTotal || 0, true)}</div></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.overdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('逾期')}" role="button" tabindex="0"><div class="kpi-label">逾期</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.everOverdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('曾经逾期')}" role="button" tabindex="0"><div class="kpi-label">曾经逾期</div><div class="kpi-value" id="kpiEverOverdueOrders">${totals.everOverdueOrderCount ?? 0}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.cancelOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('撤单')}" role="button" tabindex="0"><div class="kpi-label">撤单</div><div class="kpi-value kpi-value-small" id="kpiCancel">${totals.cancelOrderCount || 0} 单 / ${fmt(totals.cancelAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.wasteOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('废稿')}" role="button" tabindex="0"><div class="kpi-label">废稿</div><div class="kpi-value kpi-value-small" id="kpiWaste">${totals.wasteOrderCount || 0} 单 / ${fmt(totals.wasteAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
         <div class="kpi-section-title">费用</div>
-        <div class="kpi-card"><div class="kpi-label">其他费用</div><div class="kpi-value" id="kpiOtherFees">${fmt(totals.totalOtherFeesSum || 0, true)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">平台费</div><div class="kpi-value" id="kpiPlatformFee">${fmt(totals.totalPlatformFeeSum || 0, true)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">折扣合计</div><div class="kpi-value kpi-value-small" id="kpiDiscountTotal">${discountTotalDisplay}</div></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.otherFeesOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('其他费用')}" role="button" tabindex="0"><div class="kpi-label">其他费用</div><div class="kpi-value" id="kpiOtherFees">${fmt(totals.totalOtherFeesSum || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.platformFeeOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('平台费')}" role="button" tabindex="0"><div class="kpi-label">平台费</div><div class="kpi-value" id="kpiPlatformFee">${fmt(totals.totalPlatformFeeSum || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.discountOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('折扣合计')}" role="button" tabindex="0"><div class="kpi-label">折扣合计</div><div class="kpi-value kpi-value-small" id="kpiDiscountTotal">${discountTotalDisplay}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
     `;
     let orderRateEl = document.getElementById('kpiOrderDoneRate');
     if (!orderRateEl) {
@@ -4866,6 +4902,38 @@ function renderStatsKpis(totals) {
     }
     orderRateEl.textContent = '制品全完成率：' + fmt(totals.orderDoneRate) + '%（制品全完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）；订单完结率：' + fmt(totals.orderSettledRate || 0) + '%（已结算 ' + (totals.orderSettledCount || 0) + ' / ' + totals.orderCount + '）';
 
+    bindStatsCardOrderLinks(grid);
+}
+
+function bindStatsCardOrderLinks(container) {
+    if (!container) return;
+    container.querySelectorAll('[data-stats-order-ids]').forEach(function (card) {
+        if (card.dataset.statsBound === '1') return;
+        card.dataset.statsBound = '1';
+        card.addEventListener('click', function (e) {
+            var target = e.target;
+            if (target && target.closest && target.closest('[data-stats-order-ids]') && target.closest('[data-stats-order-ids]') !== card) return;
+            if (target && target.closest && target.closest('button')) return;
+            var encoded = card.getAttribute('data-stats-order-ids') || '';
+            if (!encoded) return;
+            try {
+                var ids = JSON.parse(decodeURIComponent(encoded));
+                if (!Array.isArray(ids) || ids.length === 0) return;
+                var labelEncoded = card.getAttribute('data-stats-focus-label') || '';
+                var focusLabel = labelEncoded ? decodeURIComponent(labelEncoded) : '';
+                openStatsDistributionOrders(ids, focusLabel);
+            } catch (e) {
+                console.error('解析订单列表失败:', e);
+                alert('订单列表解析失败');
+            }
+        });
+        card.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                card.click();
+            }
+        });
+    });
 }
 
 
@@ -5909,6 +5977,11 @@ function openCalculatorDrawer(skipOrderTimeReset) {
         var orderRemarkTextEl = document.getElementById('orderRemarkText');
         if (orderRemarkTextEl) orderRemarkTextEl.value = '';
         if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
+        var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
+        if (placeholderToggle) placeholderToggle.checked = false;
+        schedulePlaceholderAutoSync = true;
+        setSchedulePlaceholderEnabled(false);
+        setExpectedProductCountValue(Math.max(1, products.length || 1), false);
     }
 
     // 每次打开时刷新计算页的选择器与系数
@@ -5958,6 +6031,7 @@ function addProduct() {
     
     products.push(product);
     renderProduct(product);
+    syncExpectedProductCountFromProducts();
 }
 
 // 渲染赠品项
@@ -6414,6 +6488,60 @@ function removeProduct(id) {
     products = products.filter(p => p.id !== id);
     const el = document.querySelector(`[data-id="${id}"]`);
     if (el) el.remove();
+    syncExpectedProductCountFromProducts();
+}
+
+function getExpectedProductCountValue() {
+    var input = document.getElementById('expectedProductCount');
+    var value = input ? parseInt(input.value, 10) : NaN;
+    if (!isFinite(value) || value < 1) value = 1;
+    return value;
+}
+
+function setExpectedProductCountValue(value, markManual) {
+    var input = document.getElementById('expectedProductCount');
+    if (!input) return;
+    var next = parseInt(value, 10);
+    if (!isFinite(next) || next < 1) next = 1;
+    input.value = String(next);
+    if (markManual) schedulePlaceholderAutoSync = false;
+}
+
+function syncExpectedProductCountFromProducts(force) {
+    var toggle = document.getElementById('schedulePlaceholderToggle');
+    if (!toggle || !toggle.checked) return;
+    if (!force && !schedulePlaceholderAutoSync) return;
+    var count = Math.max(1, products.length || 1);
+    setExpectedProductCountValue(count, false);
+}
+
+function setSchedulePlaceholderEnabled(isEnabled) {
+    var wrap = document.getElementById('expectedProductCountWrap');
+    if (!wrap) return;
+    if (isEnabled) {
+        wrap.classList.remove('is-disabled');
+    } else {
+        wrap.classList.add('is-disabled');
+    }
+}
+
+function handleSchedulePlaceholderToggle() {
+    var toggle = document.getElementById('schedulePlaceholderToggle');
+    if (!toggle) return;
+    schedulePlaceholderAutoSync = true;
+    setSchedulePlaceholderEnabled(toggle.checked);
+    if (toggle.checked) {
+        syncExpectedProductCountFromProducts(true);
+    }
+}
+
+function changeExpectedProductCount(delta) {
+    var next = getExpectedProductCountValue() + delta;
+    setExpectedProductCountValue(next, true);
+}
+
+function handleExpectedProductCountInput(value) {
+    setExpectedProductCountValue(value, true);
 }
 
 // 计算价格；saveAsNew 为 true 时：另存新单（不覆盖原记录）；skipReceipt 为 true 时：覆盖保存原订单，均不打开小票；openSaveChoiceModal 为 true 时：仅计算并弹出保存方式选择弹窗；onlyRefreshDisplay 为 true 时：仅刷新报价显示（不关抽屉、不打开小票）
@@ -6462,8 +6590,12 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const otherFeesTotal = Array.isArray(dynamicOtherFees) ? dynamicOtherFees.reduce((sum, fee) => sum + fee.amount, 0) : 0;
     const totalOtherFees = otherFeesTotal;
     
-    if (products.length === 0) {
-        alert('请添加至少一个制品！');
+    var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
+    var isSchedulePlaceholder = !!(placeholderToggle && placeholderToggle.checked);
+    var expectedProductCount = getExpectedProductCountValue();
+    if (products.length === 0 && !isSchedulePlaceholder) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('请至少填写 1 个制品或勾选档期占位');
+        else alert('请至少填写 1 个制品或勾选档期占位');
         return;
     }
     
@@ -6525,6 +6657,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         const productType = product.type;
         // 检查是否选择了制品类型
         if (!productType || productType === '') {
+            if (isSchedulePlaceholder) continue;
             alert(`请为制品${i+1}选择制品类型！`);
             return;
         }
@@ -6741,6 +6874,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         const giftType = gift.type;
         // 检查是否选择了赠品类型
         if (!giftType || giftType === '') {
+            if (isSchedulePlaceholder) continue;
             alert(`请为赠品${i+1}选择制品类型！`);
             return;
         }
@@ -6938,6 +7072,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         depositReceived: depositReceived,
         scheduleColorIndex: window.currentScheduleColorIndex,
         orderRemark: (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '',
+        isSchedulePlaceholder: isSchedulePlaceholder,
+        expectedProductCount: expectedProductCount,
         settlementRulesSnapshot: JSON.parse(JSON.stringify(defaultSettings.settlementRules || {})),
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
@@ -10407,6 +10543,11 @@ async function mgLoadIncomingProjectToCalculator(projectId) {
     const giftsContainer = document.getElementById('giftsContainer');
     if (productsContainer) productsContainer.innerHTML = '';
     if (giftsContainer) giftsContainer.innerHTML = '';
+    var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
+    if (placeholderToggle) placeholderToggle.checked = false;
+    schedulePlaceholderAutoSync = true;
+    setSchedulePlaceholderEnabled(false);
+    setExpectedProductCountValue(1, false);
 
     // 恢复单主信息（沿用 editHistoryItem 的字段）
     var clientIdEl = document.getElementById('clientId');
@@ -10583,6 +10724,7 @@ async function renderScheduleTodoSection() {
         const client = item.clientId || '单主';
         const progress = doneCount + '/' + total;
         const status = getRecordProgressStatus(item);
+        const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
         // 获取正确的圆点颜色
         let dotColor = '#999';
         try {
@@ -10700,6 +10842,7 @@ async function renderScheduleTodoSection() {
             + '      <span class="schedule-todo-card-client">' + client + '</span>'
             + '      <span class="schedule-todo-card-sep-dot">\u00B7</span>'
             + '      <span class="schedule-todo-card-progress">' + progress + '</span>'
+            + '      ' + placeholderTagHtml
             + '      <span class="record-status ' + status.className + ' schedule-todo-card-status">' + status.text + '</span>'
             + '    </div>'
             + '    <div class="schedule-todo-card-products">'
@@ -10870,6 +11013,23 @@ function handleScheduleTodoCardClick(id, event) {
 var scheduleTodoCardModalRecordId = null;
 function openScheduleTodoCardModal(recordId) {
     scheduleTodoCardModalRecordId = recordId;
+    var item = history.find(function (h) { return h.id === recordId; });
+    var isPlaceholder = !!(item && item.isSchedulePlaceholder);
+    ['scheduleTodoBtnCancel', 'scheduleTodoBtnWaste', 'scheduleTodoBtnNormal'].forEach(function (id) {
+        var btn = document.getElementById(id);
+        if (!btn) return;
+        if (isPlaceholder) {
+            btn.classList.add('is-disabled');
+            btn.setAttribute('aria-disabled', 'true');
+            btn.setAttribute('title', '占位单不可结算');
+        } else {
+            btn.classList.remove('is-disabled');
+            btn.removeAttribute('aria-disabled');
+            if (id === 'scheduleTodoBtnCancel') btn.setAttribute('title', '撤单');
+            if (id === 'scheduleTodoBtnWaste') btn.setAttribute('title', '废稿');
+            if (id === 'scheduleTodoBtnNormal') btn.setAttribute('title', '结单');
+        }
+    });
     var el = document.getElementById('scheduleTodoCardModal');
     if (el) el.classList.remove('d-none');
 }
@@ -10902,6 +11062,11 @@ function scheduleTodoCardAction(action) {
     else if (action === 'receipt') { setReceiptFromRecord(); loadQuoteFromHistory(id); }
     else if (action === 'remark') openOrderRemarkModal(id);
     else if (action === 'cancel' || action === 'waste_fee' || action === 'normal') {
+        var item = history.find(function (h) { return h.id === id; });
+        if (item && item.isSchedulePlaceholder) {
+            showGlobalToast('占位单不可结算，请先补充制品');
+            return;
+        }
         openSettlementModal(id, action);
     } else if (action === 'delete') {
         if(confirm('确定删除该记录？')) {
@@ -11097,6 +11262,10 @@ function openSettlementModal(recordId, preSelectedType) {
     var item = history.find(function (h) { return h.id === recordId; });
     if (!item) {
         showGlobalToast('未找到该排单');
+        return;
+    }
+    if (item && item.isSchedulePlaceholder) {
+        showGlobalToast('占位单不可结算，请先补充制品');
         return;
     }
     settlementModalRecordId = recordId;
@@ -13668,6 +13837,11 @@ function editHistoryItem(id) {
     const giftsContainer = document.getElementById('giftsContainer');
     if (productsContainer) productsContainer.innerHTML = '';
     if (giftsContainer) giftsContainer.innerHTML = '';
+    var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
+    if (placeholderToggle) placeholderToggle.checked = false;
+    schedulePlaceholderAutoSync = true;
+    setSchedulePlaceholderEnabled(false);
+    setExpectedProductCountValue(1, false);
     
     // 恢复单主信息
     if (quote.clientId) {
@@ -13682,6 +13856,16 @@ function editHistoryItem(id) {
     if (quote.startTime) {
         document.getElementById('startTime').value = quote.startTime;
     }
+    var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
+    if (placeholderToggle) placeholderToggle.checked = !!quote.isSchedulePlaceholder;
+    schedulePlaceholderAutoSync = true;
+    setSchedulePlaceholderEnabled(!!(placeholderToggle && placeholderToggle.checked));
+    if (quote.expectedProductCount) {
+        setExpectedProductCountValue(quote.expectedProductCount, false);
+        schedulePlaceholderAutoSync = false;
+    } else {
+        syncExpectedProductCountFromProducts(true);
+    }
     selectedPerItemExtraFeeIds = Array.isArray(quote.perItemExtraFeeIds) ? quote.perItemExtraFeeIds.slice() : [];
     renderCalculatorPerItemExtraSelects();
     if (quote.deadline) {
@@ -13693,6 +13877,16 @@ function editHistoryItem(id) {
         if (typeof updateScheduleColorPreviewUI === 'function') {
             updateScheduleColorPreviewUI(window.currentScheduleColorIndex);
         }
+    }
+    var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
+    if (placeholderToggle) placeholderToggle.checked = !!quote.isSchedulePlaceholder;
+    schedulePlaceholderAutoSync = true;
+    setSchedulePlaceholderEnabled(!!(placeholderToggle && placeholderToggle.checked));
+    if (quote.expectedProductCount) {
+        setExpectedProductCountValue(quote.expectedProductCount, false);
+        schedulePlaceholderAutoSync = false;
+    } else {
+        syncExpectedProductCountFromProducts(true);
     }
     // 恢复订单备注（编辑时显示该条记录的备注，新建时已在 openCalculatorDrawer 中清空）
     if (defaultSettings) defaultSettings.orderRemark = (quote.orderRemark != null) ? String(quote.orderRemark) : '';
@@ -14289,6 +14483,17 @@ function loadQuoteFromHistory(id) {
         // 设置当前排单颜色索引为订单的颜色索引
         if (typeof quote.scheduleColorIndex === 'number') {
             window.currentScheduleColorIndex = quote.scheduleColorIndex;
+        }
+
+        var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
+        if (placeholderToggle) placeholderToggle.checked = !!quote.isSchedulePlaceholder;
+        schedulePlaceholderAutoSync = true;
+        setSchedulePlaceholderEnabled(!!(placeholderToggle && placeholderToggle.checked));
+        if (quote.expectedProductCount) {
+            setExpectedProductCountValue(quote.expectedProductCount, false);
+            schedulePlaceholderAutoSync = false;
+        } else {
+            syncExpectedProductCountFromProducts(true);
         }
         
         // 从排单卡片点「小票」进入时，记下原订单 ID，使小票页内点「排单」时覆盖原订单并轻提示

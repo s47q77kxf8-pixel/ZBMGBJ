@@ -1159,6 +1159,62 @@ body {
     font-size: 0.875rem;
     padding: 0.5rem 0.6rem;
 }
+#calculator .section:first-of-type .schedule-placeholder-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+#calculator .section:first-of-type .schedule-placeholder-toggle {
+    flex: 0 0 auto;
+}
+#calculator .section:first-of-type .schedule-placeholder-toggle .checkbox-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-weight: 600;
+    color: var(--text-color);
+    white-space: nowrap;
+}
+#calculator .section:first-of-type .schedule-placeholder-count {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+#calculator .section:first-of-type .schedule-placeholder-count label {
+    margin: 0;
+    white-space: nowrap;
+}
+#calculator .section:first-of-type .schedule-placeholder-count .process-layers-stepper-wrap {
+    padding: 0;
+    border-radius: 0;
+    border: none;
+    background: transparent;
+}
+#calculator .section:first-of-type .schedule-placeholder-count.is-disabled {
+    opacity: 0.5;
+}
+#calculator .section:first-of-type .schedule-placeholder-count.is-disabled .process-layers-stepper-btn,
+#calculator .section:first-of-type .schedule-placeholder-count.is-disabled .process-layers-stepper-input {
+    pointer-events: none;
+}
+
+@media (max-width: 480px) {
+    #calculator .section:first-of-type .schedule-placeholder-row {
+        gap: 0.4rem;
+    }
+    #calculator .section:first-of-type .schedule-placeholder-count {
+        flex: 1 1 auto;
+        justify-content: flex-end;
+    }
+    #calculator .section:first-of-type .schedule-placeholder-count label {
+        font-size: 0.75rem;
+    }
+    #calculator .section:first-of-type .schedule-placeholder-count .process-layers-stepper-wrap {
+        margin-left: auto;
+    }
+}
 /* 第一行：彩条 + 单主ID + 备注 强制同一行，允许横向滚动 */
 #calculator .calculator-client-row-1 .client-id-input-wrap {
     display: flex;
@@ -7092,6 +7148,12 @@ input:checked + .toggle-slider:before {
     background: rgba(239, 68, 68, 0.1);
 }
 
+.schedule-todo-card-modal-btn.is-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 /* 结算弹窗（手机 App 风格 · 现代简约，需覆盖记录页/排单页等） */
 .settlement-modal {
     position: fixed;
@@ -8274,6 +8336,18 @@ html.theme-dark .settlement-preview {
     /* 预留：暗色模式可在此调整颜色 */
 }
 
+.record-tag-placeholder {
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #b45309;
+    background-color: rgba(245, 158, 11, 0.1);
+}
+
+.schedule-todo-card-tag {
+    margin-left: 0.2rem;
+    padding: 0.05rem 0.3rem;
+    font-size: 0.65rem;
+}
+
 .record-item-amount-wrap {
     display: flex;
     flex-direction: column;
@@ -8581,10 +8655,58 @@ html.theme-dark .settlement-preview {
     padding: 1rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     border: none;
-    transition: box-shadow 0.2s;
+    transition: box-shadow 0.2s, transform 0.2s;
 }
 .kpi-card:active {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.kpi-card-clickable {
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+.kpi-card-clickable:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+}
+.kpi-card-clickable:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.4);
+    outline-offset: 2px;
+}
+.kpi-card-icon {
+    position: absolute;
+    right: 0.8rem;
+    top: 0.8rem;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-light);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.kpi-card-icon .icon {
+    width: 0.9rem;
+    height: 0.9rem;
+}
+.kpi-card-clickable:hover .kpi-card-icon {
+    background: transparent;
+    color: var(--text-color);
+}
+.kpi-card-tip {
+    position: absolute;
+    right: 0.8rem;
+    bottom: 0.75rem;
+    font-size: 0.68rem;
+    color: var(--text-light);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: all 0.2s ease;
+}
+.kpi-card-clickable:hover .kpi-card-tip {
+    opacity: 1;
+    transform: translateY(0);
 }
 .kpi-label {
     font-size: 0.75rem;
@@ -8618,6 +8740,18 @@ html.theme-dark .settlement-preview {
 .kpi-value-compare {
     white-space: nowrap;
 }
+@media (max-width: 480px) {
+    .kpi-card-icon {
+        width: 1.2rem;
+        height: 1.2rem;
+        right: 0.6rem;
+        top: 0.6rem;
+    }
+    .kpi-card-icon .icon {
+        width: 0.8rem;
+        height: 0.8rem;
+    }
+}
 .stats-order-done-rate {
     font-size: 0.78rem;
     color: var(--text-light);
@@ -8640,6 +8774,27 @@ html.theme-dark .settlement-preview {
 }
 .stats-dist-panel-wrap {
     margin-top: 0.5rem;
+}
+.stats-row-clickable {
+    cursor: pointer;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+    border-radius: 10px;
+}
+.stats-row-clickable:hover {
+    background: rgba(148, 163, 184, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+}
+.stats-row-clickable:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.4);
+    outline-offset: 2px;
+}
+.stats-row-clickable .stats-row-action {
+    font-size: 0.72rem;
+    color: var(--text-light);
+    margin-left: 0.35rem;
+}
+.stats-row-clickable:hover .stats-row-action {
+    color: var(--text-color);
 }
 .stats-by-status,
 .stats-dimensions {
@@ -8689,6 +8844,26 @@ html.theme-dark .settlement-preview {
 .stats-dim-val {
     min-width: 110px;
     text-align: right;
+}
+.stats-row-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border: none;
+    background: transparent;
+    color: var(--text-light);
+    padding: 0;
+    cursor: pointer;
+}
+.stats-row-action .icon {
+    width: 0.9rem;
+    height: 0.9rem;
+}
+.stats-row-clickable:hover .stats-row-action,
+.stats-row-action:hover {
+    color: var(--text-color);
 }
 .stats-block-title {
     font-size: 0.8rem;
