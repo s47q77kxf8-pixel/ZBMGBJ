@@ -3566,12 +3566,12 @@ input[type="range"]#customThemeTextureOpacity {
     text-align: center;
 }
 .receipt-header-image {
-    margin-top: 0;
+    margin-top: 0.75rem;
     margin-bottom: 0.75rem;
 }
 .receipt-footer-image {
     margin-top: 0.75rem;
-    margin-bottom: 0;
+    margin-bottom: 0.75rem;
 }
 .receipt-header-image .receipt-img,
 .receipt-footer-image .receipt-img {
@@ -6746,73 +6746,23 @@ input:checked + .toggle-slider:before {
     vertical-align: middle;
 }
 
-.schedule-todo-wrap-toggle {
-    display: inline-flex;
-    background: white;
-    border-radius: 999px;
-    padding: 2px;
-    gap: 0;
-    border: 1px solid var(--border-color);
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s ease;
-}
-
-.schedule-todo-wrap-toggle::before {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 20%;
-    bottom: 20%;
-    width: 1px;
-    background: rgba(0, 0, 0, 0.1);
-    z-index: 1;
-}
-
-.schedule-todo-wrap-btn {
-    padding: 0.4rem 0.8rem;
+.schedule-todo-wrap-toggle-btn {
+    padding: 0.35rem 0.7rem;
     font-size: 0.75rem;
-    border: none;
-    background: transparent;
-    color: #666;
+    border: 1px solid var(--border-color);
+    background: #fff;
+    color: #111;
     cursor: pointer;
     border-radius: 999px;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     white-space: nowrap;
-    position: relative;
-    z-index: 2;
-    flex: 1;
-    min-width: 50px;
+    min-width: 54px;
 }
-
-.schedule-todo-wrap-btn:hover {
-    color: #111;
-}
-
-.schedule-todo-wrap-toggle .active {
-    color: #111;
-    font-weight: 600;
-}
-
-.schedule-todo-wrap-toggle::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    bottom: 2px;
-    width: 50%;
+.schedule-todo-wrap-toggle-btn.is-scroll {
     background: #f3f4f6;
-    transition: all 0.3s ease;
-    z-index: 0;
 }
-
-.schedule-todo-wrap-toggle[data-mode="wrap"]::after {
-    left: 2px;
-    border-radius: 8px 4px 4px 8px;
-}
-
-.schedule-todo-wrap-toggle[data-mode="scroll"]::after {
-    left: 50%;
-    border-radius: 4px 8px 8px 4px;
+.schedule-todo-wrap-toggle-btn:hover {
+    background: #f8fafc;
 }
 
 .schedule-todo-title {
@@ -6932,16 +6882,11 @@ input:checked + .toggle-slider:before {
         scrollbar-width: none;
         gap: 0 12px;
     }
-    
-    /* 确保切换按钮在移动设备上也能正常显示 */
-    .schedule-todo-wrap-toggle {
-        padding: 2px;
-        gap: 0;
-    }
-    
-    .schedule-todo-wrap-btn {
+
+    .schedule-todo-wrap-toggle-btn {
         padding: 0.3rem 0.6rem;
         font-size: 0.7rem;
+        min-width: 50px;
     }
 }
 

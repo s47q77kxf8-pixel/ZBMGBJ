@@ -641,10 +641,7 @@
                                     <span id="incomingDot" class="todo-filter-dot d-none"></span>
                                 </button>
                             </div>
-                            <div class="schedule-todo-wrap-toggle" data-mode="wrap">
-                                <button type="button" class="schedule-todo-wrap-btn active" data-mode="wrap" onclick="setScheduleTodoWrapMode('wrap')">换行</button>
-                                <button type="button" class="schedule-todo-wrap-btn" data-mode="scroll" onclick="setScheduleTodoWrapMode('scroll')">滑动</button>
-                            </div>
+                            <button type="button" class="schedule-todo-wrap-toggle-btn" id="scheduleTodoWrapToggleBtn" onclick="toggleScheduleTodoWrapMode()">换行</button>
                         </div>
                         <h3 id="scheduleTodoTitle" class="schedule-todo-title">当前批次（截稿日：—）</h3>
                         <div id="scheduleTodoModules" class="schedule-todo-modules">

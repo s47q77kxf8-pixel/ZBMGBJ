@@ -9213,20 +9213,25 @@ function setScheduleTodoFilter(f) {
 // 初始化换行模式
 window.scheduleTodoWrapMode = localStorage.getItem('scheduleTodoWrapMode') || 'wrap';
 
+function updateScheduleTodoWrapToggleLabel(mode) {
+    const btn = document.getElementById('scheduleTodoWrapToggleBtn');
+    if (!btn) return;
+    const isWrap = mode !== 'scroll';
+    btn.textContent = isWrap ? '换行' : '滑动';
+    btn.classList.toggle('is-scroll', !isWrap);
+}
+
+function toggleScheduleTodoWrapMode() {
+    const next = (window.scheduleTodoWrapMode === 'wrap') ? 'scroll' : 'wrap';
+    setScheduleTodoWrapMode(next);
+}
+
 function setScheduleTodoWrapMode(mode) {
     window.scheduleTodoWrapMode = mode;
-    
-    // 切换按钮状态
-    document.querySelectorAll('.schedule-todo-wrap-btn').forEach(btn => {
-        btn.classList.toggle('active', (btn.dataset.mode || '') === mode);
-    });
-    
-    // 更新容器的data-mode属性，触发滑动效果
-    const toggleContainer = document.querySelector('.schedule-todo-wrap-toggle');
-    if (toggleContainer) {
-        toggleContainer.setAttribute('data-mode', mode);
-    }
-    
+
+    // 更新单按钮状态与文案
+    updateScheduleTodoWrapToggleLabel(mode);
+
     // 应用模式到所有chips wrap
     const chipsWraps = document.querySelectorAll('.schedule-todo-chips-wrap');
     chipsWraps.forEach(wrap => {
@@ -9240,7 +9245,7 @@ function setScheduleTodoWrapMode(mode) {
             wrap.style.overflowX = 'auto';
         }
     });
-    
+
     // 保存到localStorage
     localStorage.setItem('scheduleTodoWrapMode', mode);
 }
