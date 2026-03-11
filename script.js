@@ -3270,24 +3270,13 @@ function updateRecordStatusCount() {
     const countEl = document.getElementById('recordStatusCount');
     if (!wrap || !countEl) return;
     const checked = Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked'))
-        .map(cb => cb.value)
-        .filter(v => v !== 'all');
+        .map(cb => cb.value);
     countEl.textContent = checked.length > 0 ? ('已选 ' + checked.length) : '';
 }
 
 function onRecordStatusChange() {
     const wrap = document.getElementById('recordStatusFilter');
     if (!wrap) return;
-    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
-    const others = wrap.querySelectorAll('input[type="checkbox"][value!="all"]');
-    const checkedOthers = Array.from(others).filter(cb => cb.checked);
-    if (allBox) {
-        if (checkedOthers.length === 0) {
-            allBox.checked = true;
-        } else {
-            allBox.checked = false;
-        }
-    }
     updateRecordStatusCount();
     updateRecordFilterBadge();
 }
@@ -3296,15 +3285,13 @@ function selectAllRecordStatuses() {
     const wrap = document.getElementById('recordStatusFilter');
     if (!wrap) return;
     wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
-    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
-    if (allBox) allBox.checked = false;
     updateRecordStatusCount();
 }
 
 function clearRecordStatuses() {
     const wrap = document.getElementById('recordStatusFilter');
     if (!wrap) return;
-    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === 'all'; });
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
     updateRecordStatusCount();
 }
 
@@ -3312,12 +3299,8 @@ function invertRecordStatuses() {
     const wrap = document.getElementById('recordStatusFilter');
     if (!wrap) return;
     wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        if (cb.value === 'all') return;
         cb.checked = !cb.checked;
     });
-    const othersChecked = Array.from(wrap.querySelectorAll('input[type="checkbox"][value!="all"]')).some(cb => cb.checked);
-    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
-    if (allBox) allBox.checked = !othersChecked;
     updateRecordStatusCount();
 }
 
@@ -3342,7 +3325,7 @@ function resetRecordFilters() {
     if (startDate) startDate.value = '';
     if (endDate) endDate.value = '';
     if (statusFilter) {
-        statusFilter.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === 'all'; });
+        statusFilter.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
     }
     updateRecordStatusCount();
     if (minPrice) minPrice.value = '';
@@ -5382,24 +5365,13 @@ function updateStatsStatusCount() {
     const countEl = document.getElementById('statsStatusCount');
     if (!wrap || !countEl) return;
     const checked = Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked'))
-        .map(cb => cb.value)
-        .filter(v => v !== 'all');
+        .map(cb => cb.value);
     countEl.textContent = checked.length > 0 ? ('已选 ' + checked.length) : '';
 }
 
 function onStatsStatusChange() {
     const wrap = document.getElementById('statsStatusFilter');
     if (!wrap) return;
-    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
-    const others = wrap.querySelectorAll('input[type="checkbox"][value!="all"]');
-    const checkedOthers = Array.from(others).filter(cb => cb.checked);
-    if (allBox) {
-        if (checkedOthers.length === 0) {
-            allBox.checked = true;
-        } else {
-            allBox.checked = false;
-        }
-    }
     updateStatsStatusCount();
     updateStatsFilterBadge();
 }
@@ -5408,15 +5380,13 @@ function selectAllStatsStatuses() {
     const wrap = document.getElementById('statsStatusFilter');
     if (!wrap) return;
     wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
-    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
-    if (allBox) allBox.checked = false;
     updateStatsStatusCount();
 }
 
 function clearStatsStatuses() {
     const wrap = document.getElementById('statsStatusFilter');
     if (!wrap) return;
-    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === 'all'; });
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
     updateStatsStatusCount();
 }
 
@@ -5424,12 +5394,8 @@ function invertStatsStatuses() {
     const wrap = document.getElementById('statsStatusFilter');
     if (!wrap) return;
     wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        if (cb.value === 'all') return;
         cb.checked = !cb.checked;
     });
-    const othersChecked = Array.from(wrap.querySelectorAll('input[type="checkbox"][value!="all"]')).some(cb => cb.checked);
-    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
-    if (allBox) allBox.checked = !othersChecked;
     updateStatsStatusCount();
 }
 
@@ -5452,7 +5418,7 @@ function resetStatsFilters() {
     if (amountEl) amountEl.value = 'finalTotal';
     if (giftEl) giftEl.value = 'exclude';
     if (statusEl) {
-        statusEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === 'all'; });
+        statusEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
     }
     updateStatsStatusCount();
     if (overdueEl) overdueEl.value = 'all';

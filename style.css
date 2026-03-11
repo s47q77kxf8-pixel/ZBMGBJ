@@ -5640,13 +5640,28 @@ input:checked + .toggle-slider:before {
 }
 
 .filter-checkbox-list {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.3rem 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
     padding: 0.5rem;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--card-bg);
+}
+
+.filter-checkbox-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.3rem;
+    margin-bottom: 0.3rem;
+}
+
+.filter-checkbox {
+    font-size: 0.85rem;
+}
+
+.filter-checkbox-divider {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
 }
 
 .filter-checkbox-actions {
