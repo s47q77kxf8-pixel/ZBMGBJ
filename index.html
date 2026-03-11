@@ -503,7 +503,26 @@
                         </div>
                     </div>
                 </div>
-                <div class="section">
+                <div class="section project-info-section">
+                    <h2>企划信息</h2>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="projectName">企划名</label>
+                            <input type="text" id="projectName" placeholder="请输入企划名（可填中/外文）">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="projectOrigin">原作（IP）</label>
+                            <input type="text" id="projectOrigin" placeholder="请输入原作（IP）">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="characterName">角色</label>
+                            <input type="text" id="characterName" placeholder="请输入角色名（可填中/外文）">
+                        </div>
+                    </div>
+                </div>
+                <div class="section settings-section">
                     <div class="section-title-row d-flex justify-between items-center">
                         <h2>设置选项</h2>
                         <div class="template-fill-wrap">
@@ -820,7 +839,7 @@
                                     <div class="form-row">
                                         <div class="form-group">
                                             <label for="receiptOrderNotification">标题后文本</label>
-                                            <input type="text" id="receiptOrderNotification" placeholder="例如：单主ID，你有一份订单请查收~" onchange="updateReceiptInfo('orderNotification', this.value)">
+                                            <input type="text" id="receiptOrderNotification" placeholder="例如：单主ID，你有一份委托报价请查收~" onchange="updateReceiptInfo('orderNotification', this.value)">
                                         </div>
                                     </div>
                                     <div class="form-row">
@@ -1383,24 +1402,32 @@
                                     </div>
                                 </div>
                                 <div class="filter-section">
-                                    <label class="filter-label">状态 <span class="filter-selected-count" id="recordStatusCount"></span></label>
+                                    <label class="filter-label">状态&标签 <span class="filter-selected-count" id="recordStatusCount"></span></label>
                                     <div class="filter-checkbox-actions">
                                         <button type="button" class="btn secondary small" onclick="selectAllRecordStatuses()">全选</button>
                                         <button type="button" class="btn secondary small" onclick="invertRecordStatuses()">反选</button>
-                                        <button type="button" class="btn secondary small" onclick="clearRecordStatuses()">只保留全部</button>
                                     </div>
                                     <div id="recordStatusFilter" class="filter-checkbox-list">
-                                        <label class="filter-checkbox"><input type="checkbox" value="all" checked onchange="onRecordStatusChange()">全部</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="待排单" onchange="onRecordStatusChange()">待排单</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="未开始" onchange="onRecordStatusChange()">未开始</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="进行中" onchange="onRecordStatusChange()">进行中</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已完成" onchange="onRecordStatusChange()">已完成</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已逾期" onchange="onRecordStatusChange()">已逾期</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已结单" onchange="onRecordStatusChange()">已结单</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已撤单" onchange="onRecordStatusChange()">已撤单</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="有废稿" onchange="onRecordStatusChange()">有废稿</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已收定" onchange="onRecordStatusChange()">已收定</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="占位单" onchange="onRecordStatusChange()">占位单</label>
+                                        <div class="filter-checkbox-divider">状态</div>
+                                        <div class="filter-checkbox-row">
+                                            <label class="filter-checkbox"><input type="checkbox" value="待排单" onchange="onRecordStatusChange()">待排单</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="未开始" onchange="onRecordStatusChange()">未开始</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="进行中" onchange="onRecordStatusChange()">进行中</label>
+                                        </div>
+                                        <div class="filter-checkbox-row">
+                                            <label class="filter-checkbox"><input type="checkbox" value="已完成" onchange="onRecordStatusChange()">已完成</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="已逾期" onchange="onRecordStatusChange()">已逾期</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="已结单" onchange="onRecordStatusChange()">已结单</label>
+                                        </div>
+                                        <div class="filter-checkbox-row">
+                                            <label class="filter-checkbox"><input type="checkbox" value="已撤单" onchange="onRecordStatusChange()">已撤单</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="有废稿" onchange="onRecordStatusChange()">有废稿</label>
+                                        </div>
+                                        <div class="filter-checkbox-divider">标签</div>
+                                        <div class="filter-checkbox-row">
+                                            <label class="filter-checkbox"><input type="checkbox" value="已收定" onchange="onRecordStatusChange()">已收定</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="占位单" onchange="onRecordStatusChange()">占位单</label>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="filter-section">
@@ -1508,10 +1535,10 @@
                                         <option value="timestamp">按记录时间</option>
                                         <option value="deadline">按截稿日</option>
                                     </select>
-                                    <small class="text-gray">按记录时间：按下单时间筛选与聚合；按截稿日：按截稿时间筛选与聚合（无截稿日的订单不参与）</small>
+                                    <small class="text-gray">按记录时间：按下单时间筛选与聚合；按截稿日：按截稿时间筛选与聚合（无截稿日的企划不参与）</small>
                                 </div>
                                 <div class="filter-section">
-                                    <label class="filter-label">金额口径（订单）</label>
+                                    <label class="filter-label">金额口径（企划）</label>
                                     <select id="statsAmountBasis" class="filter-select" onchange="onStatsFilterChange()">
                                         <option value="finalTotal">实付 (finalTotal)</option>
                                         <option value="totalProductsPrice">制品价 (totalProductsPrice)</option>
@@ -1532,27 +1559,35 @@
                                         <option value="all">包含修改截稿日</option>
                                         <option value="strict">仅原始截稿日</option>
                                     </select>
-                                    <small class="text-gray">包含修改截稿日：修改过截稿日的订单也计入曾经逾期；仅原始截稿日：仅按首次设置的截稿日判断</small>
+                                    <small class="text-gray">包含修改截稿日：修改过截稿日的企划也计入曾经逾期；仅原始截稿日：仅按首次设置的截稿日判断</small>
                                 </div>
                                 <div class="filter-section">
-                                    <label class="filter-label">订单状态 <span class="filter-selected-count" id="statsStatusCount"></span></label>
+                                    <label class="filter-label">状态&标签 <span class="filter-selected-count" id="statsStatusCount"></span></label>
                                     <div class="filter-checkbox-actions">
                                         <button type="button" class="btn secondary small" onclick="selectAllStatsStatuses()">全选</button>
                                         <button type="button" class="btn secondary small" onclick="invertStatsStatuses()">反选</button>
-                                        <button type="button" class="btn secondary small" onclick="clearStatsStatuses()">只保留全部</button>
                                     </div>
                                     <div id="statsStatusFilter" class="filter-checkbox-list">
-                                        <label class="filter-checkbox"><input type="checkbox" value="all" checked onchange="onStatsStatusChange()">全部</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="待排单" onchange="onStatsStatusChange()">待排单</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="未开始" onchange="onStatsStatusChange()">未开始</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="进行中" onchange="onStatsStatusChange()">进行中</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已完成" onchange="onStatsStatusChange()">已完成</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已逾期" onchange="onStatsStatusChange()">已逾期</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已撤单" onchange="onStatsStatusChange()">已撤单</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="有废稿" onchange="onStatsStatusChange()">有废稿</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已结单" onchange="onStatsStatusChange()">已结单</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="已收定" onchange="onStatsStatusChange()">已收定</label>
-                                        <label class="filter-checkbox"><input type="checkbox" value="占位单" onchange="onStatsStatusChange()">占位单</label>
+                                        <div class="filter-checkbox-divider">状态</div>
+                                        <div class="filter-checkbox-row">
+                                            <label class="filter-checkbox"><input type="checkbox" value="待排单" onchange="onStatsStatusChange()">待排单</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="未开始" onchange="onStatsStatusChange()">未开始</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="进行中" onchange="onStatsStatusChange()">进行中</label>
+                                        </div>
+                                        <div class="filter-checkbox-row">
+                                            <label class="filter-checkbox"><input type="checkbox" value="已完成" onchange="onStatsStatusChange()">已完成</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="已逾期" onchange="onStatsStatusChange()">已逾期</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="已结单" onchange="onStatsStatusChange()">已结单</label>
+                                        </div>
+                                        <div class="filter-checkbox-row">
+                                            <label class="filter-checkbox"><input type="checkbox" value="已撤单" onchange="onStatsStatusChange()">已撤单</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="有废稿" onchange="onStatsStatusChange()">有废稿</label>
+                                        </div>
+                                        <div class="filter-checkbox-divider">标签</div>
+                                        <div class="filter-checkbox-row">
+                                            <label class="filter-checkbox"><input type="checkbox" value="已收定" onchange="onStatsStatusChange()">已收定</label>
+                                            <label class="filter-checkbox"><input type="checkbox" value="占位单" onchange="onStatsStatusChange()">占位单</label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1564,7 +1599,7 @@
                     </div>
                     <details class="stats-note-details">
                         <summary class="stats-note-summary">说明</summary>
-                        <p class="stats-note text-gray">时间口径可选「按记录时间」或「按截稿日」；选截稿日时时间范围与趋势均按截稿日统计。选择本月/本年时显示环比上月/去年。赠品「按0元/按原价」仅影响制品项与金额贡献，不代表实收。已结算订单按 settlement 实际金额统计。Top 制品金额为报价明细，非实收。</p>
+                        <p class="stats-note text-gray">时间口径可选「按记录时间」或「按截稿日」；选截稿日时时间范围与趋势均按截稿日统计。选择本月/本年时显示环比上月/去年。赠品「按0元/按原价」仅影响制品项与金额贡献，不代表实收。已结算企划按 settlement 实际金额统计。Top 制品金额为报价明细，非实收。</p>
                     </details>
                     <div id="statsEmptyHint" class="stats-empty-hint d-none" role="status">
                         <!-- 无数据时由 JS 显示 -->
@@ -2143,7 +2178,7 @@
                                         <div class="form-group">
                                             <label for="wasteFixedAmountDefault">默认固定金额（元）</label>
                                             <input type="number" id="wasteFixedAmountDefault" placeholder="如 50" min="0" step="0.01" onchange="updateWasteFixedAmountDefault(this.value)">
-                                            <small class="text-gray">用于「按固定金额」，与订单金额无关</small>
+                                            <small class="text-gray">用于「按固定金额」，与企划金额无关</small>
                                         </div>
                                     </div>
                                     <div class="form-row">
@@ -2422,7 +2457,7 @@
                                     </div>
                                     <div class="settlement-waste-module">
                                         <p class="settlement-step-label">二、参与计算的费用系数</p>
-                                        <p class="settlement-hint">在原订单已有基础上勾选，取值来自原订单，不含同模</p>
+                                        <p class="settlement-hint">在原企划已有基础上勾选，取值来自原企划，不含同模</p>
                                         <div id="settlementCoefficientsIncluded" class="settlement-coefficients-included"></div>
                                         <p class="settlement-waste-detail-summary settlement-waste-receivable-line">废稿费小计：<span id="settlementWasteFeeSubtotal">¥0.00</span></p>
                                     </div>
@@ -2469,7 +2504,7 @@
                                 <div id="settlementWasteFixedAmountWrap" class="settlement-form-block d-none">
                                     <div class="settlement-waste-module">
                                         <p class="settlement-step-label">一、固定金额</p>
-                                        <p class="settlement-hint">与订单金额无关</p>
+                                        <p class="settlement-hint">与企划金额无关</p>
                                         <p class="settlement-waste-detail-summary settlement-waste-receivable-line">废稿费（元，可修改）<input type="number" id="settlementFixedAmountWasteFee" min="0" step="0.01" value="50"></p>
                                     </div>
                                     <div class="settlement-waste-module">
@@ -2528,11 +2563,11 @@
         </main>
     </div>
     <!-- 全局轻提示（toast），用于非阻塞提示“排单已更新”等信息 -->
-    <!-- 订单备注查看弹窗（只读） -->
+    <!-- 企划备注查看弹窗（只读） -->
     <div id="orderRemarkViewModal" class="modal d-none">
         <div class="modal-content modal-content-compact">
             <div class="modal-header">
-                <h3>订单备注</h3>
+                <h3>企划备注</h3>
                 <span class="close" onclick="closeOrderRemarkViewModal()">&times;</span>
             </div>
             <div class="modal-body">
@@ -2540,16 +2575,16 @@
             </div>
         </div>
     </div>
-    <!-- 订单备注弹窗（全局，编辑用） -->
+    <!-- 企划备注弹窗（全局，编辑用） -->
     <div id="orderRemarkModal" class="modal d-none">
         <div class="modal-content modal-content-compact">
             <div class="modal-header">
-                <h3>订单备注</h3>
+                <h3>企划备注</h3>
                 <span class="close" onclick="closeOrderRemarkModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <p class="order-remark-hint text-gray">输入或粘贴单主发的备注后，点击下方<strong>「智能提取」</strong>，可自动识别制品与赠品并填入报价表。</p>
-                <textarea id="orderRemarkText" rows="10" placeholder="粘贴订单备注，再点下方「智能提取」自动识别&#10;&#10;示例：&#10;拍立得 单面 2个&#10;吧唧 10个 双面 带背景&#10;赠品：头像 3个"></textarea>
+                <textarea id="orderRemarkText" rows="10" placeholder="粘贴企划备注，再点下方「智能提取」自动识别&#10;&#10;示例：&#10;拍立得 单面 2个&#10;吧唧 10个 双面 带背景&#10;赠品：头像 3个"></textarea>
             </div>
             <div class="modal-footer">
                 <button type="button" id="smartExtractBtn" class="btn btn-compact primary" onclick="smartParseOrderRemark()" title="根据备注内容自动识别制品、赠品并填入计算表">智能提取</button>
@@ -2590,7 +2625,7 @@
             <div class="history-record-body">
                 <p class="mb-2">请选择如何保存当前报价：</p>
                 <div class="d-flex flex-col gap-2">
-                    <button type="button" class="btn secondary w-full" onclick="calculatorSaveChoiceOverwrite()">覆盖原订单</button>
+                    <button type="button" class="btn secondary w-full" onclick="calculatorSaveChoiceOverwrite()">覆盖原企划</button>
                     <button type="button" class="btn w-full" onclick="calculatorSaveChoiceSaveAsNew()">另存为新排单</button>
                     <button type="button" class="btn secondary w-full" onclick="closeCalculatorSaveChoiceModal()">取消</button>
                 </div>
@@ -2611,7 +2646,7 @@
             <div class="history-record-body">
                 <p class="mb-2">请选择如何保存当前小票：</p>
                 <div class="d-flex flex-col gap-2">
-                    <button type="button" class="btn secondary w-full" onclick="receiptScheduleChoiceOverwrite()">覆盖原订单</button>
+                    <button type="button" class="btn secondary w-full" onclick="receiptScheduleChoiceOverwrite()">覆盖原企划</button>
                     <button type="button" class="btn w-full" onclick="receiptScheduleChoiceSaveAsNew()">另存为新排单</button>
                     <button type="button" class="btn secondary w-full" onclick="closeReceiptScheduleChoiceModal()">取消</button>
                 </div>

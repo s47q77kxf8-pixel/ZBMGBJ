@@ -258,6 +258,38 @@ html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend 
 #calculator #scheduleColorPickerPopover .schedule-color-popover-overlay {
     position: fixed;
     inset: 0;
+}
+
+/* 小票上的企划信息展示 */
+.receipt-project-card {
+    border: 1px dashed var(--receipt-divider-color, #cbd5e0);
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-top: 8px;
+    display: grid;
+    gap: 6px;
+}
+.receipt-project-title {
+    font-weight: 700;
+    text-align: center;
+    color: var(--receipt-title-color, var(--receipt-text));
+    font-size: 12px;
+}
+.receipt-project-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+}
+.receipt-project-label {
+    color: var(--receipt-accent, #4a5568);
+    white-space: nowrap;
+}
+.receipt-project-value {
+    color: var(--receipt-text, #2d3748);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
     background: transparent;
     z-index: 1000;
 }
@@ -2467,13 +2499,13 @@ input:focus, select:focus {
     max-width: 480px;
 }
 
-/* 订单备注弹窗：显示在计算抽屉之上（计算抽屉 z-index 10002） */
+/* 企划备注弹窗：显示在计算抽屉之上（计算抽屉 z-index 10002） */
 #orderRemarkModal,
 #orderRemarkViewModal {
     z-index: 10010;
 }
 
-/* 订单备注查看弹窗：限制高度，内容区可滚动，关闭按钮始终可见 */
+/* 企划备注查看弹窗：限制高度，内容区可滚动，关闭按钮始终可见 */
 #orderRemarkViewModal .modal-content {
     max-height: 85vh;
     display: flex;
@@ -2581,47 +2613,61 @@ input:focus, select:focus {
         min-width: 0;
     }
     
-    /* 设置选项：手机端全部并行，两列网格（用途、加急、不公开展示、折扣、同模、平台均两两并排） */
-    #calculator .section:nth-of-type(2) {
+    /* 企划信息：手机端两列 + 角色单独一行 */
+    #calculator .project-info-section .form-row {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+    }
+    #calculator .project-info-section .form-group {
+        flex: 1 1 calc(50% - 0.25rem) !important;
+        min-width: 0 !important;
+    }
+    #calculator .project-info-section .form-row:last-of-type .form-group {
+        flex: 1 1 100% !important;
+    }
+
+    /* 设置选项：手机端两列网格（用途、加急、不公开展示、折扣、同模、平台均两两并排） */
+    #calculator .settings-section {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 0.5rem;
     }
-    #calculator .section:nth-of-type(2) .section-title-row {
+    #calculator .settings-section .section-title-row {
         grid-column: 1 / -1;
     }
-    #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) {
+    #calculator .settings-section .form-row:not(:last-of-type) {
         display: contents;
     }
-    #calculator .section:nth-of-type(2) .form-row:not(:last-of-type) .form-group {
+    #calculator .settings-section .form-row:not(:last-of-type) .form-group {
         min-width: 0;
     }
     /* 同模优惠单独占一行 */
-    #calculator .section:nth-of-type(2) .form-row:has(#sameModel) {
+    #calculator .settings-section .form-row:has(#sameModel) {
         display: flex !important;
         flex-direction: row !important;
         grid-column: 1 / -1;
     }
-    #calculator .section:nth-of-type(2) .form-row:has(#sameModel) .form-group {
+    #calculator .settings-section .form-row:has(#sameModel) .form-group {
         flex: 1 1 100% !important;
         min-width: 0;
     }
     /* 每制品增加、平台手续费+是否付定金保持单独一行 */
-    #calculator .section:nth-of-type(2) .form-row:last-of-type {
+    #calculator .settings-section .form-row:last-of-type {
         grid-column: 1 / -1;
     }
 
     /* 手机端：每制品增加、平台手续费+是否付定金都单独占一整行 */
-    #calculator .section:nth-of-type(2) #perItemExtraSelectsRow,
-    #calculator .section:nth-of-type(2) .platform-deposit-row {
+    #calculator .settings-section #perItemExtraSelectsRow,
+    #calculator .settings-section .platform-deposit-row {
         grid-column: 1 / -1;
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         gap: 0.5rem;
     }
-    #calculator .section:nth-of-type(2) #perItemExtraSelectsRow .form-group,
-    #calculator .section:nth-of-type(2) .platform-deposit-row .form-group {
+    #calculator .settings-section #perItemExtraSelectsRow .form-group,
+    #calculator .settings-section .platform-deposit-row .form-group {
         flex: 1 1 0% !important;
         min-width: 0 !important;
     }
@@ -6967,17 +7013,49 @@ input:checked + .toggle-slider:before {
     color: var(--text-light);
 }
 .schedule-todo-card-status {
-    margin-left: auto;
     font-size: 0.65rem;
     padding: 0.1rem 0.4rem;
     border-radius: 999px;
     font-weight: 600;
     flex-shrink: 0;
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+.schedule-todo-card-right {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.schedule-todo-card-tag-right {
+    margin-left: 0;
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    line-height: 1;
+    border-width: 0;
+    box-sizing: border-box;
 }
 .schedule-todo-card-products {
     display: block;
     min-width: 0;
     padding-left: 0.7rem;
+}
+
+.schedule-todo-card-project {
+    margin-top: 4px;
+    padding-left: 0.7rem;
+    font-size: 0.72rem;
+    color: var(--text-light);
+    line-height: 1.4;
+    word-break: break-all;
+}
+
+.schedule-todo-card-project .project-title-strong {
+    color: var(--text-color);
+    font-weight: 600;
 }
 
 .schedule-todo-chips-wrap {
@@ -8341,6 +8419,17 @@ html.theme-dark .settlement-preview {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.record-item-project {
+    font-size: 0.72rem;
+    color: var(--text-light);
+    line-height: 1.4;
+    word-break: break-all;
+}
+
+.record-item-project .project-title-strong {
+    color: var(--text-color);
+    font-weight: 600;
+}
 .record-item-date {
     font-size: 0.72rem;
     color: var(--text-light);
@@ -8434,7 +8523,7 @@ html.theme-dark .settlement-preview {
 
 .schedule-todo-chip.schedule-todo-placeholder {
     background: rgba(245, 158, 11, 0.12);
-    border: 1px solid rgba(245, 158, 11, 0.35);
+    border: none;
     color: #b45309;
 }
 
@@ -9580,6 +9669,14 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
     .schedule-todo-card-status {
         font-size: 0.55rem;
         padding: 0.06rem 0.28rem;
+    }
+    .schedule-todo-card-right {
+        gap: 0.12rem;
+    }
+    .schedule-todo-card-tag {
+        font-size: 0.52rem;
+        padding: 0.04rem 0.22rem;
+        margin-left: 0;
     }
     .schedule-todo-row {
         font-size: 0.8rem;

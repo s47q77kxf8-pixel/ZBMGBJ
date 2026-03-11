@@ -9,8 +9,8 @@ let history = [];
 let productIdCounter = 0;
 let giftIdCounter = 0;
 let selectedHistoryIds = new Set(); // 存储选中的历史记录ID
-let statsFocusedOrderIds = null; // 统计页“查看订单”后，记录页仅显示这些订单
-let statsFocusedLabel = ''; // 统计页“查看订单”后的筛选说明
+let statsFocusedOrderIds = null; // 统计页“查看企划”后，记录页仅显示这些企划
+let statsFocusedLabel = ''; // 统计页“查看企划”后的筛选说明
 let templates = []; // 存储模板列表
 let selectedPerItemExtraFeeIds = []; // 计算页全单级“每制品新增”勾选
 let expandedCategories = new Set(); // 存储展开的分类状态
@@ -265,7 +265,7 @@ const defaultSettings = {
         contact: '',      // 联系方式
         defaultDuration: 7                // 默认工期（天）
     },
-    orderRemark: '',      // 订单备注（设置页增加备注弹窗内容）
+    orderRemark: '',      // 企划备注（设置页增加备注弹窗内容）
     // 用途系数：自用/无盈利 1，同人商用 2，买断 3，企业/书店 5
     usageCoefficients: {
         personal: { value: 1, name: '自用/无盈利' },
@@ -354,7 +354,7 @@ const defaultSettings = {
         headerImageWidth: 300,  // 头部图片显示宽度（最大400px）
         titleText: 'LIST',  // 标题文本
         receiptInfo: {  // 小票信息行
-            orderNotification: '',  // 订单通知
+            orderNotification: '',  // 企划通知
             showStartTime: true,  // 是否显示开始时间
             showDeadline: true,  // 是否显示截稿时间
             showOrderTime: true,  // 是否体现下单时间
@@ -471,7 +471,7 @@ function toggleThemeLongPress(event) {
 
 // 初始化应用
 function init() {
-    // 加载未同步订单列表
+    // 加载未同步企划列表
     loadUnsyncedOrders();
     
     // 昼夜模式：先应用主题，再监听系统偏好
@@ -3116,12 +3116,6 @@ function getRecordProgressStatus(item) {
     if (item.settlement && isCancelSettlementType(item.settlement)) {
         return { text: '已撤单', className: 'record-status--cancelled', pending: false, overdue: false };
     }
-    if (item && item.isSchedulePlaceholder) {
-        return { text: '占位单', className: 'record-status--placeholder', pending: false, overdue: false };
-    }
-    if (item && item.depositReceived != null && Number(item.depositReceived) > 0) {
-        return { text: '已收定', className: 'record-status--deposit', pending: false, overdue: false };
-    }
     if (item.settlement && item.settlement.type === 'waste_fee') {
         return { text: '有废稿', className: 'record-status--waste', pending: false, overdue: false };
     }
@@ -3441,7 +3435,7 @@ function getFilteredHistoryForRecord() {
         filteredHistory = filteredHistory.filter(item => filters.statusFilters.indexOf(getRecordProgressStatus(item).text) !== -1);
     }
 
-    // 统计页“查看订单”聚焦：仅显示命中的订单
+    // 统计页“查看企划”聚焦：仅显示命中的企划
     if (statsFocusedOrderIds && statsFocusedOrderIds.size > 0) {
         filteredHistory = filteredHistory.filter(function (item) {
             return item && statsFocusedOrderIds.has(Number(item.id));
@@ -3494,7 +3488,7 @@ function applyRecordFilters() {
             hint.style.alignItems = 'center';
             hint.style.gap = '8px';
             var labelText = statsFocusedLabel ? ('：' + escapeHtml(statsFocusedLabel)) : '';
-            hint.innerHTML = '<span>当前仅显示统计筛选的 ' + statsFocusedOrderIds.size + ' 条订单' + labelText + '</span><button type="button" class="btn secondary small" onclick="clearStatsFocusedOrders()">恢复全部</button>';
+            hint.innerHTML = '<span>当前仅显示统计筛选的 ' + statsFocusedOrderIds.size + ' 条企划' + labelText + '</span><button type="button" class="btn secondary small" onclick="clearStatsFocusedOrders()">恢复全部</button>';
             parent.insertBefore(hint, container);
         }
     }
@@ -3512,6 +3506,18 @@ function applyRecordFilters() {
         const clientDisplay = platformLabel ? (platformLabel + ' ' + clientId) : clientId;
         const shortDate = formatRecordDotDate(item && item.timestamp);
         const scheduleRange = formatRecordScheduleRange(item);
+        const projectName = item && item.projectName ? escapeHtml(String(item.projectName).trim()) : '';
+        const projectOrigin = item && item.projectOrigin ? escapeHtml(String(item.projectOrigin).trim()) : '';
+        const characterName = item && item.characterName ? escapeHtml(String(item.characterName).trim()) : '';
+        const projectSummary = (function () {
+            if (!projectName && !projectOrigin && !characterName) return '';
+            const titlePart = projectName ? projectName : '';
+            const ipPart = projectOrigin ? projectOrigin : '';
+            const rolePart = characterName ? characterName : '';
+            const leftWrapped = titlePart ? ('<span class="project-title-strong">' + titlePart + '</span> »') : '';
+            const rightPart = [ipPart, rolePart].filter(Boolean).join(' - ');
+            return [leftWrapped, rightPart].filter(Boolean).join(' ');
+        })();
         const receivableAmount = item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal);
         var actualAmount = receivableAmount;
         if (item && item.settlement && item.settlement.amount != null) {
@@ -3536,6 +3542,7 @@ function applyRecordFilters() {
                 <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})" onclick="event.stopPropagation()">
                 <div class="record-item-client-wrap">
                     <span class="record-item-client">${clientDisplay}</span>
+                    ${projectSummary ? `<div class="record-item-project">${projectSummary}</div>` : ''}
                     <div class="record-item-meta">
                         <span class="record-item-date">${shortDate}</span>
                         <span class="record-item-meta-sep">|</span>
@@ -4274,7 +4281,7 @@ function getStatsDataset(historySource, filters) {
     const categoryMap = {};
     let categoryMainCountTotal = 0;
 
-    // 记录分组对应的订单ID（用于统计页“查看订单”）
+    // 记录分组对应的企划ID（用于统计页“查看企划”）
     function pushOrderId(bucket, orderId) {
         if (!bucket) return;
         if (!Array.isArray(bucket.orderIds)) bucket.orderIds = [];
@@ -4321,7 +4328,7 @@ function getStatsDataset(historySource, filters) {
         }
 
         const orderStatus = getStatsOrderStatus(item);
-        // 已完成/已结单订单兜底视为全部完成，避免趋势完成率异常为 0
+        // 已完成/已结单企划兜底视为全部完成，避免趋势完成率异常为 0
         if ((orderStatus === '已完成' || orderStatus === '已结单') && actualItemTotal > 0) {
             nDone = Math.max(nDone, actualItemTotal);
         }
@@ -4329,7 +4336,7 @@ function getStatsDataset(historySource, filters) {
         itemTotal += actualItemTotal;
         itemDone += nDone;
         if (orderStatus === '已完成') orderDoneCount++;
-        // 对于已结单的订单，只有当所有制品都完成时才计入制品全完成
+        // 对于已结单的企划，只有当所有制品都完成时才计入制品全完成
         else if (orderStatus === '已结单') {
             const states = item.productDoneStates || [];
             const total = states.length;
@@ -4582,7 +4589,7 @@ function getStatsDataset(historySource, filters) {
         });
 
         // ===== 按制品项汇总（按制品名，如普通吧唧/拍立得） =====
-        // 金额口径联动：先按制品口径算订单基准金额，再按当前金额口径的订单金额按比例分摊到各制品项
+        // 金额口径联动：先按制品口径算企划基准金额，再按当前金额口径的企划金额按比例分摊到各制品项
         const orderCategoryRows = [];
         let orderCategoryBaseAmountTotal = 0;
 
@@ -4812,7 +4819,7 @@ function renderStatsComparison(filters, totals) {
     var o = fmt(comp.changeOrderPct);
     var r = fmt(comp.changeRevenuePct);
     var label = filters.timeRange === 'thisMonth' ? '环比上月' : '环比去年';
-    wrap.innerHTML = '<p class="stats-comparison">' + label + '：订单 <span class="' + o.cls + '">' + o.text + '</span>，收入 <span class="' + r.cls + '">' + r.text + '</span></p>';
+    wrap.innerHTML = '<p class="stats-comparison">' + label + '：企划 <span class="' + o.cls + '">' + o.text + '</span>，收入 <span class="' + r.cls + '">' + r.text + '</span></p>';
 }
 
 function clearStatsFocusedOrders(silent) {
@@ -4825,7 +4832,7 @@ function clearStatsFocusedOrders(silent) {
 function openStatsDistributionOrders(orderIds, focusLabel) {
     var ids = Array.isArray(orderIds) ? orderIds.map(function (x) { return Number(x); }).filter(function (x) { return isFinite(x); }) : [];
     if (!ids.length) {
-        alert('未找到对应订单');
+        alert('未找到对应企划');
         return;
     }
     statsFocusedOrderIds = new Set(ids);
@@ -4837,7 +4844,7 @@ function openStatsDistributionOrders(orderIds, focusLabel) {
     } catch (e) {}
     if (typeof applyRecordFilters === 'function') applyRecordFilters();
     if (typeof updateRecordBatchActionsVisibility === 'function') updateRecordBatchActionsVisibility();
-    if (typeof showGlobalToast === 'function') showGlobalToast('已切换为仅显示这 ' + ids.length + ' 条统计订单');
+    if (typeof showGlobalToast === 'function') showGlobalToast('已切换为仅显示这 ' + ids.length + ' 条统计企划');
 }
 
 function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, discountByReason) {
@@ -4864,7 +4871,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         if (!ids.length) return '';
         var encoded = encodeURIComponent(JSON.stringify(ids));
         var encodedLabel = encodeURIComponent(label || '');
-        return '<button type="button" class="stats-row-action" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '" aria-label="查看订单">' +
+        return '<button type="button" class="stats-row-action" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '" aria-label="查看企划">' +
             '<svg class="icon"><use href="#i-filter"></use></svg>' +
             '</button>';
     };
@@ -4954,9 +4961,9 @@ function renderStatsKpis(totals) {
     const discountTotalDisplay = discountTotalVal > 0 ? ('-¥' + discountTotalVal.toFixed(2)) : fmt(discountTotalVal, true);
     grid.innerHTML = `
         <div class="kpi-section-title">核心指标</div>
-        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('订单数')}" role="button" tabindex="0"><div class="kpi-label">订单数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
-        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('总收入')}" role="button" tabindex="0"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
-        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('客单价')}" role="button" tabindex="0"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('企划数')}" role="button" tabindex="0"><div class="kpi-label">企划数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('总收入')}" role="button" tabindex="0"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('客单价')}" role="button" tabindex="0"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-card kpi-card-primary">
             <div class="kpi-label">制品项<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
             <div class="kpi-value kpi-value-compare" id="kpiItemTotalCompare">${totals.productItemCountWithSameModel || 0} / ${totals.productItemCountWithoutSameModel || 0}</div>
@@ -4967,15 +4974,15 @@ function renderStatsKpis(totals) {
         </div>
         <div class="kpi-section-title">进度与结算</div>
         <div class="kpi-card"><div class="kpi-label">制品项完成率</div><div class="kpi-value" id="kpiItemDoneRate">${totals.itemDone}/${fmt(totals.itemDoneRate)}%</div></div>
-        <div class="kpi-card"><div class="kpi-label">订单完结率</div><div class="kpi-value" id="kpiOrderSettledRate">${totals.orderSettledCount || 0}/${fmt(totals.orderSettledRate || 0)}%</div></div>
-        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.overdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('逾期')}" role="button" tabindex="0"><div class="kpi-label">逾期</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
-        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.everOverdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('曾经逾期')}" role="button" tabindex="0"><div class="kpi-label">曾经逾期</div><div class="kpi-value" id="kpiEverOverdueOrders">${totals.everOverdueOrderCount ?? 0}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
-        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.cancelOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('撤单')}" role="button" tabindex="0"><div class="kpi-label">撤单</div><div class="kpi-value kpi-value-small" id="kpiCancel">${totals.cancelOrderCount || 0} 单 / ${fmt(totals.cancelAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
-        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.wasteOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('废稿')}" role="button" tabindex="0"><div class="kpi-label">废稿</div><div class="kpi-value kpi-value-small" id="kpiWaste">${totals.wasteOrderCount || 0} 单 / ${fmt(totals.wasteAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card"><div class="kpi-label">企划完结率</div><div class="kpi-value" id="kpiOrderSettledRate">${totals.orderSettledCount || 0}/${fmt(totals.orderSettledRate || 0)}%</div></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.overdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('逾期')}" role="button" tabindex="0"><div class="kpi-label">逾期</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.everOverdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('曾经逾期')}" role="button" tabindex="0"><div class="kpi-label">曾经逾期</div><div class="kpi-value" id="kpiEverOverdueOrders">${totals.everOverdueOrderCount ?? 0}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.cancelOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('撤单')}" role="button" tabindex="0"><div class="kpi-label">撤单</div><div class="kpi-value kpi-value-small" id="kpiCancel">${totals.cancelOrderCount || 0} 单 / ${fmt(totals.cancelAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.wasteOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('废稿')}" role="button" tabindex="0"><div class="kpi-label">废稿</div><div class="kpi-value kpi-value-small" id="kpiWaste">${totals.wasteOrderCount || 0} 单 / ${fmt(totals.wasteAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-section-title">费用</div>
-        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.otherFeesOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('其他费用')}" role="button" tabindex="0"><div class="kpi-label">其他费用</div><div class="kpi-value" id="kpiOtherFees">${fmt(totals.totalOtherFeesSum || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
-        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.platformFeeOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('平台费')}" role="button" tabindex="0"><div class="kpi-label">平台费</div><div class="kpi-value" id="kpiPlatformFee">${fmt(totals.totalPlatformFeeSum || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
-        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.discountOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('折扣合计')}" role="button" tabindex="0"><div class="kpi-label">折扣合计</div><div class="kpi-value kpi-value-small" id="kpiDiscountTotal">${discountTotalDisplay}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看订单</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.otherFeesOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('其他费用')}" role="button" tabindex="0"><div class="kpi-label">其他费用</div><div class="kpi-value" id="kpiOtherFees">${fmt(totals.totalOtherFeesSum || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.platformFeeOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('平台费')}" role="button" tabindex="0"><div class="kpi-label">平台费</div><div class="kpi-value" id="kpiPlatformFee">${fmt(totals.totalPlatformFeeSum || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.discountOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('折扣合计')}" role="button" tabindex="0"><div class="kpi-label">折扣合计</div><div class="kpi-value kpi-value-small" id="kpiDiscountTotal">${discountTotalDisplay}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
     `;
     let orderRateEl = document.getElementById('kpiOrderDoneRate');
     if (!orderRateEl) {
@@ -4984,7 +4991,7 @@ function renderStatsKpis(totals) {
         orderRateEl.id = 'kpiOrderDoneRate';
         grid.parentNode.insertBefore(orderRateEl, grid.nextSibling);
     }
-    orderRateEl.textContent = '制品全完成率：' + fmt(totals.orderDoneRate) + '%（制品全完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）；订单完结率：' + fmt(totals.orderSettledRate || 0) + '%（已结算 ' + (totals.orderSettledCount || 0) + ' / ' + totals.orderCount + '）';
+    orderRateEl.textContent = '制品全完成率：' + fmt(totals.orderDoneRate) + '%（制品全完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）；企划完结率：' + fmt(totals.orderSettledRate || 0) + '%（已结算 ' + (totals.orderSettledCount || 0) + ' / ' + totals.orderCount + '）';
 
     bindStatsCardOrderLinks(grid);
 }
@@ -5007,8 +5014,8 @@ function bindStatsCardOrderLinks(container) {
                 var focusLabel = labelEncoded ? decodeURIComponent(labelEncoded) : '';
                 openStatsDistributionOrders(ids, focusLabel);
             } catch (e) {
-                console.error('解析订单列表失败:', e);
-                alert('订单列表解析失败');
+                console.error('解析企划列表失败:', e);
+                alert('企划列表解析失败');
             }
         });
         card.addEventListener('keydown', function (e) {
@@ -5123,7 +5130,7 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     html += '<div class="stats-bar-head">';
     html += '<span class="stats-bar-head-label">日期</span>';
     html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-rev"></i>收入</span>';
-    html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-ord"></i>订单</span>';
+    html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-ord"></i>企划</span>';
     html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-item"></i>制品</span>';
     html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-rate"></i>完成率</span>';
     html += '</div>';
@@ -5159,7 +5166,7 @@ function renderStatsTopLists(byClient, byProduct) {
     const clientByRevenue = byClient.slice();
     let html = '<h3 class="stats-block-title">Top 单主</h3>';
     html += '<div class="stats-top-header">';
-    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small active" data-tab="clientOrders">按订单数</button><button type="button" class="btn secondary small" data-tab="clientRevenue">按金额</button></div>';
+    html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small active" data-tab="clientOrders">按企划数</button><button type="button" class="btn secondary small" data-tab="clientRevenue">按金额</button></div>';
     html += '<div class="stats-top-more-wrap">';
     if (clientByOrders.length > defaultShow) {
         html += '<button type="button" class="btn secondary small stats-top-more-btn" data-list="clientOrders" id="statsTopMoreBtnOrders">更多</button>';
@@ -5219,7 +5226,7 @@ function renderStatsTopLists(byClient, byProduct) {
             }
         });
     });
-    // 初始只显示「按订单数」对应的更多按钮，「按金额」的更多按钮先隐藏
+    // 初始只显示「按企划数」对应的更多按钮，「按金额」的更多按钮先隐藏
     var revenueBtn = document.getElementById('statsTopMoreBtnRevenue');
     if (revenueBtn) revenueBtn.classList.add('d-none');
     container.querySelectorAll('.stats-top-more-btn').forEach(btn => {
@@ -5551,7 +5558,7 @@ function applyStatsFilters() {
     var emptyHint = document.getElementById('statsEmptyHint');
     if (emptyHint) {
         if (dataset.filteredRecords.length === 0) {
-            emptyHint.textContent = '当前筛选条件下暂无订单数据';
+            emptyHint.textContent = '当前筛选条件下暂无企划数据';
             emptyHint.classList.remove('d-none');
         } else {
             emptyHint.textContent = '';
@@ -6051,17 +6058,17 @@ function exportStatsToExcel() {
         const summary = [
             ['统计汇总'],
             ['时间口径', f.timeBasis === 'deadline' ? '按截稿日' : '按记录时间'],
-            ['订单数', dataset.totals.orderCount],
+            ['企划数', dataset.totals.orderCount],
             ['总收入', dataset.totals.revenueTotal],
             ['客单价', dataset.totals.aov],
             ['制品项总数', dataset.totals.itemTotal],
             ['制品项完成率(%)', dataset.totals.itemDoneRate],
-            ['制品全完成订单数', dataset.totals.orderDoneCount],
+            ['制品全完成企划数', dataset.totals.orderDoneCount],
             ['制品全完成率(%)', dataset.totals.orderDoneRate],
-            ['逾期订单数', dataset.totals.overdueOrderCount],
-            ['曾经逾期订单数', dataset.totals.everOverdueOrderCount ?? 0],
-            ['已结算订单数', dataset.totals.orderSettledCount || 0],
-            ['订单完结率(%)', dataset.totals.orderSettledRate || 0],
+            ['逾期企划数', dataset.totals.overdueOrderCount],
+            ['曾经逾期企划数', dataset.totals.everOverdueOrderCount ?? 0],
+            ['已结算企划数', dataset.totals.orderSettledCount || 0],
+            ['企划完结率(%)', dataset.totals.orderSettledRate || 0],
             ['撤单数', dataset.totals.cancelOrderCount || 0],
             ['撤单费合计', dataset.totals.cancelAmountTotal || 0],
             ['废稿数', dataset.totals.wasteOrderCount || 0],
@@ -6070,18 +6077,18 @@ function exportStatsToExcel() {
             ['平台费合计', dataset.totals.totalPlatformFeeSum || 0]
         ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), '汇总');
-        var statusData = [['状态', '订单数', '金额合计']];
+        var statusData = [['状态', '企划数', '金额合计']];
         (dataset.byStatus || []).forEach(function (row) {
             if (row.orderCount > 0 || row.amountTotal > 0) statusData.push([row.status, row.orderCount, row.amountTotal]);
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(statusData), '按状态分组');
         if (dataset.byUsage && dataset.byUsage.length > 0) {
-            var usageData = [['用途', '订单数', '金额合计']];
+            var usageData = [['用途', '企划数', '金额合计']];
             dataset.byUsage.forEach(function (row) { usageData.push([row.name, row.orderCount, row.amountTotal]); });
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(usageData), '按用途');
         }
         if (dataset.byUrgent && dataset.byUrgent.length > 0) {
-            var urgentData = [['加急', '订单数', '金额合计']];
+            var urgentData = [['加急', '企划数', '金额合计']];
             dataset.byUrgent.forEach(function (row) { urgentData.push([row.name, row.orderCount, row.amountTotal]); });
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(urgentData), '按加急');
         }
@@ -6090,7 +6097,7 @@ function exportStatsToExcel() {
             dataset.byProcess.forEach(function (row) { processData.push([row.name, row.count, row.feeTotal]); });
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(processData), '按工艺');
         }
-        const clientData = [['单主ID', '订单数', '总金额']];
+        const clientData = [['单主ID', '企划数', '总金额']];
         dataset.byClient.forEach(c => { clientData.push([c.clientId, c.orderCount, c.revenueTotal]); });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clientData), 'Top单主');
         const productData = [['制品名', '次数', '金额贡献']];
@@ -6128,6 +6135,12 @@ function openCalculatorDrawer(skipOrderTimeReset) {
         var orderRemarkTextEl = document.getElementById('orderRemarkText');
         if (orderRemarkTextEl) orderRemarkTextEl.value = '';
         if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
+        var projectNameInput = document.getElementById('projectName');
+        if (projectNameInput) projectNameInput.value = '';
+        var projectOriginInput = document.getElementById('projectOrigin');
+        if (projectOriginInput) projectOriginInput.value = '';
+        var characterNameInput = document.getElementById('characterName');
+        if (characterNameInput) characterNameInput.value = '';
         var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
         if (placeholderToggle) placeholderToggle.checked = false;
         schedulePlaceholderAutoSync = true;
@@ -6695,7 +6708,7 @@ function handleExpectedProductCountInput(value) {
     setExpectedProductCountValue(value, true);
 }
 
-// 计算价格；saveAsNew 为 true 时：另存新单（不覆盖原记录）；skipReceipt 为 true 时：覆盖保存原订单，均不打开小票；openSaveChoiceModal 为 true 时：仅计算并弹出保存方式选择弹窗；onlyRefreshDisplay 为 true 时：仅刷新报价显示（不关抽屉、不打开小票）
+// 计算价格；saveAsNew 为 true 时：另存新单（不覆盖原记录）；skipReceipt 为 true 时：覆盖保存原企划，均不打开小票；openSaveChoiceModal 为 true 时：仅计算并弹出保存方式选择弹窗；onlyRefreshDisplay 为 true 时：仅刷新报价显示（不关抽屉、不打开小票）
 function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefreshDisplay) {
     // 获取单主信息（支持自动生成单主ID：YYYYMMDDXNN）
     const clientIdInputEl = document.getElementById('clientId');
@@ -6736,6 +6749,12 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const contactDisplay = (orderPlatformInput && orderPlatformInput.value) ? String(orderPlatformInput.value).trim() : '';
     const contactInfoEl = document.getElementById('contactInfo');
     const contactInfoValue = (contactInfoEl && contactInfoEl.value) ? String(contactInfoEl.value).trim() : '';
+    const projectNameEl = document.getElementById('projectName');
+    const projectOriginEl = document.getElementById('projectOrigin');
+    const characterNameEl = document.getElementById('characterName');
+    const projectNameValue = projectNameEl ? String(projectNameEl.value || '').trim() : '';
+    const projectOriginValue = projectOriginEl ? String(projectOriginEl.value || '').trim() : '';
+    const characterNameValue = characterNameEl ? String(characterNameEl.value || '').trim() : '';
     
     // 计算其他费用总和
     const otherFeesTotal = Array.isArray(dynamicOtherFees) ? dynamicOtherFees.reduce((sum, fee) => sum + fee.amount, 0) : 0;
@@ -7226,6 +7245,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         isSchedulePlaceholder: isSchedulePlaceholder,
         expectedProductCount: expectedProductCount,
         settlementRulesSnapshot: JSON.parse(JSON.stringify(defaultSettings.settlementRules || {})),
+        projectName: projectNameValue,
+        projectOrigin: projectOriginValue,
+        characterName: characterNameValue,
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
@@ -7260,7 +7282,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         return;
     }
     
-    // 覆盖保存：编辑模式下直接保存原订单，关闭抽屉，不打开小票
+    // 覆盖保存：编辑模式下直接保存原企划，关闭抽屉，不打开小票
     if (skipReceipt && window.editingHistoryId) {
         saveToHistory();
         if (typeof closeCalculatorDrawer === 'function') closeCalculatorDrawer();
@@ -7347,7 +7369,7 @@ function generateQuote() {
     // 检查是否有receiptInfo对象，如果没有则使用默认值
     const receiptInfo = defaultSettings.receiptCustomization.receiptInfo || {};
         
-    // 订单通知
+    // 企划通知
     if (receiptInfo.orderNotification) {
         const orderNotification = receiptInfo.orderNotification.replace('XXX', quoteData.clientId);
         receiptInfoHtml += `<p class="receipt-text-sm receipt-text-sm-center">${orderNotification}</p>`;
@@ -7384,6 +7406,22 @@ function generateQuote() {
     // 自定义文本
     if (receiptInfo.customText) {
         receiptInfoHtml += `<p class="receipt-text-sm">${receiptInfo.customText}</p>`;
+    }
+
+    // 企划信息（有任意字段时显示）
+    if (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName) {
+        receiptInfoHtml += `<div class="receipt-project-card">`;
+        receiptInfoHtml += `<div class="receipt-project-title">企划信息</div>`;
+        if (quoteData.projectName) {
+            receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">企划名</span><span class="receipt-project-value">${String(quoteData.projectName).replace(/</g, '&lt;')}</span></div>`;
+        }
+        if (quoteData.projectOrigin) {
+            receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">原作（IP）</span><span class="receipt-project-value">${String(quoteData.projectOrigin).replace(/</g, '&lt;')}</span></div>`;
+        }
+        if (quoteData.characterName) {
+            receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">角色</span><span class="receipt-project-value">${String(quoteData.characterName).replace(/</g, '&lt;')}</span></div>`;
+        }
+        receiptInfoHtml += `</div>`;
     }
         
     // 可选显示原有的信息（可根据需要启用）
@@ -7973,7 +8011,7 @@ function generateQuote() {
         var st = quoteData.settlement;
         var dep = Number(quoteData.depositReceived || 0);
         if (!isFinite(dep) || dep < 0) dep = 0;
-        // 订单应收口径：优先约定实收（抹零后），其次报价金额（不含平台费）
+        // 企划应收口径：优先约定实收（抹零后），其次报价金额（不含平台费）
         var receivable = Number(quoteData.agreedAmount != null ? quoteData.agreedAmount : (quoteData.totalBeforePlatformFee || 0)) || 0;
         var actual = st.amount != null ? Number(st.amount) : 0;
         if (!isFinite(actual) || actual < 0) actual = 0;
@@ -8071,8 +8109,8 @@ function generateQuote() {
                     });
                 }
 
-                // 合计实收与结算结果（正常结单：订单金额=应收，定金抵扣应收，本次收款，合计实收）
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>订单金额（应收）：</strong></div><div class="receipt-summary-value">¥${receivable.toFixed(2)}</div></div>`;
+                // 合计实收与结算结果（正常结单：企划金额=应收，定金抵扣应收，本次收款，合计实收）
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>企划金额（应收）：</strong></div><div class="receipt-summary-value">¥${receivable.toFixed(2)}</div></div>`;
                 html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalReceived.toFixed(2)}</div></div>`;
 
                 var diff = totalReceived - receivable;
@@ -8637,7 +8675,7 @@ function closeReceiptScheduleChoiceModal() {
     }
 }
 
-// 弹窗中选择「覆盖原订单」
+// 弹窗中选择「覆盖原企划」
 function receiptScheduleChoiceOverwrite() {
     closeReceiptScheduleChoiceModal();
     saveToHistory();
@@ -8670,7 +8708,7 @@ function closeCalculatorSaveChoiceModal() {
     }
 }
 
-// 计算页弹窗中选择「覆盖原订单」
+// 计算页弹窗中选择「覆盖原企划」
 function calculatorSaveChoiceOverwrite() {
     closeCalculatorSaveChoiceModal();
     saveToHistory();
@@ -9163,6 +9201,12 @@ function saveToHistory() {
         var orderRemarkTextEl = document.getElementById('orderRemarkText');
         if (orderRemarkTextEl) orderRemarkTextEl.value = '';
         if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
+        var projectNameInput = document.getElementById('projectName');
+        if (projectNameInput) projectNameInput.value = '';
+        var projectOriginInput = document.getElementById('projectOrigin');
+        if (projectOriginInput) projectOriginInput.value = '';
+        var characterNameInput = document.getElementById('characterName');
+        if (characterNameInput) characterNameInput.value = '';
     }
     
     saveData();
@@ -9314,7 +9358,7 @@ function toggleScheduleNodeDone(checkbox, nodeIdx) {
     if (!item) return;
     
     ensureProductDoneStates(item);
-    const wasAllDoneBefore = isOrderSettled(item); // 这里通常指订单，我们关注制品状态变化
+    const wasAllDoneBefore = isOrderSettled(item); // 这里通常指企划，我们关注制品状态变化
     
     // 更新数据
     setScheduleNodeDone(id, idx, nodeIdx, checkbox.checked);
@@ -9412,14 +9456,14 @@ function setScheduleProductDoneQty(scheduleId, productIndex, doneQty) {
     }
 }
 
-// 订单是否已完结（撤稿/废稿/结单后归档，不再在 todo/日历中显示）
+// 企划是否已完结（撤稿/废稿/结单后归档，不再在 todo/日历中显示）
 function isOrderSettled(item) {
     if (!item || !item.settlement) return false;
     const t = item.settlement.type;
     return t === 'full_refund' || t === 'cancel_with_fee' || t === 'waste_fee' || t === 'normal';
 }
 
-// 某订单在指定日期是否有日计划（dailyPlan 或 nodeDailyPlan）
+// 某企划在指定日期是否有日计划（dailyPlan 或 nodeDailyPlan）
 function hasDailyPlanForDate(item, targetYmd) {
     if (!item || !targetYmd) return false;
     const products = Array.isArray(item.productPrices) ? item.productPrices : [];
@@ -9616,7 +9660,7 @@ function formatYmdCn(dateStr) {
     return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
 }
 
-// 订单制品总数量（按 quantity 求和：吧唧*1 + 拍立的*2 => 3）
+// 企划制品总数量（按 quantity 求和：吧唧*1 + 拍立的*2 => 3）
 function getOrderItemQuantityTotal(item) {
     const products = Array.isArray(item.productPrices) ? item.productPrices : [];
     const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
@@ -9624,7 +9668,7 @@ function getOrderItemQuantityTotal(item) {
     return sum(products) + sum(gifts);
 }
 
-// 订单已完成的制品数量（按 quantity 求和，支持部分完成）
+// 企划已完成的制品数量（按 quantity 求和，支持部分完成）
 function getOrderDoneQuantityTotal(item) {
     ensureProductDoneStates(item);
     const products = Array.isArray(item.productPrices) ? item.productPrices : [];
@@ -10709,7 +10753,7 @@ async function mgLoadIncomingProjectToCalculator(projectId) {
     var deadlineEl = document.getElementById('deadline');
     if (deadlineEl) deadlineEl.value = deadline || '';
 
-    // 订单备注：拼接尺寸信息（方案 A）
+    // 企划备注：拼接尺寸信息（方案 A）
     var sizes = items
         .filter(function (it) { return it && it.size; })
         .map(function (it) {
@@ -10875,7 +10919,20 @@ async function renderScheduleTodoSection() {
         const client = item.clientId || '单主';
         const progress = doneCount + '/' + total;
         const status = getRecordProgressStatus(item);
-        const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
+        const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-status record-status--placeholder schedule-todo-card-status">占位单</span>' : '';
+        const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-status record-status--deposit schedule-todo-card-status">已收定</span>' : '';
+        const projectName = item && item.projectName ? escapeHtml(String(item.projectName).trim()) : '';
+        const projectOrigin = item && item.projectOrigin ? escapeHtml(String(item.projectOrigin).trim()) : '';
+        const characterName = item && item.characterName ? escapeHtml(String(item.characterName).trim()) : '';
+        const projectSummary = (function () {
+            if (!projectName && !projectOrigin && !characterName) return '';
+            const titlePart = projectName ? projectName : '';
+            const ipPart = projectOrigin ? projectOrigin : '';
+            const rolePart = characterName ? characterName : '';
+            const leftWrapped = titlePart ? (titlePart + ' »') : '';
+            const rightPart = [ipPart, rolePart].filter(Boolean).join(' - ');
+            return [leftWrapped, rightPart].filter(Boolean).join(' ');
+        })();
         // 获取正确的圆点颜色
         let dotColor = '#999';
         try {
@@ -10998,9 +11055,13 @@ async function renderScheduleTodoSection() {
             + '      <span class="schedule-todo-card-client">' + client + '</span>'
             + '      <span class="schedule-todo-card-sep-dot">\u00B7</span>'
             + '      <span class="schedule-todo-card-progress">' + progress + '</span>'
-            + '      ' + placeholderTagHtml
-            + '      <span class="record-status ' + status.className + ' schedule-todo-card-status">' + status.text + '</span>'
+            + '      <span class="schedule-todo-card-right">'
+            + '        ' + placeholderTagHtml
+            + '        ' + depositTagHtml
+            + '        <span class="record-status ' + status.className + ' schedule-todo-card-status">' + status.text + '</span>'
+            + '      </span>'
             + '    </div>'
+            + (projectSummary ? ('    <div class="schedule-todo-card-project">' + projectSummary + '</div>') : '')
             + '    <div class="schedule-todo-card-products">'
             + '      <div class="schedule-todo-chips-wrap">' + allChipsHtml + '</div>'
             + '    </div>'
@@ -11774,7 +11835,7 @@ function settlementUpdatePreview() {
         var refundAmount = refundAmountEl ? (parseFloat(refundAmountEl.value) || 0) : 0;
         var refundShould = deposit; // 需退金额 = 已收定金
         html += '<div class="settlement-preview-calc-note">计算：需退金额 = 已收定金。请在「已退款金额」填写实际已退金额，用于核对。</div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">订单金额（应收）：</span><span class="settlement-preview-value">¥' + receivable.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">企划金额（应收）：</span><span class="settlement-preview-value">¥' + receivable.toFixed(2) + '</span></div>';
         if (deposit > 0) {
             html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
         }
@@ -11808,7 +11869,7 @@ function settlementUpdatePreview() {
             feePercentText = pct.toFixed(0) + '%';
         }
         html += '<div class="settlement-preview-calc-note">计算：定金抵扣 = min(已收定金, 跑单费)，本次收款 = 跑单费 − 定金抵扣；合计实收 = 跑单费。可修改「跑单费（应收）」后查看变化。</div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">订单金额（应收）：</span><span class="settlement-preview-value">¥' + receivable.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">企划金额（应收）：</span><span class="settlement-preview-value">¥' + receivable.toFixed(2) + '</span></div>';
         if (feePercentText) {
             html += '<div class="settlement-preview-row"><span class="settlement-preview-label">跑单费（' + feePercentText + '）：</span><span class="settlement-preview-value">¥' + feeAmount.toFixed(2) + '</span></div>';
         } else {
@@ -11913,9 +11974,9 @@ function settlementUpdatePreview() {
             if (otherEntry.amount || otherEntry.rate) discountReasons.push(otherEntry);
         }
         
-        // 结单计算逻辑：订单金额（应收）→ 已收定金 → 本次应收 → 结算优惠 → 合计实收 → 本次收款
+        // 结单计算逻辑：企划金额（应收）→ 已收定金 → 本次应收 → 结算优惠 → 合计实收 → 本次收款
         html += '<div class="settlement-preview-calc-note">计算：合计实收 = 已收定金 + 本次收款；本次收款默认本次应收，可在此处直接修改。</div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>订单金额（应收）：</strong></span><span class="settlement-preview-value"><strong>¥' + receivable.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>企划金额（应收）：</strong></span><span class="settlement-preview-value"><strong>¥' + receivable.toFixed(2) + '</strong></span></div>';
         html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
         if (deposit > 0) {
             var tailBeforeDiscount = Math.max(0, receivable - deposit);
@@ -13211,7 +13272,7 @@ function settlementConfirm() {
         };
     }
 
-    // 标记本地订单最近更新时间（用于防止云端旧数据覆盖本地新结单状态）
+    // 标记本地企划最近更新时间（用于防止云端旧数据覆盖本地新结单状态）
     item.mg_updated_at = Date.now();
     saveData();
 
@@ -13234,7 +13295,7 @@ function settlementConfirm() {
     if (typeof renderScheduleTodoSection === 'function') renderScheduleTodoSection();
     if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
     if (document.getElementById('recordContainer')) applyRecordFilters();
-    showGlobalToast('结算已保存，订单已归档到记录页');
+    showGlobalToast('结算已保存，企划已归档到记录页');
 }
 
 // 加载历史记录（增强版：支持筛选、排序、分组）
@@ -13935,7 +13996,7 @@ function batchDeleteHistory() {
         return;
     }
     
-    // 保存要删除的订单（用于云端同步）
+    // 保存要删除的企划（用于云端同步）
     const itemsToDelete = history.filter(item => selectedHistoryIds.has(item.id));
     
     history = history.filter(item => !selectedHistoryIds.has(item.id));
@@ -13948,11 +14009,11 @@ function batchDeleteHistory() {
         applyRecordFilters();
     }
     
-    // 云端同步：如果已启用云端模式，同步删除云端订单
+    // 云端同步：如果已启用云端模式，同步删除云端企划
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         itemsToDelete.forEach(item => {
             mgCloudDeleteOrder(item).catch(err => {
-                console.error('云端删除订单失败:', err);
+                console.error('云端删除企划失败:', err);
             });
         });
     }
@@ -14007,6 +14068,12 @@ function editHistoryItem(id) {
     if (orderPlatformInput) orderPlatformInput.value = quote.contact || '';
     var contactInfoInput = document.getElementById('contactInfo');
     if (contactInfoInput) contactInfoInput.value = quote.contactInfo || '';
+    var projectNameInput = document.getElementById('projectName');
+    if (projectNameInput) projectNameInput.value = quote.projectName || '';
+    var projectOriginInput = document.getElementById('projectOrigin');
+    if (projectOriginInput) projectOriginInput.value = quote.projectOrigin || '';
+    var characterNameInput = document.getElementById('characterName');
+    if (characterNameInput) characterNameInput.value = quote.characterName || '';
     // 平台手续费在下方 setTimeout 中与系数一并恢复（需等选择器选项就绪）
     // 下单时间改在 rAF 内、抽屉打开后设置，避免时序问题
     if (quote.startTime) {
@@ -14044,7 +14111,7 @@ function editHistoryItem(id) {
     } else {
         syncExpectedProductCountFromProducts(true);
     }
-    // 恢复订单备注（编辑时显示该条记录的备注，新建时已在 openCalculatorDrawer 中清空）
+    // 恢复企划备注（编辑时显示该条记录的备注，新建时已在 openCalculatorDrawer 中清空）
     if (defaultSettings) defaultSettings.orderRemark = (quote.orderRemark != null) ? String(quote.orderRemark) : '';
     var orderRemarkTextEl = document.getElementById('orderRemarkText');
     if (orderRemarkTextEl) orderRemarkTextEl.value = defaultSettings ? (defaultSettings.orderRemark || '') : '';
@@ -14256,7 +14323,7 @@ function editHistoryItem(id) {
     // 保存当前编辑的历史记录ID，用于更新
     window.editingHistoryId = id;
 
-    // 关键修复：进入编辑后，先把 quoteData 对齐到当前被编辑订单
+    // 关键修复：进入编辑后，先把 quoteData 对齐到当前被编辑企划
     // 避免后续仅改排单时间/轻微字段时，沿用上一单的 quoteData（导致金额串单、定金丢失）
     quoteData = {
         ...quote,
@@ -14271,7 +14338,10 @@ function editHistoryItem(id) {
                 : Number(quote.finalTotal || 0)),
         depositReceived: quote.depositReceived != null ? Number(quote.depositReceived) : 0,
         hasManualAgreed: !!quote.hasManualAgreed,
-        manualAgreedBase: quote.manualAgreedBase != null ? Number(quote.manualAgreedBase) : null
+        manualAgreedBase: quote.manualAgreedBase != null ? Number(quote.manualAgreedBase) : null,
+        projectName: quote.projectName || '',
+        projectOrigin: quote.projectOrigin || '',
+        characterName: quote.characterName || ''
     };
 }
 
@@ -14325,6 +14395,9 @@ function saveTemplate() {
     const otherFees = (typeof dynamicOtherFees !== 'undefined' && Array.isArray(dynamicOtherFees))
         ? dynamicOtherFees.map(f => ({ name: f.name, amount: f.amount }))
         : [];
+    const projectName = (document.getElementById('projectName') && document.getElementById('projectName').value) ? document.getElementById('projectName').value.trim() : '';
+    const projectOrigin = (document.getElementById('projectOrigin') && document.getElementById('projectOrigin').value) ? document.getElementById('projectOrigin').value.trim() : '';
+    const characterName = (document.getElementById('characterName') && document.getElementById('characterName').value) ? document.getElementById('characterName').value.trim() : '';
     
     const existingIndex = templates.findIndex(t => t.name === templateName);
     
@@ -14342,7 +14415,10 @@ function saveTemplate() {
             extraUpSelections: extraUpSelections,
             extraDownSelections: extraDownSelections,
             perItemExtraFeeIds: Array.isArray(selectedPerItemExtraFeeIds) ? selectedPerItemExtraFeeIds.slice() : [],
-            otherFees: otherFees
+            otherFees: otherFees,
+            projectName: projectName,
+            projectOrigin: projectOrigin,
+            characterName: characterName
         },
         timestamp: Date.now()
     };
@@ -14463,37 +14539,42 @@ function loadSelectedTemplate() {
     }
     
     // 恢复设置选项（用途、加急、同模、折扣、平台、其他加价/折扣类、其他费用）
-    if (template.settings) {
-        const s = template.settings;
-        const setSel = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; if (el.onchange) el.onchange(); } };
-        setSel('usage', s.usageType || '');
-        setSel('urgent', s.urgentType || '');
-        setSel('sameModel', s.sameModelType || '');
-        setSel('discount', s.discountType || '');
-        setSel('platform', s.platformType || '');
-        selectedPerItemExtraFeeIds = Array.isArray(s.perItemExtraFeeIds) ? s.perItemExtraFeeIds.slice() : [];
-        renderCalculatorPerItemExtraSelects();
-        var orderPlatformEl = document.getElementById('orderPlatform');
-        if (orderPlatformEl) {
-            orderPlatformEl.value = (s.platformType && defaultSettings.platformFees && defaultSettings.platformFees[s.platformType])
-                ? (defaultSettings.platformFees[s.platformType].name || s.platformType)
-                : '';
-            toggleOrderPlatformClear();
-        }
-        (s.extraUpSelections || []).forEach(sel => {
-            const el = document.getElementById('extraUp_' + sel.id);
-            if (el) { el.value = sel.selectedKey; if (el.onchange) el.onchange(); }
-        });
-        (s.extraDownSelections || []).forEach(sel => {
-            const el = document.getElementById('extraDown_' + sel.id);
-            if (el) { el.value = sel.selectedKey; if (el.onchange) el.onchange(); }
-        });
-        if (Array.isArray(s.otherFees)) {
-            dynamicOtherFees.length = 0;
-            renderDynamicOtherFees();
-            s.otherFees.forEach(f => addDynamicOtherFeeFromData(f.name, f.amount));
-        }
+    const s = template.settings || {};
+    const setSel = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; if (el.onchange) el.onchange(); } };
+    setSel('usage', s.usageType || '');
+    setSel('urgent', s.urgentType || '');
+    setSel('sameModel', s.sameModelType || '');
+    setSel('discount', s.discountType || '');
+    setSel('platform', s.platformType || '');
+    selectedPerItemExtraFeeIds = Array.isArray(s.perItemExtraFeeIds) ? s.perItemExtraFeeIds.slice() : [];
+    renderCalculatorPerItemExtraSelects();
+    var orderPlatformEl = document.getElementById('orderPlatform');
+    if (orderPlatformEl) {
+        orderPlatformEl.value = (s.platformType && defaultSettings.platformFees && defaultSettings.platformFees[s.platformType])
+            ? (defaultSettings.platformFees[s.platformType].name || s.platformType)
+            : '';
+        toggleOrderPlatformClear();
     }
+    (s.extraUpSelections || []).forEach(sel => {
+        const el = document.getElementById('extraUp_' + sel.id);
+        if (el) { el.value = sel.selectedKey; if (el.onchange) el.onchange(); }
+    });
+    (s.extraDownSelections || []).forEach(sel => {
+        const el = document.getElementById('extraDown_' + sel.id);
+        if (el) { el.value = sel.selectedKey; if (el.onchange) el.onchange(); }
+    });
+    if (Array.isArray(s.otherFees)) {
+        dynamicOtherFees.length = 0;
+        renderDynamicOtherFees();
+        s.otherFees.forEach(f => addDynamicOtherFeeFromData(f.name, f.amount));
+    }
+
+    var projectNameInput = document.getElementById('projectName');
+    if (projectNameInput) projectNameInput.value = s.projectName || '';
+    var projectOriginInput = document.getElementById('projectOrigin');
+    if (projectOriginInput) projectOriginInput.value = s.projectOrigin || '';
+    var characterNameInput = document.getElementById('characterName');
+    if (characterNameInput) characterNameInput.value = s.characterName || '';
     
     templateSelect.value = '';
     updateDeleteTemplateButton();
@@ -14588,7 +14669,10 @@ function loadQuoteFromHistory(id) {
             platformFee: quote.platformFee || 0,
             giftPrices: quote.giftPrices || [],
             // 兼容旧数据：已收定金默认为 0
-            depositReceived: quote.depositReceived != null ? quote.depositReceived : 0
+            depositReceived: quote.depositReceived != null ? quote.depositReceived : 0,
+            projectName: quote.projectName || '',
+            projectOrigin: quote.projectOrigin || '',
+            characterName: quote.characterName || ''
         };
         
         // 为兼容旧版本历史数据，确保productPrices和giftPrices中的每个项目都有sides和productId字段
@@ -14636,7 +14720,7 @@ function loadQuoteFromHistory(id) {
             });
         }
         
-        // 设置当前排单颜色索引为订单的颜色索引
+        // 设置当前排单颜色索引为企划的颜色索引
         if (typeof quote.scheduleColorIndex === 'number') {
             window.currentScheduleColorIndex = quote.scheduleColorIndex;
         }
@@ -14652,7 +14736,7 @@ function loadQuoteFromHistory(id) {
             syncExpectedProductCountFromProducts(true);
         }
         
-        // 从排单卡片点「小票」进入时，记下原订单 ID，使小票页内点「排单」时覆盖原订单并轻提示
+        // 从排单卡片点「小票」进入时，记下原企划 ID，使小票页内点「排单」时覆盖原企划并轻提示
         if (window.receiptOpenedFromRecord) {
             window.editingHistoryId = id;
         }
@@ -14686,10 +14770,10 @@ function deleteHistoryItem(id) {
         applyRecordFilters();
     }
     
-    // 云端同步：如果已启用云端模式，同步删除云端订单
+    // 云端同步：如果已启用云端模式，同步删除云端企划
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         mgCloudDeleteOrder(item).catch(err => {
-            console.error('云端删除订单失败:', err);
+            console.error('云端删除企划失败:', err);
         });
     }
 }
@@ -15831,7 +15915,7 @@ function deleteDiscountReason(id) {
     }
 }
 
-// 订单备注弹窗：打开
+// 企划备注弹窗：打开
 function openOrderRemarkModal(recordId) {
     var el = document.getElementById('orderRemarkText');
     var modal = document.getElementById('orderRemarkModal');
@@ -15857,7 +15941,7 @@ function openOrderRemarkModal(recordId) {
     if (modal) modal.classList.remove('d-none');
 }
 
-// 订单备注弹窗：关闭并保存
+// 企划备注弹窗：关闭并保存
 var currentRemarkRecordId = null;
 
 function closeOrderRemarkModal() {
@@ -15883,7 +15967,7 @@ function closeOrderRemarkModal() {
     saveData();
 }
 
-// 订单备注查看弹窗：打开（只读，查看某条记录的备注）
+// 企划备注查看弹窗：打开（只读，查看某条记录的备注）
 function openOrderRemarkViewModal(recordId) {
     var item = history.find(function (h) { return h.id === recordId; });
     var contentEl = document.getElementById('orderRemarkViewContent');
@@ -15895,13 +15979,13 @@ function openOrderRemarkViewModal(recordId) {
     modal.classList.remove('d-none');
 }
 
-// 订单备注查看弹窗：关闭
+// 企划备注查看弹窗：关闭
 function closeOrderRemarkViewModal() {
     var modal = document.getElementById('orderRemarkViewModal');
     if (modal) modal.classList.add('d-none');
 }
 
-// 更新订单备注预览
+// 更新企划备注预览
 function updateOrderRemarkPreview() {
     var preview = document.getElementById('orderRemarkPreview');
     if (!preview) return;
@@ -15916,7 +16000,7 @@ function updateOrderRemarkPreview() {
     }
 }
 
-// 智能解析订单备注：能提取什么提取什么，支持多种顺序和写法
+// 智能解析企划备注：能提取什么提取什么，支持多种顺序和写法
 function smartParseOrderRemark() {
     var el = document.getElementById('orderRemarkText');
     if (!el) return;
@@ -16086,7 +16170,7 @@ function smartParseOrderRemark() {
     }
 }
 
-// 订单备注：复制到剪贴板
+// 企划备注：复制到剪贴板
 function copyOrderRemark() {
     var el = document.getElementById('orderRemarkText');
     var text = el ? el.value : '';
@@ -18845,7 +18929,7 @@ function mgEnsureExternalId(item) {
     // 如果已有 external_id，直接返回
     if (item.external_id) return item.external_id;
     // 基于本地 id 生成稳定的 external_id（格式：h_本地ID）
-    // 使用本地 id 作为基础，确保同一设备上的订单有稳定的标识
+    // 使用本地 id 作为基础，确保同一设备上的企划有稳定的标识
     // 注意：如果本地 id 是时间戳，external_id 也会基于时间戳，但这样可以在同一设备上保持稳定
     item.external_id = 'h_' + String(item.id);
     // 保存到本地，确保下次使用时保持一致
@@ -18934,7 +19018,7 @@ async function mgCloudMigrateOnce() {
             .eq('artist_id', artistId);
         
         if (fetchError) {
-            console.error('获取云端订单失败:', fetchError);
+            console.error('获取云端企划失败:', fetchError);
             return false;
         }
         
@@ -18982,7 +19066,7 @@ async function mgCloudMigrateOnce() {
     }
 }
 
-// 从云端拉取订单并合并到本地 history（用于云端筛选/分析）
+// 从云端拉取企划并合并到本地 history（用于云端筛选/分析）
 async function mgCloudFetchOrders(filters = {}) {
     const client = mgGetSupabaseClient();
     if (!client) return [];
@@ -18991,7 +19075,7 @@ async function mgCloudFetchOrders(filters = {}) {
         // 获取当前登录用户的 artist_id（必须过滤，防止拉取其他用户数据）
         const { data: { session } } = await client.auth.getSession();
         if (!session || !session.user) {
-            console.error('未找到登录会话，无法拉取云端订单');
+            console.error('未找到登录会话，无法拉取云端企划');
             return [];
         }
         const artistId = session.user.id;
@@ -19012,7 +19096,7 @@ async function mgCloudFetchOrders(filters = {}) {
         const { data, error } = await query;
         
         if (error) {
-            console.error('拉取云端订单失败:', error);
+            console.error('拉取云端企划失败:', error);
             return [];
         }
         
@@ -19044,10 +19128,10 @@ async function mgCloudFetchOrders(filters = {}) {
     }
 }
 
-// 跟踪未同步的订单ID
+// 跟踪未同步的企划ID
 let unsyncedOrderIds = new Set();
 
-// 校准未同步队列：剔除本地 history 中已不存在的订单 ID
+// 校准未同步队列：剔除本地 history 中已不存在的企划 ID
 function calibrateUnsyncedOrders() {
     if (!Array.isArray(history)) return;
     const localIds = new Set(history.map(item => item.id).filter(id => id !== undefined));
@@ -19063,7 +19147,7 @@ function calibrateUnsyncedOrders() {
     }
 }
 
-// 从localStorage加载未同步订单列表
+// 从localStorage加载未同步企划列表
 function loadUnsyncedOrders() {
     try {
         const saved = localStorage.getItem('mg_unsynced_orders');
@@ -19073,21 +19157,21 @@ function loadUnsyncedOrders() {
             calibrateUnsyncedOrders();
         }
     } catch (e) {
-        console.error('加载未同步订单失败:', e);
+        console.error('加载未同步企划失败:', e);
         unsyncedOrderIds = new Set();
     }
 }
 
-// 保存未同步订单列表到localStorage
+// 保存未同步企划列表到localStorage
 function saveUnsyncedOrders() {
     try {
         localStorage.setItem('mg_unsynced_orders', JSON.stringify([...unsyncedOrderIds]));
     } catch (e) {
-        console.error('保存未同步订单失败:', e);
+        console.error('保存未同步企划失败:', e);
     }
 }
 
-// 标记订单为已同步
+// 标记企划为已同步
 function markOrderSynced(orderId) {
     if (orderId) {
         unsyncedOrderIds.delete(orderId);
@@ -19096,7 +19180,7 @@ function markOrderSynced(orderId) {
     }
 }
 
-// 标记订单为未同步
+// 标记企划为未同步
 function markOrderUnsynced(orderId) {
     if (orderId) {
         unsyncedOrderIds.add(orderId);
@@ -19127,7 +19211,7 @@ function updateSyncStatus() {
     }
 }
 
-// 删除云端订单
+// 删除云端企划
 async function mgCloudDeleteOrder(item, retryCount = 0) {
     if (!mgIsCloudEnabled()) {
         return;
@@ -19141,7 +19225,7 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
     try {
         const externalId = mgEnsureExternalId(item);
         if (!externalId) {
-            console.log('订单无 external_id，无需同步删除，标记为已同步');
+            console.log('企划无 external_id，无需同步删除，标记为已同步');
             if (item && item.id) markOrderSynced(item.id);
             return;
         }
@@ -19153,7 +19237,7 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
             return;
         }
         
-        // 删除云端订单（根据 external_id 和 artist_id）
+        // 删除云端企划（根据 external_id 和 artist_id）
         const { error, count } = await client
             .from('orders')
             .delete()
@@ -19161,7 +19245,7 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
             .eq('artist_id', session.user.id);
         
         if (error) {
-            console.error('云端删除订单失败 (attempt ' + (retryCount+1) + '):', error.message || error);
+            console.error('云端删除企划失败 (attempt ' + (retryCount+1) + '):', error.message || error);
             
             // 如果是权限错误或 404，通常不需要重试，保留在未同步列表中供用户查看
             if (error.code === '42501' || error.status === 404) {
@@ -19175,14 +19259,14 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
                 }, 3000 * (retryCount + 1)); 
             }
         } else {
-            console.log('✅ 云端删除订单成功:', externalId);
+            console.log('✅ 云端删除企划成功:', externalId);
             // 无论实际删除了几行（即使云端已不存在），只要没有错误，就视为同步成功
             if (item && item.id) {
                 markOrderSynced(item.id);
             }
         }
     } catch (err) {
-        console.error('云端删除订单出错:', err);
+        console.error('云端删除企划出错:', err);
         if (retryCount < 2 && (err.message?.includes('network') || err.message?.includes('fetch'))) {
             setTimeout(() => {
                 mgCloudDeleteOrder(item, retryCount + 1);
@@ -19240,7 +19324,7 @@ function mgMakeProgressReporter(prefix, total) {
     };
 }
 
-// 保存/更新订单到云端（在 saveToHistory 后调用）
+// 保存/更新企划到云端（在 saveToHistory 后调用）
 async function mgCloudUpsertOrder(item, retryCount = 0, context = null) {
     if (!mgIsCloudEnabled()) {
         if (item && item.id) markOrderUnsynced(item.id);
@@ -19273,7 +19357,7 @@ async function mgCloudUpsertOrder(item, retryCount = 0, context = null) {
         mapped.artist_id = artistId;
         const now = new Date().toISOString();
         mapped.updated_at = now;
-        // 直接 upsert，避免每条订单先 select 一次导致 2x 往返
+        // 直接 upsert，避免每条企划先 select 一次导致 2x 往返
         mapped.created_at = now;
         
         const { error } = await client
@@ -19313,7 +19397,7 @@ async function mgDetectDataConflict() {
     if (!client) return { hasConflict: false, localOrders: 0, cloudOrders: 0, localSettings: false, cloudSettings: false };
     
     try {
-        // 检测订单数量
+        // 检测企划数量
         const localOrders = history.length;
         const cloudHistory = await mgCloudFetchOrders();
         const cloudOrders = cloudHistory.length;
@@ -19383,8 +19467,8 @@ async function mgShowCloudEnableModal() {
                 ${(conflictInfo.cloudOrders > 0 || conflictInfo.localOrders > 0 || conflictInfo.cloudSettings || conflictInfo.localSettings) ? `
                 <div style="background:#fff9e6;padding:12px;border-radius:6px;margin-bottom:1rem;font-size:13px;color:#856404;">
                     <strong>数据统计：</strong><br>
-                    本地订单：${conflictInfo.localOrders} 条<br>
-                    云端订单：${conflictInfo.cloudOrders} 条<br>
+                    本地企划：${conflictInfo.localOrders} 条<br>
+                    云端企划：${conflictInfo.cloudOrders} 条<br>
                     ${conflictInfo.localSettings ? '本地有设置' : '本地无设置'}<br>
                     ${conflictInfo.cloudSettings ? '云端有设置' : '云端无设置'}
                 </div>
@@ -19398,7 +19482,7 @@ async function mgShowCloudEnableModal() {
                         <input type="radio" name="firstSyncPolicy" value="merge" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;" checked>
                         <div style="flex:1;min-width:0;">
                             <div style="font-weight:600;margin-bottom:4px;font-size:15px;">智能合并 ⭐ 推荐</div>
-                            <div style="font-size:13px;color:#666;">保留所有数据，订单和设置都智能合并，不会丢失任何数据</div>
+                            <div style="font-size:13px;color:#666;">保留所有数据，企划和设置都智能合并，不会丢失任何数据</div>
                         </div>
                     </label>
                     <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;">
@@ -19544,8 +19628,8 @@ async function mgReselectFirstSyncPolicy() {
             <p style="margin-bottom:1rem;font-size:14px;line-height:1.5;color:#333;">请选择首次同步策略：</p>
             <div style="background:#fff9e6;padding:12px;border-radius:6px;margin-bottom:1rem;font-size:13px;color:#856404;">
                 <strong>数据统计：</strong><br>
-                本地订单：${conflictInfo.localOrders} 条<br>
-                云端订单：${conflictInfo.cloudOrders} 条<br>
+                本地企划：${conflictInfo.localOrders} 条<br>
+                云端企划：${conflictInfo.cloudOrders} 条<br>
                 ${conflictInfo.localSettings ? '本地有设置' : '本地无设置'}<br>
                 ${conflictInfo.cloudSettings ? '云端有设置' : '云端无设置'}
             </div>
@@ -19554,7 +19638,7 @@ async function mgReselectFirstSyncPolicy() {
                     <input type="radio" name="firstSyncPolicy" value="merge" style="margin-top:3px;cursor:pointer;flex-shrink:0;width:18px;height:18px;" checked>
                     <div style="flex:1;min-width:0;">
                         <div style="font-weight:600;margin-bottom:4px;font-size:15px;">智能合并 ⭐ 推荐</div>
-                        <div style="font-size:13px;color:#666;">保留所有数据，订单和设置都智能合并，不会丢失任何数据</div>
+                        <div style="font-size:13px;color:#666;">保留所有数据，企划和设置都智能合并，不会丢失任何数据</div>
                     </div>
                 </label>
                 <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;">
@@ -19625,13 +19709,13 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
             try {
                 cloudHistory = conflictInfo.cloudHistory || await mgCloudFetchOrders();
             } catch (err) {
-                console.error('拉取云端订单失败:', err);
-                throw new Error('拉取云端订单失败: ' + (err.message || '未知错误'));
+                console.error('拉取云端企划失败:', err);
+                throw new Error('拉取云端企划失败: ' + (err.message || '未知错误'));
             }
             
             const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
             
-            // 上传本地独有的订单（限并发）
+            // 上传本地独有的企划（限并发）
             const client = mgGetSupabaseClient();
             if (!client) {
                 throw new Error('云端客户端未初始化，请稍后重试');
@@ -19653,12 +19737,12 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
                     uploadCount++;
                     report(uploadCount, false);
                 } catch (err) {
-                    console.error('上传订单失败:', item.id, err);
+                    console.error('上传企划失败:', item.id, err);
                 }
             }, 6);
             report(uploadCount, true);
             
-            // 拉取所有订单并合并
+            // 拉取所有企划并合并
             try {
                 const mergedHistory = await mgCloudFetchOrders();
                 if (mergedHistory.length > 0) {
@@ -19666,7 +19750,7 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
                     saveData();
                 }
             } catch (err) {
-                console.error('拉取合并后的订单失败:', err);
+                console.error('拉取合并后的企划失败:', err);
                 // 如果拉取失败，至少本地数据已上传，继续执行
             }
             
@@ -19682,9 +19766,9 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
             }
             
             if (typeof showGlobalToast === 'function') {
-                showGlobalToast(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，数据已智能合并`);
+                showGlobalToast(`✅ 首次同步完成：已上传 ${uploadCount} 条企划，数据已智能合并`);
             } else {
-                alert(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，数据已智能合并`);
+                alert(`✅ 首次同步完成：已上传 ${uploadCount} 条企划，数据已智能合并`);
             }
             
         } else if (policy === 'local') {
@@ -19713,15 +19797,15 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
                     uploadCount++;
                     report(uploadCount, false);
                 } catch (err) {
-                    console.error('上传订单失败:', item.id, err);
+                    console.error('上传企划失败:', item.id, err);
                 }
             }, 6);
             report(uploadCount, true);
             
             if (typeof showGlobalToast === 'function') {
-                showGlobalToast(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，本地数据已覆盖云端`);
+                showGlobalToast(`✅ 首次同步完成：已上传 ${uploadCount} 条企划，本地数据已覆盖云端`);
             } else {
-                alert(`✅ 首次同步完成：已上传 ${uploadCount} 条订单，本地数据已覆盖云端`);
+                alert(`✅ 首次同步完成：已上传 ${uploadCount} 条企划，本地数据已覆盖云端`);
             }
             
         } else if (policy === 'cloud') {
@@ -19740,8 +19824,8 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
                     saveData();
                 }
             } catch (err) {
-                console.error('拉取云端订单失败:', err);
-                throw new Error('拉取云端订单失败: ' + (err.message || '未知错误'));
+                console.error('拉取云端企划失败:', err);
+                throw new Error('拉取云端企划失败: ' + (err.message || '未知错误'));
             }
             
             if (typeof showGlobalToast === 'function') {
@@ -19813,7 +19897,7 @@ function updateCloudSyncStatus() {
         if (actionsContainer) actionsContainer.style.display = 'none';
         if (summaryEl) summaryEl.style.display = 'none';
     } else {
-        // 加载未同步订单列表
+        // 加载未同步企划列表
         loadUnsyncedOrders();
         const unsyncedCount = unsyncedOrderIds.size;
         const isBusy = window.__mgCloudSyncBusy === true;
@@ -19882,8 +19966,8 @@ function updateCloudSyncStatus() {
                     ? ('设置：云端优先合并；本地补入 制品 ' + (settingsSummary.productsAddedFromLocal || 0) + ' / 工艺 ' + (settingsSummary.processesAddedFromLocal || 0) + ' / 模板 ' + (settingsSummary.templatesAddedFromLocal || 0))
                     : '设置：暂无本次同步摘要';
                 const ordersLine = ordersSummary
-                    ? ('订单：模式 ' + (ordersSummary.mode === 'unsynced_only' ? '仅未同步' : '全量合并') + '，上传 ' + (ordersSummary.uploadedCount || 0) + ' 条')
-                    : '订单：暂无本次同步摘要';
+                    ? ('企划：模式 ' + (ordersSummary.mode === 'unsynced_only' ? '仅未同步' : '全量合并') + '，上传 ' + (ordersSummary.uploadedCount || 0) + ' 条')
+                    : '企划：暂无本次同步摘要';
                 const extraLine = ordersSummary && ordersSummary.mode === 'full_merge'
                     ? ('云端数量：同步前 ' + (ordersSummary.cloudCountBefore != null ? ordersSummary.cloudCountBefore : '-') + '，同步后 ' + (ordersSummary.cloudCountAfter != null ? ordersSummary.cloudCountAfter : '-'))
                     : '';
@@ -20030,7 +20114,7 @@ async function handleLoadCloud() {
     updateCloudSyncStatus();
 
     if (typeof showGlobalToast === 'function') {
-        showGlobalToast('加载中 1/3：拉取云端订单');
+        showGlobalToast('加载中 1/3：拉取云端企划');
     }
 
     try {
@@ -21045,7 +21129,7 @@ async function mgEnsureSyncPolicy() {
     return policy;
 }
 
-// ====== 智能同步模式：一键上传所有（设置+订单） ======
+// ====== 智能同步模式：一键上传所有（设置+企划） ======
 /**
  * 一键上传所有数据到云端（智能同步模式）
  * 优先同步未同步的数据
@@ -21067,7 +21151,7 @@ async function mgSyncAllToCloud() {
     // 确保已初始化智能同步模式
     await mgEnsureSyncPolicy();
     
-    // 加载未同步订单列表
+    // 加载未同步企划列表
     loadUnsyncedOrders();
     const unsyncedCount = unsyncedOrderIds.size;
     
@@ -21089,11 +21173,11 @@ async function mgSyncAllToCloud() {
             return;
         }
         
-        // 智能同步模式：设置和订单都智能合并
+        // 智能同步模式：设置和企划都智能合并
         // 1. 设置：智能合并（云端优先，但保留本地独有的）
         await mgLoadSettingsFromCloud(true); // 智能合并模式
         
-        // 2. 优先同步未同步的订单
+        // 2. 优先同步未同步的企划
         let syncedCount = 0;
         const orderSyncSummary = {
             mode: unsyncedCount > 0 ? 'unsynced_only' : 'full_merge',
@@ -21106,12 +21190,12 @@ async function mgSyncAllToCloud() {
         const ctx = { client, artistId: session.user.id };
 
         if (unsyncedCount > 0) {
-            // 只同步未同步的订单（限并发）
+            // 只同步未同步的企划（限并发）
             const unsyncedItems = [...unsyncedOrderIds]
                 .map(orderId => history.find(h => h.id == orderId))
                 .filter(Boolean);
             const total = unsyncedItems.length;
-            const report = mgMakeProgressReporter('同步未同步订单', total);
+            const report = mgMakeProgressReporter('同步未同步企划', total);
             report(0, true);
 
             await mgRunWithConcurrency(unsyncedItems, async function (item) {
@@ -21142,7 +21226,7 @@ async function mgSyncAllToCloud() {
             report(syncedCount, true);
             orderSyncSummary.uploadedCount = syncedCount;
             
-            // 拉取云端所有订单（包含合并后的）
+            // 拉取云端所有企划（包含合并后的）
             const mergedHistory = await mgCloudFetchOrders();
             orderSyncSummary.cloudCountAfter = Array.isArray(mergedHistory) ? mergedHistory.length : 0;
             if (mergedHistory.length > 0) {
@@ -21166,7 +21250,7 @@ async function mgSyncAllToCloud() {
             if (unsyncedCount > 0) {
                 showGlobalToast(`✅ 已同步 ${syncedCount} 条未同步数据`);
             } else {
-                showGlobalToast(`✅ 智能同步完成：设置和订单已智能合并`);
+                showGlobalToast(`✅ 智能同步完成：设置和企划已智能合并`);
             }
         } else {
             if (unsyncedCount > 0) {
@@ -21227,7 +21311,7 @@ async function mgCleanupDuplicateSettingsAndSync() {
 }
 window.mgCleanupDuplicateSettingsAndSync = mgCleanupDuplicateSettingsAndSync;
 
-// ====== 统一恢复入口：一键从云端恢复所有（设置+订单） ======
+// ====== 统一恢复入口：一键从云端恢复所有（设置+企划） ======
 /**
  * 一键从云端恢复所有数据（无论策略是什么，都以云端为源）
  */
@@ -21254,10 +21338,10 @@ async function mgRestoreAllFromCloud() {
 
     try {
         if (typeof showGlobalToast === 'function') {
-            showGlobalToast('恢复中 1/3：拉取云端设置与订单');
+            showGlobalToast('恢复中 1/3：拉取云端设置与企划');
         }
 
-        // 并行拉取设置和订单，减少总等待时间
+        // 并行拉取设置和企划，减少总等待时间
         const [_, cloudHistory] = await Promise.all([
             mgLoadSettingsFromCloud(false, true),
             mgCloudFetchOrders()
@@ -21276,7 +21360,7 @@ async function mgRestoreAllFromCloud() {
             if (Array.isArray(cloudHistory) && cloudHistory.length > 0) {
                 showGlobalToast(`恢复中 3/3：已恢复 ${cloudHistory.length} 条排单，准备刷新`);
             } else {
-                showGlobalToast('恢复中 3/3：设置已恢复，云端暂无订单，准备刷新');
+                showGlobalToast('恢复中 3/3：设置已恢复，云端暂无企划，准备刷新');
             }
         }
 
@@ -21318,18 +21402,18 @@ init = function() {
                     // 设置拉取失败不影响后续流程
                 }
                 
-                // 再合并订单
+                // 再合并企划
                 let cloudHistory = [];
                 try {
                     cloudHistory = await mgCloudFetchOrders();
                 } catch (err) {
-                    console.error('启动时拉取云端订单失败:', err);
-                    // 订单拉取失败时，至少尝试上传本地订单
+                    console.error('启动时拉取云端企划失败:', err);
+                    // 企划拉取失败时，至少尝试上传本地企划
                 }
                 
                 const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
                 
-                // 上传本地独有的订单（限并发）
+                // 上传本地独有的企划（限并发）
                 const client = mgGetSupabaseClient();
                 if (!client) {
                     console.warn('启动时云端客户端未初始化，跳过本地补传');
@@ -21349,11 +21433,11 @@ init = function() {
                         await mgCloudUpsertOrder(item, 0, ctx);
                         uploadCount++;
                     } catch (err) {
-                        console.error('启动时上传订单失败:', item.id, err);
+                        console.error('启动时上传企划失败:', item.id, err);
                     }
                 }, 4);
                 
-                // 拉取所有订单（包含刚上传的）
+                // 拉取所有企划（包含刚上传的）
                 try {
                     const mergedHistory = await mgCloudFetchOrders();
                     if (mergedHistory.length > 0) {
@@ -21361,7 +21445,7 @@ init = function() {
                         if (typeof saveData === 'function') saveData();
                     }
                 } catch (err) {
-                    console.error('启动时拉取合并后的订单失败:', err);
+                    console.error('启动时拉取合并后的企划失败:', err);
                     // 如果拉取失败，至少本地数据已上传
                 }
                 
@@ -21369,7 +21453,7 @@ init = function() {
                 if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
                 
                 if (uploadCount > 0) {
-                    console.log(`✅ 启动时同步完成：已上传 ${uploadCount} 条本地订单`);
+                    console.log(`✅ 启动时同步完成：已上传 ${uploadCount} 条本地企划`);
                 }
             } catch (err) {
                 console.error('启动时智能同步失败:', err);
