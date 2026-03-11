@@ -3113,8 +3113,14 @@ function getSettlementDiscountReasons(settlement) {
 function getRecordProgressStatus(item) {
     if (!item) return { text: '未开始', className: 'record-status--not-started', pending: false, overdue: false };
     // 已结算：优先显示结算状态
-    if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
+    if (item.settlement && isCancelSettlementType(item.settlement)) {
         return { text: '已撤单', className: 'record-status--cancelled', pending: false, overdue: false };
+    }
+    if (item && item.isSchedulePlaceholder) {
+        return { text: '占位单', className: 'record-status--placeholder', pending: false, overdue: false };
+    }
+    if (item && item.depositReceived != null && Number(item.depositReceived) > 0) {
+        return { text: '已收定', className: 'record-status--deposit', pending: false, overdue: false };
     }
     if (item.settlement && item.settlement.type === 'waste_fee') {
         return { text: '有废稿', className: 'record-status--waste', pending: false, overdue: false };
@@ -3265,11 +3271,68 @@ function onRecordFilterChange() {
     updateRecordFilterBadge();
 }
 
+function updateRecordStatusCount() {
+    const wrap = document.getElementById('recordStatusFilter');
+    const countEl = document.getElementById('recordStatusCount');
+    if (!wrap || !countEl) return;
+    const checked = Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(cb => cb.value)
+        .filter(v => v !== 'all');
+    countEl.textContent = checked.length > 0 ? ('已选 ' + checked.length) : '';
+}
+
+function onRecordStatusChange() {
+    const wrap = document.getElementById('recordStatusFilter');
+    if (!wrap) return;
+    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
+    const others = wrap.querySelectorAll('input[type="checkbox"][value!="all"]');
+    const checkedOthers = Array.from(others).filter(cb => cb.checked);
+    if (allBox) {
+        if (checkedOthers.length === 0) {
+            allBox.checked = true;
+        } else {
+            allBox.checked = false;
+        }
+    }
+    updateRecordStatusCount();
+    updateRecordFilterBadge();
+}
+
+function selectAllRecordStatuses() {
+    const wrap = document.getElementById('recordStatusFilter');
+    if (!wrap) return;
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
+    if (allBox) allBox.checked = false;
+    updateRecordStatusCount();
+}
+
+function clearRecordStatuses() {
+    const wrap = document.getElementById('recordStatusFilter');
+    if (!wrap) return;
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === 'all'; });
+    updateRecordStatusCount();
+}
+
+function invertRecordStatuses() {
+    const wrap = document.getElementById('recordStatusFilter');
+    if (!wrap) return;
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        if (cb.value === 'all') return;
+        cb.checked = !cb.checked;
+    });
+    const othersChecked = Array.from(wrap.querySelectorAll('input[type="checkbox"][value!="all"]')).some(cb => cb.checked);
+    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
+    if (allBox) allBox.checked = !othersChecked;
+    updateRecordStatusCount();
+}
+
 function updateRecordFilterBadge() {
     const badge = document.getElementById('recordFilterBadge');
     if (!badge) return;
     // 始终隐藏筛选徽章
     badge.classList.add('d-none');
+    updateRecordStatusCount();
 }
 
 function resetRecordFilters() {
@@ -3284,7 +3347,10 @@ function resetRecordFilters() {
     if (timeFilter) timeFilter.value = 'all';
     if (startDate) startDate.value = '';
     if (endDate) endDate.value = '';
-    if (statusFilter) statusFilter.value = 'all';
+    if (statusFilter) {
+        statusFilter.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === 'all'; });
+    }
+    updateRecordStatusCount();
     if (minPrice) minPrice.value = '';
     if (maxPrice) maxPrice.value = '';
     if (groupByEl) groupByEl.value = 'month';
@@ -3306,11 +3372,14 @@ function getFilteredHistoryForRecord() {
     const groupByEl = document.getElementById('recordGroupBy');
 
     const searchKeyword = searchInput ? searchInput.value.trim() : '';
+    const statusSelections = statusFilterEl
+        ? Array.from(statusFilterEl.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value)
+        : ['all'];
     const filters = {
         timeRange: timeFilterEl ? timeFilterEl.value : 'all',
         startDate: startDateEl ? startDateEl.value : '',
         endDate: endDateEl ? endDateEl.value : '',
-        statusFilter: statusFilterEl ? statusFilterEl.value : 'all',
+        statusFilters: statusSelections.length ? statusSelections : ['all'],
         minPrice: minPriceEl ? minPriceEl.value : '',
         maxPrice: maxPriceEl ? maxPriceEl.value : '',
         sortBy: sortByEl ? sortByEl.value : 'time-desc',
@@ -3368,8 +3437,8 @@ function getFilteredHistoryForRecord() {
         });
     }
 
-    if (filters.statusFilter && filters.statusFilter !== 'all') {
-        filteredHistory = filteredHistory.filter(item => getRecordProgressStatus(item).text === filters.statusFilter);
+    if (filters.statusFilters && filters.statusFilters.length && filters.statusFilters.indexOf('all') === -1) {
+        filteredHistory = filteredHistory.filter(item => filters.statusFilters.indexOf(getRecordProgressStatus(item).text) !== -1);
     }
 
     // 统计页“查看订单”聚焦：仅显示命中的订单
@@ -3938,9 +4007,16 @@ function openStatsPage() {
 }
 
 // 与 getRecordProgressStatus 对齐，支持待排单/已撤单/有废稿/已结单
+function isCancelSettlementType(settlement) {
+    if (!settlement || !settlement.type) return false;
+    return settlement.type === 'full_refund' || settlement.type === 'cancel_with_fee' || settlement.type === 'cancel';
+}
+
 function getStatsOrderStatus(item) {
     if (!item) return '未开始';
-    if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) return '已撤单';
+    if (item.settlement && isCancelSettlementType(item.settlement)) return '已撤单';
+    if (item && item.isSchedulePlaceholder) return '占位单';
+    if (item && item.depositReceived != null && Number(item.depositReceived) > 0) return '已收定';
     if (item.settlement && item.settlement.type === 'waste_fee') return '有废稿';
     if (item.settlement && item.settlement.type === 'normal') return '已结单';
     if (item.status === 'closed') return '已结单';
@@ -4029,6 +4105,9 @@ function getStatsFiltersFromUI() {
     const now = new Date();
     const viewYear = (viewYearEl && viewYearEl.value) ? parseInt(viewYearEl.value, 10) : now.getFullYear();
     const viewMonth = (viewMonthEl && viewMonthEl.value) ? parseInt(viewMonthEl.value, 10) : now.getMonth();
+    const statusSelections = statusFilter
+        ? Array.from(statusFilter.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value)
+        : ['all'];
     return {
         timeRange: timeRange,
         timeBasis: timeBasis === 'deadline' ? 'deadline' : 'timestamp',
@@ -4038,7 +4117,7 @@ function getStatsFiltersFromUI() {
         endDate: (quickEnd && quickEnd.value) ? quickEnd.value : '',
         amountBasis: amountBasis ? amountBasis.value : 'finalTotal',
         giftMode: giftMode ? giftMode.value : 'exclude',
-        statusFilter: statusFilter ? statusFilter.value : 'all',
+        statusFilters: statusSelections.length ? statusSelections : ['all'],
         overdueMode: overdueMode ? overdueMode.value : 'all'
     };
 }
@@ -4134,21 +4213,23 @@ function getStatsDataset(historySource, filters) {
         list = historySource.filter(item => {
             if (useDeadline) {
                 const d = item.deadline ? normalizeYmd(item.deadline) : null;
-                if (!d) return false;
-                return d >= startStr && d <= endStr;
+                if (d) return d >= startStr && d <= endStr;
+                const tFallback = item.timestamp ? new Date(item.timestamp) : null;
+                if (!tFallback || isNaN(tFallback.getTime())) return false;
+                return tFallback >= start && tFallback <= end;
             }
             const t = item.timestamp ? new Date(item.timestamp) : null;
             if (!t || isNaN(t.getTime())) return false;
             return t >= start && t <= end;
         });
     } else if (useDeadline) {
-        list = historySource.filter(item => item.deadline && String(item.deadline).trim());
+        list = historySource.filter(item => (item.deadline && String(item.deadline).trim()) || item.timestamp);
     }
-    if (filters.statusFilter !== 'all') {
+    if (filters.statusFilters && filters.statusFilters.length && filters.statusFilters.indexOf('all') === -1) {
         list = list.filter(item => {
             const status = getStatsOrderStatus(item);
-            if (filters.statusFilter === '已逾期') return isStatsOrderOverdue(item);
-            return status === filters.statusFilter;
+            if (filters.statusFilters.indexOf('已逾期') !== -1 && isStatsOrderOverdue(item)) return true;
+            return filters.statusFilters.indexOf(status) !== -1;
         });
     }
     const getAmount = (item) => getStatsAmount(item, filters.amountBasis, filters.giftMode);
@@ -4264,8 +4345,8 @@ function getStatsDataset(historySource, filters) {
             everOverdueOrderCount++;
             pushOrderId({ orderIds: everOverdueOrderIds }, item.id);
         }
-        if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee' || item.settlement.type === 'waste_fee' || item.settlement.type === 'normal')) orderSettledCount++;
-        if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee')) {
+        if (item.settlement && (item.settlement.type === 'full_refund' || item.settlement.type === 'cancel_with_fee' || item.settlement.type === 'cancel' || item.settlement.type === 'waste_fee' || item.settlement.type === 'normal')) orderSettledCount++;
+        if (item.settlement && isCancelSettlementType(item.settlement)) {
             cancelOrderCount++;
             pushOrderId({ orderIds: cancelOrderIds }, item.id);
             cancelAmountTotal += (item.settlement.amount != null ? Number(item.settlement.amount) : 0) || 0;
@@ -4626,7 +4707,7 @@ function getStatsDataset(historySource, filters) {
     var monthlyAgg = Object.keys(monthlyMap).sort().map(function (k) { return monthlyMap[k]; });
     const byClient = Object.values(clientMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
     const byProduct = Object.values(productMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
-    const byStatus = ['待排单', '未开始', '进行中', '已完成', '已逾期', '已撤单', '有废稿', '已结单'].map(s => statusMap[s] || { status: s, orderCount: 0, amountTotal: 0, orderIds: [] });
+    const byStatus = ['待排单', '未开始', '进行中', '已完成', '已逾期', '已撤单', '有废稿', '已结单', '已收定', '占位单'].map(s => statusMap[s] || { status: s, orderCount: 0, amountTotal: 0, orderIds: [] });
     const byUsage = Object.values(usageMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byUrgent = Object.values(urgentMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byOtherFees = Object.values(otherFeesMap).sort((a, b) => b.amountTotal - a.amountTotal);
@@ -4702,7 +4783,7 @@ function getStatsDataset(historySource, filters) {
 
 function getStatsComparison(filters, currentTotals) {
     if (filters.timeRange !== 'thisMonth' && filters.timeRange !== 'thisYear') return null;
-    var prevFilters = { timeRange: filters.timeRange, viewYear: filters.viewYear, viewMonth: filters.viewMonth, statusFilter: filters.statusFilter || 'all', amountBasis: filters.amountBasis || 'finalTotal', giftMode: filters.giftMode || 'exclude' };
+    var prevFilters = { timeRange: filters.timeRange, viewYear: filters.viewYear, viewMonth: filters.viewMonth, statusFilters: filters.statusFilters || ['all'], amountBasis: filters.amountBasis || 'finalTotal', giftMode: filters.giftMode || 'exclude' };
     if (filters.timeRange === 'thisMonth') {
         prevFilters.viewMonth = filters.viewMonth - 1;
         if (prevFilters.viewMonth < 0) { prevFilters.viewMonth = 11; prevFilters.viewYear--; }
@@ -5250,6 +5331,7 @@ function updateStatsFilterBadge() {
     if (!badge) return;
     // 始终隐藏筛选徽章
     badge.classList.add('d-none');
+    updateStatsStatusCount();
 }
 
 function toggleStatsFilterDrawer() {
@@ -5288,6 +5370,62 @@ function onStatsFilterChange() {
     updateStatsFilterBadge();
 }
 
+function updateStatsStatusCount() {
+    const wrap = document.getElementById('statsStatusFilter');
+    const countEl = document.getElementById('statsStatusCount');
+    if (!wrap || !countEl) return;
+    const checked = Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(cb => cb.value)
+        .filter(v => v !== 'all');
+    countEl.textContent = checked.length > 0 ? ('已选 ' + checked.length) : '';
+}
+
+function onStatsStatusChange() {
+    const wrap = document.getElementById('statsStatusFilter');
+    if (!wrap) return;
+    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
+    const others = wrap.querySelectorAll('input[type="checkbox"][value!="all"]');
+    const checkedOthers = Array.from(others).filter(cb => cb.checked);
+    if (allBox) {
+        if (checkedOthers.length === 0) {
+            allBox.checked = true;
+        } else {
+            allBox.checked = false;
+        }
+    }
+    updateStatsStatusCount();
+    updateStatsFilterBadge();
+}
+
+function selectAllStatsStatuses() {
+    const wrap = document.getElementById('statsStatusFilter');
+    if (!wrap) return;
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
+    if (allBox) allBox.checked = false;
+    updateStatsStatusCount();
+}
+
+function clearStatsStatuses() {
+    const wrap = document.getElementById('statsStatusFilter');
+    if (!wrap) return;
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === 'all'; });
+    updateStatsStatusCount();
+}
+
+function invertStatsStatuses() {
+    const wrap = document.getElementById('statsStatusFilter');
+    if (!wrap) return;
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        if (cb.value === 'all') return;
+        cb.checked = !cb.checked;
+    });
+    const othersChecked = Array.from(wrap.querySelectorAll('input[type="checkbox"][value!="all"]')).some(cb => cb.checked);
+    const allBox = wrap.querySelector('input[type="checkbox"][value="all"]');
+    if (allBox) allBox.checked = !othersChecked;
+    updateStatsStatusCount();
+}
+
 function resetStatsFilters() {
     const timeEl = document.getElementById('statsTimeFilter');
     const timeBasisEl = document.getElementById('statsTimeBasis');
@@ -5306,7 +5444,10 @@ function resetStatsFilters() {
     if (viewMonthEl) viewMonthEl.value = String(now.getMonth());
     if (amountEl) amountEl.value = 'finalTotal';
     if (giftEl) giftEl.value = 'exclude';
-    if (statusEl) statusEl.value = 'all';
+    if (statusEl) {
+        statusEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === 'all'; });
+    }
+    updateStatsStatusCount();
     if (overdueEl) overdueEl.value = 'all';
     if (quickStart) quickStart.value = '';
     if (quickEnd) quickEnd.value = '';
@@ -5443,7 +5584,14 @@ function renderStatsPage() {
         if (timeBasisEl && saved.timeBasis) timeBasisEl.value = saved.timeBasis;
         if (amountEl && saved.amountBasis) amountEl.value = saved.amountBasis;
         if (giftEl && saved.giftMode) giftEl.value = saved.giftMode;
-        if (statusEl && saved.statusFilter) statusEl.value = saved.statusFilter;
+        if (statusEl) {
+            const savedStatusFilters = Array.isArray(saved.statusFilters) ? saved.statusFilters : (saved.statusFilter ? [saved.statusFilter] : ['all']);
+            const hasSpecific = savedStatusFilters.indexOf('all') === -1;
+            statusEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = hasSpecific ? (savedStatusFilters.indexOf(cb.value) !== -1) : cb.value === 'all';
+            });
+        }
+        updateStatsStatusCount();
         if (overdueEl && saved.overdueMode) overdueEl.value = saved.overdueMode;
         if (viewYearEl && typeof saved.viewYear === 'number') viewYearEl.value = String(saved.viewYear);
         if (viewMonthEl && typeof saved.viewMonth === 'number') viewMonthEl.value = String(saved.viewMonth);

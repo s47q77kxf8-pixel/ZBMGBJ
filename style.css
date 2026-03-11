@@ -361,6 +361,18 @@ html.theme-dark .record-status--waste {
     background: rgba(251, 146, 60, 0.2);
     border-color: rgba(251, 146, 60, 0.35);
 }
+
+html.theme-dark .record-status--deposit {
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(147, 197, 253, 0.35);
+}
+
+html.theme-dark .record-status--placeholder {
+    color: #fcd34d;
+    background: rgba(251, 191, 36, 0.16);
+    border-color: rgba(251, 191, 36, 0.4);
+}
 html.theme-dark .record-badge-pending {
     color: #a1a1aa;
     background: rgba(255, 255, 255, 0.08);
@@ -5581,6 +5593,43 @@ input:checked + .toggle-slider:before {
     background: var(--card-bg);
 }
 
+.filter-checkbox-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.3rem 0.6rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--card-bg);
+}
+
+.filter-checkbox-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.4rem 0 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-selected-count {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    font-weight: 500;
+}
+
+.filter-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--text-color);
+}
+
+.filter-checkbox input[type="checkbox"] {
+    width: 0.95rem;
+    height: 0.95rem;
+    accent-color: var(--primary-color);
+}
+
 .filter-select:focus,
 .filter-input:focus {
     outline: none;
@@ -8465,6 +8514,18 @@ html.theme-dark .settlement-preview {
     border-color: #fed7aa;
 }
 
+.record-status--deposit {
+    color: #2563eb;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.record-status--placeholder {
+    color: #b45309;
+    background: #fffbeb;
+    border-color: #fcd34d;
+}
+
 .record-item-badges {
     display: inline-flex;
     align-items: center;
@@ -9254,6 +9315,10 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
 #statsFilterDrawer .filter-section {
     margin-bottom: 1rem;
 }
+
+#statsFilterDrawer .filter-checkbox-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 #statsFilterDrawer .filter-section small.text-gray {
     margin-top: 0.35rem;
     display: block;
@@ -9290,6 +9355,10 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
 }
 #recordFilterDrawer .filter-section {
     margin-bottom: 1rem;
+}
+
+#recordFilterDrawer .filter-checkbox-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 #recordFilterDrawer .filter-drawer-footer {
     position: sticky;

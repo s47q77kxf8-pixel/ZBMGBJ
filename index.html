@@ -1383,18 +1383,25 @@
                                     </div>
                                 </div>
                                 <div class="filter-section">
-                                    <label class="filter-label">状态</label>
-                                    <select id="recordStatusFilter" class="filter-select" onchange="onRecordFilterChange()">
-                                        <option value="all">全部</option>
-                                        <option value="待排单">待排单</option>
-                                        <option value="未开始">未开始</option>
-                                        <option value="进行中">进行中</option>
-                                        <option value="已完成">已完成</option>
-                                        <option value="已逾期">已逾期</option>
-                                        <option value="已结单">已结单</option>
-                                        <option value="已撤单">已撤单</option>
-                                        <option value="有废稿">有废稿</option>
-                                    </select>
+                                    <label class="filter-label">状态 <span class="filter-selected-count" id="recordStatusCount"></span></label>
+                                    <div class="filter-checkbox-actions">
+                                        <button type="button" class="btn secondary small" onclick="selectAllRecordStatuses()">全选</button>
+                                        <button type="button" class="btn secondary small" onclick="invertRecordStatuses()">反选</button>
+                                        <button type="button" class="btn secondary small" onclick="clearRecordStatuses()">只保留全部</button>
+                                    </div>
+                                    <div id="recordStatusFilter" class="filter-checkbox-list">
+                                        <label class="filter-checkbox"><input type="checkbox" value="all" checked onchange="onRecordStatusChange()">全部</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="待排单" onchange="onRecordStatusChange()">待排单</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="未开始" onchange="onRecordStatusChange()">未开始</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="进行中" onchange="onRecordStatusChange()">进行中</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已完成" onchange="onRecordStatusChange()">已完成</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已逾期" onchange="onRecordStatusChange()">已逾期</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已结单" onchange="onRecordStatusChange()">已结单</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已撤单" onchange="onRecordStatusChange()">已撤单</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="有废稿" onchange="onRecordStatusChange()">有废稿</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已收定" onchange="onRecordStatusChange()">已收定</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="占位单" onchange="onRecordStatusChange()">占位单</label>
+                                    </div>
                                 </div>
                                 <div class="filter-section">
                                     <label class="filter-label">价格范围</label>
@@ -1528,18 +1535,25 @@
                                     <small class="text-gray">包含修改截稿日：修改过截稿日的订单也计入曾经逾期；仅原始截稿日：仅按首次设置的截稿日判断</small>
                                 </div>
                                 <div class="filter-section">
-                                    <label class="filter-label">订单状态</label>
-                                    <select id="statsStatusFilter" class="filter-select" onchange="onStatsFilterChange()">
-                                        <option value="all">全部</option>
-                                        <option value="待排单">待排单</option>
-                                        <option value="未开始">未开始</option>
-                                        <option value="进行中">进行中</option>
-                                        <option value="已完成">已完成</option>
-                                        <option value="已逾期">已逾期</option>
-                                        <option value="已撤单">已撤单</option>
-                                        <option value="有废稿">有废稿</option>
-                                        <option value="已结单">已结单</option>
-                                    </select>
+                                    <label class="filter-label">订单状态 <span class="filter-selected-count" id="statsStatusCount"></span></label>
+                                    <div class="filter-checkbox-actions">
+                                        <button type="button" class="btn secondary small" onclick="selectAllStatsStatuses()">全选</button>
+                                        <button type="button" class="btn secondary small" onclick="invertStatsStatuses()">反选</button>
+                                        <button type="button" class="btn secondary small" onclick="clearStatsStatuses()">只保留全部</button>
+                                    </div>
+                                    <div id="statsStatusFilter" class="filter-checkbox-list">
+                                        <label class="filter-checkbox"><input type="checkbox" value="all" checked onchange="onStatsStatusChange()">全部</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="待排单" onchange="onStatsStatusChange()">待排单</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="未开始" onchange="onStatsStatusChange()">未开始</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="进行中" onchange="onStatsStatusChange()">进行中</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已完成" onchange="onStatsStatusChange()">已完成</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已逾期" onchange="onStatsStatusChange()">已逾期</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已撤单" onchange="onStatsStatusChange()">已撤单</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="有废稿" onchange="onStatsStatusChange()">有废稿</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已结单" onchange="onStatsStatusChange()">已结单</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="已收定" onchange="onStatsStatusChange()">已收定</label>
+                                        <label class="filter-checkbox"><input type="checkbox" value="占位单" onchange="onStatsStatusChange()">占位单</label>
+                                    </div>
                                 </div>
                             </div>
                             <div class="filter-drawer-footer">
@@ -1698,7 +1712,7 @@
                         style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:none;border:none;padding:0;margin:0 0 4px 0;cursor:pointer;text-align:left;color:inherit;"
                         onclick="(function(){var body=document.getElementById('manualSyncBody');var arrow=document.getElementById('manualSyncArrow');if(!body||!arrow)return;var willExpand=body.classList.contains('d-none');body.classList.toggle('d-none');arrow.textContent=willExpand?'▾':'▸';if(!willExpand){closeRecordImportPopover();closeRecordExportPopover();}})()"
                         aria-label="展开或收起手动同步">
-                        <span style="font-size:14px;font-weight:600;">手动同步</span>
+                        <span style="font-size:14px;font-weight:600;">手动同步（无需登录）</span>
                         <span id="manualSyncArrow" style="font-size:14px;line-height:1;opacity:.75;">▸</span>
                     </button>
                     <div id="manualSyncBody" class="d-none" style="margin-top:6px;">
