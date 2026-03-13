@@ -340,9 +340,7 @@ const defaultSettings = {
         }
     ],
     // 每制品新增费用（可在设置中增删，如背景费）
-    perItemExtraFees: [
-        { id: 'bg', name: '背景费', amount: 5 }
-    ],
+    perItemExtraFees: [],
     // 可扩展的折扣类系数（折扣为内置；此处为后期添加的）
     extraPricingDown: [],
     // 小票自定义设置
