@@ -669,9 +669,12 @@
                             <div class="schedule-todo-filters">
                                 <button type="button" class="schedule-todo-filter-btn" data-filter="all" onclick="setScheduleTodoFilter('all')">所有</button>
                                 <button type="button" class="schedule-todo-filter-btn" data-filter="month" onclick="setScheduleTodoFilter('month')">当月</button>
-                                <button type="button" class="schedule-todo-filter-btn" data-filter="pending" onclick="setScheduleTodoFilter('pending')">待排</button>
+                                <button type="button" class="schedule-todo-filter-btn" data-filter="pending" onclick="setScheduleTodoFilter('pending')">
+                                    待排
+                                    <span id="pendingDot" class="todo-filter-dot d-none"></span>
+                                </button>
                                 <button type="button" class="schedule-todo-filter-btn active" data-filter="today" onclick="setScheduleTodoFilter('today')">当日</button>
-                                <button type="button" class="schedule-todo-filter-btn dev-feature d-none" data-filter="incoming" onclick="setScheduleTodoFilter('incoming')">
+                                <button type="button" class="schedule-todo-filter-btn dev-feature" data-filter="incoming" onclick="setScheduleTodoFilter('incoming')">
                                     待接
                                     <span id="incomingDot" class="todo-filter-dot d-none"></span>
                                 </button>
