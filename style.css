@@ -3475,6 +3475,28 @@ input[type="range"]#customThemeTextureOpacity {
     border-top: 1px solid #e2e8f0;
 }
 
+.setting-hint {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    font-size: 0.8rem;
+    color: #64748b;
+    line-height: 1.6;
+}
+.setting-hint strong {
+    color: #475569;
+    font-weight: 600;
+}
+html.theme-dark .setting-hint {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
+}
+html.theme-dark .setting-hint strong {
+    color: #cbd5e1;
+}
+
 /* 优惠原因：名称 编辑 删除 一行显示 */
 .discount-reasons-list .discount-reason-item {
     display: flex;

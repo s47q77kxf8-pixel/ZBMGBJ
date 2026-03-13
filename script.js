@@ -21126,9 +21126,11 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
     }
 
     // 优先读取 V2（分表分条目 + 软删除）
+    let v2TableExists = false;
     try {
         const v2 = await mgTryLoadSettingsFromCloudV2(client, session.user.id, mergeMode);
         if (v2 && v2.supported) {
+            v2TableExists = true;
             clearTimeout(_saveDataTimer);
             if (typeof doSaveData === 'function') doSaveData();
 
@@ -21143,8 +21145,24 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
             }
             return;
         }
+        // V2 查询成功但返回 supported: false，说明表存在但结构不对，标记为已启用 V2
+        v2TableExists = true;
     } catch (v2Err) {
+        const errMsg = String(v2Err && (v2Err.message || ''));
+        const errCode = String(v2Err && (v2Err.code || ''));
+        // 只有表不存在时才回退到 V1
+        if (errCode !== 'PGRST205' && !errMsg.includes('relation') && !errMsg.includes('does not exist')) {
+            // 其他错误也视为 V2 表存在
+            v2TableExists = true;
+        }
         console.error('读取 V2 设置失败，回退到旧版:', v2Err);
+    }
+
+    // 关键修复：如果 V2 表已存在（已启用 V2），不再回退到 V1
+    // 避免 V1 旧数据覆盖 V2 的删除操作（如删除背景费）
+    if (v2TableExists) {
+        console.log('V2 已启用，跳过 V1 旧数据加载');
+        return;
     }
 
     const { data, error } = await client

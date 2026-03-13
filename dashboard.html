@@ -96,8 +96,8 @@
 </div>
 
 <div class="order-grid" id="orderList">
-    <!-- 订单列表将在这里动态加载 -->
-    <p>正在拉取云端订单数据...</p>
+    <!-- 企划列表将在这里动态加载 -->
+    <p>正在拉取云端企划数据...</p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -134,7 +134,7 @@
             document.getElementById('slug_link').textContent = '约稿链接: ' + fullUrl;
         }
 
-        // 3. 拉取订单列表
+        // 3. 拉取企划列表
         fetchOrders();
     }
 
@@ -145,7 +145,7 @@
             .order('created_at', { ascending: false });
 
         if (error) {
-            console.error('拉取订单失败:', error);
+            console.error('拉取企划失败:', error);
             return;
         }
 
@@ -155,7 +155,7 @@
     function renderOrders(orders) {
         const listEl = document.getElementById('orderList');
         if (orders.length === 0) {
-            listEl.innerHTML = '<p>暂无云端订单，快把链接发给单主吧！</p>';
+            listEl.innerHTML = '<p>暂无云端企划，快把链接发给单主吧！</p>';
             return;
         }
 

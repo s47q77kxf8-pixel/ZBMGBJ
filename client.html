@@ -78,46 +78,23 @@
 
 
 
+      <div id="cGlobalNotice" class="text-gray" style="margin-bottom:10px;white-space:pre-line;"></div>
       <div id="cDynamicFieldsContainer"></div>
 
 
 
-      <div class="form-row">
-
-
-
-        <div class="form-group" style="flex:1;">
-
-
-
-          <label>制品工艺及尺寸</label>
-
-
-
-          <div id="cItemsContainer"></div>
-
-
-
-          <div style="margin-top:10px;">
-
-
-
-            <button type="button" class="btn secondary" id="cAddItemBtn">+ 添加制品</button>
-
-
-
+      <div id="cProductModuleBlock" style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;margin-top:12px;">
+        <div id="cProductModuleTitle" style="font-weight:700;margin-bottom:8px;">制品信息</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;">
+            <label>制品工艺及尺寸</label>
+            <div id="cItemsContainer"></div>
+            <div style="margin-top:10px;">
+              <button type="button" class="btn secondary" id="cAddItemBtn">+ 添加制品</button>
+            </div>
+            <small id="cItemsHint" class="text-gray" style="display:block;margin-top:8px;">此区域与计算页选项一致（制品类型 / 双单面 / 背景 / 配置项 / 节点 / 工艺），仅额外增加尺寸输入。</small>
           </div>
-
-
-
-          <small id="cItemsHint" class="text-gray" style="display:block;margin-top:8px;">此区域与计算页选项一致（制品类型 / 双单面 / 背景 / 配置项 / 节点 / 工艺），仅额外增加尺寸输入。</small>
-
-
-
         </div>
-
-
-
       </div>
 
 
@@ -467,125 +444,60 @@
 
 
     function renderDynamicFields() {
-
-
-
       const container = document.getElementById('cDynamicFieldsContainer');
-
-
-
       if (!container) return;
 
-
-
-      const enabledFields = currentTemplate.fields.filter(f => f.enabled).sort((a, b) => (a.order || 0) - (b.order || 0));
-
-
-
-      let html = '';
-
-
-
-      for (let i = 0; i < enabledFields.length; i += 2) {
-
-
-
-        html += '<div class="form-row">';
-
-
-
-        for (let j = 0; j < 2; j++) {
-
-
-
-          const field = enabledFields[i + j];
-
-
-
-          if (!field) continue;
-
-
-
-          const isTextarea = field.type === 'textarea';
-
-
-
-          const isSelect = field.type === 'select';
-
-
-
-          const optionsHtml = Array.isArray(field.options)
-
-
-
-            ? field.options.map(opt => `<option value="${String(opt.value || '')}">${String(opt.label || opt.value || '')}</option>`).join('')
-
-
-
-            : '';
-
-
-
-          html += `<div class="form-group" style="${isTextarea ? 'flex:100%' : ''}">
-
-
-
-            <label for="f_${field.key}">${field.label}${field.required ? '<span style="color:red;margin-left:4px;">*</span>' : ''}</label>
-
-
-
-            ${isTextarea
-
-
-
-              ? `<textarea id="f_${field.key}" class="c-base-field" data-key="${field.key}" placeholder="${field.placeholder || ''}" style="width:100%;min-height:80px;"></textarea>`
-
-
-
-              : isSelect
-
-
-
-                ? `<select id="f_${field.key}" class="c-base-field" data-key="${field.key}" style="width:100%;">${optionsHtml}</select>`
-
-
-
-                : `<input id="f_${field.key}" class="c-base-field" data-key="${field.key}" type="${field.type || 'text'}" placeholder="${field.placeholder || ''}" style="width:100%;" />`
-
-
-
-            }
-
-
-
-            <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
-
-
-
-          </div>`;
-
-
-
-          if (isTextarea) break;
-
-
-
-        }
-
-
-
-        html += '</div>';
-
-
-
+      const noticeEl = document.getElementById('cGlobalNotice');
+      if (noticeEl) {
+        noticeEl.textContent = currentTemplate.notice || '';
+        noticeEl.style.display = currentTemplate.notice ? '' : 'none';
       }
 
+      const modules = Array.isArray(currentTemplate.modules) && currentTemplate.modules.length
+        ? currentTemplate.modules
+        : [{ id: 'owner', title: '单主信息' }, { id: 'project', title: '企划信息' }];
 
+      let html = '';
+      modules.forEach(module => {
+        const fields = (currentTemplate.fields || [])
+          .filter(f => f.enabled && (f.module || 'owner') === module.id)
+          .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        if (!fields.length) return;
+
+        html += `
+          <div style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;margin-bottom:12px;">
+            <div style="font-weight:700;margin-bottom:8px;">${module.title || '未命名模块'}</div>
+        `;
+
+        for (let i = 0; i < fields.length; i += 2) {
+          html += '<div class="form-row">';
+          for (let j = 0; j < 2; j++) {
+            const field = fields[i + j];
+            if (!field) continue;
+            const isTextarea = field.type === 'textarea';
+            const isSelect = field.type === 'select';
+            const optionsHtml = Array.isArray(field.options)
+              ? field.options.map(opt => `<option value="${String(opt.value || '')}">${String(opt.label || opt.value || '')}</option>`).join('')
+              : '';
+            html += `<div class="form-group" style="${isTextarea ? 'flex:100%' : ''}">
+              <label for="f_${field.key}">${field.label}${field.required ? '<span style="color:red;margin-left:4px;">*</span>' : ''}</label>
+              ${isTextarea
+                ? `<textarea id="f_${field.key}" class="c-base-field" data-key="${field.key}" placeholder="${field.placeholder || ''}" style="width:100%;min-height:80px;"></textarea>`
+                : isSelect
+                  ? `<select id="f_${field.key}" class="c-base-field" data-key="${field.key}" style="width:100%;">${optionsHtml}</select>`
+                  : `<input id="f_${field.key}" class="c-base-field" data-key="${field.key}" type="${field.type || 'text'}" placeholder="${field.placeholder || ''}" style="width:100%;" />`
+              }
+              <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
+            </div>`;
+            if (isTextarea) break;
+          }
+          html += '</div>';
+        }
+        html += '</div>';
+      });
 
       container.innerHTML = html;
-
-
-
     }
 
 
@@ -674,11 +586,15 @@
 
 
 
-            <label>数量<span style="color:red;margin-left:4px;">*</span></label>
+            <label>制品数<span style="color:red;margin-left:4px;">*</span></label>
 
 
 
-            <input type="number" class="c-item-qty" value="1" min="1" step="1" style="width:100%" />
+            <div class="process-layers-stepper-wrap">
+              <button type="button" class="process-layers-stepper-btn c-qty-minus" aria-label="减一">−</button>
+              <input type="number" class="c-item-qty process-layers-stepper-input" value="1" min="1" step="1" />
+              <button type="button" class="process-layers-stepper-btn c-qty-plus" aria-label="加一">+</button>
+            </div>
 
 
 
@@ -1131,8 +1047,7 @@
 
 
       const itemsHintEl = document.getElementById('cItemsHint');
-
-
+      const productTitleEl = document.getElementById('cProductModuleTitle');
 
       const slug = (getQueryParam('t') || '').trim();
 
@@ -1348,7 +1263,12 @@
 
       renderDynamicFields();
 
-
+      const productModuleTitle = Array.isArray(currentTemplate.modules)
+        ? currentTemplate.modules.find(m => m.id === 'product')
+        : null;
+      if (productTitleEl && productModuleTitle && productModuleTitle.title) {
+        productTitleEl.textContent = productModuleTitle.title;
+      }
 
       if (!artistProductSettings.length) {
 
