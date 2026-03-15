@@ -4184,6 +4184,7 @@ function getStatsDataset(historySource, filters) {
             byUsage: [],
             byUrgent: [],
             byProcess: [],
+            byIp: [],
             // 制品小类汇总：rows + totals
             categorySummary: {
                 rows: [],
@@ -4261,6 +4262,7 @@ function getStatsDataset(historySource, filters) {
     const usageMap = {};
     const urgentMap = {};
     const processMap = {};
+    const ipMap = {};
     // 其他费用聚合：记录每种其他费用的「出现次数」和「金额」
     const otherFeesMap = {};
     // 制品小类聚合：按制品名（小类）统计主设 / 同模 / 合计数量 / 金额
@@ -4534,6 +4536,12 @@ function getStatsDataset(historySource, filters) {
         clientMap[cid].orderCount += 1;
         clientMap[cid].revenueTotal += revenue;
 
+        const ipName = (item.projectOrigin && String(item.projectOrigin).trim()) ? String(item.projectOrigin).trim() : '—';
+        if (!ipMap[ipName]) ipMap[ipName] = { name: ipName, orderCount: 0, amountTotal: 0, orderIds: [] };
+        pushOrderId(ipMap[ipName], item.id);
+        ipMap[ipName].orderCount += 1;
+        ipMap[ipName].amountTotal += revenue;
+
         products.forEach(p => {
             const name = p.product || '制品';
             if (!productMap[name]) productMap[name] = { productName: name, count: 0, revenueTotal: 0 };
@@ -4705,6 +4713,7 @@ function getStatsDataset(historySource, filters) {
     const byUrgent = Object.values(urgentMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byOtherFees = Object.values(otherFeesMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byProcess = Object.values(processMap).sort((a, b) => b.feeTotal - a.feeTotal);
+    const byIp = Object.values(ipMap).sort((a, b) => b.amountTotal - a.amountTotal);
 
     const categoryRows = Object.values(categoryMap).sort((a, b) => {
         // 默认按金额从高到低，其次按合计件数
@@ -4770,6 +4779,7 @@ function getStatsDataset(historySource, filters) {
         byUrgent,
         byOtherFees,
         byProcess,
+        byIp,
         categorySummary
     };
 }
@@ -4833,7 +4843,7 @@ function openStatsDistributionOrders(orderIds, focusLabel) {
     if (typeof showGlobalToast === 'function') showGlobalToast('已切换为仅显示这 ' + ids.length + ' 条统计企划');
 }
 
-function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, discountByReason) {
+function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, byIp, discountByReason) {
     const container = document.getElementById('statsDistribution');
     if (!container) return;
     var hasStatus = byStatus && byStatus.some(function (s) { return s.orderCount > 0 || s.amountTotal > 0; });
@@ -4841,6 +4851,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
     var hasUrgent = byUrgent && byUrgent.length > 0;
     var hasOtherFees = byOtherFees && byOtherFees.length > 0;
     var hasProcess = byProcess && byProcess.length > 0;
+    var hasIp = byIp && byIp.length > 0;
     // 折扣原因：与「用途」「加急」类似，按「单数 / 金额」展示
     var discountReasons = (discountByReason && typeof discountByReason === 'object')
         ? Object.values(discountByReason).filter(function (r) {
@@ -4848,7 +4859,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         })
         : [];
     var hasDiscount = discountReasons.length > 0;
-    if (!hasStatus && !hasUsage && !hasUrgent && !hasOtherFees && !hasProcess && !hasDiscount) { container.innerHTML = ''; container.classList.add('d-none'); return; }
+    if (!hasStatus && !hasUsage && !hasUrgent && !hasOtherFees && !hasProcess && !hasIp && !hasDiscount) { container.innerHTML = ''; container.classList.add('d-none'); return; }
     container.classList.remove('d-none');
     var tabs = [];
     var panels = [];
@@ -4899,6 +4910,12 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         var prhtml = '';
         byProcess.forEach(function (r) { var label = '工艺：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); prhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'process', html: '<div class="stats-dim-list">' + prhtml + '</div>' });
+    }
+    if (hasIp) {
+        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="ip">IP</button>');
+        var iphtml = '';
+        byIp.forEach(function (r) { var label = 'IP：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); iphtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        panels.push({ id: 'ip', html: '<div class="stats-dim-list">' + iphtml + '</div>' });
     }
     if (hasDiscount) {
         tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="discount">折扣</button>');
@@ -5539,7 +5556,7 @@ function applyStatsFilters() {
     renderStatsTrends(dataset.dailyAgg, dataset.weeklyAgg, dataset.monthlyAgg);
     renderStatsTopLists(dataset.byClient, dataset.byProduct);
     renderStatsCategorySummary(dataset.categorySummary);
-    renderStatsDistribution(dataset.byStatus, dataset.byUsage, dataset.byUrgent, dataset.byOtherFees, dataset.byProcess, dataset.totals.discountByReason);
+    renderStatsDistribution(dataset.byStatus, dataset.byUsage, dataset.byUrgent, dataset.byOtherFees, dataset.byProcess, dataset.byIp, dataset.totals.discountByReason);
 }
 
 function renderStatsPage() {
@@ -19262,6 +19279,11 @@ async function mgCloudFetchOrders(filters = {}) {
             if (o.external_id) {
                 item.external_id = o.external_id;
             }
+
+            // 回填云端更新时间戳，保证跨端冲突判断一致
+            if (o.payload && o.payload.mg_updated_at != null) {
+                item.mg_updated_at = o.payload.mg_updated_at;
+            }
             
             // 如果 payload 中没有 id，才使用 external_id 反推（降级处理）
             if (!item.id && o.external_id) {
@@ -19492,6 +19514,9 @@ async function mgCloudUpsertOrder(item, retryCount = 0, context = null) {
     }
     
     try {
+        const localUpdatedAt = Date.now();
+        if (item) item.mg_updated_at = localUpdatedAt;
+
         const mapped = mgMapLocalToCloud(item);
         if (!mapped) {
             if (item && item.id) markOrderUnsynced(item.id);
@@ -19506,6 +19531,33 @@ async function mgCloudUpsertOrder(item, retryCount = 0, context = null) {
                 return;
             }
             artistId = session.user.id;
+        }
+
+        const externalId = mapped.external_id || mgEnsureExternalId(item);
+        if (!externalId) {
+            if (item && item.id) markOrderUnsynced(item.id);
+            return;
+        }
+
+        // 冲突保护：若云端版本更新时间更晚，则不覆盖，避免旧端回填
+        const { data: existing, error: fetchErr } = await client
+            .from('orders')
+            .select('payload')
+            .eq('external_id', externalId)
+            .eq('artist_id', artistId)
+            .maybeSingle();
+
+        if (fetchErr && fetchErr.code !== 'PGRST116') {
+            throw fetchErr;
+        }
+
+        if (existing && existing.payload && existing.payload.mg_updated_at) {
+            const cloudTs = Number(existing.payload.mg_updated_at);
+            if (isFinite(cloudTs) && cloudTs > localUpdatedAt) {
+                console.warn('云端企划更新更晚，跳过覆盖：', externalId);
+                if (item && item.id) markOrderUnsynced(item.id);
+                return;
+            }
         }
         
         mapped.artist_id = artistId;
