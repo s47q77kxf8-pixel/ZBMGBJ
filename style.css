@@ -7091,7 +7091,7 @@ input:checked + .toggle-slider:before {
 }
 
 .schedule-todo-card-project .project-title-strong {
-    color: var(--text-color);
+    color: var(--text-light);
     font-weight: 600;
 }
 
@@ -8464,7 +8464,7 @@ html.theme-dark .settlement-preview {
 }
 
 .record-item-project .project-title-strong {
-    color: var(--text-color);
+    color: var(--text-light);
     font-weight: 400;
 }
 .record-item-date {

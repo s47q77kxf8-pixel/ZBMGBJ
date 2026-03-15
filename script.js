@@ -14011,8 +14011,13 @@ function batchDeleteHistory() {
     // 云端同步：如果已启用云端模式，同步删除云端企划
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         itemsToDelete.forEach(item => {
-            mgCloudDeleteOrder(item).catch(err => {
+            mgCloudDeleteOrder(item).then(function (ok) {
+                if (!ok) {
+                    alert('删除未同步到云端，请检查网络后重试同步。');
+                }
+            }).catch(err => {
                 console.error('云端删除企划失败:', err);
+                alert('删除未同步到云端，请检查网络后重试同步。');
             });
         });
     }
@@ -14771,8 +14776,13 @@ function deleteHistoryItem(id) {
     
     // 云端同步：如果已启用云端模式，同步删除云端企划
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
-        mgCloudDeleteOrder(item).catch(err => {
+        mgCloudDeleteOrder(item).then(function (ok) {
+            if (!ok) {
+                alert('删除未同步到云端，请检查网络后重试同步。');
+            }
+        }).catch(err => {
             console.error('云端删除企划失败:', err);
+            alert('删除未同步到云端，请检查网络后重试同步。');
         });
     }
 }
@@ -19357,12 +19367,12 @@ function updateSyncStatus() {
 // 删除云端企划
 async function mgCloudDeleteOrder(item, retryCount = 0) {
     if (!mgIsCloudEnabled()) {
-        return;
+        return false;
     }
     
     const client = mgGetSupabaseClient();
     if (!client || !item) {
-        return;
+        return false;
     }
     
     try {
@@ -19370,14 +19380,14 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
         if (!externalId) {
             console.log('企划无 external_id，无需同步删除，标记为已同步');
             if (item && item.id) markOrderSynced(item.id);
-            return;
+            return true;
         }
         
         // 获取当前登录用户的 artist_id
         const { data: { session } } = await client.auth.getSession();
         if (!session || !session.user) {
             console.warn('删除同步失败：未登录');
-            return;
+            return false;
         }
         
         // 删除云端企划（根据 external_id 和 artist_id）
@@ -19388,33 +19398,34 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
             .eq('artist_id', session.user.id);
         
         if (error) {
-            console.error('云端删除企划失败 (attempt ' + (retryCount+1) + '):', error.message || error);
+            console.error('云端删除企划失败 (attempt ' + (retryCount + 1) + '):', error.message || error);
             
             // 如果是权限错误或 404，通常不需要重试，保留在未同步列表中供用户查看
             if (error.code === '42501' || error.status === 404) {
-                return;
+                return false;
             }
 
             // 重试机制（最多重试2次）
             if (retryCount < 2) {
-                setTimeout(() => {
-                    mgCloudDeleteOrder(item, retryCount + 1);
-                }, 3000 * (retryCount + 1)); 
+                await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)));
+                return mgCloudDeleteOrder(item, retryCount + 1);
             }
-        } else {
-            console.log('✅ 云端删除企划成功:', externalId);
-            // 无论实际删除了几行（即使云端已不存在），只要没有错误，就视为同步成功
-            if (item && item.id) {
-                markOrderSynced(item.id);
-            }
+            return false;
         }
+
+        console.log('✅ 云端删除企划成功:', externalId);
+        // 无论实际删除了几行（即使云端已不存在），只要没有错误，就视为同步成功
+        if (item && item.id) {
+            markOrderSynced(item.id);
+        }
+        return true;
     } catch (err) {
         console.error('云端删除企划出错:', err);
         if (retryCount < 2 && (err.message?.includes('network') || err.message?.includes('fetch'))) {
-            setTimeout(() => {
-                mgCloudDeleteOrder(item, retryCount + 1);
-            }, 3000 * (retryCount + 1));
+            await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)));
+            return mgCloudDeleteOrder(item, retryCount + 1);
         }
+        return false;
     }
 }
 
