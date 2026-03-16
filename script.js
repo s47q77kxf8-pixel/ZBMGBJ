@@ -15247,10 +15247,12 @@ function normalizePerItemExtraFees() {
             var id = f.id != null ? String(f.id) : ('fee_' + Date.now() + '_' + i);
             var name = f.name != null ? String(f.name).trim() : '';
             var amount = Number(f.amount);
+            var updatedAt = (f && f.mg_updated_at != null) ? Number(f.mg_updated_at) : null;
             return {
                 id: id,
                 name: name || ('新增费用' + (i + 1)),
-                amount: isFinite(amount) ? Math.max(0, amount) : 0
+                amount: isFinite(amount) ? Math.max(0, amount) : 0,
+                mg_updated_at: isFinite(updatedAt) ? updatedAt : undefined
             };
         })
         .filter(Boolean);
@@ -15289,7 +15291,8 @@ function addPerItemExtraFee() {
     defaultSettings.perItemExtraFees.push({
         id: 'fee_' + Date.now(),
         name: name,
-        amount: isFinite(amount) ? Math.max(0, amount) : 0
+        amount: isFinite(amount) ? Math.max(0, amount) : 0,
+        mg_updated_at: Date.now()
     });
     if (nameEl) nameEl.value = '';
     if (amountEl) amountEl.value = '';
@@ -15308,6 +15311,7 @@ function updatePerItemExtraFee(id, field, value) {
         var n = Number(value);
         target.amount = isFinite(n) ? Math.max(0, n) : 0;
     }
+    target.mg_updated_at = Date.now();
     saveData();
 }
 
@@ -21096,33 +21100,42 @@ function mgSanitizeSettingsDuplicates() {
 function mergeArraySettings(cloudArray, localArray, key = 'id') {
     if (!Array.isArray(cloudArray)) return localArray || [];
     if (!Array.isArray(localArray)) return cloudArray;
-    
+
     // 创建云端设置的映射（以id为key）
     const cloudMap = new Map();
     cloudArray.forEach(item => {
         const itemKey = item && item[key] != null ? String(item[key]) : null;
         if (itemKey) cloudMap.set(itemKey, item);
     });
-    
+
     // 创建本地设置的映射
     const localMap = new Map();
     localArray.forEach(item => {
         const itemKey = item && item[key] != null ? String(item[key]) : null;
         if (itemKey) localMap.set(itemKey, item);
     });
-    
-    // 合并：云端优先，但保留本地独有的
-    const merged = [...cloudArray]; // 先添加所有云端设置
-    
-    // 添加本地独有的设置
-    localArray.forEach(item => {
+
+    // 合并：按 mg_updated_at 选较新的，同 ID 只保留一个
+    const mergedMap = new Map();
+    const consider = function (item) {
         const itemKey = item && item[key] != null ? String(item[key]) : null;
-        if (itemKey && !cloudMap.has(itemKey)) {
-            merged.push(item);
+        if (!itemKey) return;
+        const existing = mergedMap.get(itemKey);
+        if (!existing) {
+            mergedMap.set(itemKey, item);
+            return;
         }
-    });
-    
-    return merged;
+        const a = Number(existing.mg_updated_at || 0);
+        const b = Number(item.mg_updated_at || 0);
+        if (b >= a) {
+            mergedMap.set(itemKey, item);
+        }
+    };
+
+    cloudArray.forEach(consider);
+    localArray.forEach(consider);
+
+    return Array.from(mergedMap.values());
 }
 
 // 智能合并对象设置（深度合并，云端优先）
