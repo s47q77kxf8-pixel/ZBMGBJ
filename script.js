@@ -7416,7 +7416,6 @@ function generateQuote() {
     // 企划信息（有任意字段时显示）
     if (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName) {
         receiptInfoHtml += `<div class="receipt-project-card">`;
-        receiptInfoHtml += `<div class="receipt-project-title">企划信息</div>`;
         if (quoteData.projectName) {
             receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">企划名</span><span class="receipt-project-value">${String(quoteData.projectName).replace(/</g, '&lt;')}</span></div>`;
         }
@@ -17016,8 +17015,8 @@ function renderExtraPricingUp() {
     const list = defaultSettings.extraPricingUp || [];
     let html = '';
     for (const e of list) {
-        // 只对非默认系数（ID不是1）显示删除按钮
-        const deleteBtnHtml = e.id !== 1 ? `<button type="button" class="icon-action-btn delete" onclick="event.stopPropagation();deleteExtraCoefficient(${e.id},'up')" aria-label="删除系数" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button>` : '';
+        const isProtected = (e && e.name === '不公开展示系数');
+        const deleteBtnHtml = !isProtected ? `<button type="button" class="icon-action-btn delete" onclick="event.stopPropagation();deleteExtraCoefficient(${e.id},'up')" aria-label="删除系数" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button>` : '';
         html += `<div class="category-container"><div class="category-header" onclick="toggleCategory('extraUp-${e.id}')"><span class="category-title">${e.name || '未命名'}</span><div style="display: flex; align-items: center; gap: 0.5rem;">${deleteBtnHtml}<div class="category-toggle">▼</div></div></div>`;
         html += '<div class="category-content d-none" id="extraUp-' + e.id + '-content"><div class="coefficient-settings">';
         // 按系数值升序排序后渲染
@@ -17045,7 +17044,9 @@ function renderExtraPricingDown() {
     const list = defaultSettings.extraPricingDown || [];
     let html = '';
     for (const e of list) {
-        html += '<div class="category-container"><div class="category-header" onclick="toggleCategory(\'extraDown-' + e.id + '\')"><span class="category-title">' + (e.name || '未命名') + '</span><div style="display: flex; align-items: center; gap: 0.5rem;"><button type="button" class="icon-action-btn delete" onclick="event.stopPropagation();deleteExtraCoefficient(' + e.id + ',\'down\')" aria-label="删除系数" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button><div class="category-toggle">▼</div></div></div>';
+        const isProtected = (e && e.name === '不公开展示系数');
+        const deleteBtnHtml = !isProtected ? '<button type="button" class="icon-action-btn delete" onclick="event.stopPropagation();deleteExtraCoefficient(' + e.id + ',\'down\')" aria-label="删除系数" title="删除"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg><span class="sr-only">删除</span></button>' : '';
+        html += '<div class="category-container"><div class="category-header" onclick="toggleCategory(\'extraDown-' + e.id + '\')"><span class="category-title">' + (e.name || '未命名') + '</span><div style="display: flex; align-items: center; gap: 0.5rem;">' + deleteBtnHtml + '<div class="category-toggle">▼</div></div></div>';
         html += '<div class="category-content d-none" id="extraDown-' + e.id + '-content"><div class="coefficient-settings">';
         // 按系数值降序排序后渲染（折扣类降序）
         const sortedEntries = Object.entries(e.options || {}).sort((a, b) => {
@@ -17105,16 +17106,22 @@ function deleteExtraPricingOption(id, upDown, optKey) {
 
 // 删除扩展加价/折扣系数
 function deleteExtraCoefficient(id, upDown) {
-    // 禁止删除ID为1的"不公开展示系数"
-    if (id === 1) {
+    const list = upDown === 'up' ? defaultSettings.extraPricingUp : defaultSettings.extraPricingDown;
+    const target = list && list.find(x => x.id === id);
+    const targetName = target && target.name ? String(target.name) : '';
+
+    // 仅默认“ 不公开展示系数 ”不可删除
+    if (targetName === '不公开展示系数') {
         alert('该系数不可删除！');
         return;
     }
     
     if (!confirm('确定要删除该系数吗？')) return;
-    const list = upDown === 'up' ? defaultSettings.extraPricingUp : defaultSettings.extraPricingDown;
     if (list) {
-        const i = list.findIndex(x => x.id === id);
+        let i = list.findIndex(x => String(x.id) === String(id));
+        if (i < 0 && targetName) {
+            i = list.findIndex(x => String(x.name || '') === targetName);
+        }
         if (i >= 0) { list.splice(i, 1); saveData(); }
     }
     renderCoefficientSettings();
