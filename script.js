@@ -6012,10 +6012,23 @@ function saveStatsReportAsImage() {
         alert('未检测到截图能力，请稍后重试');
         return;
     }
+    
+    // 确保导出区域完全可见且尺寸正确
+    const rect = exportArea.getBoundingClientRect();
+    const exportWidth = Math.max(rect.width, 400);
+    
     html2canvas(exportArea, {
         backgroundColor: null,
         scale: Math.max(2, window.devicePixelRatio || 1),
-        useCORS: true
+        useCORS: true,
+        width: exportWidth,
+        height: exportArea.scrollHeight,
+        windowWidth: exportWidth,
+        windowHeight: exportArea.scrollHeight,
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0
     }).then(function (canvas) {
         const filename = '时光报告-' + new Date().toISOString().slice(0, 10) + '.png';
         // 更精确地区分"手机/平板"与"桌面端"
