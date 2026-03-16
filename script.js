@@ -358,6 +358,7 @@ const defaultSettings = {
             showOrderTime: true,  // 是否体现下单时间
             showDesigner: true,  // 是否显示设计师
             showContactInfo: true,  // 是否显示联系方式
+            showProjectInfo: true,  // 是否显示企划信息
             customText: '',  // 自定义文本
             followSystemTheme: false  // 是否跟随系统主题颜色
         },
@@ -826,6 +827,7 @@ function loadData() {
                         showOrderTime: true,
                         showDesigner: true,
                         showContactInfo: true,
+                        showProjectInfo: true,
                         customText: '',
                         followSystemTheme: false
                     },
@@ -858,6 +860,7 @@ function loadData() {
                         showOrderTime: true,
                         showDesigner: true,
                         showContactInfo: true,
+                        showProjectInfo: true,
                         customText: '',
                         followSystemTheme: false
                     };
@@ -2381,6 +2384,7 @@ function updateReceiptInfo(field, value) {
             showOrderTime: true,
             showDesigner: true,
             showContactInfo: true,
+            showProjectInfo: true,
             customText: '',
             followSystemTheme: false
         };
@@ -2927,6 +2931,7 @@ function clearReceiptCustomization() {
                 showOrderTime: true,
                 showDesigner: true,
                 showContactInfo: true,
+                showProjectInfo: true,
                 customText: '',
                 followSystemTheme: false
             },
@@ -5096,10 +5101,14 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
         return;
     }
     
+    const maxItems = 10;
+    const trendShowAll = (window.statsTrendShowAll && window.statsTrendShowAll[currentTab]) ? true : false;
+    const displayAgg = (!trendShowAll && agg.length > maxItems) ? agg.slice(-maxItems) : agg;
+
     // 计算最大值用于条形图宽度
-    const maxRev = Math.max(1, ...agg.map(d => d.revenue));
-    const maxOrd = Math.max(1, ...agg.map(d => d.orders));
-    const maxItem = Math.max(1, ...agg.map(d => d.itemTotal || 0));
+    const maxRev = Math.max(1, ...displayAgg.map(d => d.revenue));
+    const maxOrd = Math.max(1, ...displayAgg.map(d => d.orders));
+    const maxItem = Math.max(1, ...displayAgg.map(d => d.itemTotal || 0));
     const maxRate = 100;
     const fmtMoneyCompact = (v) => {
         const n = Number(v) || 0;
@@ -5111,7 +5120,7 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     };
     
     // 构建HTML
-    var html = '<h3 class="stats-block-title">趋势</h3>';
+    var html = '<div class="stats-block-title-row"><h3 class="stats-block-title">趋势</h3>' + (moreBtnHtml ? ('<div class="stats-trend-more-wrap">' + moreBtnHtml + '</div>') : '') + '</div>';
     
     // 生成粒度选择按钮
     html += '<div class="stats-top-tabs">';
@@ -5126,6 +5135,12 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     }
     html += '</div>';
 
+    var moreBtnHtml = '';
+    if (agg.length > maxItems) {
+        var toggleLabel = trendShowAll ? ('收起（仅显示最近' + maxItems + '条）') : ('更多（显示全部' + agg.length + '条）');
+        moreBtnHtml = '<button type="button" class="btn secondary small stats-trend-more" data-trend-more="1">' + toggleLabel + '</button>';
+    }
+
     // 生成趋势数据（添加垂直滚动）
     html += '<div class="stats-mini-bars scrollable">';
 
@@ -5137,7 +5152,7 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-item"></i>制品</span>';
     html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-rate"></i>完成率</span>';
     html += '</div>';
-    agg.forEach(function (d) {
+    displayAgg.forEach(function (d) {
         var rate = d.itemTotal > 0 ? (d.itemDone / d.itemTotal) * 100 : 0;
         var lbl = d[labelKey] || d.date || d.month || d.year || '—';
         html += '<div class="stats-bar-row">';
@@ -5159,6 +5174,15 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
             applyStatsFilters();
         });
     });
+
+    var moreBtn = container.querySelector('.stats-trend-more');
+    if (moreBtn) {
+        moreBtn.addEventListener('click', function () {
+            window.statsTrendShowAll = window.statsTrendShowAll || {};
+            window.statsTrendShowAll[currentTab] = !trendShowAll;
+            renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg);
+        });
+    }
 }
 
 function renderStatsTopLists(byClient, byProduct) {
@@ -7395,9 +7419,10 @@ function generateQuote() {
     }
 
     // 企划信息（有任意字段时显示）
-    if (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName) {
+    if (receiptInfo.showProjectInfo !== false && (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName)) {
         receiptInfoHtml += `<div class="receipt-project-card">`;
         receiptInfoHtml += `<div class="receipt-project-title">企划信息</div>`;
+        receiptInfoHtml += `<div class="receipt-project-divider"></div>`;
         if (quoteData.projectName) {
             receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">企划名</span><span class="receipt-project-value">${String(quoteData.projectName).replace(/</g, '&lt;')}</span></div>`;
         }
@@ -14441,7 +14466,8 @@ function saveTemplate() {
             projectOrigin: projectOrigin,
             characterName: characterName
         },
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        mg_updated_at: Date.now()
     };
     
     if (existingIndex !== -1) {
@@ -16493,7 +16519,8 @@ function saveNewProduct() {
         priceSingle: 0,
         priceDouble: 0,
         basePrice: 0,
-        baseConfig: ''
+        baseConfig: '',
+        mg_updated_at: Date.now()
     };
     
     // 根据价格类型设置相应的价格
@@ -17622,6 +17649,7 @@ function updateProductSetting(id, field, value) {
     const setting = mgFindProductSettingByTypeId(id);
     if (setting) {
         setting[field] = value;
+        setting.mg_updated_at = Date.now();
         // 如果计价方式改变，重新渲染
         if (field === 'priceType') {
             renderProductSettings();
@@ -17641,6 +17669,7 @@ function addProductAdditionalConfigSetting(productId) {
             price: 0,
             unit: ''
         });
+        setting.mg_updated_at = Date.now();
         renderProductSettings();
     }
 }
@@ -17654,6 +17683,7 @@ function updateProductAdditionalConfigSetting(productId, index, field, value) {
         } else {
             setting.additionalConfigs[index][field] = value;
         }
+        setting.mg_updated_at = Date.now();
     }
 }
 
@@ -17667,6 +17697,7 @@ function removeProductAdditionalConfigSetting(productId, index) {
     const setting = mgFindProductSettingByTypeId(productId);
     if (setting && setting.additionalConfigs && setting.additionalConfigs[index]) {
         setting.additionalConfigs.splice(index, 1);
+        setting.mg_updated_at = Date.now();
         renderProductSettings();
     }
 }
@@ -17677,6 +17708,7 @@ function addProductNodeSetting(settingId) {
     if (setting) {
         if (!setting.nodes) setting.nodes = [];
         setting.nodes.push({ name: '新节点', percent: 0 });
+        setting.mg_updated_at = Date.now();
         renderProductSettings();
     }
 }
@@ -17690,6 +17722,7 @@ function updateProductNodeSetting(settingId, index, field, value) {
         } else {
             setting.nodes[index][field] = value;
         }
+        setting.mg_updated_at = Date.now();
     }
 }
 
@@ -17699,6 +17732,7 @@ function removeProductNodeSetting(settingId, index) {
     const setting = mgFindProductSettingByTypeId(settingId);
     if (setting && setting.nodes && setting.nodes[index]) {
         setting.nodes.splice(index, 1);
+        setting.mg_updated_at = Date.now();
         renderProductSettings();
     }
 }
@@ -17755,7 +17789,8 @@ function saveNewProcess() {
     const processSetting = {
         id: Date.now(),
         name: name,
-        price: price
+        price: price,
+        mg_updated_at: Date.now()
     };
     
     processSettings.push(processSetting);
@@ -17812,6 +17847,7 @@ function updateProcessSetting(id, field, value) {
     const setting = processSettings.find(p => String(p.id) === idStr);
     if (setting) {
         setting[field] = value;
+        setting.mg_updated_at = Date.now();
     }
 }
 
