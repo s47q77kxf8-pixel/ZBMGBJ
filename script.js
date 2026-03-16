@@ -5141,6 +5141,9 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     if (availableGranularities.includes('year')) {
         html += '<button type="button" class="btn secondary small' + (currentTab === 'year' ? ' active' : '') + '" data-gran="year">按年</button>';
     }
+    if (moreBtnHtml) {
+        html += '<div class="stats-trend-more-wrap">' + moreBtnHtml + '</div>';
+    }
     html += '</div>';
 
     html += '<div class="stats-mini-bars scrollable">';

@@ -9127,6 +9127,7 @@ html.theme-dark .settlement-preview {
 .stats-trend-more-wrap {
     display: flex;
     justify-content: flex-end;
+    margin-left: auto;
 }
 
 .stats-mini-bars.scrollable::-webkit-scrollbar {
