@@ -16945,7 +16945,7 @@ function saveNewCoefficient() {
         } else {
             const options = {};
             items.forEach((it, i) => { options['opt_' + i] = { value: it.value, name: it.name }; });
-            const item = { id: Date.now(), name: typeName, options };
+            const item = { id: Date.now(), name: typeName, options, mg_updated_at: Date.now() };
             if (category === 'pricingUp') {
                 if (!Array.isArray(defaultSettings.extraPricingUp)) defaultSettings.extraPricingUp = [];
                 defaultSettings.extraPricingUp.push(item);
@@ -17054,6 +17054,7 @@ function updateExtraPricingOption(id, upDown, optKey, field, value) {
         } else if (field === 'name') {
             e.options[optKey].name = (value || '').trim();
         }
+        e.mg_updated_at = Date.now();
         saveData();
     }
 }
@@ -17075,6 +17076,7 @@ function deleteExtraPricingOption(id, upDown, optKey) {
     }
     
     delete e.options[optKey];
+    e.mg_updated_at = Date.now();
     saveData();
     renderCoefficientSettings();
     updateCalculatorCoefficientSelects();
