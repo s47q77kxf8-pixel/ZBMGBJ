@@ -5010,6 +5010,27 @@ function bindStatsCardOrderLinks(container) {
     container.querySelectorAll('[data-stats-order-ids]').forEach(function (card) {
         if (card.dataset.statsBound === '1') return;
         card.dataset.statsBound = '1';
+        
+        // 处理按钮点击（不冒泡）
+        card.querySelectorAll('.stats-row-action').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var encoded = btn.getAttribute('data-stats-order-ids') || '';
+                if (!encoded) return;
+                try {
+                    var ids = JSON.parse(decodeURIComponent(encoded));
+                    if (!Array.isArray(ids) || ids.length === 0) return;
+                    var labelEncoded = btn.getAttribute('data-stats-focus-label') || '';
+                    var focusLabel = labelEncoded ? decodeURIComponent(labelEncoded) : '';
+                    openStatsDistributionOrders(ids, focusLabel);
+                } catch (e) {
+                    console.error('解析企划列表失败:', e);
+                    alert('企划列表解析失败');
+                }
+            });
+        });
+        
+        // 处理卡片点击
         card.addEventListener('click', function (e) {
             var target = e.target;
             if (target && target.closest && target.closest('[data-stats-order-ids]') && target.closest('[data-stats-order-ids]') !== card) return;
