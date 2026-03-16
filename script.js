@@ -4538,7 +4538,8 @@ function getStatsDataset(historySource, filters) {
         }
 
         const cid = item.clientId || '—';
-        if (!clientMap[cid]) clientMap[cid] = { clientId: cid, orderCount: 0, revenueTotal: 0 };
+        if (!clientMap[cid]) clientMap[cid] = { clientId: cid, orderCount: 0, revenueTotal: 0, orderIds: [] };
+        pushOrderId(clientMap[cid], item.id);
         clientMap[cid].orderCount += 1;
         clientMap[cid].revenueTotal += revenue;
 
