@@ -5128,7 +5128,7 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     }
     
     // 构建HTML
-    var html = '<div class="stats-block-title-row"><h3 class="stats-block-title">趋势</h3>' + (moreBtnHtml ? ('<div class="stats-trend-more-wrap">' + moreBtnHtml + '</div>') : '') + '</div>';
+    var html = '<div class="stats-block-title-row"><h3 class="stats-block-title">趋势</h3></div>';
     
     // 生成粒度选择按钮
     html += '<div class="stats-top-tabs">';
