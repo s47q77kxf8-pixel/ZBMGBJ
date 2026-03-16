@@ -7415,7 +7415,8 @@ function generateQuote() {
 
     // 企划信息（有任意字段时显示）
     if (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName) {
-        receiptInfoHtml += `<div class="receipt-project-card">`;
+        receiptInfoHtml += `<div class="receipt-project-section">`;
+        receiptInfoHtml += `<div class="receipt-project-title">企划信息</div>`;
         if (quoteData.projectName) {
             receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">企划名</span><span class="receipt-project-value">${String(quoteData.projectName).replace(/</g, '&lt;')}</span></div>`;
         }

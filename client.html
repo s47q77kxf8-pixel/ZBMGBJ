@@ -455,7 +455,7 @@
 
       const modules = Array.isArray(currentTemplate.modules) && currentTemplate.modules.length
         ? currentTemplate.modules
-        : [{ id: 'owner', title: '单主信息' }, { id: 'project', title: '企划信息' }];
+        : [{ id: 'owner', title: '单主信息' }, { id: 'project', title: '' }];
 
       let html = '';
       modules.forEach(module => {
@@ -465,9 +465,13 @@
 
         if (!fields.length) return;
 
+        const titleHtml = module.title
+          ? `<div style="font-weight:700;margin-bottom:8px;">${module.title}</div>`
+          : '';
+
         html += `
           <div style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;margin-bottom:12px;">
-            <div style="font-weight:700;margin-bottom:8px;">${module.title || '未命名模块'}</div>
+            ${titleHtml}
         `;
 
         for (let i = 0; i < fields.length; i += 2) {

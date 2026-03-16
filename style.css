@@ -261,11 +261,10 @@ html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend 
 }
 
 /* 小票上的企划信息展示 */
-.receipt-project-card {
-    border: 1px dashed var(--receipt-divider-color, #cbd5e0);
-    border-radius: 10px;
-    padding: 8px 10px;
-    margin-top: 8px;
+.receipt-project-section {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--receipt-divider-color, #cbd5e0);
     display: grid;
     gap: 6px;
 }
@@ -274,6 +273,7 @@ html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend 
     text-align: center;
     color: var(--receipt-title-color, var(--receipt-text));
     font-size: 12px;
+    margin-bottom: 4px;
 }
 .receipt-project-row {
     display: flex;
