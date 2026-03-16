@@ -6013,23 +6013,51 @@ function saveStatsReportAsImage() {
         return;
     }
     
+    // 手机端截图：临时克隆节点到 body 下，避免父容器 overflow 限制
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+    const isMobile = isTouchDevice && window.innerWidth <= 768;
+    
+    let targetElement = exportArea;
+    let cloneElement = null;
+    
+    if (isMobile) {
+        // 创建克隆节点，移除所有可能影响截图的样式
+        cloneElement = exportArea.cloneNode(true);
+        cloneElement.id = 'statsReportExportClone';
+        cloneElement.style.position = 'absolute';
+        cloneElement.style.top = '0';
+        cloneElement.style.left = '0';
+        cloneElement.style.width = '800px';
+        cloneElement.style.maxWidth = '800px';
+        cloneElement.style.margin = '0';
+        cloneElement.style.padding = '60px 50px';
+        cloneElement.style.overflow = 'visible';
+        cloneElement.style.zIndex = '9999';
+        document.body.appendChild(cloneElement);
+        targetElement = cloneElement;
+    }
+    
     // 确保导出区域完全可见且尺寸正确
-    const rect = exportArea.getBoundingClientRect();
+    const rect = targetElement.getBoundingClientRect();
     const exportWidth = Math.max(rect.width, 400);
     
-    html2canvas(exportArea, {
+    html2canvas(targetElement, {
         backgroundColor: null,
         scale: Math.max(2, window.devicePixelRatio || 1),
         useCORS: true,
         width: exportWidth,
-        height: exportArea.scrollHeight,
+        height: targetElement.scrollHeight,
         windowWidth: exportWidth,
-        windowHeight: exportArea.scrollHeight,
+        windowHeight: targetElement.scrollHeight,
         x: 0,
         y: 0,
         scrollX: 0,
         scrollY: 0
     }).then(function (canvas) {
+        // 清理克隆节点
+        if (cloneElement) {
+            document.body.removeChild(cloneElement);
+        }
         const filename = '时光报告-' + new Date().toISOString().slice(0, 10) + '.png';
         // 更精确地区分"手机/平板"与"桌面端"
         const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
