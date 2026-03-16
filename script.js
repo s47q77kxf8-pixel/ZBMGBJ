@@ -14021,8 +14021,65 @@ function updateRecordBatchDeleteButton() {
     const btn = document.getElementById('recordBatchDeleteBtn');
     if (btn) {
         btn.disabled = selectedHistoryIds.size === 0;
-        btn.textContent = selectedHistoryIds.size > 0 ? `批量删除(${selectedHistoryIds.size})` : '批量删除(0)';
+        btn.textContent = selectedHistoryIds.size > 0 ? `批量删除 (${selectedHistoryIds.size})` : '批量删除 (0)';
     }
+    const changeClientBtn = document.getElementById('recordBatchChangeClientBtn');
+    if (changeClientBtn) {
+        changeClientBtn.disabled = selectedHistoryIds.size === 0;
+    }
+}
+
+// 显示批量修改单主 ID 对话框
+function showBatchChangeClientDialog() {
+    if (selectedHistoryIds.size === 0) {
+        alert('请先选择要修改的记录！');
+        return;
+    }
+    const count = selectedHistoryIds.size;
+    document.getElementById('batchChangeClientCount').textContent = count;
+    document.getElementById('batchChangeClientInput').value = '';
+    document.getElementById('batchChangeClientModal').classList.remove('d-none');
+    document.getElementById('batchChangeClientModal').setAttribute('aria-hidden', 'false');
+    document.getElementById('batchChangeClientInput').focus();
+}
+
+// 关闭批量修改单主 ID 对话框
+function closeBatchChangeClientModal() {
+    document.getElementById('batchChangeClientModal').classList.add('d-none');
+    document.getElementById('batchChangeClientModal').setAttribute('aria-hidden', 'true');
+}
+
+// 确认批量修改单主 ID
+function confirmBatchChangeClient() {
+    const newClientId = document.getElementById('batchChangeClientInput').value.trim();
+    if (!newClientId) {
+        alert('请输入新的单主 ID！');
+        return;
+    }
+    
+    const count = selectedHistoryIds.size;
+    if (!confirm('确定将选中的 ' + count + ' 条记录的单主 ID 修改为 "' + newClientId + '" 吗？')) {
+        return;
+    }
+    
+    // 批量修改
+    let modifiedCount = 0;
+    history.forEach(function (item) {
+        if (selectedHistoryIds.has(item.id)) {
+            item.clientId = newClientId;
+            modifiedCount++;
+        }
+    });
+    
+    selectedHistoryIds.clear();
+    saveData();
+    applyHistoryFilters();
+    if (document.getElementById('recordContainer')) {
+        applyRecordFilters();
+    }
+    exitRecordBatchMode();
+    showGlobalToast('已修改 ' + modifiedCount + ' 条记录的单主 ID');
+    closeBatchChangeClientModal();
 }
 
 // 批量删除历史记录

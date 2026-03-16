@@ -1379,8 +1379,11 @@
                             <div id="recordBatchControl" class="d-none mt-2">
                                 <div class="d-flex gap-2">
                                     <button class="btn secondary flex-1" onclick="selectAllRecord()">全选</button>
-                                    <button class="btn danger flex-1" id="recordBatchDeleteBtn" onclick="batchDeleteRecord()" disabled>批量删除(0)</button>
+                                    <button class="btn danger flex-1" id="recordBatchDeleteBtn" onclick="batchDeleteRecord()" disabled>批量删除 (0)</button>
                                     <button class="btn secondary" onclick="exitRecordBatchMode()">取消</button>
+                                </div>
+                                <div class="d-flex gap-2 mt-2">
+                                    <button class="btn primary flex-1" id="recordBatchChangeClientBtn" onclick="showBatchChangeClientDialog()" disabled>批量修改单主 ID</button>
                                 </div>
                             </div>
                         </div>
@@ -2642,6 +2645,29 @@
                     <button type="button" class="btn secondary w-full" onclick="calculatorSaveChoiceOverwrite()">覆盖原企划</button>
                     <button type="button" class="btn w-full" onclick="calculatorSaveChoiceSaveAsNew()">另存为新排单</button>
                     <button type="button" class="btn secondary w-full" onclick="closeCalculatorSaveChoiceModal()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- 批量修改单主 ID 对话框 -->
+    <div id="batchChangeClientModal" class="history-record-modal d-none" aria-hidden="true">
+        <div class="history-record-overlay" onclick="closeBatchChangeClientModal()"></div>
+        <div class="history-record-content">
+            <div class="history-record-header">
+                <h2>批量修改单主 ID</h2>
+                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeBatchChangeClientModal()" aria-label="关闭" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+            </div>
+            <div class="history-record-body">
+                <p class="mb-2">将选中的 <span id="batchChangeClientCount" class="font-weight-bold">0</span> 条记录的单主 ID 修改为：</p>
+                <div class="form-group mt-2">
+                    <input type="text" id="batchChangeClientInput" class="form-control" placeholder="输入新的单主 ID">
+                </div>
+                <div class="d-flex gap-2 mt-3">
+                    <button type="button" class="btn primary flex-1" onclick="confirmBatchChangeClient()">确定</button>
+                    <button type="button" class="btn secondary flex-1" onclick="closeBatchChangeClientModal()">取消</button>
                 </div>
             </div>
         </div>
