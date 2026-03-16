@@ -5120,6 +5120,13 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
         return n.toFixed(1) + '%';
     };
     
+    // 生成"更多"按钮 HTML
+    var moreBtnHtml = '';
+    if (agg.length > maxItems) {
+        var toggleLabel = trendShowAll ? ('收起（仅显示最近' + maxItems + '条）') : ('更多（显示全部' + agg.length + '条）');
+        moreBtnHtml = '<button type="button" class="btn secondary small stats-trend-more" data-trend-more="1">' + toggleLabel + '</button>';
+    }
+    
     // 构建HTML
     var html = '<div class="stats-block-title-row"><h3 class="stats-block-title">趋势</h3>' + (moreBtnHtml ? ('<div class="stats-trend-more-wrap">' + moreBtnHtml + '</div>') : '') + '</div>';
     
@@ -5136,13 +5143,6 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     }
     html += '</div>';
 
-    var moreBtnHtml = '';
-    if (agg.length > maxItems) {
-        var toggleLabel = trendShowAll ? ('收起（仅显示最近' + maxItems + '条）') : ('更多（显示全部' + agg.length + '条）');
-        moreBtnHtml = '<button type="button" class="btn secondary small stats-trend-more" data-trend-more="1">' + toggleLabel + '</button>';
-    }
-
-    // 生成趋势数据（添加垂直滚动）
     html += '<div class="stats-mini-bars scrollable">';
 
     // 指标说明，放在滚动容器内并吸顶，避免条形与数值对应产生歧义
