@@ -358,7 +358,6 @@ const defaultSettings = {
             showOrderTime: true,  // 是否体现下单时间
             showDesigner: true,  // 是否显示设计师
             showContactInfo: true,  // 是否显示联系方式
-            showProjectInfo: true,  // 是否显示企划信息
             customText: '',  // 自定义文本
             followSystemTheme: false  // 是否跟随系统主题颜色
         },
@@ -827,7 +826,6 @@ function loadData() {
                         showOrderTime: true,
                         showDesigner: true,
                         showContactInfo: true,
-                        showProjectInfo: true,
                         customText: '',
                         followSystemTheme: false
                     },
@@ -860,7 +858,6 @@ function loadData() {
                         showOrderTime: true,
                         showDesigner: true,
                         showContactInfo: true,
-                        showProjectInfo: true,
                         customText: '',
                         followSystemTheme: false
                     };
@@ -2384,7 +2381,6 @@ function updateReceiptInfo(field, value) {
             showOrderTime: true,
             showDesigner: true,
             showContactInfo: true,
-            showProjectInfo: true,
             customText: '',
             followSystemTheme: false
         };
@@ -2931,7 +2927,6 @@ function clearReceiptCustomization() {
                 showOrderTime: true,
                 showDesigner: true,
                 showContactInfo: true,
-                showProjectInfo: true,
                 customText: '',
                 followSystemTheme: false
             },
@@ -7419,10 +7414,9 @@ function generateQuote() {
     }
 
     // 企划信息（有任意字段时显示）
-    if (receiptInfo.showProjectInfo !== false && (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName)) {
+    if (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName) {
         receiptInfoHtml += `<div class="receipt-project-card">`;
         receiptInfoHtml += `<div class="receipt-project-title">企划信息</div>`;
-        receiptInfoHtml += `<div class="receipt-project-divider"></div>`;
         if (quoteData.projectName) {
             receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">企划名</span><span class="receipt-project-value">${String(quoteData.projectName).replace(/</g, '&lt;')}</span></div>`;
         }
