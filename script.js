@@ -5195,6 +5195,18 @@ function renderStatsTopLists(byClient, byProduct) {
     const defaultShow = 10;
     const clientByOrders = [...byClient].sort((a, b) => b.orderCount - a.orderCount);
     const clientByRevenue = byClient.slice();
+    
+    // 构建查看订单按钮
+    var buildViewOrdersBtn = function (orderIds, label) {
+        var ids = Array.isArray(orderIds) ? orderIds.map(function (x) { return Number(x); }).filter(function (x) { return isFinite(x); }) : [];
+        if (!ids.length) return '';
+        var encoded = encodeURIComponent(JSON.stringify(ids));
+        var encodedLabel = encodeURIComponent(label || '');
+        return '<button type="button" class="stats-row-action" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '" aria-label="查看企划">' +
+            '<svg class="icon"><use href="#i-filter"></use></svg>' +
+            '</button>';
+    };
+    
     let html = '<h3 class="stats-block-title">Top 单主</h3>';
     html += '<div class="stats-top-header">';
     html += '<div class="stats-top-tabs"><button type="button" class="btn secondary small active" data-tab="clientOrders">按企划数</button><button type="button" class="btn secondary small" data-tab="clientRevenue">按金额</button></div>';
@@ -5209,21 +5221,61 @@ function renderStatsTopLists(byClient, byProduct) {
     html += '</div>';
     html += '<div id="statsTopClientOrders" class="stats-top-list-wrap">';
     html += '<div id="statsTopClientOrdersList" class="stats-top-list">';
-    clientByOrders.slice(0, defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">' + c.orderCount + ' 单</span></div>'; });
+    clientByOrders.slice(0, defaultShow).forEach((c, i) => {
+        var label = '单主：' + (c.clientId || '—');
+        var encodedLabel = encodeURIComponent(label);
+        var viewBtn = buildViewOrdersBtn(c.orderIds, label);
+        html += '<div class="stats-top-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encodeURIComponent(JSON.stringify(c.orderIds || [])) + '" data-stats-focus-label="' + encodedLabel + '">' +
+            '<span class="stats-top-rank">' + (i + 1) + '</span>' +
+            '<span class="stats-top-name">' + (c.clientId || '—') + '</span>' +
+            '<span class="stats-top-val">' + c.orderCount + ' 单</span>' +
+            (viewBtn ? '<span class="stats-top-action">' + viewBtn + '</span>' : '') +
+            '</div>';
+    });
     html += '</div>';
     if (clientByOrders.length > defaultShow) {
         html += '<div id="statsTopClientOrdersMore" class="stats-top-list d-none">';
-        clientByOrders.slice(defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (defaultShow + i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">' + c.orderCount + ' 单</span></div>'; });
+        clientByOrders.slice(defaultShow).forEach((c, i) => {
+            var label = '单主：' + (c.clientId || '—');
+            var encodedLabel = encodeURIComponent(label);
+            var viewBtn = buildViewOrdersBtn(c.orderIds, label);
+            html += '<div class="stats-top-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encodeURIComponent(JSON.stringify(c.orderIds || [])) + '" data-stats-focus-label="' + encodedLabel + '">' +
+                '<span class="stats-top-rank">' + (defaultShow + i + 1) + '</span>' +
+                '<span class="stats-top-name">' + (c.clientId || '—') + '</span>' +
+                '<span class="stats-top-val">' + c.orderCount + ' 单</span>' +
+                (viewBtn ? '<span class="stats-top-action">' + viewBtn + '</span>' : '') +
+                '</div>';
+        });
         html += '</div>';
     }
     html += '</div>';
     html += '<div id="statsTopClientRevenue" class="stats-top-list-wrap d-none">';
     html += '<div id="statsTopClientRevenueList" class="stats-top-list">';
-    clientByRevenue.slice(0, defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span></div>'; });
+    clientByRevenue.slice(0, defaultShow).forEach((c, i) => {
+        var label = '单主：' + (c.clientId || '—');
+        var encodedLabel = encodeURIComponent(label);
+        var viewBtn = buildViewOrdersBtn(c.orderIds, label);
+        html += '<div class="stats-top-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encodeURIComponent(JSON.stringify(c.orderIds || [])) + '" data-stats-focus-label="' + encodedLabel + '">' +
+            '<span class="stats-top-rank">' + (i + 1) + '</span>' +
+            '<span class="stats-top-name">' + (c.clientId || '—') + '</span>' +
+            '<span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span>' +
+            (viewBtn ? '<span class="stats-top-action">' + viewBtn + '</span>' : '') +
+            '</div>';
+    });
     html += '</div>';
     if (clientByRevenue.length > defaultShow) {
         html += '<div id="statsTopClientRevenueMore" class="stats-top-list d-none">';
-        clientByRevenue.slice(defaultShow).forEach((c, i) => { html += '<div class="stats-top-item"><span class="stats-top-rank">' + (defaultShow + i + 1) + '</span><span class="stats-top-name">' + (c.clientId || '—') + '</span><span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span></div>'; });
+        clientByRevenue.slice(defaultShow).forEach((c, i) => {
+            var label = '单主：' + (c.clientId || '—');
+            var encodedLabel = encodeURIComponent(label);
+            var viewBtn = buildViewOrdersBtn(c.orderIds, label);
+            html += '<div class="stats-top-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encodeURIComponent(JSON.stringify(c.orderIds || [])) + '" data-stats-focus-label="' + encodedLabel + '">' +
+                '<span class="stats-top-rank">' + (defaultShow + i + 1) + '</span>' +
+                '<span class="stats-top-name">' + (c.clientId || '—') + '</span>' +
+                '<span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span>' +
+                (viewBtn ? '<span class="stats-top-action">' + viewBtn + '</span>' : '') +
+                '</div>';
+        });
         html += '</div>';
     }
     html += '</div>';
@@ -5260,6 +5312,9 @@ function renderStatsTopLists(byClient, byProduct) {
     // 初始只显示「按企划数」对应的更多按钮，「按金额」的更多按钮先隐藏
     var revenueBtn = document.getElementById('statsTopMoreBtnRevenue');
     if (revenueBtn) revenueBtn.classList.add('d-none');
+    // 绑定点击筛选事件
+    bindStatsCardOrderLinks(container);
+    
     container.querySelectorAll('.stats-top-more-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             var listId = this.dataset.list;
