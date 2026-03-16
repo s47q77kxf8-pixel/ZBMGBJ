@@ -358,6 +358,7 @@ const defaultSettings = {
             showOrderTime: true,  // 是否体现下单时间
             showDesigner: true,  // 是否显示设计师
             showContactInfo: true,  // 是否显示联系方式
+            showProjectInfo: true,  // 是否显示企划信息
             customText: '',  // 自定义文本
             followSystemTheme: false  // 是否跟随系统主题颜色
         },
@@ -2809,6 +2810,11 @@ function loadReceiptCustomizationToForm() {
             if (document.getElementById('showContactInfo')) {
                 document.getElementById('showContactInfo').checked = settings.receiptInfo.showContactInfo !== false; // 默认为true
             }
+            if (document.getElementById('showProjectInfo')) {
+                document.getElementById('showProjectInfo').checked = settings.receiptInfo.showProjectInfo !== false; // 默认为 true
+            }
+
+
             if (document.getElementById('receiptCustomText')) {
                 document.getElementById('receiptCustomText').value = settings.receiptInfo.customText || '';
             }
@@ -7413,8 +7419,8 @@ function generateQuote() {
         receiptInfoHtml += `<p class="receipt-text-sm">${receiptInfo.customText}</p>`;
     }
 
-    // 企划信息（有任意字段时显示）
-    if (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName) {
+    // 企划信息（有任意字段时显示，且开关开启）
+    if (receiptInfo.showProjectInfo !== false && (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName)) {
         receiptInfoHtml += `<div class="receipt-project-section">`;
         if (quoteData.projectName) {
             receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">企划名</span><span class="receipt-project-value">${String(quoteData.projectName).replace(/</g, '&lt;')}</span></div>`;
