@@ -7299,10 +7299,10 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const sameBase = prevBase != null && Math.abs(prevBase - totalBeforePlatformFee) < 0.005;
     const sameManualBase = prevManualBase != null && Math.abs(prevManualBase - totalBeforePlatformFee) < 0.005;
     const keepManualAgreed = hasManualAgreed && prevAgreed != null && (sameManualBase || sameBase);
-    const agreedAmount = keepManualAgreed ? prevAgreed : totalBeforePlatformFee;
-    const platformFeeAmount = Math.round(agreedAmount * (platformFee / 100));
+    const agreedAmount = keepManualAgreed ? prevAgreed : null;
+    const platformFeeAmount = Math.round((agreedAmount != null ? agreedAmount : totalBeforePlatformFee) * (platformFee / 100));
     // 5. 客户实付 = 约定实收 + 平台费
-    const finalTotal = agreedAmount + platformFeeAmount;
+    const finalTotal = (agreedAmount != null ? agreedAmount : totalBeforePlatformFee) + platformFeeAmount;
     
     // 获取开始时间
     const startTimeValue = document.getElementById('startTime')?.value;
@@ -8622,7 +8622,7 @@ function updateAgreedAmountBar() {
     var calc = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (quoteData.finalTotal || 0);
     var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : calc;
     calcEl.textContent = '¥' + calc.toFixed(2);
-    inputEl.value = agreed;
+    inputEl.value = quoteData.hasManualAgreed ? agreed : '';
 
     // 手动改价提示：仅在当前为“手动约定金额”状态时展示
     var manualHintEl = document.getElementById('receiptAgreedManualHint');
@@ -9338,6 +9338,13 @@ function saveToHistory() {
         if (projectOriginInput) projectOriginInput.value = '';
         var characterNameInput = document.getElementById('characterName');
         if (characterNameInput) characterNameInput.value = '';
+        if (quoteData) {
+            quoteData.agreedAmount = null;
+            quoteData.hasManualAgreed = false;
+            quoteData.manualAgreedBase = null;
+        }
+        var agreedInputEl = document.getElementById('agreedAmountInput');
+        if (agreedInputEl) agreedInputEl.value = '';
     }
     
     saveData();
@@ -9373,6 +9380,17 @@ function saveToHistory() {
                 }, 100);
             }
         }
+    }
+
+    if (!window.editingHistoryId) {
+        if (quoteData) {
+            quoteData.agreedAmount = null;
+            quoteData.hasManualAgreed = false;
+            quoteData.manualAgreedBase = null;
+        }
+        var agreedInputEl = document.getElementById('agreedAmountInput');
+        if (agreedInputEl) agreedInputEl.value = '';
+        if (typeof updateAgreedAmountBar === 'function') updateAgreedAmountBar();
     }
     const searchInput = document.getElementById('historySearchInput');
     if (searchInput) applyHistoryFilters();
