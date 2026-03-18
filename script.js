@@ -3081,6 +3081,24 @@ function showPage(pageId) {
         }
     }
 
+    // 兜底：DOM 完成后再次判断 dev=1（处理 file:// 下 search 读取异常）
+    if (pageId === 'settings') {
+        setTimeout(function () {
+            try {
+                const params = new URLSearchParams(window.location.search || '');
+                const isDev = params.get('dev') === '1' || String(window.location.href || '').includes('dev=1');
+                document.querySelectorAll('.dev-feature').forEach(function (el) {
+                    el.classList.toggle('d-none', !isDev);
+                });
+                if (isDev && typeof mgInitInviteLinkUI === 'function') {
+                    mgInitInviteLinkUI();
+                }
+            } catch (e) {
+                // ignore
+            }
+        }, 0);
+    }
+
     // 如果是表单模板编辑页，初始化编辑器
     if (pageId === 'clientTemplateEditor') {
         initClientTemplateEditor();
@@ -3571,6 +3589,7 @@ function applyRecordFilters() {
             html += `</div></div>`;
         });
         container.innerHTML = html;
+    if (containerTemplate) containerTemplate.innerHTML = html;
     } else {
         container.innerHTML = list.map(renderItem).join('');
     }
@@ -6259,6 +6278,16 @@ function openCalculatorDrawer(skipOrderTimeReset) {
 
     // 下单时间与备注：新建时清空，不填的默认为小票保存时间；编辑模式由 editHistoryItem 填充
     if (!skipOrderTimeReset) {
+        // 新建计算：清空上一单数据
+        products = [];
+        gifts = [];
+        productIdCounter = 0;
+        giftIdCounter = 0;
+        const productsContainer = document.getElementById('productsContainer');
+        const giftsContainer = document.getElementById('giftsContainer');
+        if (productsContainer) productsContainer.innerHTML = '';
+        if (giftsContainer) giftsContainer.innerHTML = '';
+
         selectedPerItemExtraFeeIds = [];
         renderCalculatorPerItemExtraSelects();
         var orderTimeInput = document.getElementById('orderTimeInput');
@@ -6277,7 +6306,15 @@ function openCalculatorDrawer(skipOrderTimeReset) {
         if (placeholderToggle) placeholderToggle.checked = false;
         schedulePlaceholderAutoSync = true;
         setSchedulePlaceholderEnabled(false);
-        setExpectedProductCountValue(Math.max(1, products.length || 1), false);
+        setExpectedProductCountValue(1, false);
+        if (quoteData) {
+            quoteData = null;
+        }
+        window.editingHistoryId = null;
+        if (typeof initScheduleColorPreview === 'function') initScheduleColorPreview();
+        var agreedInputEl = document.getElementById('agreedAmountInput');
+        if (agreedInputEl) agreedInputEl.value = '';
+        if (typeof updateAgreedAmountBar === 'function') updateAgreedAmountBar();
     }
 
     // 每次打开时刷新计算页的选择器与系数
@@ -16668,6 +16705,8 @@ function saveNewProduct() {
 // 渲染制品设置
 function renderProductSettings() {
     const container = document.getElementById('productSettingsContainer');
+    const containerTemplate = document.getElementById('productSettingsContainerTemplate');
+    const activeContainer = containerTemplate || container;
     
     // 保存当前展开的分类状态
     const currentlyExpanded = new Set();
@@ -18841,7 +18880,7 @@ function backToSettingsPage() {
 // ========== 设置页：表单模板编辑器 ==========
 const CLIENT_FORM_TEMPLATE_KEY = 'client_form_template_local';
 const CLIENT_FORM_TEMPLATE_DEFAULT = {
-    version: 2,
+    version: 3,
     notice: '感谢下单～工作党上线时间不定，请填写需求表，看见就会回复。\n标价为个人/同人社团商用，官周/企商等请说明。',
     modules: [
         { id: 'owner', title: '单主信息' },
@@ -18849,29 +18888,29 @@ const CLIENT_FORM_TEMPLATE_DEFAULT = {
         { id: 'product', title: '制品信息' }
     ],
     fields: [
-        { key: 'clientName', module: 'owner', type: 'text', enabled: true, required: true, label: '称呼 / 单主昵称', placeholder: '例如：小明', order: 10, rules: { minLength: 1, maxLength: 30, regex: '' } },
-        { key: 'contactType', module: 'owner', type: 'select', enabled: true, required: true, label: '联系方式类型', placeholder: '', order: 15, options: [
+        { key: 'clientName', module: 'owner', type: 'text', enabled: true, required: true, label: '称呼 / 单主昵称', description: '', placeholder: '例如：小明', order: 10, options: [], rules: { minLength: 1, maxLength: 30, regex: '' } },
+        { key: 'contactType', module: 'owner', type: 'select', enabled: true, required: true, label: '联系方式类型', description: '', placeholder: '', order: 15, options: [
             { value: 'QQ', label: 'QQ' },
             { value: '微信', label: '微信' },
             { value: '手机号', label: '手机号' },
             { value: '小红书', label: '小红书' },
             { value: '其他', label: '其他' }
         ], rules: { minLength: '', maxLength: '', regex: '' } },
-        { key: 'contact', module: 'owner', type: 'text', enabled: true, required: true, label: '联系方式账号', placeholder: '例如：123456 / wx_id', order: 20, rules: { minLength: 2, maxLength: 50, regex: '' } },
-        { key: 'commissionUse', module: 'project', type: 'select', enabled: true, required: true, label: '用途', placeholder: '', order: 30, options: [], rules: { minLength: '', maxLength: '', regex: '' } },
-        { key: 'originalWork', module: 'project', type: 'text', enabled: true, required: true, label: '原作', placeholder: '例如：某某作品/IP', order: 40, rules: { minLength: 1, maxLength: 50, regex: '' } },
-        { key: 'characterName', module: 'project', type: 'text', enabled: true, required: true, label: '角色', placeholder: '例如：角色A、角色B', order: 50, rules: { minLength: 1, maxLength: 50, regex: '' } },
-        { key: 'projectThemeName', module: 'project', type: 'text', enabled: true, required: false, label: '企划主题名（中英双语）', placeholder: '例如：春日企划 / Spring Day', order: 60, rules: { minLength: '', maxLength: 80, regex: '' } },
-        { key: 'deadline', module: 'project', type: 'date', enabled: true, required: false, label: '期望截稿时间', placeholder: '', order: 70, rules: { minLength: '', maxLength: '', regex: '' } },
-        { key: 'urgentLevel', module: 'project', type: 'select', enabled: true, required: false, label: '加急等级', placeholder: '', order: 80, options: [], rules: { minLength: '', maxLength: '', regex: '' } },
-        { key: 'textToAdd', module: 'project', type: 'textarea', enabled: true, required: false, label: '想添加的文字（角色名、语录等）', placeholder: '可分行填写：\n①\n②', order: 90, rules: { minLength: '', maxLength: 1000, regex: '' } },
-        { key: 'otherRequirements', module: 'project', type: 'textarea', enabled: true, required: false, label: '其他要求（例如不想要的元素等）', placeholder: '请尽量详细描述', order: 100, rules: { minLength: '', maxLength: 1000, regex: '' } },
-        { key: 'needCutout', module: 'project', type: 'select', enabled: true, required: true, label: '是否需要抠图', placeholder: '', order: 110, options: [
+        { key: 'contact', module: 'owner', type: 'text', enabled: true, required: true, label: '联系方式账号', description: '', placeholder: '例如：123456 / wx_id', order: 20, options: [], rules: { minLength: 2, maxLength: 50, regex: '' } },
+        { key: 'commissionUse', module: 'project', type: 'select', enabled: true, required: true, label: '用途', description: '', placeholder: '', order: 30, options: [], rules: { minLength: '', maxLength: '', regex: '' } },
+        { key: 'originalWork', module: 'project', type: 'text', enabled: true, required: true, label: '原作', description: '', placeholder: '例如：某某作品/IP', order: 40, options: [], rules: { minLength: 1, maxLength: 50, regex: '' } },
+        { key: 'characterName', module: 'project', type: 'text', enabled: true, required: true, label: '角色', description: '', placeholder: '例如：角色A、角色B', order: 50, options: [], rules: { minLength: 1, maxLength: 50, regex: '' } },
+        { key: 'projectThemeName', module: 'project', type: 'text', enabled: true, required: false, label: '企划主题名（中英双语）', description: '', placeholder: '例如：春日企划 / Spring Day', order: 60, options: [], rules: { minLength: '', maxLength: 80, regex: '' } },
+        { key: 'deadline', module: 'project', type: 'date', enabled: true, required: false, label: '期望截稿时间', description: '', placeholder: '', order: 70, options: [], rules: { minLength: '', maxLength: '', regex: '' } },
+        { key: 'urgentLevel', module: 'project', type: 'select', enabled: true, required: false, label: '加急等级', description: '', placeholder: '', order: 80, options: [], rules: { minLength: '', maxLength: '', regex: '' } },
+        { key: 'textToAdd', module: 'project', type: 'textarea', enabled: true, required: false, label: '想添加的文字（角色名、语录等）', description: '', placeholder: '可分行填写：\n①\n②', order: 90, options: [], rules: { minLength: '', maxLength: 1000, regex: '' } },
+        { key: 'otherRequirements', module: 'project', type: 'textarea', enabled: true, required: false, label: '其他要求（例如不想要的元素等）', description: '', placeholder: '请尽量详细描述', order: 100, options: [], rules: { minLength: '', maxLength: 1000, regex: '' } },
+        { key: 'needCutout', module: 'project', type: 'select', enabled: true, required: true, label: '是否需要抠图', description: '', placeholder: '', order: 110, options: [
             { value: '需要', label: '需要' },
             { value: '不需要', label: '不需要' },
             { value: '不确定', label: '不确定（请沟通）' }
         ], rules: { minLength: '', maxLength: '', regex: '' } },
-        { key: 'remark', module: 'project', type: 'textarea', enabled: true, required: false, label: '补充备注', placeholder: '其他想说明的内容都可写这里', order: 120, rules: { minLength: '', maxLength: 1000, regex: '' } }
+        { key: 'remark', module: 'project', type: 'textarea', enabled: true, required: false, label: '补充备注', description: '', placeholder: '其他想说明的内容都可写这里', order: 120, options: [], rules: { minLength: '', maxLength: 1000, regex: '' } }
     ]
 };
 
@@ -18891,11 +18930,16 @@ function getSafeClientFormTemplate(tpl) {
     base.fields = tpl.fields.map((f, idx) => ({
         key: f.key || ('field_' + Date.now() + '_' + idx),
         module: f.module || 'owner',
-        type: ['text', 'textarea', 'date', 'number'].includes(f.type) ? f.type : 'text',
+        type: ['text', 'textarea', 'date', 'number', 'radio', 'checkbox', 'select'].includes(f.type) ? f.type : 'text',
         enabled: f.enabled !== false,
         required: !!f.required,
         label: f.label || '未命名字段',
+        description: f.description || '',
         placeholder: f.placeholder || '',
+        options: Array.isArray(f.options) ? f.options.map(o => ({
+            value: String(o.value || ''),
+            label: String(o.label || o.value || '')
+        })) : [],
         order: Number(f.order) || ((idx + 1) * 10),
         rules: {
             minLength: (f.rules && f.rules.minLength !== undefined) ? f.rules.minLength : '',
@@ -18930,6 +18974,23 @@ function initClientTemplateEditor() {
     if (!section) return;
     loadClientFormTemplateLocal();
     renderClientTemplateEditor();
+    renderClientTemplatePreview();
+    exitClientTemplateEdit();
+}
+
+function enterClientTemplateEdit() {
+    const editSection = document.getElementById('clientTemplateEditSection');
+    const previewSection = document.getElementById('clientTemplatePreviewSection');
+    if (editSection) editSection.classList.remove('d-none');
+    if (previewSection) previewSection.classList.add('d-none');
+    renderClientTemplateEditor();
+}
+
+function exitClientTemplateEdit() {
+    const editSection = document.getElementById('clientTemplateEditSection');
+    const previewSection = document.getElementById('clientTemplatePreviewSection');
+    if (editSection) editSection.classList.add('d-none');
+    if (previewSection) previewSection.classList.remove('d-none');
     renderClientTemplatePreview();
 }
 
@@ -18972,82 +19033,67 @@ function renderClientTemplateEditor() {
                     </div>
                 `;
             }
+
             const moduleFields = sorted.filter(f => (f.module || 'owner') === module.id);
-            if (!moduleFields.length) {
-                return `
-                    <div style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">
-                        <div style="font-weight:700;">${module.title || '未命名模块'}</div>
-                        <div class="text-gray" style="font-size:12px;">暂无字段</div>
-                    </div>
-                `;
-            }
+            const emptyState = !moduleFields.length
+                ? '<div class="text-gray" style="font-size:12px;">暂无题目，点击下方添加</div>'
+                : '';
+
             return `
-                <div style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;">
+                <div style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;" ondragover="onClientTemplateDragOver(event)" ondrop="onClientTemplateDrop(event, '${module.id}')">
                     <div style="font-weight:700;">${module.title || '未命名模块'}</div>
                     ${moduleFields.map((f, idx) => {
-                        const minLength = f.rules && f.rules.minLength !== '' ? f.rules.minLength : '';
-                        const maxLength = f.rules && f.rules.maxLength !== '' ? f.rules.maxLength : '';
-                        const regex = f.rules && f.rules.regex ? f.rules.regex : '';
+                        const typeLabel = {
+                            text: '文本',
+                            textarea: '多行文本',
+                            date: '日期',
+                            number: '数字',
+                            radio: '单选',
+                            checkbox: '多选',
+                            select: '下拉'
+                        }[f.type] || '文本';
+                        const optionsText = Array.isArray(f.options) && f.options.length
+                            ? f.options.map(o => o.label || o.value).join(' / ')
+                            : '';
                         return `
-                            <div style="border:1px solid rgba(0,0,0,0.06);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;">
+                            <div data-field-key="${f.key}" draggable="true" ondragstart="onClientTemplateDragStart(event, '${f.key}')" style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px;">
                                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                                    <strong style="font-size:13px;">${f.label || '未命名字段'}</strong>
-                                    <div style="display:flex;gap:6px;">
-                                        <button type="button" class="btn secondary btn-compact" onclick="moveClientTemplateField('${f.key}', -1)" ${idx === 0 ? 'disabled' : ''}>上移</button>
-                                        <button type="button" class="btn secondary btn-compact" onclick="moveClientTemplateField('${f.key}', 1)">下移</button>
-                                        <button type="button" class="btn danger-light btn-compact" onclick="removeClientTemplateField('${f.key}')">删除</button>
-                                    </div>
+                                    <input type="text" value="${(f.label || '').replace(/"/g, '&quot;')}" onchange="updateClientTemplateField('${f.key}','label',this.value)" style="font-weight:600;border:none;border-bottom:1px dashed rgba(0,0,0,0.15);padding:4px 2px;flex:1;">
+                                    <select onchange="updateClientTemplateField('${f.key}','type',this.value)" style="max-width:120px;">
+                                        <option value="text" ${f.type === 'text' ? 'selected' : ''}>文本</option>
+                                        <option value="textarea" ${f.type === 'textarea' ? 'selected' : ''}>多行</option>
+                                        <option value="date" ${f.type === 'date' ? 'selected' : ''}>日期</option>
+                                        <option value="number" ${f.type === 'number' ? 'selected' : ''}>数字</option>
+                                        <option value="radio" ${f.type === 'radio' ? 'selected' : ''}>单选</option>
+                                        <option value="checkbox" ${f.type === 'checkbox' ? 'selected' : ''}>多选</option>
+                                        <option value="select" ${f.type === 'select' ? 'selected' : ''}>下拉</option>
+                                    </select>
                                 </div>
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label>字段名</label>
-                                        <input type="text" value="${(f.label || '').replace(/"/g, '&quot;')}" onchange="updateClientTemplateField('${f.key}','label',this.value)">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>模块</label>
-                                        <select onchange="updateClientTemplateField('${f.key}','module',this.value)">
-                                            ${modules.filter(m => m.id !== 'product').map(m => `<option value="${m.id}" ${m.id === (f.module || 'owner') ? 'selected' : ''}>${m.title || m.id}</option>`).join('')}
-                                        </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>类型</label>
-                                        <select onchange="updateClientTemplateField('${f.key}','type',this.value)">
-                                            <option value="text" ${f.type === 'text' ? 'selected' : ''}>文本</option>
-                                            <option value="textarea" ${f.type === 'textarea' ? 'selected' : ''}>多行文本</option>
-                                            <option value="date" ${f.type === 'date' ? 'selected' : ''}>日期</option>
-                                            <option value="number" ${f.type === 'number' ? 'selected' : ''}>数字</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label>占位提示</label>
-                                        <input type="text" value="${(f.placeholder || '').replace(/"/g, '&quot;')}" onchange="updateClientTemplateField('${f.key}','placeholder',this.value)">
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label>最小长度</label>
-                                        <input type="number" min="0" value="${minLength}" onchange="updateClientTemplateRule('${f.key}','minLength',this.value)">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>最大长度</label>
-                                        <input type="number" min="0" value="${maxLength}" onchange="updateClientTemplateRule('${f.key}','maxLength',this.value)">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>正则校验</label>
-                                        <input type="text" value="${String(regex).replace(/"/g, '&quot;')}" placeholder="如 ^[0-9]{5,}$" onchange="updateClientTemplateRule('${f.key}','regex',this.value)">
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="form-group" style="display:flex;gap:12px;align-items:center;">
-                                        <label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="updateClientTemplateField('${f.key}','enabled',this.checked)"> 启用</label>
-                                        <label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" ${f.required ? 'checked' : ''} onchange="updateClientTemplateField('${f.key}','required',this.checked)"> 必填</label>
-                                    </div>
+                                <div class="text-gray" style="font-size:12px;">${typeLabel}${f.required ? ' · 必填' : ''}</div>
+                                <input type="text" placeholder="问题说明（可选）" value="${(f.description || '').replace(/"/g, '&quot;')}" onchange="updateClientTemplateField('${f.key}','description',this.value)">
+                                ${['radio', 'checkbox', 'select'].includes(f.type)
+                                    ? `<div style="display:flex;flex-direction:column;gap:6px;">
+                                        ${(f.options || []).map((opt, optIndex) => `
+                                            <div style="display:flex;gap:8px;align-items:center;">
+                                                <input type="text" value="${String(opt.label || opt.value || '').replace(/"/g, '&quot;')}" onchange="updateClientTemplateOption('${f.key}', ${optIndex}, this.value)" style="flex:1;">
+                                                <button type="button" class="btn danger-light btn-compact" onclick="removeClientTemplateOption('${f.key}', ${optIndex})">删除</button>
+                                            </div>
+                                        `).join('') || '<span class="text-gray" style="font-size:12px;">暂无选项</span>'}
+                                        <button type="button" class="btn secondary btn-compact" onclick="addClientTemplateOption('${f.key}')">+ 添加选项</button>
+                                    </div>`
+                                    : `<input type="text" placeholder="提示语（可选）" value="${(f.placeholder || '').replace(/"/g, '&quot;')}" onchange="updateClientTemplateField('${f.key}','placeholder',this.value)">`}
+                                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                                    <label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" ${f.required ? 'checked' : ''} onchange="updateClientTemplateField('${f.key}','required',this.checked)"> 必填</label>
+                                    <label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="updateClientTemplateField('${f.key}','enabled',this.checked)"> 启用</label>
+                                    <button type="button" class="btn secondary btn-compact" onclick="moveClientTemplateField('${f.key}', -1)">上移</button>
+                                    <button type="button" class="btn secondary btn-compact" onclick="moveClientTemplateField('${f.key}', 1)">下移</button>
+                                    <button type="button" class="btn danger-light btn-compact" onclick="removeClientTemplateField('${f.key}')">删除</button>
                                 </div>
                             </div>
                         `;
                     }).join('')}
+                    ${emptyState}
+                    <button type="button" class="btn secondary btn-compact" onclick="addClientTemplateField('${module.id}')">+ 添加问题</button>
                 </div>
             `;
         }).join('')}
@@ -19091,14 +19137,50 @@ function renderClientTemplatePreview() {
             return `
                 <div style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;">
                     <div style="font-weight:700;">${module.title || '未命名模块'}</div>
-                    ${fields.map(f => `
-                        <div style="display:flex;flex-direction:column;gap:4px;">
-                            <label style="font-size:12px;color:#666;">${f.label}${f.required ? ' *' : ''}</label>
-                            ${f.type === 'textarea'
-                                ? '<textarea disabled placeholder="' + (f.placeholder || '') + '" style="min-height:72px;"></textarea>'
-                                : '<input disabled type="' + (f.type || 'text') + '" placeholder="' + (f.placeholder || '') + '">'}
-                        </div>
-                    `).join('')}
+                    ${fields.map(f => {
+                        const requiredMark = f.required ? ' *' : '';
+                        if (f.type === 'textarea') {
+                            return `
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:12px;color:#666;">${f.label}${requiredMark}</label>
+                                    ${f.description ? `<div class="text-gray" style="font-size:12px;">${f.description}</div>` : ''}
+                                    <textarea disabled placeholder="${f.placeholder || ''}" style="min-height:72px;"></textarea>
+                                </div>
+                            `;
+                        }
+                        if (f.type === 'radio' || f.type === 'checkbox') {
+                            const inputs = (f.options || []).map(opt => `
+                                <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:#555;">
+                                    <input type="${f.type}" disabled>
+                                    <span>${opt.label || opt.value}</span>
+                                </label>
+                            `).join('') || '<span class="text-gray" style="font-size:12px;">（未设置选项）</span>';
+                            return `
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:12px;color:#666;">${f.label}${requiredMark}</label>
+                                    ${f.description ? `<div class="text-gray" style="font-size:12px;">${f.description}</div>` : ''}
+                                    <div style="display:flex;flex-direction:column;gap:4px;">${inputs}</div>
+                                </div>
+                            `;
+                        }
+                        if (f.type === 'select') {
+                            const options = (f.options || []).map(opt => `<option>${opt.label || opt.value}</option>`).join('');
+                            return `
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:12px;color:#666;">${f.label}${requiredMark}</label>
+                                    ${f.description ? `<div class="text-gray" style="font-size:12px;">${f.description}</div>` : ''}
+                                    <select disabled><option value="">请选择</option>${options}</select>
+                                </div>
+                            `;
+                        }
+                        return `
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;color:#666;">${f.label}${requiredMark}</label>
+                                ${f.description ? `<div class="text-gray" style="font-size:12px;">${f.description}</div>` : ''}
+                                <input disabled type="${f.type || 'text'}" placeholder="${f.placeholder || ''}">
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             `;
         }).join('')}
@@ -19108,7 +19190,56 @@ function renderClientTemplatePreview() {
 function updateClientTemplateField(key, field, value) {
     const item = (clientFormTemplate.fields || []).find(f => f.key === key);
     if (!item) return;
-    item[field] = value;
+
+    if (field === 'type') {
+        const previousType = item.type;
+        item.type = value;
+        if (['radio', 'checkbox', 'select'].includes(value)) {
+            if (!Array.isArray(item.options) || item.options.length === 0) {
+                item.options = [
+                    { value: '选项1', label: '选项1' },
+                    { value: '选项2', label: '选项2' }
+                ];
+            }
+        } else if (['radio', 'checkbox', 'select'].includes(previousType)) {
+            item.options = [];
+        }
+    } else {
+        item[field] = value;
+    }
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function addClientTemplateOption(key) {
+    const item = (clientFormTemplate.fields || []).find(f => f.key === key);
+    if (!item) return;
+    if (!Array.isArray(item.options)) item.options = [];
+    const nextIndex = item.options.length + 1;
+    item.options.push({ value: `选项${nextIndex}`, label: `选项${nextIndex}` });
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function updateClientTemplateOption(key, index, value) {
+    const item = (clientFormTemplate.fields || []).find(f => f.key === key);
+    if (!item || !Array.isArray(item.options)) return;
+    const opt = item.options[index];
+    if (!opt) return;
+    const safeValue = value || '';
+    opt.label = safeValue;
+    opt.value = safeValue;
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function removeClientTemplateOption(key, index) {
+    const item = (clientFormTemplate.fields || []).find(f => f.key === key);
+    if (!item || !Array.isArray(item.options)) return;
+    item.options.splice(index, 1);
     saveClientFormTemplateLocal();
     renderClientTemplateEditor();
     renderClientTemplatePreview();
@@ -19143,17 +19274,31 @@ function updateClientTemplateRule(key, ruleKey, value) {
     renderClientTemplatePreview();
 }
 
-function addClientTemplateField() {
+function updateClientTemplateOptions(key, text) {
+    const item = (clientFormTemplate.fields || []).find(f => f.key === key);
+    if (!item) return;
+    const lines = String(text || '')
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean);
+    item.options = lines.map(line => ({ value: line, label: line }));
+    saveClientFormTemplateLocal();
+    renderClientTemplatePreview();
+}
+
+function addClientTemplateField(moduleId) {
     if (!clientFormTemplate.fields) clientFormTemplate.fields = [];
     const nextOrder = (clientFormTemplate.fields.length + 1) * 10;
     clientFormTemplate.fields.push({
         key: 'field_' + Date.now(),
-        module: 'owner',
+        module: moduleId || 'owner',
         type: 'text',
         enabled: true,
         required: false,
-        label: '新字段',
+        label: '新问题',
+        description: '',
         placeholder: '',
+        options: [],
         order: nextOrder,
         rules: { minLength: '', maxLength: '', regex: '' }
     });
@@ -19184,6 +19329,46 @@ function moveClientTemplateField(key, step) {
     saveClientFormTemplateLocal();
     renderClientTemplateEditor();
     renderClientTemplatePreview();
+}
+
+function onClientTemplateDragStart(evt, key) {
+    if (!evt) return;
+    evt.dataTransfer.setData('text/plain', key);
+    evt.dataTransfer.effectAllowed = 'move';
+}
+
+function onClientTemplateDrop(evt, moduleId) {
+    evt.preventDefault();
+    const key = evt.dataTransfer.getData('text/plain');
+    if (!key) return;
+    const targetWrap = evt.currentTarget;
+    const targetKey = evt.target.closest('[data-field-key]')?.getAttribute('data-field-key');
+    const fields = [...(clientFormTemplate.fields || [])];
+    const sorted = fields.sort((a, b) => (a.order || 0) - (b.order || 0));
+    const moving = sorted.find(f => f.key === key);
+    if (!moving) return;
+    moving.module = moduleId || moving.module || 'owner';
+    const filtered = sorted.filter(f => f.key !== key);
+    if (targetKey) {
+        const targetIndex = filtered.findIndex(f => f.key === targetKey);
+        if (targetIndex >= 0) {
+            filtered.splice(targetIndex, 0, moving);
+        } else {
+            filtered.push(moving);
+        }
+    } else {
+        filtered.push(moving);
+    }
+    filtered.forEach((f, i) => { f.order = (i + 1) * 10; });
+    clientFormTemplate.fields = filtered;
+    saveClientFormTemplateLocal();
+    renderClientTemplateEditor();
+    renderClientTemplatePreview();
+}
+
+function onClientTemplateDragOver(evt) {
+    evt.preventDefault();
+    evt.dataTransfer.dropEffect = 'move';
 }
 
 function resetClientTemplateToDefault() {
@@ -21862,6 +22047,18 @@ init = function() {
         setTimeout(() => {
             if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus();
             if (typeof updateLoginUI === 'function') updateLoginUI();
+            try {
+                const params = new URLSearchParams(window.location.search || '');
+                const isDev = params.get('dev') === '1' || String(window.location.href || '').includes('dev=1');
+                document.querySelectorAll('.dev-feature').forEach(function (el) {
+                    el.classList.toggle('d-none', !isDev);
+                });
+                if (isDev && typeof mgInitInviteLinkUI === 'function') {
+                    mgInitInviteLinkUI();
+                }
+            } catch (_) {
+                // ignore
+            }
         }, 300); // 增加延迟，确保 __APP_AUTH__ 已更新
     }
     
@@ -21899,17 +22096,35 @@ if (typeof init === 'function') {
             } catch (_) {}
             init();
             mgInitNetworkGuard();
+            forceShowDevFeatures();
         });
     } else {
         try {
             if (sessionStorage.getItem('mg_redirecting_to_login') !== '1') {
                 init();
                 mgInitNetworkGuard();
+                forceShowDevFeatures();
             }
         } catch (_) {
             init();
             mgInitNetworkGuard();
+            forceShowDevFeatures();
         }
+    }
+}
+
+function forceShowDevFeatures() {
+    try {
+        const isDev = String(window.location.href || '').includes('dev=1');
+        if (!isDev) return;
+        document.querySelectorAll('.dev-feature').forEach(function (el) {
+            el.classList.remove('d-none');
+        });
+        if (typeof mgInitInviteLinkUI === 'function') {
+            mgInitInviteLinkUI();
+        }
+    } catch (_) {
+        // ignore
     }
 }
 
