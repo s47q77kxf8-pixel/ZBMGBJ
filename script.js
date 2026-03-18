@@ -10126,7 +10126,7 @@ function getScheduleColorByIndex(idx) {
     };
 }
 
-// 彩条色板（共 12 色）：青、蓝、浅粉、绿、紫、黄、茶、橙、薄荷、棕、浅灰、红
+// 彩条色板（共 16 色）：青、蓝、浅粉、绿、紫、黄、茶、橙、薄荷、棕、浅灰、红、浅蓝、天蓝、海蓝、深蓝
 var SCHEDULE_BAR_COLORS = [
     'rgba(135, 205, 250, 0.38)',
     'rgba(190, 215, 250, 0.38)',
@@ -10139,10 +10139,14 @@ var SCHEDULE_BAR_COLORS = [
     'rgba(128, 203, 196, 0.38)',
     'rgba(121, 85, 72, 0.38)',
     'rgba(189, 189, 189, 0.38)',
-    'rgba(245, 195, 195, 0.38)'
+    'rgba(245, 195, 195, 0.38)',
+    'rgba(178, 223, 255, 0.38)',
+    'rgba(153, 204, 255, 0.38)',
+    'rgba(102, 178, 255, 0.38)',
+    'rgba(51, 153, 255, 0.38)'
 ];
-var SCHEDULE_BAR_TEXT_COLORS = ['#1e5a7a', '#2d4a6b', '#8b4058', '#2d6850', '#3d2d5c', '#5c4d10', '#5c4a28', '#5c2810', '#00695c', '#3e2723', '#424242', '#5c2828'];
-var SCHEDULE_BAR_DOT_COLORS = ['#5eb8e8', '#7eb0e8', '#F48FB1', '#6dc49a', '#9d7ec9', '#e6c83d', '#d2b48c', '#e88a5c', '#80CBC4', '#795548', '#BDBDBD', '#c47a7a'];
+var SCHEDULE_BAR_TEXT_COLORS = ['#1e5a7a', '#2d4a6b', '#8b4058', '#2d6850', '#3d2d5c', '#5c4d10', '#5c4a28', '#5c2810', '#00695c', '#3e2723', '#424242', '#5c2828', '#1a4d6b', '#1a527a', '#1a558a', '#1a589a'];
+var SCHEDULE_BAR_DOT_COLORS = ['#5eb8e8', '#7eb0e8', '#F48FB1', '#6dc49a', '#9d7ec9', '#e6c83d', '#d2b48c', '#e88a5c', '#80CBC4', '#795548', '#BDBDBD', '#c47a7a', '#6bb3e8', '#5aa0e0', '#4a8dd8', '#3a7ad0'];
 
 var SCHEDULE_BAR_COLORS_DARK = [
     'rgba(56, 189, 248, 0.5)',
@@ -10156,10 +10160,14 @@ var SCHEDULE_BAR_COLORS_DARK = [
     'rgba(128, 203, 196, 0.5)',
     'rgba(121, 85, 72, 0.5)',
     'rgba(189, 189, 189, 0.5)',
-    'rgba(248, 113, 113, 0.5)'
+    'rgba(248, 113, 113, 0.5)',
+    'rgba(56, 160, 248, 0.5)',
+    'rgba(56, 145, 248, 0.5)',
+    'rgba(56, 130, 248, 0.5)',
+    'rgba(56, 115, 248, 0.5)'
 ];
-var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#93c5fd', '#fbcfe8', '#86efac', '#c4b5fd', '#fde047', '#fcd34d', '#fd8a5c', '#99f6e4', '#d6d3d1', '#e5e5e5', '#fca5a5'];
-var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#60a5fa', '#f9a8d4', '#4ade80', '#c084fc', '#facc15', '#f59e0b', '#f97316', '#5eead4', '#a8a29e', '#d4d4d4', '#f87171'];
+var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#7dd3fc', '#93c5fd', '#fbcfe8', '#86efac', '#c4b5fd', '#fde047', '#fcd34d', '#fd8a5c', '#99f6e4', '#d6d3d1', '#e5e5e5', '#fca5a5', '#7ec8fc', '#7fbdfc', '#80b2fc', '#81a7fc'];
+var SCHEDULE_BAR_DOT_COLORS_DARK = ['#38bdf8', '#60a5fa', '#f9a8d4', '#4ade80', '#c084fc', '#facc15', '#f59e0b', '#f97316', '#5eead4', '#a8a29e', '#d4d4d4', '#f87171', '#38b0f8', '#38a5f8', '#389af8', '#388ff8'];
 
 // 根据屏幕宽度和日历单元格高度动态计算彩条最大轨道数（尽量多显示）
 function getScheduleMaxTracks() {
