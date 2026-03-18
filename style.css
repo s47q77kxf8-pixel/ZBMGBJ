@@ -254,10 +254,12 @@ html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend 
     width: auto;
     height: auto;
     z-index: 1000;
+    background: transparent;
 }
 #calculator #scheduleColorPickerPopover .schedule-color-popover-overlay {
     position: fixed;
     inset: 0;
+    background: rgba(0, 0, 0, 0.12);
 }
 
 /* 小票上的企划信息展示 */
@@ -290,9 +292,7 @@ html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend 
     text-align: right;
     overflow-wrap: anywhere;
 }
-    background: transparent;
-    z-index: 1000;
-}
+
 #calculator #scheduleColorPickerPopover .schedule-color-popover-panel {
     position: absolute;
     z-index: 1001;
@@ -1278,6 +1278,7 @@ body {
     gap: 0.5rem;
     flex-wrap: nowrap;
     min-width: 0;
+    overflow: visible;
 }
 #calculator .calculator-client-row-1 .schedule-color-picker-dot-trigger {
     flex: 0 0 auto;
