@@ -3364,6 +3364,16 @@ function resetRecordFilters() {
     applyRecordFilters();
 }
 
+function getRecordReceivableAmount(item) {
+    if (!item) return 0;
+    if (item.agreedAmount != null) return Number(item.agreedAmount) || 0;
+    if (item.totalBeforePlatformFee != null) return Number(item.totalBeforePlatformFee) || 0;
+    if (item.finalTotal != null && item.platformFeeAmount != null) {
+        return (Number(item.finalTotal) || 0) - (Number(item.platformFeeAmount) || 0);
+    }
+    return Number(item.finalTotal) || 0;
+}
+
 function getFilteredHistoryForRecord() {
     const searchInput = document.getElementById('recordSearchInput');
     const timeFilterEl = document.getElementById('recordTimeFilter');
@@ -3453,10 +3463,10 @@ function getFilteredHistoryForRecord() {
     }
 
     if (filters.minPrice !== undefined && filters.minPrice !== '') {
-        filteredHistory = filteredHistory.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(filters.minPrice));
+        filteredHistory = filteredHistory.filter(item => getRecordReceivableAmount(item) >= parseFloat(filters.minPrice));
     }
     if (filters.maxPrice !== undefined && filters.maxPrice !== '') {
-        filteredHistory = filteredHistory.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) <= parseFloat(filters.maxPrice));
+        filteredHistory = filteredHistory.filter(item => getRecordReceivableAmount(item) <= parseFloat(filters.maxPrice));
     }
 
     filteredHistory = filteredHistory.slice().sort((a, b) => {
@@ -3464,9 +3474,9 @@ function getFilteredHistoryForRecord() {
             case 'time-asc':
                 return new Date(a.timestamp) - new Date(b.timestamp);
             case 'price-desc':
-                return ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0) - ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0);
+                return getRecordReceivableAmount(b) - getRecordReceivableAmount(a);
             case 'price-asc':
-                return ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0) - ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0);
+                return getRecordReceivableAmount(a) - getRecordReceivableAmount(b);
             case 'client-asc':
                 return (a.clientId || '').localeCompare(b.clientId || '');
             case 'client-desc':
@@ -3528,7 +3538,7 @@ function applyRecordFilters() {
             const rightPart = [ipPart, rolePart].filter(Boolean).join(' - ');
             return [leftWrapped, rightPart].filter(Boolean).join(' ');
         })();
-        const receivableAmount = item && (item.agreedAmount != null ? item.agreedAmount : item.finalTotal);
+        const receivableAmount = getRecordReceivableAmount(item);
         var actualAmount = receivableAmount;
         if (item && item.settlement && item.settlement.amount != null) {
             actualAmount = (item.settlement.type === 'normal' && item.depositReceived != null)
@@ -3982,14 +3992,14 @@ function exportRecordToExcel() {
             }
         });
     }
-    if (minPrice !== '') exportData = exportData.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(minPrice));
-    if (maxPrice !== '') exportData = exportData.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) <= parseFloat(maxPrice));
+    if (minPrice !== '') exportData = exportData.filter(item => getRecordReceivableAmount(item) >= parseFloat(minPrice));
+    if (maxPrice !== '') exportData = exportData.filter(item => getRecordReceivableAmount(item) <= parseFloat(maxPrice));
 
     exportData = exportData.slice().sort((a, b) => {
         switch (sortBy) {
             case 'time-asc': return new Date(a.timestamp) - new Date(b.timestamp);
-            case 'price-desc': return ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0) - ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0);
-            case 'price-asc': return ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0) - ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0);
+            case 'price-desc': return getRecordReceivableAmount(b) - getRecordReceivableAmount(a);
+            case 'price-asc': return getRecordReceivableAmount(a) - getRecordReceivableAmount(b);
             case 'client-asc': return (a.clientId || '').localeCompare(b.clientId || '');
             case 'client-desc': return (b.clientId || '').localeCompare(a.clientId || '');
             case 'time-desc':
@@ -13466,12 +13476,12 @@ function loadHistory(searchKeyword = '', filters = {}) {
     // 3. 价格范围筛选
     if (filters.minPrice !== undefined && filters.minPrice !== '') {
         filteredHistory = filteredHistory.filter(item => 
-            ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(filters.minPrice)
+            getRecordReceivableAmount(item) >= parseFloat(filters.minPrice)
         );
     }
     if (filters.maxPrice !== undefined && filters.maxPrice !== '') {
         filteredHistory = filteredHistory.filter(item => 
-            ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) <= parseFloat(filters.maxPrice)
+            getRecordReceivableAmount(item) <= parseFloat(filters.maxPrice)
         );
     }
     
@@ -13484,9 +13494,9 @@ function loadHistory(searchKeyword = '', filters = {}) {
                 case 'time-asc':
                     return new Date(a.timestamp) - new Date(b.timestamp);
                 case 'price-desc':
-                    return ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0) - ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0);
+                    return getRecordReceivableAmount(b) - getRecordReceivableAmount(a);
                 case 'price-asc':
-                    return ((a.agreedAmount != null ? a.agreedAmount : a.finalTotal) || 0) - ((b.agreedAmount != null ? b.agreedAmount : b.finalTotal) || 0);
+                    return getRecordReceivableAmount(a) - getRecordReceivableAmount(b);
                 case 'client-asc':
                     return (a.clientId || '').localeCompare(b.clientId || '');
                 case 'client-desc':
@@ -13607,7 +13617,7 @@ function generateHistoryItemElement(item) {
             接单平台: ${item.contact || ''}\n
             联系方式: ${item.contactInfo || ''}\n
             截稿日: ${item.deadline}\n
-            实收: ¥${(item.agreedAmount != null ? item.agreedAmount : item.finalTotal).toFixed(2)}
+            实收: ¥${getRecordReceivableAmount(item).toFixed(2)}
         </div>
         <div class="history-item-actions">
             <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
@@ -13685,7 +13695,7 @@ function generateHistoryItemHTML(item) {
                 接单平台: ${item.contact || ''}\n
                 联系方式: ${item.contactInfo || ''}\n
                 截稿日: ${item.deadline}\n
-                实收: ¥${(item.agreedAmount != null ? item.agreedAmount : item.finalTotal).toFixed(2)}
+                实收: ¥${getRecordReceivableAmount(item).toFixed(2)}
             </div>
             <div class="history-item-actions">
                 <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
