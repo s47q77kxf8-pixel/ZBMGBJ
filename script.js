@@ -1049,10 +1049,10 @@ function addDefaultProductSettings() {
 function addDefaultProcessSettings() {
     if (processSettings.length === 0) {
         processSettings = [
-            { id: 1, name: '烫色', price: 10 },
-            { id: 2, name: '白墨', price: 10 },
-            { id: 3, name: 'UV', price: 10 },
-            { id: 4, name: '逆向', price: 10 }
+            { id: 1, name: '烫色', price: 10, defaultLayers: 1 },
+            { id: 2, name: '白墨', price: 10, defaultLayers: 1 },
+            { id: 3, name: 'UV', price: 10, defaultLayers: 1 },
+            { id: 4, name: '逆向', price: 10, defaultLayers: 1 }
         ];
     }
 }
@@ -17910,6 +17910,8 @@ function openAddProcessModal() {
     // 清空表单
     document.getElementById('newProcessName').value = '';
     document.getElementById('newProcessPrice').value = '10';
+    var defaultLayersInput = document.getElementById('newProcessDefaultLayers');
+    if (defaultLayersInput) defaultLayersInput.value = '1';
     
     // 显示弹窗
     document.getElementById('addProcessModal').classList.remove('d-none');
@@ -17926,6 +17928,9 @@ function saveNewProcess() {
     const rawPrice = document.getElementById('newProcessPrice').value;
     const parsedPrice = rawPrice === '' ? NaN : parseFloat(rawPrice);
     const price = Number.isFinite(parsedPrice) ? Math.max(0, parsedPrice) : 10;
+    const rawLayers = document.getElementById('newProcessDefaultLayers').value;
+    const parsedLayers = rawLayers === '' ? NaN : parseInt(rawLayers, 10);
+    const defaultLayers = Number.isFinite(parsedLayers) ? Math.max(1, parsedLayers) : 1;
     
     // 验证必填项
     if (!name) {
@@ -17937,6 +17942,7 @@ function saveNewProcess() {
         id: Date.now(),
         name: name,
         price: price,
+        defaultLayers: defaultLayers,
         mg_updated_at: Date.now()
     };
     
@@ -17961,7 +17967,11 @@ function renderProcessSettings() {
         if (setting.layers && !setting.price) {
             setting.price = 10;
         }
+        if (setting.defaultLayers == null || !isFinite(setting.defaultLayers)) {
+            setting.defaultLayers = 1;
+        }
         const price = (setting.price ?? 10);
+        const defaultLayers = Math.max(1, parseInt(setting.defaultLayers, 10) || 1);
         const sid = String(setting.id ?? '');
         const sidEsc = sid.replace(/'/g, "\\'");
         
@@ -17975,6 +17985,10 @@ function renderProcessSettings() {
                     <div class="process-item-group">
                         <label class="process-item-label">价格（每层）</label>
                         <input type="number" class="process-item-input process-item-price" value="${price}" onchange="updateProcessSetting('${sidEsc}', 'price', parseFloat(this.value))" placeholder="价格" min="0" step="1">
+                    </div>
+                    <div class="process-item-group">
+                        <label class="process-item-label">默认层数</label>
+                        <input type="number" class="process-item-input process-item-layers" value="${defaultLayers}" onchange="updateProcessSetting('${sidEsc}', 'defaultLayers', parseInt(this.value, 10))" placeholder="层数" min="1" step="1">
                     </div>
                     <button class="icon-action-btn delete process-item-delete" onclick="deleteProcessSetting('${sidEsc}')" aria-label="删除工艺" title="删除">
                         <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
@@ -18589,7 +18603,9 @@ function updateProcessOptions(productId, isGift = false) {
         const processIdStr = String(setting.id);
         const processIdArg = `'${processIdStr.replace(/'/g, "\\'")}'`;
         const isChecked = item.processes && item.processes[processIdStr] ? 'checked' : '';
-        const layers = item.processes && item.processes[processIdStr] ? item.processes[processIdStr].layers : 1;
+        const layers = item.processes && item.processes[processIdStr]
+            ? item.processes[processIdStr].layers
+            : Math.max(1, parseInt(setting.defaultLayers, 10) || 1);
 
         html += `
             <div style="display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem;">
@@ -18649,7 +18665,7 @@ function toggleProcess(productId, processId, checked, isGift = false) {
     if (checked) {
         item.processes[processIdStr] = {
             id: processIdStr,
-            layers: 1, // 默认1层
+            layers: Math.max(1, parseInt(processSetting.defaultLayers, 10) || 1),
             price: processSetting.price || 10
         };
 
