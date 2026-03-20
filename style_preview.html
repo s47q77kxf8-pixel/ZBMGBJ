@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>标签和状态样式展示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 2rem;
+            font-size: 2rem;
+        }
+
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .item {
+            padding: 1rem;
+            border-radius: 8px;
+            background: #fafafa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 80px;
+        }
+
+        /* ========== 记录状态标签 ========== */
+        .record-status {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+
+        .record-status--not-started {
+            color: #374151;
+            background: #f3f4f6;
+            border-color: #e5e7eb;
+        }
+
+        .record-status--pending {
+            color: #4b6385;
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+
+        .record-status--in-progress {
+            color: #92400e;
+            background: #fffbeb;
+            border-color: #fcd34d;
+        }
+
+        .record-status--completed {
+            color: #065f46;
+            background: #ecfdf5;
+            border-color: #6ee7b7;
+        }
+
+        .record-status--overdue {
+            color: #b91c1c;
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+
+        .record-status--cancelled {
+            color: #6b7280;
+            background: #faf5ff;
+            border-color: #e9d5ff;
+        }
+
+        .record-status--settled {
+            color: #0f766e;
+            background: #ccfbf1;
+            border-color: #5eead4;
+        }
+
+        .record-status--waste {
+            color: #7c2d12;
+            background: #fff7ed;
+            border-color: #fed7aa;
+        }
+
+        .record-status--deposit {
+            color: #2563eb;
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+
+        .record-status--placeholder {
+            color: #b45309;
+            background: #fffbeb;
+            border-color: #fcd34d;
+        }
+
+        /* ========== 记录项标签 ========== */
+        .record-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.05rem 0.35rem;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #059669;
+            background-color: rgba(16, 185, 129, 0.06);
+        }
+
+        .record-tag-deposit {
+            /* 已收定标签 */
+        }
+
+        .record-tag-placeholder {
+            border-color: rgba(245, 158, 11, 0.4);
+            color: #b45309;
+            background-color: rgba(245, 158, 11, 0.1);
+        }
+
+        /* ========== 记录项徽章 ========== */
+        .record-item-badges {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+        }
+
+        .record-badge {
+            font-size: 0.6rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .record-badge-pending {
+            color: #6b7280;
+            background: #f3f4f6;
+            border: 1px solid #e5e7eb;
+        }
+
+        .record-badge-overdue {
+            color: #b91c1c;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+        }
+
+        /* ========== 筛选角标 ========== */
+        .filter-badge-container {
+            position: relative;
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .filter-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #ef4444;
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 10px;
+            min-width: 18px;
+            text-align: center;
+            line-height: 1.2;
+        }
+
+        /* ========== 日程待办标签 ========== */
+        .schedule-todo-card-tag {
+            margin-left: 0.2rem;
+            padding: 0.05rem 0.3rem;
+            font-size: 0.65rem;
+            border-radius: 4px;
+            background: #f0f0f0;
+            color: #666;
+        }
+
+        /* ========== 颜色参考 ========== */
+        .color-swatch {
+            width: 100%;
+            height: 60px;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .color-info {
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .demo-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .info-table th,
+        .info-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .info-table th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 标签和状态样式展示</h1>
+
+        <!-- 记录状态标签 -->
+        <div class="section">
+            <h2>1️⃣ 记录状态标签 (.record-status--*)</h2>
+            <div class="grid">
+                <div class="item">
+                    <span class="record-status record-status--not-started">未开始</span>
+                </div>
+                <div class="item">
+                    <span class="record-status record-status--pending">待排单</span>
+                </div>
+                <div class="item">
+                    <span class="record-status record-status--in-progress">进行中</span>
+                </div>
+                <div class="item">
+                    <span class="record-status record-status--completed">已完成</span>
+                </div>
+                <div class="item">
+                    <span class="record-status record-status--overdue">已逾期</span>
+                </div>
+                <div class="item">
+                    <span class="record-status record-status--cancelled">已撤单</span>
+                </div>
+                <div class="item">
+                    <span class="record-status record-status--settled">已结单</span>
+                </div>
+                <div class="item">
+                    <span class="record-status record-status--waste">有废稿</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 记录项标签 -->
+        <div class="section">
+            <h2>2️⃣ 记录项标签 (.record-tag*) - 用于历史记录列表</h2>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                📍 应用场景：历史记录列表项中，显示特殊标记（已收定、占位单）
+            </p>
+            <div class="grid">
+                <div class="item">
+                    <span class="record-tag record-tag-deposit">已收定</span>
+                </div>
+                <div class="item">
+                    <span class="record-tag record-tag-placeholder">占位单</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 筛选角标 -->
+        <div class="section">
+            <h2>3️⃣ 筛选角标 (.filter-badge) - 用于筛选按钮</h2>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                📍 应用场景：记录页/统计页筛选按钮右上角，显示筛选条件数量
+            </p>
+            <div class="demo-row">
+                <div class="filter-badge-container">
+                    筛选
+                    <span class="filter-badge">3</span>
+                </div>
+                <div class="filter-badge-container">
+                    过滤
+                    <span class="filter-badge">99+</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 日程待办卡片 -->
+        <div class="section">
+            <h2>4️⃣ 日程待办卡片状态 - 用于排单计划表</h2>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                📍 应用场景：排单计划表（日程视图）中的卡片，显示单据状态和特殊标记
+            </p>
+            <div class="demo-row" style="align-items: flex-start;">
+                <div style="flex: 1; background: #f9fafb; padding: 1rem; border-radius: 8px;">
+                    <div style="font-size: 0.75rem; color: #666; margin-bottom: 0.5rem;">待复核状态</div>
+                    <div style="font-size: 0.85rem; margin-bottom: 0.5rem;">
+                        <span class="record-status record-status--pending schedule-todo-card-status">待复核</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #666; margin-top: 0.75rem;">占位单 + 已收定 + 状态（使用 .record-tag）</div>
+                    <div style="font-size: 0.85rem;">
+                        <span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>
+                        <span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>
+                        <span class="record-status record-status--in-progress schedule-todo-card-status">进行中</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 未使用的徽章样式 -->
+        <div class="section">
+            <h2>⚠️ 未使用的样式 (.record-badge*)</h2>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                ℹ️ 这些样式已定义但在代码中未被使用，可能是预留功能
+            </p>
+            <div class="grid">
+                <div class="item">
+                    <div class="record-item-badges">
+                        <span class="record-badge record-badge-pending">待处理（未使用）</span>
+                    </div>
+                </div>
+                <div class="item">
+                    <div class="record-item-badges">
+                        <span class="record-badge record-badge-overdue">已逾期（未使用）</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 颜色参考表 -->
+        <div class="section">
+            <h2>🎨 状态颜色参考表</h2>
+            <table class="info-table">
+                <thead>
+                    <tr>
+                        <th>状态</th>
+                        <th>文字颜色</th>
+                        <th>背景颜色</th>
+                        <th>边框颜色</th>
+                        <th>色块预览</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>未开始</td>
+                        <td>#374151</td>
+                        <td>#f3f4f6</td>
+                        <td>#e5e7eb</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #374151 33%, #f3f4f6 33%, #f3f4f6 66%, #e5e7eb 66%);"></div></td>
+                    </tr>
+                    <tr>
+                        <td>待排单</td>
+                        <td>#4b6385</td>
+                        <td>#eff6ff</td>
+                        <td>#bfdbfe</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #4b6385 33%, #eff6ff 33%, #eff6ff 66%, #bfdbfe 66%);"></div></td>
+                    </tr>
+                    <tr>
+                        <td>进行中</td>
+                        <td>#92400e</td>
+                        <td>#fffbeb</td>
+                        <td>#fcd34d</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #92400e 33%, #fffbeb 33%, #fffbeb 66%, #fcd34d 66%);"></div></td>
+                    </tr>
+                    <tr>
+                        <td>已完成</td>
+                        <td>#065f46</td>
+                        <td>#ecfdf5</td>
+                        <td>#6ee7b7</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #065f46 33%, #ecfdf5 33%, #ecfdf5 66%, #6ee7b7 66%);"></div></td>
+                    </tr>
+                    <tr>
+                        <td>已逾期</td>
+                        <td>#b91c1c</td>
+                        <td>#fef2f2</td>
+                        <td>#fecaca</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #b91c1c 33%, #fef2f2 33%, #fef2f2 66%, #fecaca 66%);"></div></td>
+                    </tr>
+                    <tr>
+                        <td>已撤单</td>
+                        <td>#6b7280</td>
+                        <td>#faf5ff</td>
+                        <td>#e9d5ff</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #6b7280 33%, #faf5ff 33%, #faf5ff 66%, #e9d5ff 66%);"></div></td>
+                    </tr>
+                    <tr>
+                        <td>已结单</td>
+                        <td>#0f766e</td>
+                        <td>#ccfbf1</td>
+                        <td>#5eead4</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #0f766e 33%, #ccfbf1 33%, #ccfbf1 66%, #5eead4 66%);"></div></td>
+                    </tr>
+                    <tr>
+                        <td>有废稿</td>
+                        <td>#7c2d12</td>
+                        <td>#fff7ed</td>
+                        <td>#fed7aa</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #7c2d12 33%, #fff7ed 33%, #fff7ed 66%, #fed7aa 66%);"></div></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 记录项标签颜色参考 -->
+        <div class="section">
+            <h2>🏷️ 记录项标签颜色参考</h2>
+            <table class="info-table">
+                <thead>
+                    <tr>
+                        <th>标签</th>
+                        <th>文字颜色</th>
+                        <th>背景颜色</th>
+                        <th>边框颜色</th>
+                        <th>色块预览</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>已收定</td>
+                        <td>#059669</td>
+                        <td>rgba(16, 185, 129, 0.06)</td>
+                        <td>rgba(16, 185, 129, 0.3)</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #059669 33%, rgba(16, 185, 129, 0.06) 33%, rgba(16, 185, 129, 0.06) 66%, rgba(16, 185, 129, 0.3) 66%);"></div></td>
+                    </tr>
+                    <tr>
+                        <td>占位单</td>
+                        <td>#b45309</td>
+                        <td>rgba(245, 158, 11, 0.1)</td>
+                        <td>rgba(245, 158, 11, 0.4)</td>
+                        <td><div class="color-swatch" style="background: linear-gradient(to right, #b45309 33%, rgba(245, 158, 11, 0.1) 33%, rgba(245, 158, 11, 0.1) 66%, rgba(245, 158, 11, 0.4) 66%);"></div></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

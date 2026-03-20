@@ -481,20 +481,36 @@
             if (!field) continue;
             const isTextarea = field.type === 'textarea';
             const isSelect = field.type === 'select';
+            const isRadio = field.type === 'radio';
+            const isCheckbox = field.type === 'checkbox';
             const optionsHtml = Array.isArray(field.options)
               ? field.options.map(opt => `<option value="${String(opt.value || '')}">${String(opt.label || opt.value || '')}</option>`).join('')
               : '';
+            const optionsBlock = Array.isArray(field.options)
+              ? field.options.map(opt => `
+                  <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:#555;">
+                    <input type="${field.type}" name="f_${field.key}" class="c-base-field" data-key="${field.key}" value="${String(opt.value || '')}">
+                    <span>${String(opt.label || opt.value || '')}</span>
+                  </label>
+                `).join('')
+              : '';
+            const descriptionHtml = field.description
+              ? `<div class="text-gray" style="font-size:12px;margin-top:4px;">${field.description}</div>`
+              : '';
             html += `<div class="form-group" style="${isTextarea ? 'flex:100%' : ''}">
               <label for="f_${field.key}">${field.label}${field.required ? '<span style="color:red;margin-left:4px;">*</span>' : ''}</label>
+              ${descriptionHtml}
               ${isTextarea
                 ? `<textarea id="f_${field.key}" class="c-base-field" data-key="${field.key}" placeholder="${field.placeholder || ''}" style="width:100%;min-height:80px;"></textarea>`
                 : isSelect
-                  ? `<select id="f_${field.key}" class="c-base-field" data-key="${field.key}" style="width:100%;">${optionsHtml}</select>`
-                  : `<input id="f_${field.key}" class="c-base-field" data-key="${field.key}" type="${field.type || 'text'}" placeholder="${field.placeholder || ''}" style="width:100%;" />`
+                  ? `<select id="f_${field.key}" class="c-base-field" data-key="${field.key}" style="width:100%;"><option value="">请选择</option>${optionsHtml}</select>`
+                  : (isRadio || isCheckbox)
+                    ? `<div style="display:flex;flex-direction:column;gap:6px;">${optionsBlock || '<span class="text-gray" style="font-size:12px;">（未设置选项）</span>'}</div>`
+                    : `<input id="f_${field.key}" class="c-base-field" data-key="${field.key}" type="${field.type || 'text'}" placeholder="${field.placeholder || ''}" style="width:100%;" />`
               }
               <div class="field-error" style="min-height:16px;margin-top:4px;color:#b91c1c;font-size:12px;"></div>
             </div>`;
-            if (isTextarea) break;
+            if (isTextarea || isRadio || isCheckbox) break;
           }
           html += '</div>';
         }
@@ -1350,9 +1366,33 @@
 
 
 
+          if (f.type === 'radio') {
+
+            const checked = document.querySelector(`.c-base-field[data-key="${f.key}"]:checked`);
+            const val = checked ? String(checked.value || '').trim() : '';
+            if (f.required && !val) {
+              const anchor = document.querySelector(`.c-base-field[data-key="${f.key}"]`) || checked;
+              if (anchor) markFieldInvalid(anchor, '必填');
+              if (!firstInvalidEl) firstInvalidEl = anchor;
+            }
+            baseData[f.key] = val || null;
+            return;
+          }
+
+          if (f.type === 'checkbox') {
+            const checked = Array.from(document.querySelectorAll(`.c-base-field[data-key="${f.key}"]:checked`))
+              .map(el => String(el.value || '').trim())
+              .filter(Boolean);
+            if (f.required && checked.length === 0) {
+              const anchor = document.querySelector(`.c-base-field[data-key="${f.key}"]`);
+              if (anchor) markFieldInvalid(anchor, '必填');
+              if (!firstInvalidEl) firstInvalidEl = anchor;
+            }
+            baseData[f.key] = checked.length ? checked : null;
+            return;
+          }
+
           const el = document.querySelector(`.c-base-field[data-key="${f.key}"]`);
-
-
 
           if (!el) return;
 

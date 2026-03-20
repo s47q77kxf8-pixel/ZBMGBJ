@@ -11040,8 +11040,8 @@ async function renderScheduleTodoSection() {
         const client = item.clientId || '单主';
         const progress = doneCount + '/' + total;
         const status = getRecordProgressStatus(item);
-        const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-status record-status--placeholder schedule-todo-card-status">占位单</span>' : '';
-        const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-status record-status--deposit schedule-todo-card-status">已收定</span>' : '';
+        const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
+        const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>' : '';
         const projectName = item && item.projectName ? escapeHtml(String(item.projectName).trim()) : '';
         const projectOrigin = item && item.projectOrigin ? escapeHtml(String(item.projectOrigin).trim()) : '';
         const characterName = item && item.characterName ? escapeHtml(String(item.characterName).trim()) : '';

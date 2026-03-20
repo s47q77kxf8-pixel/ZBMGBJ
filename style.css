@@ -393,18 +393,6 @@ html.theme-dark .record-status--waste {
     background: rgba(251, 146, 60, 0.2);
     border-color: rgba(251, 146, 60, 0.35);
 }
-
-html.theme-dark .record-status--deposit {
-    color: #93c5fd;
-    background: rgba(59, 130, 246, 0.2);
-    border-color: rgba(147, 197, 253, 0.35);
-}
-
-html.theme-dark .record-status--placeholder {
-    color: #fcd34d;
-    background: rgba(251, 191, 36, 0.16);
-    border-color: rgba(251, 191, 36, 0.4);
-}
 html.theme-dark .record-badge-pending {
     color: #a1a1aa;
     background: rgba(255, 255, 255, 0.08);
@@ -8541,6 +8529,21 @@ html.theme-dark .settlement-preview {
     margin-left: 0.2rem;
     padding: 0.05rem 0.3rem;
     font-size: 0.65rem;
+    border-radius: 999px;
+    border: 1px solid;
+    white-space: nowrap;
+}
+
+.schedule-todo-card-tag.record-tag-deposit {
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #059669;
+    background-color: rgba(16, 185, 129, 0.06);
+}
+
+.schedule-todo-card-tag.record-tag-placeholder {
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #b45309;
+    background-color: rgba(245, 158, 11, 0.1);
 }
 
 .record-item-amount-wrap {
@@ -8639,18 +8642,6 @@ html.theme-dark .settlement-preview {
     color: #7c2d12;
     background: #fff7ed;
     border-color: #fed7aa;
-}
-
-.record-status--deposit {
-    color: #2563eb;
-    background: #eff6ff;
-    border-color: #bfdbfe;
-}
-
-.record-status--placeholder {
-    color: #b45309;
-    background: #fffbeb;
-    border-color: #fcd34d;
 }
 
 .record-item-badges {
