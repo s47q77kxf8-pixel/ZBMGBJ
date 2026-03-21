@@ -6745,10 +6745,7 @@ function renderGift(gift) {
         <div class="product-item-header">
             <div class="product-item-title">赠品 ${gift.id}</div>
             <div class="product-item-actions" style="display:flex;gap:4px;margin-left:auto;">
-                <button class="icon-action-btn" onclick="convertGiftToProduct(${gift.id})" aria-label="转为制品" title="转为制品">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-convert-to-product"></use></svg>
-                    <span class="sr-only">转为制品</span>
-                </button>
+                <button class="btn small secondary" onclick="convertGiftToProduct(${gift.id})" title="转为制品">转制品</button>
                 <button class="icon-action-btn delete" onclick="removeGift(${gift.id})" aria-label="删除赠品" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>
@@ -6855,10 +6852,7 @@ function renderProduct(product) {
         <div class="product-item-header">
             <div class="product-item-title">制品 ${product.id}</div>
             <div class="product-item-actions" style="display:flex;gap:4px;margin-left:auto;">
-                <button class="icon-action-btn" onclick="convertProductToGift(${product.id})" aria-label="转为赠品" title="转为赠品">
-                    <svg class="icon sm" aria-hidden="true"><use href="#i-convert-to-gift"></use></svg>
-                    <span class="sr-only">转为赠品</span>
-                </button>
+                <button class="btn small secondary" onclick="convertProductToGift(${product.id})" title="转为赠品">转赠品</button>
                 <button class="icon-action-btn delete" onclick="removeProduct(${product.id})" aria-label="删除制品" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                     <span class="sr-only">删除</span>
