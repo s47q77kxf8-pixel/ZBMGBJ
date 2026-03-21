@@ -941,6 +941,10 @@ function loadData() {
 // 保存数据到本地存储（防抖：短时间多次调用只写入一次）
 var _saveDataTimer;
 function doSaveData() {
+    // 保存前查看 history 中的 tags
+    console.log('[doSaveData] history[0].tags:', history[0] ? history[0].tags : 'no first item');
+    console.log('[doSaveData] history[0].customTag:', history[0] ? history[0].customTag : 'no first item');
+    
     // 保存前兜底防重：避免任何入口写入重复数据
     try {
         const changed = !!mgSanitizeSettingsDuplicates();
@@ -3582,34 +3586,51 @@ function applyRecordFilters() {
         const amountHtml = (item && item.isSchedulePlaceholder)
             ? `<span class="record-item-amount record-item-amount-placeholder">${expectedCount > 0 ? expectedCount : '—'} 件</span>`
             : (hasSettlementWithDiff
-                ? `<div class="record-item-amount-wrap"><span class="record-item-amount">${formatMoney(actualAmount)}</span><span class="record-item-date">${formatMoney(receivableAmount)}</span></div>`
+                ? `<div class="record-item-amount-wrap"><span class="record-item-amount record-item-amount-actual">${formatMoney(actualAmount)}</span><span class="record-item-amount record-item-amount-receivable">${formatMoney(receivableAmount)}</span></div>`
                 : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`);
         const status = getRecordProgressStatus(item);
         const hasDeposit = item && item.depositReceived != null && Number(item.depositReceived) > 0;
         const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
-        const customTagHtml = item && item.customTag ? '<span class="record-tag record-tag-custom">' + escapeHtml(String(item.customTag)) + '</span>' : '';
+        const urgentTagHtml = item && item.urgentType && item.urgentType !== 'normal' ? '<span class="record-tag record-tag-urgent">加急单</span>' : '';
+        const tags = mgNormalizeTags(item);
+        const customTagHtml = tags.map(function (t) {
+            return '<span class="record-tag record-tag-custom" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
+        }).join('');
         const isSelected = selectedHistoryIds.has(item.id);
         return `
             <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}">
-                <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})" onclick="event.stopPropagation()">
-                <div class="record-item-client-wrap">
-                    <span class="record-item-client">${clientDisplay}</span>
-                    ${projectSummary ? `<div class="record-item-project">${projectSummary}</div>` : ''}
-                    <div class="record-item-meta">
-                        <span class="record-item-date">${shortDate}</span>
-                        <span class="record-item-meta-sep">|</span>
-                        <span class="record-item-schedule">${escapeHtml(scheduleRange)}</span>
-                        <span class="record-item-meta-sep">|</span>
-                        <span class="record-item-id">${item.id}</span>
+                <div class="record-item-grid">
+                    <div class="record-item-top-row">
+                        <div class="record-item-top-left">
+                            <input type="checkbox" class="history-item-checkbox record-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})" onclick="event.stopPropagation()">
+                            <span class="record-item-client">${clientDisplay}</span>
+                        </div>
+                        <div class="record-item-top-right">
+                            <div class="record-item-tags-wrap">
+                                ${customTagHtml}
+                                ${placeholderTagHtml}
+                                ${depositTagHtml}
+                                ${urgentTagHtml}
+                                <span class="record-status ${status.className}">${status.text}</span>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="record-item-right">
-                    ${amountHtml}
-                    ${depositTagHtml}
-                    ${placeholderTagHtml}
-                    ${customTagHtml}
-                    <span class="record-status ${status.className}">${status.text}</span>
+                    <div class="record-item-bottom-row">
+                        <div class="record-item-bottom-left">
+                            ${projectSummary ? `<div class="record-item-project">${projectSummary}</div>` : ''}
+                            <div class="record-item-meta">
+                                <span class="record-item-date">${shortDate}</span>
+                                <span class="record-item-meta-sep">|</span>
+                                <span class="record-item-schedule">${escapeHtml(scheduleRange)}</span>
+                                <span class="record-item-meta-sep">|</span>
+                                <span class="record-item-id">${item.id}</span>
+                            </div>
+                        </div>
+                        <div class="record-item-bottom-right">
+                            ${amountHtml}
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -7461,6 +7482,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         projectOrigin: projectOriginValue,
         characterName: characterNameValue,
         customTag: (quoteData && quoteData.customTag) ? String(quoteData.customTag).trim() : '',
+        tags: (quoteData && Array.isArray(quoteData.tags)) ? JSON.parse(JSON.stringify(quoteData.tags)) : [],
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
@@ -11076,7 +11098,10 @@ async function renderScheduleTodoSection() {
         const status = getRecordProgressStatus(item);
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
         const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>' : '';
-        const customTagHtml = item && item.customTag ? ('<span class="record-tag record-tag-custom schedule-todo-card-tag">' + escapeHtml(String(item.customTag)) + '</span>') : '';
+        const urgentTagHtml = item && item.urgentType && item.urgentType !== 'normal' ? '<span class="record-tag record-tag-urgent schedule-todo-card-tag">加急单</span>' : '';
+        const customTagHtml = mgNormalizeTags(item).map(function (t) {
+            return '<span class="record-tag record-tag-custom schedule-todo-card-tag" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
+        }).join('');
         const projectName = item && item.projectName ? escapeHtml(String(item.projectName).trim()) : '';
         const projectOrigin = item && item.projectOrigin ? escapeHtml(String(item.projectOrigin).trim()) : '';
         const characterName = item && item.characterName ? escapeHtml(String(item.characterName).trim()) : '';
@@ -11212,9 +11237,14 @@ async function renderScheduleTodoSection() {
             + '      <span class="schedule-todo-card-sep-dot">\u00B7</span>'
             + '      <span class="schedule-todo-card-progress">' + progress + '</span>'
             + '      <span class="schedule-todo-card-right">'
-            + '        ' + placeholderTagHtml
-            + '        ' + depositTagHtml
-            + '        ' + customTagHtml
+            + '        <span class="schedule-todo-card-tags-custom">'
+            + '          ' + customTagHtml
+            + '        </span>'
+            + '        <span class="schedule-todo-card-tags-fixed">'
+            + '          ' + placeholderTagHtml
+            + '          ' + depositTagHtml
+            + '          ' + urgentTagHtml
+            + '        </span>'
             + '        <span class="record-status ' + status.className + ' schedule-todo-card-status">' + status.text + '</span>'
             + '      </span>'
             + '    </div>'
@@ -11385,12 +11415,239 @@ function handleScheduleTodoCardClick(id, event) {
 
 // 排单卡片操作弹窗
 var scheduleTodoCardModalRecordId = null;
+var scheduleTodoPresetTags = [
+    { name: '待回复', color: '#3b82f6' },
+    { name: '做工艺', color: '#8b5cf6' }
+];
+var scheduleTodoTagManageMode = false;
+
+function loadScheduleTodoPresetTags() {
+    try {
+        var raw = localStorage.getItem('mg_schedule_todo_preset_tags');
+        if (!raw) return;
+        var parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return;
+        scheduleTodoPresetTags = parsed.map(function (t) {
+            if (!t) return null;
+            return {
+                name: String((t.name || '')).trim(),
+                color: String(t.color || '#f59e0b')
+            };
+        }).filter(function (t) { return !!t && !!t.name; });
+    } catch (e) {}
+}
+
+function saveScheduleTodoPresetTags() {
+    try {
+        localStorage.setItem('mg_schedule_todo_preset_tags', JSON.stringify(scheduleTodoPresetTags));
+    } catch (e) {}
+}
+
+function mgNormalizeTags(item) {
+    if (!item) return [];
+    var arr = [];
+    if (Array.isArray(item.tags)) {
+        arr = item.tags;
+    } else if (item.customTag) {
+        arr = [{ name: String(item.customTag).trim(), color: '#f59e0b' }];
+    }
+    arr = arr.map(function (t) {
+        if (!t) return null;
+        var name = '';
+        var color = '#f59e0b';
+        if (typeof t === 'string') {
+            name = t.trim();
+        } else {
+            name = String(t.name || '').trim();
+            color = String(t.color || '#f59e0b');
+        }
+        if (!name) return null;
+        return { name: name, color: color };
+    }).filter(Boolean);
+    var seen = {};
+    return arr.filter(function (t) {
+        var k = t.name.toLowerCase();
+        if (seen[k]) return false;
+        seen[k] = true;
+        return true;
+    });
+}
+
+function mgHexToRgb(hex) {
+    var h = String(hex || '').trim().replace('#', '');
+    if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return { r: 245, g: 158, b: 11 };
+    return {
+        r: parseInt(h.slice(0, 2), 16),
+        g: parseInt(h.slice(2, 4), 16),
+        b: parseInt(h.slice(4, 6), 16)
+    };
+}
+
+function mgTagInlineStyle(color) {
+    var rgb = mgHexToRgb(color);
+    return 'border-color: rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.42);'
+        + 'color: rgb(' + Math.round(rgb.r * 0.86) + ',' + Math.round(rgb.g * 0.86) + ',' + Math.round(rgb.b * 0.86) + ');'
+        + 'background-color: rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.12);';
+}
+
+function mgApplyTagsToItem(item, tags) {
+    if (!item) return;
+    var normalized = Array.isArray(tags) ? tags : [];
+    item.tags = normalized;
+    item.customTag = normalized.length > 0 ? normalized[0].name : '';
+    item.mg_updated_at = Date.now();
+}
+
+function renderScheduleTodoTagEditor() {
+    var id = scheduleTodoCardModalRecordId;
+    if (id == null) return;
+    var item = history.find(function (h) { return h.id === id; });
+    if (!item) return;
+    var tags = mgNormalizeTags(item);
+    var selectedEl = document.getElementById('scheduleTodoTagSelectedList');
+    var presetEl = document.getElementById('scheduleTodoTagPresetList');
+    if (selectedEl) {
+        selectedEl.innerHTML = tags.length ? tags.map(function (t) {
+            var safeName = escapeHtml(t.name);
+            var safeColor = escapeHtml(t.color || '#f59e0b');
+            return '<button type="button" class="tag-chip" style="--tag-color:' + safeColor + ';" onclick="removeScheduleTodoTag(\'' + safeName.replace(/'/g, "\\'") + '\')">' + safeName + ' ×</button>';
+        }).join('') : '<span class="text-gray">暂无标签</span>';
+    }
+    if (presetEl) {
+        var presetHtml = scheduleTodoPresetTags.map(function (t) {
+            var exists = tags.some(function (x) { return String(x.name).toLowerCase() === String(t.name).toLowerCase(); });
+            var safeName = escapeHtml(t.name);
+            var safeColor = escapeHtml(t.color);
+            var deleteBtn = scheduleTodoTagManageMode
+                ? ('<span class="tag-chip-delete" onclick="event.stopPropagation();removeScheduleTodoPresetTag(\'' + safeName.replace(/'/g, "\\'") + '\')">×</span>')
+                : '';
+            return '<button type="button" class="tag-chip tag-chip-preset' + (exists ? ' active' : '') + '" style="--tag-color:' + safeColor + ';" onclick="togglePresetScheduleTodoTag(\'' + safeName.replace(/'/g, "\\'") + '\')">' + safeName + deleteBtn + '</button>';
+        }).join('');
+        presetHtml += '<button type="button" class="tag-chip tag-chip-add" onclick="toggleScheduleTodoTagCreate()">+</button>';
+        presetHtml += '<button type="button" class="tag-chip tag-chip-manage" id="presetManageBtnInline" onclick="toggleScheduleTodoTagManageMode()">−</button>';
+        presetEl.innerHTML = presetHtml;
+        
+        // 隐藏顶部的管理按钮
+        var manageBtn = document.getElementById('scheduleTodoTagManageBtn');
+        if (manageBtn) {
+            manageBtn.style.display = 'none';
+        }
+    }
+
+    var manageBtn = document.getElementById('scheduleTodoTagManageBtn');
+    if (manageBtn) {
+        if (scheduleTodoTagManageMode) {
+            manageBtn.classList.add('active');
+        } else {
+            manageBtn.classList.remove('active');
+        }
+    }
+}
+
+function toggleScheduleTodoTagCreate() {
+    var wrap = document.getElementById('scheduleTodoTagCreateWrap');
+    if (!wrap) return;
+    var isHidden = wrap.classList.contains('d-none');
+    wrap.classList.toggle('d-none', !isHidden);
+    if (isHidden) {
+        var input = document.getElementById('scheduleTodoTagInput');
+        if (input) input.focus();
+    }
+}
+
+function toggleScheduleTodoTagManageMode() {
+    scheduleTodoTagManageMode = !scheduleTodoTagManageMode;
+    renderScheduleTodoTagEditor();
+}
+
+function removeScheduleTodoPresetTag(name) {
+    var target = String(name || '').trim();
+    if (!target) return;
+    if (!confirm('删除预设标签「' + target + '」？\n仅删除预设，不会移除已在订单上的标签。')) return;
+    scheduleTodoPresetTags = scheduleTodoPresetTags.filter(function (t) {
+        return String(t.name || '').toLowerCase() !== target.toLowerCase();
+    });
+    saveScheduleTodoPresetTags();
+    renderScheduleTodoTagEditor();
+}
+
+function persistScheduleTodoTags(item, tags) {
+    console.log('[persistScheduleTodoTags] item.id:', item.id);
+    console.log('[persistScheduleTodoTags] history[0].id:', history[0] ? history[0].id : 'no first item');
+    console.log('[persistScheduleTodoTags] Are they same object?', item === history[0]);
+    
+    mgApplyTagsToItem(item, tags);
+    console.log('[persistScheduleTodoTags] item.tags after apply:', item.tags);
+    console.log('[persistScheduleTodoTags] item.customTag after apply:', item.customTag);
+    console.log('[persistScheduleTodoTags] history[0].tags after apply:', history[0] ? history[0].tags : 'no first item');
+    
+    saveData();
+    if (document.getElementById('quote') && document.getElementById('quote').classList.contains('active')) renderScheduleTodoSection();
+    if (document.getElementById('recordContainer')) applyRecordFilters();
+}
+
+function togglePresetScheduleTodoTag(name) {
+    var id = scheduleTodoCardModalRecordId;
+    if (id == null) return;
+    var item = history.find(function (h) { return h.id === id; });
+    if (!item) return;
+    var tags = mgNormalizeTags(item);
+    var idx = tags.findIndex(function (t) { return String(t.name).toLowerCase() === String(name).toLowerCase(); });
+    if (idx >= 0) {
+        tags.splice(idx, 1);
+    } else {
+        var preset = scheduleTodoPresetTags.find(function (t) { return String(t.name).toLowerCase() === String(name).toLowerCase(); });
+        tags.push({ name: name, color: preset ? preset.color : '#f59e0b' });
+    }
+    persistScheduleTodoTags(item, tags);
+    renderScheduleTodoTagEditor();
+}
+
+function removeScheduleTodoTag(name) {
+    var id = scheduleTodoCardModalRecordId;
+    if (id == null) return;
+    var item = history.find(function (h) { return h.id === id; });
+    if (!item) return;
+    var tags = mgNormalizeTags(item).filter(function (t) { return String(t.name).toLowerCase() !== String(name).toLowerCase(); });
+    persistScheduleTodoTags(item, tags);
+    renderScheduleTodoTagEditor();
+}
+
+function addScheduleTodoTag() {
+    var id = scheduleTodoCardModalRecordId;
+    if (id == null) return;
+    var item = history.find(function (h) { return h.id === id; });
+    if (!item) return;
+    var input = document.getElementById('scheduleTodoTagInput');
+    var colorEl = document.getElementById('scheduleTodoTagColor');
+    if (!input || !colorEl) return;
+    var name = String(input.value || '').trim();
+    var color = String(colorEl.value || '#f59e0b');
+    if (!name) return;
+    var tags = mgNormalizeTags(item);
+    if (!tags.some(function (t) { return String(t.name).toLowerCase() === name.toLowerCase(); })) {
+        tags.push({ name: name, color: color });
+        persistScheduleTodoTags(item, tags);
+    }
+
+    // 新增标签自动加入预设（若不存在）
+    var hasPreset = scheduleTodoPresetTags.some(function (t) {
+        return String(t.name || '').toLowerCase() === name.toLowerCase();
+    });
+    if (!hasPreset) {
+        scheduleTodoPresetTags.push({ name: name, color: color });
+        saveScheduleTodoPresetTags();
+    }
+
+    input.value = '';
+    renderScheduleTodoTagEditor();
+}
+
 function openScheduleTodoCardModal(recordId) {
     scheduleTodoCardModalRecordId = recordId;
     var item = history.find(function (h) { return h.id === recordId; });
     var isPlaceholder = !!(item && item.isSchedulePlaceholder);
-    var customTagInput = document.getElementById('scheduleTodoCustomTagInput');
-    if (customTagInput) customTagInput.value = item && item.customTag ? String(item.customTag) : '';
     ['scheduleTodoBtnCancel', 'scheduleTodoBtnWaste', 'scheduleTodoBtnNormal'].forEach(function (id) {
         var btn = document.getElementById(id);
         if (!btn) return;
@@ -11411,26 +11668,24 @@ function openScheduleTodoCardModal(recordId) {
 }
 function closeScheduleTodoCardModal() {
     scheduleTodoCardModalRecordId = null;
-    var customTagInput = document.getElementById('scheduleTodoCustomTagInput');
-    if (customTagInput) customTagInput.value = '';
     var el = document.getElementById('scheduleTodoCardModal');
     if (el) el.classList.add('d-none');
 }
 
-function updateScheduleTodoCustomTag(value) {
-    var id = scheduleTodoCardModalRecordId;
-    if (id == null) return;
-    var item = history.find(function (h) { return h.id === id; });
-    if (!item) return;
-    item.customTag = String(value || '').trim();
-    item.mg_updated_at = Date.now();
-    saveData();
-    if (document.getElementById('quote') && document.getElementById('quote').classList.contains('active')) {
-        renderScheduleTodoSection();
-    }
-    if (document.getElementById('recordContainer')) {
-        applyRecordFilters();
-    }
+function openScheduleTodoTagModal(recordId) {
+    if (recordId == null) return;
+    scheduleTodoCardModalRecordId = recordId;
+    scheduleTodoTagManageMode = false;
+    loadScheduleTodoPresetTags();
+    renderScheduleTodoTagEditor();
+    var el = document.getElementById('scheduleTodoTagModal');
+    if (el) el.classList.remove('d-none');
+}
+
+function closeScheduleTodoTagModal() {
+    scheduleTodoTagManageMode = false;
+    var el = document.getElementById('scheduleTodoTagModal');
+    if (el) el.classList.add('d-none');
 }
 // 记录页：点击行打开操作弹窗（事件委托，避免 inline onclick 与 id 类型问题）
 (function () {
@@ -11450,8 +11705,14 @@ function updateScheduleTodoCustomTag(value) {
 })();
 function scheduleTodoCardAction(action) {
     var id = scheduleTodoCardModalRecordId;
-    closeScheduleTodoCardModal();
     if (id == null) return;
+    if (action === 'custom_tag') {
+        closeScheduleTodoCardModal();
+        openScheduleTodoTagModal(id);
+        return;
+    }
+
+    closeScheduleTodoCardModal();
     if (action === 'edit') editHistoryItem(id);
     else if (action === 'receipt') { setReceiptFromRecord(); loadQuoteFromHistory(id); }
     else if (action === 'remark') openOrderRemarkModal(id);
@@ -14588,7 +14849,9 @@ function editHistoryItem(id) {
         manualAgreedBase: quote.manualAgreedBase != null ? Number(quote.manualAgreedBase) : null,
         projectName: quote.projectName || '',
         projectOrigin: quote.projectOrigin || '',
-        characterName: quote.characterName || ''
+        characterName: quote.characterName || '',
+        customTag: quote.customTag || '',
+        tags: Array.isArray(quote.tags) ? JSON.parse(JSON.stringify(quote.tags)) : []
     };
 }
 
@@ -14920,7 +15183,9 @@ function loadQuoteFromHistory(id) {
             depositReceived: quote.depositReceived != null ? quote.depositReceived : 0,
             projectName: quote.projectName || '',
             projectOrigin: quote.projectOrigin || '',
-            characterName: quote.characterName || ''
+            characterName: quote.characterName || '',
+            customTag: quote.customTag || '',
+            tags: Array.isArray(quote.tags) ? JSON.parse(JSON.stringify(quote.tags)) : []
         };
         
         // 为兼容旧版本历史数据，确保productPrices和giftPrices中的每个项目都有sides和productId字段

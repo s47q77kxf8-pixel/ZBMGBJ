@@ -8,7 +8,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20250131-process-input">
+    <link rel="stylesheet" href="style.css?v=20260321-grid">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -2402,14 +2402,42 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-check-circle"></use></svg>
                             <span>结单</span>
                         </button>
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnCustomTag" onclick="scheduleTodoCardAction('custom_tag')" title="标签">
+                            <span class="custom-tag-circle-icon" aria-hidden="true">#</span>
+                            <span>标签</span>
+                        </button>
                     </div>
-                    <div class="schedule-todo-card-modal-row schedule-todo-card-modal-row-tag">
-                        <div class="form-group schedule-todo-custom-tag-group">
-                            <label for="scheduleTodoCustomTagInput">自定义标签</label>
-                            <input type="text" id="scheduleTodoCustomTagInput" placeholder="如：急单/返图中/联动企划" oninput="updateScheduleTodoCustomTag(this.value)">
-                            <small class="text-gray">显示在 Todo 卡片和记录页标签区</small>
+                </div>
+            </div>
+        </div>
+        <div id="scheduleTodoTagModal" class="modal d-none">
+            <div class="modal-content modal-content-compact">
+                <div class="modal-header">
+                    <h3>标签</h3>
+                    <span class="close" onclick="closeScheduleTodoTagModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="schedule-todo-tag-editor-block">
+                        <p class="schedule-todo-tag-editor-title">已选标签</p>
+                        <div id="scheduleTodoTagSelectedList" class="schedule-todo-tag-list"></div>
+                    </div>
+                    <div class="schedule-todo-tag-editor-block">
+                        <div class="schedule-todo-tag-editor-head">
+                            <p class="schedule-todo-tag-editor-title">预设标签</p>
+                            <div class="schedule-todo-tag-actions">
+                                <button type="button" class="schedule-todo-tag-manage-btn" id="scheduleTodoTagManageBtn" onclick="toggleScheduleTodoTagManageMode()" aria-label="管理预设"></button>
+                            </div>
+                        </div>
+                        <div id="scheduleTodoTagPresetList" class="schedule-todo-tag-list"></div>
+                        <div id="scheduleTodoTagCreateWrap" class="schedule-todo-tag-create-row d-none">
+                            <input type="text" id="scheduleTodoTagInput" placeholder="输入标签名">
+                            <input type="color" id="scheduleTodoTagColor" value="#f59e0b" title="标签颜色">
+                            <button type="button" class="btn btn-compact" onclick="addScheduleTodoTag()">添加</button>
                         </div>
                     </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn" onclick="closeScheduleTodoTagModal()">保存</button>
                 </div>
             </div>
         </div>
@@ -2802,7 +2830,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260215-cloud-debug"></script>
+    <script src="script.js?v=20260321-tags-fix"></script>
     <script>
         (function setupDesktopNavHeightVar() {
             function applyDesktopNavHeight() {
