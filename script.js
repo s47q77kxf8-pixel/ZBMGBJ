@@ -3349,7 +3349,7 @@ function updateRecordFilterTagOptions() {
         if (item.isSchedulePlaceholder) {
             tagSet.add('占位单');
         }
-        if (item.urgentType && item.urgentType !== 'normal') {
+        if (item.urgent && item.urgent > 1) {
             tagSet.add('加急单');
         }
         // 添加自定义标签
@@ -3648,7 +3648,7 @@ function applyRecordFilters() {
         const hasDeposit = item && item.depositReceived != null && Number(item.depositReceived) > 0;
         const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
-        const urgentTagHtml = item && item.urgentType && item.urgentType !== 'normal' ? '<span class="record-tag record-tag-urgent">加急单</span>' : '';
+        const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent">加急单</span>' : '';
         const tags = mgNormalizeTags(item);
         const customTagHtml = tags.map(function (t) {
             return '<span class="record-tag record-tag-custom" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
@@ -11214,7 +11214,7 @@ async function renderScheduleTodoSection() {
         const status = getRecordProgressStatus(item);
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
         const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>' : '';
-        const urgentTagHtml = item && item.urgentType && item.urgentType !== 'normal' ? '<span class="record-tag record-tag-urgent schedule-todo-card-tag">加急单</span>' : '';
+        const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent schedule-todo-card-tag">加急单</span>' : '';
         const customTagHtml = mgNormalizeTags(item).map(function (t) {
             return '<span class="record-tag record-tag-custom schedule-todo-card-tag" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
         }).join('');
