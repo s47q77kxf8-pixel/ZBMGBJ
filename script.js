@@ -6771,6 +6771,13 @@ function renderGift(gift) {
                     <option value="true" ${gift.sameModel ? 'selected' : ''}>是</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label for="giftCrossOrderSameModel-${gift.id}">跨订单同模</label>
+                <select id="giftCrossOrderSameModel-${gift.id}" onchange="updateGift(${gift.id}, 'crossOrderSameModel', this.value === 'true')">
+                    <option value="false" ${gift.crossOrderSameModel ? '' : 'selected'}>否</option>
+                    <option value="true" ${gift.crossOrderSameModel ? 'selected' : ''}>是（全部按同模价）</option>
+                </select>
+            </div>
         </div>
         <div id="giftFormOptions-${gift.id}"></div>
         <div class="form-row">
@@ -6822,6 +6829,7 @@ function addGift() {
         sides: 'single',
         quantity: 1,
         sameModel: true, // 默认同模为是
+        crossOrderSameModel: false, // 跨订单同模默认为否
         extraFeeIds: [],
         processes: {}
     };
@@ -7622,10 +7630,14 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                 break;
         }
         
-        // 计算同模相关数据
+        // 计算同模相关数据（跨订单同模时，所有件都按同模价计算）
         const sameModelCount = gift.sameModel ? gift.quantity - 1 : 0;
+        const crossOrderSameModelCount = gift.crossOrderSameModel ? gift.quantity : 0;
         const sameModelUnitPrice = (sameModelMode === 'minus') ? Math.max(0, basePrice - sameModelMinusAmount) : (basePrice * sameModelCoefficient);
-        const sameModelTotal = sameModelCount * sameModelUnitPrice;
+        // 跨订单同模时使用全部数量计算同模总价
+        const sameModelTotal = gift.crossOrderSameModel 
+            ? (crossOrderSameModelCount * sameModelUnitPrice)
+            : (sameModelCount * sameModelUnitPrice);
         
         // 计算工艺费用
         let totalProcessFee = 0;
@@ -7665,12 +7677,31 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         if (giftExtraFeeBase > 0) {
             const mainExtraFee = giftExtraFeeBase;
             const sameModelExtraUnit = giftExtraFeeBase * sameModelCoefficient;
-            const sameModelExtraTotal = sameModelCount * sameModelExtraUnit;
-            totalGiftExtraFee = mainExtraFee + sameModelExtraTotal;
+            // 跨订单同模时，所有件的新增费用都按同模系数计算
+            const sameModelExtraTotal = gift.crossOrderSameModel 
+                ? (crossOrderSameModelCount * sameModelExtraUnit)
+                : (sameModelCount * sameModelExtraUnit);
+            totalGiftExtraFee = gift.crossOrderSameModel 
+                ? sameModelExtraTotal  // 跨订单同模时不计算首件全价新增费用
+                : (mainExtraFee + sameModelExtraTotal);
         }
         
         // 计算赠品原价
-        const baseGiftTotal = basePrice + sameModelTotal;
+        // 非同模时：每件都按全价计费（basePrice * quantity）
+        // 同模时：1件全价 + (quantity-1)件按同模价
+        // 跨订单同模时：所有件都按同模价计费（不计算首件全价）
+        let baseGiftTotal;
+        if (gift.crossOrderSameModel) {
+            // 跨订单同模：所有件都按同模价计算
+            baseGiftTotal = crossOrderSameModelCount > 0
+                ? sameModelTotal  // 只有同模价部分
+                : (basePrice * gift.quantity);  // 如果没有同模，按全价计算
+        } else {
+            // 普通同模或非同模
+            baseGiftTotal = sameModelCount > 0
+                ? (basePrice + sameModelTotal)
+                : (basePrice * gift.quantity);
+        }
         const giftOriginalPrice = baseGiftTotal + totalProcessFee + totalGiftExtraFee;
         
         // 保存赠品价格信息
@@ -7692,7 +7723,10 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             baseConfig: productSetting.baseConfig,
             // 添加单双面价相关信息
             sides: gift.sides,
-            productId: giftTypeId
+            productId: giftTypeId,
+            // 跨订单同模信息
+            crossOrderSameModel: !!gift.crossOrderSameModel,
+            crossOrderSameModelCount: crossOrderSameModelCount
         };
         // 赠品日计划（排单用，可选）
         if (Array.isArray(gift.dailyPlan) && gift.dailyPlan.length > 0) {
@@ -11791,10 +11825,20 @@ function saveScheduleTodoPresetTags() {
 
 // 检测订单是否包含跨订单同模的制品
 function hasCrossOrderSameModel(item) {
-    if (!item || !item.productPrices) return false;
-    return item.productPrices.some(function(p) {
+    if (!item) return false;
+    // 检查制品
+    if (item.productPrices && item.productPrices.some(function(p) {
         return p && p.crossOrderSameModel;
-    });
+    })) {
+        return true;
+    }
+    // 检查赠品
+    if (item.giftPrices && item.giftPrices.some(function(g) {
+        return g && g.crossOrderSameModel;
+    })) {
+        return true;
+    }
+    return false;
 }
 
 function mgNormalizeTags(item) {
