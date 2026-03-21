@@ -7279,6 +7279,26 @@ input:checked + .toggle-slider:before {
     justify-content: center;
     gap: 0.5rem 0.75rem;
 }
+
+.schedule-todo-card-modal-row-tag {
+    width: 100%;
+}
+
+.schedule-todo-custom-tag-group {
+    width: 100%;
+    min-width: 240px;
+}
+
+.schedule-todo-custom-tag-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.82rem;
+    color: var(--text-light);
+}
+
+.schedule-todo-custom-tag-group input {
+    width: 100%;
+}
 .schedule-todo-card-modal-btn {
     display: inline-flex;
     flex-direction: column;
@@ -8525,6 +8545,12 @@ html.theme-dark .settlement-preview {
     background-color: rgba(245, 158, 11, 0.1);
 }
 
+.record-tag-custom {
+    border-color: rgba(249, 115, 22, 0.35);
+    color: #c2410c;
+    background-color: rgba(249, 115, 22, 0.09);
+}
+
 .schedule-todo-card-tag {
     margin-left: 0.2rem;
     padding: 0.05rem 0.3rem;
@@ -8544,6 +8570,12 @@ html.theme-dark .settlement-preview {
     border-color: rgba(245, 158, 11, 0.4);
     color: #b45309;
     background-color: rgba(245, 158, 11, 0.1);
+}
+
+.schedule-todo-card-tag.record-tag-custom {
+    border-color: rgba(249, 115, 22, 0.35);
+    color: #c2410c;
+    background-color: rgba(249, 115, 22, 0.09);
 }
 
 .record-item-amount-wrap {

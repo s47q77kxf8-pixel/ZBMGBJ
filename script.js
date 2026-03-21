@@ -15,6 +15,35 @@ let templates = []; // 存储模板列表
 let selectedPerItemExtraFeeIds = []; // 计算页全单级“每制品新增”勾选
 let expandedCategories = new Set(); // 存储展开的分类状态
 let schedulePlaceholderAutoSync = true; // 预计制品数是否跟随制品变动自动同步
+let deletedExternalIds = new Set(); // 本地已删除（待云端确认/防回流）的 external_id
+
+function loadDeletedExternalIds() {
+    try {
+        const raw = localStorage.getItem('mg_deleted_external_ids');
+        const arr = raw ? JSON.parse(raw) : [];
+        deletedExternalIds = new Set(Array.isArray(arr) ? arr.filter(Boolean).map(String) : []);
+    } catch (e) {
+        deletedExternalIds = new Set();
+    }
+}
+
+function saveDeletedExternalIds() {
+    try {
+        localStorage.setItem('mg_deleted_external_ids', JSON.stringify(Array.from(deletedExternalIds)));
+    } catch (e) {}
+}
+
+function markExternalIdDeleted(externalId) {
+    if (!externalId) return;
+    deletedExternalIds.add(String(externalId));
+    saveDeletedExternalIds();
+}
+
+function unmarkExternalIdDeleted(externalId) {
+    if (!externalId) return;
+    deletedExternalIds.delete(String(externalId));
+    saveDeletedExternalIds();
+}
 
 // ========== 自定义搜索下拉组件 ==========
 /**
@@ -470,6 +499,9 @@ function toggleThemeLongPress(event) {
 
 // 初始化应用
 function init() {
+    // 加载本地删除墓碑（防止云端旧数据回流）
+    loadDeletedExternalIds();
+
     // 加载未同步企划列表
     loadUnsyncedOrders();
     
@@ -3556,6 +3588,7 @@ function applyRecordFilters() {
         const hasDeposit = item && item.depositReceived != null && Number(item.depositReceived) > 0;
         const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
+        const customTagHtml = item && item.customTag ? '<span class="record-tag record-tag-custom">' + escapeHtml(String(item.customTag)) + '</span>' : '';
         const isSelected = selectedHistoryIds.has(item.id);
         return `
             <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}">
@@ -3575,6 +3608,7 @@ function applyRecordFilters() {
                     ${amountHtml}
                     ${depositTagHtml}
                     ${placeholderTagHtml}
+                    ${customTagHtml}
                     <span class="record-status ${status.className}">${status.text}</span>
                 </div>
             </div>
@@ -3599,7 +3633,6 @@ function applyRecordFilters() {
             html += `</div></div>`;
         });
         container.innerHTML = html;
-    if (containerTemplate) containerTemplate.innerHTML = html;
     } else {
         container.innerHTML = list.map(renderItem).join('');
     }
@@ -7427,6 +7460,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         projectName: projectNameValue,
         projectOrigin: projectOriginValue,
         characterName: characterNameValue,
+        customTag: (quoteData && quoteData.customTag) ? String(quoteData.customTag).trim() : '',
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
@@ -11042,6 +11076,7 @@ async function renderScheduleTodoSection() {
         const status = getRecordProgressStatus(item);
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
         const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>' : '';
+        const customTagHtml = item && item.customTag ? ('<span class="record-tag record-tag-custom schedule-todo-card-tag">' + escapeHtml(String(item.customTag)) + '</span>') : '';
         const projectName = item && item.projectName ? escapeHtml(String(item.projectName).trim()) : '';
         const projectOrigin = item && item.projectOrigin ? escapeHtml(String(item.projectOrigin).trim()) : '';
         const characterName = item && item.characterName ? escapeHtml(String(item.characterName).trim()) : '';
@@ -11179,6 +11214,7 @@ async function renderScheduleTodoSection() {
             + '      <span class="schedule-todo-card-right">'
             + '        ' + placeholderTagHtml
             + '        ' + depositTagHtml
+            + '        ' + customTagHtml
             + '        <span class="record-status ' + status.className + ' schedule-todo-card-status">' + status.text + '</span>'
             + '      </span>'
             + '    </div>'
@@ -11353,6 +11389,8 @@ function openScheduleTodoCardModal(recordId) {
     scheduleTodoCardModalRecordId = recordId;
     var item = history.find(function (h) { return h.id === recordId; });
     var isPlaceholder = !!(item && item.isSchedulePlaceholder);
+    var customTagInput = document.getElementById('scheduleTodoCustomTagInput');
+    if (customTagInput) customTagInput.value = item && item.customTag ? String(item.customTag) : '';
     ['scheduleTodoBtnCancel', 'scheduleTodoBtnWaste', 'scheduleTodoBtnNormal'].forEach(function (id) {
         var btn = document.getElementById(id);
         if (!btn) return;
@@ -11373,8 +11411,26 @@ function openScheduleTodoCardModal(recordId) {
 }
 function closeScheduleTodoCardModal() {
     scheduleTodoCardModalRecordId = null;
+    var customTagInput = document.getElementById('scheduleTodoCustomTagInput');
+    if (customTagInput) customTagInput.value = '';
     var el = document.getElementById('scheduleTodoCardModal');
     if (el) el.classList.add('d-none');
+}
+
+function updateScheduleTodoCustomTag(value) {
+    var id = scheduleTodoCardModalRecordId;
+    if (id == null) return;
+    var item = history.find(function (h) { return h.id === id; });
+    if (!item) return;
+    item.customTag = String(value || '').trim();
+    item.mg_updated_at = Date.now();
+    saveData();
+    if (document.getElementById('quote') && document.getElementById('quote').classList.contains('active')) {
+        renderScheduleTodoSection();
+    }
+    if (document.getElementById('recordContainer')) {
+        applyRecordFilters();
+    }
 }
 // 记录页：点击行打开操作弹窗（事件委托，避免 inline onclick 与 id 类型问题）
 (function () {
@@ -14187,6 +14243,11 @@ function batchDeleteHistory() {
         applyRecordFilters();
     }
     
+    // 先标记本地删除墓碑，防止云端旧数据回流
+    itemsToDelete.forEach(function (item) {
+        if (item && item.external_id) markExternalIdDeleted(item.external_id);
+    });
+
     // 云端同步：如果已启用云端模式，同步删除云端企划
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         itemsToDelete.forEach(item => {
@@ -14257,6 +14318,9 @@ function editHistoryItem(id) {
     if (projectOriginInput) projectOriginInput.value = quote.projectOrigin || '';
     var characterNameInput = document.getElementById('characterName');
     if (characterNameInput) characterNameInput.value = quote.characterName || '';
+    if (quoteData) {
+        quoteData.customTag = quote.customTag || '';
+    }
     // 平台手续费在下方 setTimeout 中与系数一并恢复（需等选择器选项就绪）
     // 下单时间改在 rAF 内、抽屉打开后设置，避免时序问题
     if (quote.startTime) {
@@ -14954,6 +15018,9 @@ function deleteHistoryItem(id) {
         applyRecordFilters();
     }
     
+    // 先标记本地删除墓碑，防止云端旧数据回流
+    if (item && item.external_id) markExternalIdDeleted(item.external_id);
+
     // 云端同步：如果已启用云端模式，同步删除云端企划
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         mgCloudDeleteOrder(item).then(function (ok) {
@@ -19622,7 +19689,11 @@ async function mgCloudFetchOrders(filters = {}) {
         }
         
         // 将云端数据还原为本地 history 格式
-        return (data || []).map(o => {
+        return (data || []).filter(function (o) {
+            // 本地已删除墓碑命中：忽略回流
+            const ext = o && o.external_id ? String(o.external_id) : '';
+            return !ext || !deletedExternalIds.has(ext);
+        }).map(o => {
             // 直接使用 payload 中的原始数据，不要从 external_id 反推 id
             const item = o.payload ? { ...o.payload } : {};
             
@@ -19787,6 +19858,8 @@ async function mgCloudDeleteOrder(item, retryCount = 0) {
         }
 
         console.log('✅ 云端删除企划成功:', externalId);
+        // 删除成功后清除墓碑
+        unmarkExternalIdDeleted(externalId);
         // 无论实际删除了几行（即使云端已不存在），只要没有错误，就视为同步成功
         if (item && item.id) {
             markOrderSynced(item.id);
