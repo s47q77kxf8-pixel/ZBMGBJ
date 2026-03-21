@@ -7065,16 +7065,7 @@ input:checked + .toggle-slider:before {
     font-size: 0.75rem;
     color: var(--text-light);
 }
-.schedule-todo-card-status {
-    font-size: 0.65rem !important;
-    padding: 0.05rem 0.3rem !important;
-    border-radius: 999px !important;
-    font-weight: 600 !important;
-    flex-shrink: 0 !important;
-    line-height: 1 !important;
-    box-sizing: border-box !important;
-    white-space: nowrap !important;
-}
+/* Todo 卡片状态标签使用通用 .record-status 样式 */
 
 .schedule-todo-card-right {
     margin-left: auto;
@@ -8798,13 +8789,13 @@ html.theme-dark .settlement-preview {
 .record-item-amount-wrap {
     display: flex;
     flex-direction: column;
-    gap: 0.1rem;
+    gap: 0.05rem;
     align-items: flex-end;
 }
 
 .record-item-amount {
-    font-size: 0.9rem;
-    font-weight: 600;
+    font-size: 1rem;
+    font-weight: 700;
     color: var(--text-color);
     white-space: nowrap;
     text-align: right;
@@ -8826,9 +8817,9 @@ html.theme-dark .settlement-preview {
 .record-tag {
     display: inline-flex;
     align-items: center;
-    padding: 0.05rem 0.3rem;
+    padding: 0.1rem 0.4rem;
     border-radius: 999px;
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     border: 1px solid rgba(16, 185, 129, 0.3);
     color: #059669;
     background-color: rgba(16, 185, 129, 0.06);
@@ -8863,31 +8854,16 @@ html.theme-dark .settlement-preview {
     background-color: rgba(249, 115, 22, 0.09);
 }
 
-.schedule-todo-card-tag {
+/* Todo 卡片标签使用通用 .record-tag 样式，只需定义特殊布局 */
+.schedule-todo-card-tags-fixed,
+.schedule-todo-card-tags-custom {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.schedule-todo-card-tag-right {
     margin-left: 0.2rem;
-    padding: 0.05rem 0.3rem;
-    font-size: 0.65rem;
-    border-radius: 999px;
-    border: 1px solid;
-    white-space: nowrap;
-}
-
-.schedule-todo-card-tag.record-tag-deposit {
-    border-color: rgba(16, 185, 129, 0.3);
-    color: #059669;
-    background-color: rgba(16, 185, 129, 0.06);
-}
-
-.schedule-todo-card-tag.record-tag-placeholder {
-    border-color: rgba(245, 158, 11, 0.4);
-    color: #b45309;
-    background-color: rgba(245, 158, 11, 0.1);
-}
-
-.schedule-todo-card-tag.record-tag-custom {
-    border-color: rgba(249, 115, 22, 0.35);
-    color: #c2410c;
-    background-color: rgba(249, 115, 22, 0.09);
 }
 
 
@@ -8917,9 +8893,9 @@ html.theme-dark .settlement-preview {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.05rem 0.3rem;
+    padding: 0.1rem 0.4rem;
     border-radius: 999px;
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     font-weight: 600;
     border: 1px solid transparent;
     white-space: nowrap;
@@ -9785,6 +9761,12 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
 #statsFilterDrawer .filter-checkbox-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+
+/* 标签区域单独设置为 3 列布局 */
+#statsFilterDrawer .filter-checkbox-divider + .filter-checkbox-row,
+#statsFilterDrawer .filter-checkbox-divider + .filter-checkbox-row + .filter-checkbox-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 #statsFilterDrawer .filter-section small.text-gray {
     margin-top: 0.35rem;
     display: block;
@@ -9826,6 +9808,13 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
 #recordFilterDrawer .filter-checkbox-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+
+/* 标签区域单独设置为 3 列布局 */
+#recordFilterDrawer .filter-checkbox-divider + .filter-checkbox-row,
+#recordFilterDrawer .filter-checkbox-divider + .filter-checkbox-row + .filter-checkbox-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 #recordFilterDrawer .filter-drawer-footer {
     position: sticky;
     bottom: 0;

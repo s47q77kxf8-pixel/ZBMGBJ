@@ -941,10 +941,6 @@ function loadData() {
 // 保存数据到本地存储（防抖：短时间多次调用只写入一次）
 var _saveDataTimer;
 function doSaveData() {
-    // 保存前查看 history 中的 tags
-    console.log('[doSaveData] history[0].tags:', history[0] ? history[0].tags : 'no first item');
-    console.log('[doSaveData] history[0].customTag:', history[0] ? history[0].customTag : 'no first item');
-    
     // 保存前兜底防重：避免任何入口写入重复数据
     try {
         const changed = !!mgSanitizeSettingsDuplicates();
@@ -3292,6 +3288,7 @@ function toggleRecordFilterDrawer() {
         if (drawer.classList.contains('active')) {
             window.pageBeforeRecordFilterDrawer = activeTab;
             document.body.style.overflow = 'hidden';
+            updateRecordFilterTagOptions(); // 更新标签选项
             updateRecordFilterBadge();
         } else {
             const returnPage = (window.pageBeforeRecordFilterDrawer === 'quote' || window.pageBeforeRecordFilterDrawer === 'record' || window.pageBeforeRecordFilterDrawer === 'stats' || window.pageBeforeRecordFilterDrawer === 'settings')
@@ -3335,6 +3332,65 @@ function updateRecordStatusCount() {
     const checked = Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked'))
         .map(cb => cb.value);
     countEl.textContent = checked.length > 0 ? ('已选 ' + checked.length) : '';
+}
+
+// 更新记录筛选抽屉中的标签选项
+function updateRecordFilterTagOptions() {
+    const wrap = document.getElementById('recordStatusFilter');
+    if (!wrap) return;
+    
+    // 收集所有使用过的标签
+    const tagSet = new Set();
+    history.forEach(item => {
+        // 添加固定标签
+        if (item.depositReceived != null && Number(item.depositReceived) > 0) {
+            tagSet.add('已收定');
+        }
+        if (item.isSchedulePlaceholder) {
+            tagSet.add('占位单');
+        }
+        if (item.urgentType && item.urgentType !== 'normal') {
+            tagSet.add('加急单');
+        }
+        // 添加自定义标签
+        const tags = mgNormalizeTags(item);
+        tags.forEach(t => {
+            if (t && t.name) {
+                tagSet.add(t.name);
+            }
+        });
+    });
+    
+    // 找到标签区域
+    const tagDivider = Array.from(wrap.querySelectorAll('.filter-checkbox-divider'))
+        .find(el => el.textContent.trim() === '标签');
+    if (!tagDivider) return;
+    
+    // 清除现有标签选项
+    let next = tagDivider.nextElementSibling;
+    while (next && next.classList.contains('filter-checkbox-row')) {
+        const toRemove = next;
+        next = next.nextElementSibling;
+        toRemove.remove();
+    }
+    
+    // 创建一个包含所有标签的行容器，使用 3 列布局
+    const row = document.createElement('div');
+    row.className = 'filter-checkbox-row';
+    row.style.display = 'grid';
+    row.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+    row.style.gap = '0.3rem';
+    
+    // 添加新的标签选项
+    const tags = Array.from(tagSet).sort();
+    tags.forEach(tagName => {
+        const label = document.createElement('label');
+        label.className = 'filter-checkbox';
+        label.innerHTML = '<input type="checkbox" value="' + escapeHtml(tagName) + '" onchange="onRecordStatusChange()">' + escapeHtml(tagName);
+        row.appendChild(label);
+    });
+    
+    tagDivider.after(row);
 }
 
 function onRecordStatusChange() {
@@ -5539,6 +5595,7 @@ function toggleStatsFilterDrawer() {
         if (drawer.classList.contains('active')) {
             window.pageBeforeStatsFilterDrawer = activeTab;
             document.body.style.overflow = 'hidden';
+            updateStatsFilterTagOptions(); // 更新标签选项
             updateStatsFilterBadge();
         } else {
             const returnPage = (window.pageBeforeStatsFilterDrawer === 'quote' || window.pageBeforeStatsFilterDrawer === 'record' || window.pageBeforeStatsFilterDrawer === 'stats' || window.pageBeforeStatsFilterDrawer === 'settings')
@@ -5575,6 +5632,65 @@ function updateStatsStatusCount() {
     const checked = Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked'))
         .map(cb => cb.value);
     countEl.textContent = checked.length > 0 ? ('已选 ' + checked.length) : '';
+}
+
+// 更新统计筛选抽屉中的标签选项
+function updateStatsFilterTagOptions() {
+    const wrap = document.getElementById('statsStatusFilter');
+    if (!wrap) return;
+    
+    // 收集所有使用过的标签
+    const tagSet = new Set();
+    history.forEach(item => {
+        // 添加固定标签
+        if (item.depositReceived != null && Number(item.depositReceived) > 0) {
+            tagSet.add('已收定');
+        }
+        if (item.isSchedulePlaceholder) {
+            tagSet.add('占位单');
+        }
+        if (item.urgentType && item.urgentType !== 'normal') {
+            tagSet.add('加急单');
+        }
+        // 添加自定义标签
+        const tags = mgNormalizeTags(item);
+        tags.forEach(t => {
+            if (t && t.name) {
+                tagSet.add(t.name);
+            }
+        });
+    });
+    
+    // 找到标签区域
+    const tagDivider = Array.from(wrap.querySelectorAll('.filter-checkbox-divider'))
+        .find(el => el.textContent.trim() === '标签');
+    if (!tagDivider) return;
+    
+    // 清除现有标签选项
+    let next = tagDivider.nextElementSibling;
+    while (next && next.classList.contains('filter-checkbox-row')) {
+        const toRemove = next;
+        next = next.nextElementSibling;
+        toRemove.remove();
+    }
+    
+    // 创建一个包含所有标签的行容器，使用 3 列布局
+    const row = document.createElement('div');
+    row.className = 'filter-checkbox-row';
+    row.style.display = 'grid';
+    row.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+    row.style.gap = '0.3rem';
+    
+    // 添加新的标签选项
+    const tags = Array.from(tagSet).sort();
+    tags.forEach(tagName => {
+        const label = document.createElement('label');
+        label.className = 'filter-checkbox';
+        label.innerHTML = '<input type="checkbox" value="' + escapeHtml(tagName) + '" onchange="onStatsStatusChange()">' + escapeHtml(tagName);
+        row.appendChild(label);
+    });
+    
+    tagDivider.after(row);
 }
 
 function onStatsStatusChange() {
