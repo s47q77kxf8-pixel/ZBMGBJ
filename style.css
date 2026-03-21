@@ -6960,8 +6960,8 @@ input:checked + .toggle-slider:before {
     background: rgba(0, 0, 0, 0.04);
 }
 .schedule-todo-filter-btn.active {
-    background: #f3f4f6;
-    color: #111;
+    background: #f3f4f6 !important;
+    color: #111 !important;
     font-weight: 600;
 }
 
