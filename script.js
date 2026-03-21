@@ -16321,6 +16321,23 @@ function mgInitArtistInfoBindings() {
 
 // 同步美工ID到云端（auth.user_metadata.display_name + artists.display_name）
 let mgLastSyncedArtistDisplayName = null;
+
+// 从 localStorage 加载上次同步的美工名
+function loadLastSyncedArtistDisplayName() {
+    try {
+        mgLastSyncedArtistDisplayName = localStorage.getItem('mg_last_synced_artist_display_name') || null;
+    } catch (e) {
+        mgLastSyncedArtistDisplayName = null;
+    }
+}
+
+// 保存上次同步的美工名到 localStorage
+function saveLastSyncedArtistDisplayName(displayName) {
+    try {
+        localStorage.setItem('mg_last_synced_artist_display_name', String(displayName || ''));
+    } catch (e) {}
+}
+
 async function mgSyncArtistDisplayNameToCloud(displayName) {
     if (!mgIsCloudEnabled()) return;
 
@@ -16328,6 +16345,12 @@ async function mgSyncArtistDisplayNameToCloud(displayName) {
     if (!client) return;
 
     const normalizedDisplayName = String(displayName || '').trim();
+    
+    // 首次加载时从 localStorage 读取
+    if (mgLastSyncedArtistDisplayName === null) {
+        loadLastSyncedArtistDisplayName();
+    }
+    
     if (mgLastSyncedArtistDisplayName === normalizedDisplayName) return;
 
     const { data: { session } } = await client.auth.getSession();
@@ -16354,6 +16377,7 @@ async function mgSyncArtistDisplayNameToCloud(displayName) {
         }
 
         mgLastSyncedArtistDisplayName = normalizedDisplayName;
+        saveLastSyncedArtistDisplayName(normalizedDisplayName);
         console.log(`[${new Date().toLocaleString()}] 已同步美工显示名称到云端:`, normalizedDisplayName);
     } catch (err) {
         console.error('同步美工显示名称异常:', err);
@@ -19152,11 +19176,7 @@ window.addEventListener('load', function () {
     mgInitNetworkGuard();
     
     // 应用启动后，自动同步本地美工ID到云端（如果已设置）
-    setTimeout(async function() {
-        if (mgIsCloudEnabled() && defaultSettings.artistInfo && defaultSettings.artistInfo.id) {
-            await mgSyncArtistDisplayNameToCloud(defaultSettings.artistInfo.id);
-        }
-    }, 2000); // 延迟2秒执行，确保应用完全初始化
+    // 注意：init() 中已经同步过，这里不再重复同步
 });
 
 // 赠品相关函数
@@ -22776,7 +22796,17 @@ init = function() {
                     // 企划拉取失败时，至少尝试上传本地企划
                 }
                 
-                const cloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
+                // 获取所有云端订单的ID（用于判断哪些本地订单需要上传）
+                let allCloudIds = new Set();
+                try {
+                    const allCloudOrders = await mgCloudFetchOrders();
+                    allCloudIds = new Set(allCloudOrders.map(h => h.external_id).filter(Boolean));
+                } catch (err) {
+                    console.warn('获取全部云端订单ID失败，使用增量拉取结果:', err);
+                    allCloudIds = new Set(cloudHistory.map(h => h.external_id).filter(Boolean));
+                }
+                
+                const cloudIds = allCloudIds;
                 
                 // 上传本地独有的企划（限并发）
                 const client = mgGetSupabaseClient();
