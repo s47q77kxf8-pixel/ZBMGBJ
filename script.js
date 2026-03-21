@@ -6744,6 +6744,10 @@ function renderGift(gift) {
     giftElement.innerHTML = `
         <div class="product-item-header">
             <div class="product-item-title">赠品 ${gift.id}</div>
+            <button class="icon-action-btn" onclick="convertGiftToProduct(${gift.id})" aria-label="转为制品" title="转为制品">
+                <svg class="icon sm" aria-hidden="true"><use href="#i-package"></use></svg>
+                <span class="sr-only">转为制品</span>
+            </button>
             <button class="icon-action-btn delete" onclick="removeGift(${gift.id})" aria-label="删除赠品" title="删除">
                 <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>
@@ -6848,6 +6852,10 @@ function renderProduct(product) {
     productElement.innerHTML = `
         <div class="product-item-header">
             <div class="product-item-title">制品 ${product.id}</div>
+            <button class="icon-action-btn" onclick="convertProductToGift(${product.id})" aria-label="转为赠品" title="转为赠品">
+                <svg class="icon sm" aria-hidden="true"><use href="#i-gift"></use></svg>
+                <span class="sr-only">转为赠品</span>
+            </button>
             <button class="icon-action-btn delete" onclick="removeProduct(${product.id})" aria-label="删除制品" title="删除">
                 <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                 <span class="sr-only">删除</span>
@@ -7194,6 +7202,72 @@ function removeProduct(id) {
     products = products.filter(p => p.id !== id);
     const el = document.querySelector(`[data-id="${id}"]`);
     if (el) el.remove();
+    syncExpectedProductCountFromProducts();
+}
+
+// 将制品转为赠品
+function convertProductToGift(productId) {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    
+    // 从制品数组中移除
+    products = products.filter(p => p.id !== productId);
+    
+    // 创建赠品对象
+    giftIdCounter++;
+    const gift = {
+        id: giftIdCounter,
+        type: product.type,
+        sides: product.sides || 'single',
+        quantity: product.quantity || 1,
+        sameModel: product.sameModel !== undefined ? product.sameModel : true,
+        crossOrderSameModel: product.crossOrderSameModel || false,
+        extraFeeIds: product.extraFeeIds || [],
+        processes: product.processes || {},
+        dailyPlan: product.dailyPlan || [],
+        nodeDailyPlan: product.nodeDailyPlan || []
+    };
+    
+    gifts.push(gift);
+    
+    // 移除制品元素并渲染赠品
+    const el = document.querySelector(`.product-item[data-id="${productId}"]`);
+    if (el) el.remove();
+    renderGift(gift);
+    
+    syncExpectedProductCountFromProducts();
+}
+
+// 将赠品转为制品
+function convertGiftToProduct(giftId) {
+    const gift = gifts.find(g => g.id === giftId);
+    if (!gift) return;
+    
+    // 从赠品数组中移除
+    gifts = gifts.filter(g => g.id !== giftId);
+    
+    // 创建制品对象
+    productIdCounter++;
+    const product = {
+        id: productIdCounter,
+        type: gift.type,
+        sides: gift.sides || 'single',
+        quantity: gift.quantity || 1,
+        sameModel: gift.sameModel !== undefined ? gift.sameModel : false,
+        crossOrderSameModel: gift.crossOrderSameModel || false,
+        extraFeeIds: gift.extraFeeIds || [],
+        processes: gift.processes || {},
+        dailyPlan: gift.dailyPlan || [],
+        nodeDailyPlan: gift.nodeDailyPlan || []
+    };
+    
+    products.push(product);
+    
+    // 移除赠品元素并渲染制品
+    const el = document.querySelector(`.product-item[data-id="${giftId}"]`);
+    if (el) el.remove();
+    renderProduct(product);
+    
     syncExpectedProductCountFromProducts();
 }
 
