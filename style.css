@@ -151,12 +151,10 @@ html.theme-dark .schedule-calendar-cell-weekend {
 }
 /* 黑夜下今日格子显式设置文字颜色，避免首次切黑夜时不可见 */
 html.theme-dark .schedule-calendar-cell-today:not(.schedule-calendar-cell-selected) {
-    background: rgba(255, 255, 255, 0.08);
+    background: #2a2a2a;
     color: #e5e5e5;
 }
-html.theme-dark .schedule-calendar-cell[data-date]:hover:not(.schedule-calendar-cell-other):not(.schedule-calendar-cell-selected) {
-    background: rgba(255, 255, 255, 0.06);
-}
+
 html.theme-dark .schedule-calendar-cell-selected {
     background: #3b82f6 !important;
     color: #fff !important;
@@ -170,6 +168,13 @@ html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend 
 }
 html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend .schedule-cell-num {
     color: #fff !important;
+}
+html.theme-dark .schedule-selected-column-overlay {
+    background: #3b82f6;
+    box-shadow: 0 0 0 1px #3b82f6;
+}
+html.theme-dark .schedule-today-column-overlay {
+    background: #2a2a2a;
 }
 
 /* 彩条配色选择（旧版样式已停用，避免与计算页圆点触发器样式冲突） */
@@ -6755,7 +6760,8 @@ input:checked + .toggle-slider:before {
     gap: 3px;
 }
 .schedule-calendar-cell {
-    height: 72px;
+    min-height: 72px;
+    height: auto;
     border-radius: 10px;
     padding: 4px 2px;
     font-size: 0.8rem;
@@ -6784,9 +6790,7 @@ input:checked + .toggle-slider:before {
     cursor: pointer;
     color: var(--text-color);
 }
-.schedule-calendar-cell[data-date]:hover:not(.schedule-calendar-cell-other):not(.schedule-calendar-cell-selected) {
-    background: rgba(0, 0, 0, 0.05);
-}
+
 .schedule-calendar-cell-other {
     color: rgba(0, 0, 0, 0.28);
 }
@@ -6799,7 +6803,7 @@ input:checked + .toggle-slider:before {
 }
 /* 选中其他日期时，今日显示浅灰底 */
 .schedule-calendar-cell-today:not(.schedule-calendar-cell-selected) {
-    background: rgba(0, 0, 0, 0.06);
+    background: #f0f0f0;
     border-radius: 3px;
 }
 .schedule-calendar-cell-selected {
@@ -6808,7 +6812,8 @@ input:checked + .toggle-slider:before {
     font-weight: 600;
     border-radius: 3px;
     box-shadow: 0 0 0 1px #000;
-    height: 72px;
+    min-height: 72px;
+    height: auto;
 }
 .schedule-calendar-cell-selected .schedule-cell-num {
     color: #fff !important;
@@ -6849,7 +6854,7 @@ input:checked + .toggle-slider:before {
     align-items: start;
     min-height: 0;
     pointer-events: none;
-    padding: 1px 0 0 0;
+    padding: 0;
     margin: 0;
     z-index: 1;
     overflow: visible;
@@ -6861,7 +6866,15 @@ input:checked + .toggle-slider:before {
     background: #111827;
     border-radius: 3px;
     box-shadow: 0 0 0 1px #000;
-    z-index: 0;
+    z-index: -1;
+    pointer-events: none;
+}
+.schedule-today-column-overlay {
+    align-self: stretch;
+    justify-self: stretch;
+    background: #f0f0f0;
+    border-radius: 3px;
+    z-index: -1;
     pointer-events: none;
 }
 /* 彩条样式：参考日程颜色例图，圆角条带、略透明 */
@@ -9900,12 +9913,14 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
         border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     }
     .schedule-calendar-cell {
-        height: 60px;
+        min-height: 60px;
+        height: auto;
         padding: 3px 1px;
         font-size: 0.75rem;
     }
     .schedule-calendar-cell-selected {
-        height: 60px;
+        min-height: 60px;
+        height: auto;
     }
     .schedule-calendar-header {
         margin-bottom: 0.5rem;

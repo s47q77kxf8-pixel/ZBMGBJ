@@ -10780,6 +10780,15 @@ function renderScheduleCalendar() {
                 }
             }
         }
+        // 今日列高亮层
+        let todayCol = -1;
+        const todayObj = new Date();
+        if (todayObj.getFullYear() === y && (todayObj.getMonth() + 1) === m) {
+            const todayDay = todayObj.getDate();
+            if (todayDay >= weekFirstDay && todayDay <= weekLastDay) {
+                todayCol = todayDay - weekFirstDay;
+            }
+        }
         // 展开模式下按需增高本周块，避免彩条轨道重叠
         if (window.scheduleExpandAllBars) {
             const blockMinHeight = 22 + (weekTracks.length * 12) + 8;
@@ -10790,9 +10799,13 @@ function renderScheduleCalendar() {
             var barColors = isDark && SCHEDULE_BAR_COLORS_DARK ? SCHEDULE_BAR_COLORS_DARK : SCHEDULE_BAR_COLORS;
             var barTextColors = isDark && SCHEDULE_BAR_TEXT_COLORS_DARK ? SCHEDULE_BAR_TEXT_COLORS_DARK : SCHEDULE_BAR_TEXT_COLORS;
             html += '<div class="schedule-week-bars">';
+            const maxRow = Math.max(1, weekTracks.length);
             if (selectedCol >= 0) {
-                const maxRow = Math.max(1, weekTracks.length);
                 html += '<div class="schedule-selected-column-overlay" style="grid-column:' + (selectedCol + 1) + ';grid-row:1 / ' + (maxRow + 1) + ';"></div>';
+            }
+            // 今日覆盖层（如果没有选中日期，或者选中的不是今日）
+            if (todayCol >= 0 && todayCol !== selectedCol) {
+                html += '<div class="schedule-today-column-overlay" style="grid-column:' + (todayCol + 1) + ';grid-row:1 / ' + (maxRow + 1) + ';"></div>';
             }
             weekTracks.forEach(function (track, ti) {
                 track.forEach(function (s) {
