@@ -3511,7 +3511,7 @@ function updateRecordFilterTagOptions() {
     // 收集所有使用过的标签
     const tagSet = new Set();
     history.forEach(item => {
-        // 添加固定标签
+        // 添加固定标签（这些标签由系统自动生成，不在自定义标签列表中显示）
         if (item.depositReceived != null && Number(item.depositReceived) > 0) {
             tagSet.add('已收定');
         }
@@ -3520,6 +3520,9 @@ function updateRecordFilterTagOptions() {
         }
         if (item.urgent && item.urgent > 1) {
             tagSet.add('加急单');
+        }
+        if (hasCrossOrderSameModel(item)) {
+            tagSet.add('追加单');
         }
         // 添加自定义标签
         const tags = mgNormalizeTags(item);
@@ -3818,6 +3821,7 @@ function applyRecordFilters() {
         const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent">加急单</span>' : '';
+        const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order">追加单</span>' : '';
         const tags = mgNormalizeTags(item);
         const customTagHtml = tags.map(function (t) {
             return '<span class="record-tag record-tag-custom" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
@@ -3837,6 +3841,7 @@ function applyRecordFilters() {
                                 ${placeholderTagHtml}
                                 ${depositTagHtml}
                                 ${urgentTagHtml}
+                                ${crossOrderTagHtml}
                                 <span class="record-status ${status.className}">${status.text}</span>
                             </div>
                         </div>
@@ -5811,7 +5816,7 @@ function updateStatsFilterTagOptions() {
     // 收集所有使用过的标签
     const tagSet = new Set();
     history.forEach(item => {
-        // 添加固定标签
+        // 添加固定标签（这些标签由系统自动生成，不在自定义标签列表中显示）
         if (item.depositReceived != null && Number(item.depositReceived) > 0) {
             tagSet.add('已收定');
         }
@@ -5820,6 +5825,9 @@ function updateStatsFilterTagOptions() {
         }
         if (item.urgentType && item.urgentType !== 'normal') {
             tagSet.add('加急单');
+        }
+        if (hasCrossOrderSameModel(item)) {
+            tagSet.add('追加单');
         }
         // 添加自定义标签
         const tags = mgNormalizeTags(item);
@@ -6707,10 +6715,11 @@ function addProduct() {
         sides: 'single',
         quantity: 1,
         sameModel: true, // 默认同模为是
+        crossOrderSameModel: false, // 跨订单同模默认为否
         extraFeeIds: [],
         processes: {}
     };
-    
+
     products.push(product);
     renderProduct(product);
     syncExpectedProductCountFromProducts();
@@ -6856,6 +6865,13 @@ function renderProduct(product) {
                 <select id="productSameModel-${product.id}" onchange="updateProduct(${product.id}, 'sameModel', this.value === 'true')">
                     <option value="false" ${product.sameModel ? '' : 'selected'}>否</option>
                     <option value="true" ${product.sameModel ? 'selected' : ''}>是</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="productCrossOrderSameModel-${product.id}">跨订单同模</label>
+                <select id="productCrossOrderSameModel-${product.id}" onchange="updateProduct(${product.id}, 'crossOrderSameModel', this.value === 'true')">
+                    <option value="false" ${product.crossOrderSameModel ? '' : 'selected'}>否</option>
+                    <option value="true" ${product.crossOrderSameModel ? 'selected' : ''}>是（全部按同模价）</option>
                 </select>
             </div>
         </div>
@@ -7421,9 +7437,14 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         }
         
         // 计算同模相关数据（按节点收费不参与同模）
-        const sameModelCount = productSetting.priceType === 'nodes' ? 0 : (product.sameModel ? product.quantity - 1 : 0);
+        // 跨订单同模时，所有件都按同模价计算
+        const sameModelCount = productSetting.priceType === 'nodes' ? 0 : (product.sameModel ? (product.quantity - 1) : 0);
+        const crossOrderSameModelCount = productSetting.priceType === 'nodes' ? 0 : (product.crossOrderSameModel ? product.quantity : 0);
         const sameModelUnitPrice = (sameModelMode === 'minus') ? Math.max(0, basePrice - sameModelMinusAmount) : (basePrice * sameModelCoefficient);
-        const sameModelTotal = sameModelCount * sameModelUnitPrice;
+        // 跨订单同模时使用全部数量计算同模总价
+        const sameModelTotal = product.crossOrderSameModel 
+            ? (crossOrderSameModelCount * sameModelUnitPrice)
+            : (sameModelCount * sameModelUnitPrice);
         
         // 计算每制品新增费用（按节点收费不参与）
         var extraFeeList = (defaultSettings.perItemExtraFees || []).filter(function (x) {
@@ -7471,9 +7492,19 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         // 计算制品总价
         // 非同模时：每件都按全价计费（basePrice * quantity）
         // 同模时：1件全价 + (quantity-1)件按同模价
-        const baseProductTotal = sameModelCount > 0
-            ? (basePrice + sameModelTotal)
-            : (basePrice * product.quantity);
+        // 跨订单同模时：所有件都按同模价计费（不计算首件全价）
+        let baseProductTotal;
+        if (product.crossOrderSameModel) {
+            // 跨订单同模：所有件都按同模价计算
+            baseProductTotal = crossOrderSameModelCount > 0
+                ? sameModelTotal  // 只有同模价部分
+                : (basePrice * product.quantity);  // 如果没有同模，按全价计算
+        } else {
+            // 普通同模或非同模
+            baseProductTotal = sameModelCount > 0
+                ? (basePrice + sameModelTotal)
+                : (basePrice * product.quantity);
+        }
         const productTotal = baseProductTotal + totalProcessFee + totalExtraFee;
         
         // 按节点收费：生成节点明细
@@ -7498,7 +7529,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             basePrice: basePrice,
             baseConfigPrice: productSetting.priceType === 'config' && productSetting.baseConfig ? (productSetting.basePrice || 0) : undefined,
             quantity: product.quantity,
-            sameModelCount: sameModelCount,
+            sameModelCount: product.crossOrderSameModel ? crossOrderSameModelCount : sameModelCount,
             sameModelUnitPrice: sameModelUnitPrice,
             sameModelTotal: sameModelTotal,
             productTotal: productTotal,
@@ -7506,6 +7537,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             totalProcessFee: totalProcessFee,
             extraFees: extraFeeList.map(function (x) { return { id: x.id, name: x.name, amount: Number(x.amount) || 0 }; }),
             totalExtraFee: totalExtraFee,
+            // 跨订单同模标记
+            crossOrderSameModel: !!product.crossOrderSameModel,
             // 添加基础配置信息（如果是基础+递增价类型）
             productType: productSetting.priceType,
             baseConfig: productSetting.baseConfig,
@@ -7989,7 +8022,7 @@ function generateQuote() {
         // config的成品单价（basePrice已包含配件）
         const finishedProductUnitPrice = item.basePrice;
         
-        // 处理制品名（double需要加单/双面；nodes 不加后缀）
+        // 处理制品名（double需要加单/双面；nodes 不加后缀；跨订单同模加标记）
         let productName = item.product;
         if (item.productType === 'double') {
             if (item.sides === 'single') {
@@ -7997,6 +8030,10 @@ function generateQuote() {
             } else if (item.sides === 'double') {
                 productName = `${item.product}(双面)`;
             }
+        }
+        // 跨订单同模标记
+        if (item.crossOrderSameModel) {
+            productName = `${productName}[跨单同模]`;
         }
         
         // 按节点收费：总览行 + 节点明细
@@ -8033,18 +8070,22 @@ function generateQuote() {
             }
             
             // 明细：全价制品行（方案A：每制品增加并入全价/同模单价，不单列）
-            var extraBase = (item.extraFees || []).reduce(function (sum, f) { return sum + (Number(f.amount) || 0); }, 0);
-            var fullPriceExtraTotal = hasSameModel
-                ? extraBase
-                : (Number(item.totalExtraFee) || 0);
-            var fullUnitWithExtra = fullPriceQuantity > 0
-                ? (fullPriceUnitPrice + (fullPriceExtraTotal / fullPriceQuantity))
-                : fullPriceUnitPrice;
-            var fullSubtotalWithExtra = (fullPriceUnitPrice * fullPriceQuantity) + fullPriceExtraTotal;
-            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${fullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">¥${fullSubtotalWithExtra.toFixed(2)}</div></div>`;
+            // 跨订单同模时不显示全价制品行
+            if (!item.crossOrderSameModel) {
+                var extraBase = (item.extraFees || []).reduce(function (sum, f) { return sum + (Number(f.amount) || 0); }, 0);
+                var fullPriceExtraTotal = hasSameModel
+                    ? extraBase
+                    : (Number(item.totalExtraFee) || 0);
+                var fullUnitWithExtra = fullPriceQuantity > 0
+                    ? (fullPriceUnitPrice + (fullPriceExtraTotal / fullPriceQuantity))
+                    : fullPriceUnitPrice;
+                var fullSubtotalWithExtra = (fullPriceUnitPrice * fullPriceQuantity) + fullPriceExtraTotal;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${fullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">¥${fullSubtotalWithExtra.toFixed(2)}</div></div>`;
+            }
             
             // config：树形明细（仅单价，不显示数量和小计）
-            if (item.productType === 'config' && item.baseConfig) {
+            // 跨订单同模时不显示全价配置行，只显示配件
+            if (item.productType === 'config' && item.baseConfig && !item.crossOrderSameModel) {
                 // 基础配置价格（不含配件）
                 let baseConfigVal = item.baseConfigPrice;
                 if (baseConfigVal == null) {
@@ -8061,8 +8102,9 @@ function generateQuote() {
                 var baseConfigDisplayVal = baseConfigVal + baseConfigExtraPerPiece;
                 var shouldHideBaseConfigPrice = Math.abs(baseConfigDisplayVal - fullUnitWithExtra) < 0.001;
                 html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
-                
-                // 配件明细（仅单价）
+            }
+            // 配件明细（仅单价）- 跨订单同模时也显示
+            if (item.productType === 'config') {
                 if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
                     item.additionalConfigDetails.forEach(config => {
                         // 每件该配件合计价
@@ -8081,11 +8123,14 @@ function generateQuote() {
                 const _sameMode = quoteData.sameModelMode || defaultSettings.sameModelMode;
                 const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
                 const sameModelHint = (_sameMode === 'minus') ? `−¥${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
-                var sameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - extraBase);
-                var sameUnitWithExtra = item.sameModelCount > 0
-                    ? (item.sameModelUnitPrice + (sameExtraTotal / item.sameModelCount))
+                var sameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - (item.crossOrderSameModel ? 0 : extraBase));
+                // 跨订单同模时，所有件都按同模价计算
+                var sameModelDisplayCount = item.crossOrderSameModel ? item.quantity : item.sameModelCount;
+                var sameUnitWithExtra = sameModelDisplayCount > 0
+                    ? (item.sameModelUnitPrice + (sameExtraTotal / sameModelDisplayCount))
                     : item.sameModelUnitPrice;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHint})</div><div class="receipt-col-1">¥${sameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${(item.sameModelTotal + sameExtraTotal).toFixed(2)}</div></div>`;
+                var sameModelLabel = `同模制品(${sameModelHint})`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${sameModelLabel}</div><div class="receipt-col-1">¥${sameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${sameModelDisplayCount}</div><div class="receipt-col-1">¥${(item.sameModelTotal + sameExtraTotal).toFixed(2)}</div></div>`;
             }
 
             // 工艺行（按每层单价分组，同单价的工艺合并为一行）
@@ -9745,7 +9790,7 @@ function saveToHistory() {
         if (savedItem) {
             // 标记为未同步，同步成功后会移除
             markOrderUnsynced(savedItem.id);
-            mgCloudUpsertOrder(savedItem).catch(err => {
+            mgCloudUpsertOrder(savedItem, 0, null, 'save').catch(err => {
                 console.error('云端同步失败:', err);
                 updateSyncStatus();
             });
@@ -9903,7 +9948,7 @@ function toggleScheduleNodeDone(checkbox, nodeIdx) {
     // 云端同步：如果已启用云端模式，异步同步到 Supabase
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         markOrderUnsynced(id);
-        mgCloudUpsertOrder(item).catch(err => {
+        mgCloudUpsertOrder(item, 0, null, 'progress').catch(err => {
             console.error('云端同步失败:', err);
             updateSyncStatus();
         });
@@ -10746,7 +10791,8 @@ function renderScheduleCalendar() {
             var barTextColors = isDark && SCHEDULE_BAR_TEXT_COLORS_DARK ? SCHEDULE_BAR_TEXT_COLORS_DARK : SCHEDULE_BAR_TEXT_COLORS;
             html += '<div class="schedule-week-bars">';
             if (selectedCol >= 0) {
-                html += '<div class="schedule-selected-column-overlay" style="grid-column:' + (selectedCol + 1) + ';grid-row:1 / -1;"></div>';
+                const maxRow = Math.max(1, weekTracks.length);
+                html += '<div class="schedule-selected-column-overlay" style="grid-column:' + (selectedCol + 1) + ';grid-row:1 / ' + (maxRow + 1) + ';"></div>';
             }
             weekTracks.forEach(function (track, ti) {
                 track.forEach(function (s) {
@@ -11384,6 +11430,7 @@ async function renderScheduleTodoSection() {
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
         const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>' : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent schedule-todo-card-tag">加急单</span>' : '';
+        const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order schedule-todo-card-tag">追加单</span>' : '';
         const customTagHtml = mgNormalizeTags(item).map(function (t) {
             return '<span class="record-tag record-tag-custom schedule-todo-card-tag" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
         }).join('');
@@ -11529,6 +11576,7 @@ async function renderScheduleTodoSection() {
             + '          ' + placeholderTagHtml
             + '          ' + depositTagHtml
             + '          ' + urgentTagHtml
+            + '          ' + crossOrderTagHtml
             + '        </span>'
             + '        <span class="record-status ' + status.className + ' schedule-todo-card-status">' + status.text + '</span>'
             + '      </span>'
@@ -11575,7 +11623,7 @@ function toggleScheduleTodoDone(checkbox) {
     // 云端同步：如果已启用云端模式，异步同步到 Supabase
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         markOrderUnsynced(id);
-        mgCloudUpsertOrder(item).catch(err => {
+        mgCloudUpsertOrder(item, 0, null, 'toggle').catch(err => {
             console.error('云端同步失败:', err);
             updateSyncStatus();
         });
@@ -11619,7 +11667,7 @@ function adjustScheduleTodoDoneQty(el) {
 
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         markOrderUnsynced(id);
-        mgCloudUpsertOrder(item).catch(err => {
+        mgCloudUpsertOrder(item, 0, null, 'node').catch(err => {
             console.error('云端同步失败:', err);
             updateSyncStatus();
         });
@@ -11726,6 +11774,14 @@ function saveScheduleTodoPresetTags() {
     try {
         localStorage.setItem('mg_schedule_todo_preset_tags', JSON.stringify(scheduleTodoPresetTags));
     } catch (e) {}
+}
+
+// 检测订单是否包含跨订单同模的制品
+function hasCrossOrderSameModel(item) {
+    if (!item || !item.productPrices) return false;
+    return item.productPrices.some(function(p) {
+        return p && p.crossOrderSameModel;
+    });
 }
 
 function mgNormalizeTags(item) {
@@ -11867,7 +11923,7 @@ function persistScheduleTodoTags(item, tags) {
     // 云端模式下立即同步标签，避免被云端旧 payload 回流覆盖
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
         markOrderUnsynced(item.id);
-        mgCloudUpsertOrder(item).catch(function (err) {
+        mgCloudUpsertOrder(item, 0, null, 'label').catch(function (err) {
             console.error('标签云端同步失败:', err);
             updateSyncStatus();
         });
@@ -14010,7 +14066,7 @@ function settlementConfirm() {
             const extId = mgEnsureExternalId(item);
             console.log('[settlement] syncing order', { id: item.id, external_id: extId, settlement: item.settlement && item.settlement.type, mg_updated_at: item.mg_updated_at });
             markOrderUnsynced(item.id);
-            mgCloudUpsertOrder(item).catch(function (err) {
+            mgCloudUpsertOrder(item, 0, null, 'settlement').catch(function (err) {
                 console.error('结算后云端同步失败:', err);
                 updateSyncStatus();
             });
@@ -15022,6 +15078,7 @@ function editHistoryItem(id) {
                     sides: productPrice.sides || 'single',
                     quantity: productPrice.quantity || 1,
                     sameModel: productPrice.sameModelCount > 0,
+                    crossOrderSameModel: !!productPrice.crossOrderSameModel, // 恢复跨订单同模状态
                     extraFeeIds: Array.isArray(productPrice.extraFees) ? productPrice.extraFees.map(function (x) { return x.id; }) : [],
                     processes: {}
                 };
@@ -16297,7 +16354,7 @@ async function mgSyncArtistDisplayNameToCloud(displayName) {
         }
 
         mgLastSyncedArtistDisplayName = normalizedDisplayName;
-        console.log('已同步美工显示名称到云端:', normalizedDisplayName);
+        console.log(`[${new Date().toLocaleString()}] 已同步美工显示名称到云端:`, normalizedDisplayName);
     } catch (err) {
         console.error('同步美工显示名称异常:', err);
     }
@@ -20511,7 +20568,8 @@ function mgMakeProgressReporter(prefix, total) {
 }
 
 // 保存/更新企划到云端（在 saveToHistory 后调用）
-async function mgCloudUpsertOrder(item, retryCount = 0, context = null) {
+// source: 同步来源标识，用于日志区分，如 'startup', 'save', 'progress', 'settlement', 'label' 等
+async function mgCloudUpsertOrder(item, retryCount = 0, context = null, source = 'unknown') {
     if (!mgIsCloudEnabled()) {
         if (item && item.id) markOrderUnsynced(item.id);
         return;
@@ -20596,11 +20654,11 @@ async function mgCloudUpsertOrder(item, retryCount = 0, context = null) {
             // 仅可重试错误重试（最多2次，指数退避）
             if (retryCount < 2 && mgIsRetriableSyncError(error)) {
                 setTimeout(() => {
-                    mgCloudUpsertOrder(item, retryCount + 1, context);
+                    mgCloudUpsertOrder(item, retryCount + 1, context, source);
                 }, 1000 * Math.pow(2, retryCount + 1));
             }
         } else {
-            console.log('✅ 云端同步成功:', mapped.external_id);
+            console.log(`[${new Date().toLocaleString()}] ✅ [${source}] 云端同步成功:`, mapped.external_id);
             if (item && item.id) markOrderSynced(item.id);
         }
     } catch (err) {
@@ -20610,7 +20668,7 @@ async function mgCloudUpsertOrder(item, retryCount = 0, context = null) {
         // 仅网络/超时/服务端错误等可重试错误
         if (retryCount < 2 && mgIsRetriableSyncError(err)) {
             setTimeout(() => {
-                mgCloudUpsertOrder(item, retryCount + 1, context);
+                mgCloudUpsertOrder(item, retryCount + 1, context, source);
             }, 1000 * Math.pow(2, retryCount + 1));
         }
     }
@@ -20958,7 +21016,7 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
             report(0, true);
             await mgRunWithConcurrency(localOnlyItems, async function (item) {
                 try {
-                    await mgCloudUpsertOrder(item, 0, ctx);
+                    await mgCloudUpsertOrder(item, 0, ctx, 'startup-first');
                     uploadCount++;
                     report(uploadCount, false);
                 } catch (err) {
@@ -21018,7 +21076,7 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
             report(0, true);
             await mgRunWithConcurrency(history || [], async function (item) {
                 try {
-                    await mgCloudUpsertOrder(item, 0, ctx);
+                    await mgCloudUpsertOrder(item, 0, ctx, 'startup-local');
                     uploadCount++;
                     report(uploadCount, false);
                 } catch (err) {
@@ -21026,7 +21084,7 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
                 }
             }, 6);
             report(uploadCount, true);
-            
+
             if (typeof showGlobalToast === 'function') {
                 showGlobalToast(`✅ 首次同步完成：已上传 ${uploadCount} 条企划，本地数据已覆盖云端`);
             } else {
@@ -21311,7 +21369,7 @@ async function handleSyncCloud() {
     let synced = 0;
     report(0, true);
     await mgRunWithConcurrency(history || [], async function (item) {
-        await mgCloudUpsertOrder(item, 0, ctx);
+        await mgCloudUpsertOrder(item, 0, ctx, 'manual-upload');
         synced++;
         report(synced, false);
     }, 6);
@@ -22479,7 +22537,7 @@ async function mgSyncAllToCloud() {
 
             await mgRunWithConcurrency(unsyncedItems, async function (item) {
                 const beforeUnsynced = unsyncedOrderIds.size;
-                await mgCloudUpsertOrder(item, 0, ctx);
+                await mgCloudUpsertOrder(item, 0, ctx, 'resync-unsynced');
                 const afterUnsynced = unsyncedOrderIds.size;
                 if (afterUnsynced < beforeUnsynced) {
                     syncedCount++;
@@ -22507,7 +22565,7 @@ async function mgSyncAllToCloud() {
             report(0, true);
             await mgRunWithConcurrency(localOnlyItems, async function (item) {
                 const beforeUnsynced = unsyncedOrderIds.size;
-                await mgCloudUpsertOrder(item, 0, ctx);
+                await mgCloudUpsertOrder(item, 0, ctx, 'resync-local');
                 const afterUnsynced = unsyncedOrderIds.size;
                 if (afterUnsynced < beforeUnsynced) {
                     syncedCount++;
@@ -22737,7 +22795,7 @@ init = function() {
                 let uploadCount = 0;
                 await mgRunWithConcurrency(localOnlyItems, async function (item) {
                     try {
-                        await mgCloudUpsertOrder(item, 0, ctx);
+                        await mgCloudUpsertOrder(item, 0, ctx, 'startup-daily');
                         uploadCount++;
                     } catch (err) {
                         console.error('启动时上传企划失败:', item.id, err);
@@ -22760,7 +22818,7 @@ init = function() {
                 if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
                 
                 if (uploadCount > 0) {
-                    console.log(`✅ 启动时同步完成：已上传 ${uploadCount} 条本地企划`);
+                    console.log(`[${new Date().toLocaleString()}] ✅ 启动时同步完成：已上传 ${uploadCount} 条本地企划`);
                 }
             } catch (err) {
                 console.error('启动时智能同步失败:', err);

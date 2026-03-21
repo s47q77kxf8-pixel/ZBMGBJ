@@ -8848,6 +8848,12 @@ html.theme-dark .settlement-preview {
     background-color: rgba(239, 68, 68, 0.1);
 }
 
+.record-tag-cross-order {
+    border-color: rgba(59, 130, 246, 0.4) !important;
+    color: #2563eb !important;
+    background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
 .record-tag-custom {
     border-color: rgba(249, 115, 22, 0.35);
     color: #c2410c;
