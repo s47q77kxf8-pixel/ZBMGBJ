@@ -11573,16 +11573,21 @@ function removeScheduleTodoPresetTag(name) {
 }
 
 function persistScheduleTodoTags(item, tags) {
-    console.log('[persistScheduleTodoTags] item.id:', item.id);
-    console.log('[persistScheduleTodoTags] history[0].id:', history[0] ? history[0].id : 'no first item');
-    console.log('[persistScheduleTodoTags] Are they same object?', item === history[0]);
-    
     mgApplyTagsToItem(item, tags);
-    console.log('[persistScheduleTodoTags] item.tags after apply:', item.tags);
-    console.log('[persistScheduleTodoTags] item.customTag after apply:', item.customTag);
-    console.log('[persistScheduleTodoTags] history[0].tags after apply:', history[0] ? history[0].tags : 'no first item');
-    
-    saveData();
+
+    // 标签修改后立即落盘，避免防抖窗口内刷新导致丢失
+    if (typeof doSaveData === 'function') doSaveData();
+    else saveData();
+
+    // 云端模式下立即同步标签，避免被云端旧 payload 回流覆盖
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        markOrderUnsynced(item.id);
+        mgCloudUpsertOrder(item).catch(function (err) {
+            console.error('标签云端同步失败:', err);
+            updateSyncStatus();
+        });
+    }
+
     if (document.getElementById('quote') && document.getElementById('quote').classList.contains('active')) renderScheduleTodoSection();
     if (document.getElementById('recordContainer')) applyRecordFilters();
 }
@@ -14581,6 +14586,7 @@ function editHistoryItem(id) {
     if (characterNameInput) characterNameInput.value = quote.characterName || '';
     if (quoteData) {
         quoteData.customTag = quote.customTag || '';
+        quoteData.tags = Array.isArray(quote.tags) ? JSON.parse(JSON.stringify(quote.tags)) : [];
     }
     // 平台手续费在下方 setTimeout 中与系数一并恢复（需等选择器选项就绪）
     // 下单时间改在 rAF 内、抽屉打开后设置，避免时序问题
