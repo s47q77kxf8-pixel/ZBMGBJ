@@ -10705,7 +10705,7 @@ var SCHEDULE_BAR_COLORS_DARK = [
     'rgba(192, 132, 252, 0.55)',
     'rgba(16, 185, 129, 0.55)'
 ];
-var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#38bdf8', '#60a5fa', '#f472b6', '#4ade80', '#a78bfa', '#facc15', '#fb923c', '#fdba74', '#2dd4bf', '#d97706', '#9ca3af', '#f87171', '#3b82f6', '#fb7185', '#c084fc', '#34d399'];
+var SCHEDULE_BAR_TEXT_COLORS_DARK = ['#0c4a6e', '#1e40af', '#9d174d', '#166534', '#6b21a8', '#854d0e', '#9a3412', '#c2410c', '#115e59', '#78350f', '#374151', '#991b1b', '#1e3a8a', '#be123c', '#7e22ce', '#065f46'];
 var SCHEDULE_BAR_DOT_COLORS_DARK = ['#0ea5e9', '#3b82f6', '#ec4899', '#22c55e', '#9333ea', '#eab308', '#f97316', '#f97316', '#14b8a6', '#b45309', '#6b7280', '#dc2626', '#2563eb', '#f43f5e', '#a855f7', '#10b981'];
 
 // 根据屏幕宽度和日历单元格高度动态计算彩条最大轨道数（尽量多显示）
