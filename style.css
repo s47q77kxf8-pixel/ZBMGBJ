@@ -4329,33 +4329,33 @@ input:checked + .toggle-slider:before {
         box-sizing: border-box !important;
     }
     
-    /* 配置名称输入框 - 占据更多空间，名称更长 */
+    /* 配置名称输入框 - 占据适中空间，平衡显示 */
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.flex-1 {
         font-size: 0.8rem !important;
         flex: 1 1 auto !important; /* 占据剩余空间 */
         min-width: 0 !important;
-        max-width: calc(100% - 130px) !important; /* 为价格(40px) + 单位(30px) + 按钮(50px) + gap(约10px)预留空间 */
+        max-width: calc(100% - 160px) !important; /* 为价格(50px) + 单位(50px) + 按钮(50px) + gap(约10px)预留空间 */
         overflow: hidden !important;
         text-overflow: ellipsis !important;
     }
     
-    /* 价格输入框 - 固定宽度，金额更短 */
+    /* 价格输入框 - 固定宽度，金额显示更完整 */
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.w-100 {
         font-size: 0.8rem !important;
-        flex: 0 0 40px !important; /* 固定宽度，不允许收缩 */
-        width: 40px !important;
-        min-width: 40px !important;
-        max-width: 40px !important;
+        flex: 0 0 50px !important; /* 固定宽度，不允许收缩 */
+        width: 50px !important;
+        min-width: 50px !important;
+        max-width: 50px !important;
         box-sizing: border-box !important;
     }
-    
-    /* 单位输入框 - 固定宽度，单位更短 */
+
+    /* 单位输入框 - 固定宽度，单位显示更完整 */
     .d-flex.gap-2.mb-2.items-center.p-2.bg-light.rounded input.w-80 {
         font-size: 0.8rem !important;
-        flex: 0 0 30px !important; /* 固定宽度，不允许收缩 */
-        width: 30px !important;
-        min-width: 30px !important;
-        max-width: 30px !important;
+        flex: 0 0 50px !important; /* 固定宽度，不允许收缩 */
+        width: 50px !important;
+        min-width: 50px !important;
+        max-width: 50px !important;
         box-sizing: border-box !important;
     }
     
