@@ -17670,7 +17670,14 @@ function renderProductSettings() {
                         <div class="form-group">
                             <label>所属分类</label>
                             <select onchange="updateProductSettingCategory(${setting.id}, this.value)">
-                                ${DEFAULT_CATEGORIES.map(cat => `<option value="${cat}" ${setting.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
+                                ${(() => {
+                                    // 获取所有已存在的分类（包括默认和用户新增的）
+                                    const allCategories = [...new Set([
+                                        ...DEFAULT_CATEGORIES,
+                                        ...(productSettings || []).map(p => p.category).filter(Boolean)
+                                    ])];
+                                    return allCategories.map(cat => `<option value="${cat}" ${setting.category === cat ? 'selected' : ''}>${cat}</option>`).join('');
+                                })()}
                             </select>
                         </div>
                     </div>
@@ -21413,9 +21420,16 @@ function updateCloudSyncStatus() {
                 summaryEl.style.display = 'none';
                 summaryEl.innerHTML = '';
             } else {
-                const settingsLine = settingsSummary
-                    ? ('设置：云端优先合并；本地补入 制品 ' + (settingsSummary.productsAddedFromLocal || 0) + ' / 工艺 ' + (settingsSummary.processesAddedFromLocal || 0) + ' / 模板 ' + (settingsSummary.templatesAddedFromLocal || 0))
-                    : '设置：暂无本次同步摘要';
+                let settingsLine;
+                if (settingsSummary) {
+                    if (settingsSummary.mode === 'override') {
+                        settingsLine = '设置：云端直接覆盖；制品 ' + (settingsSummary.productsCount || 0) + ' / 工艺 ' + (settingsSummary.processesCount || 0) + ' / 模板 ' + (settingsSummary.templatesCount || 0);
+                    } else {
+                        settingsLine = '设置：云端优先合并；本地补入 制品 ' + (settingsSummary.productsAddedFromLocal || 0) + ' / 工艺 ' + (settingsSummary.processesAddedFromLocal || 0) + ' / 模板 ' + (settingsSummary.templatesAddedFromLocal || 0);
+                    }
+                } else {
+                    settingsLine = '设置：暂无本次同步摘要';
+                }
                 const ordersLine = ordersSummary
                     ? ('企划：模式 ' + (ordersSummary.mode === 'unsynced_only' ? '仅未同步' : '全量合并')
                         + (ordersSummary.incrementalFetch ? '（增量拉取）' : '')
@@ -22570,6 +22584,13 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
             console.log('[sync-summary][settings-merge]', mergeSummary);
         } else {
             // 非合并模式：直接覆盖
+            const overrideSummary = {
+                mode: 'override',
+                productsCount: Array.isArray(p.productSettings) ? p.productSettings.length : 0,
+                processesCount: Array.isArray(p.processSettings) ? p.processSettings.length : 0,
+                templatesCount: Array.isArray(p.templates) ? p.templates.length : 0
+            };
+
             if (p.calculatorSettings && typeof p.calculatorSettings === 'object') {
                 Object.assign(defaultSettings, JSON.parse(JSON.stringify(p.calculatorSettings)));
             }
@@ -22588,6 +22609,10 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
                 templates.length = 0;
                 templates.push(...newSettings);
             }
+
+            window.__mgLastSettingsMergeSummary = overrideSummary;
+            window.__mgLastSyncSummaryAt = Date.now();
+            console.log('[sync-summary][settings-override]', overrideSummary);
         }
 
         // 落盘
