@@ -17668,6 +17668,14 @@ function renderProductSettings() {
                             <input type="text" value="${setting.name}" onchange="updateProductSetting(${setting.id}, 'name', this.value)" placeholder="请输入制品名称">
                         </div>
                         <div class="form-group">
+                            <label>所属分类</label>
+                            <select onchange="updateProductSettingCategory(${setting.id}, this.value)">
+                                ${DEFAULT_CATEGORIES.map(cat => `<option value="${cat}" ${setting.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
                             <label>计价方式</label>
                             <select onchange="updateProductSetting(${setting.id}, 'priceType', this.value)">
                                 <option value="fixed" ${setting.priceType === 'fixed' ? 'selected' : ''}>固定价</option>
@@ -18646,6 +18654,17 @@ function updateProductSetting(id, field, value) {
         if (field === 'priceType') {
             renderProductSettings();
         }
+    }
+}
+
+// 修改制品分类
+function updateProductSettingCategory(id, newCategory) {
+    const setting = mgFindProductSettingByTypeId(id);
+    if (setting && setting.category !== newCategory) {
+        setting.category = newCategory;
+        setting.mg_updated_at = Date.now();
+        // 分类改变需要重新渲染以更新分组
+        renderProductSettings();
     }
 }
 
