@@ -2349,11 +2349,16 @@ input:focus, select:focus {
     min-width: 160px;
 }
 
-/* 移动端：取消最小宽度限制，防止超出容器 */
+/* 移动端：价格输入框各占容器的一半 */
 @media (max-width: 768px) {
     #productSettingsContainer .product-item input[type="number"] {
         min-width: 0 !important;
         width: 100% !important;
+    }
+    /* 单面价格、双面价格的form-group各占一半 */
+    #productSettingsContainer .product-item .form-row .form-group {
+        flex: 1 1 50% !important;
+        min-width: 0 !important;
     }
 }
 
