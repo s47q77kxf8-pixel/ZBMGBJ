@@ -1403,6 +1403,12 @@ body {
         font-size: 0.8rem !important;
         padding: 0.4rem !important;
     }
+    
+    /* 基础+递增价的基础配置和基础价各占一半 */
+    #configPriceSettings .form-row .form-group {
+        flex: 1 1 50% !important;
+        min-width: 0 !important;
+    }
 }
 
 @media (max-width: 480px) {
