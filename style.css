@@ -4334,7 +4334,7 @@ input:checked + .toggle-slider:before {
         font-size: 0.8rem !important;
         flex: 1 1 auto !important; /* 占据剩余空间 */
         min-width: 0 !important;
-        max-width: calc(100% - 160px) !important; /* 为价格(50px) + 单位(50px) + 按钮(50px) + gap(约10px)预留空间 */
+        max-width: calc(100% - 150px) !important; /* 为价格(50px) + 单位(50px) + 按钮(40px) + gap(约10px)预留空间 */
         overflow: hidden !important;
         text-overflow: ellipsis !important;
     }
