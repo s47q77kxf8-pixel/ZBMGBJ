@@ -2344,9 +2344,17 @@ input:focus, select:focus {
     box-shadow: 0 0 0 3px var(--primary-light);
 }
 
-/* 制品设置数字框加长 */
+/* 制品设置数字框加长（桌面端） */
 #productSettingsContainer .product-item input[type="number"] {
     min-width: 160px;
+}
+
+/* 移动端：取消最小宽度限制，防止超出容器 */
+@media (max-width: 768px) {
+    #productSettingsContainer .product-item input[type="number"] {
+        min-width: 0 !important;
+        width: 100% !important;
+    }
 }
 
 .process-item-delete {
