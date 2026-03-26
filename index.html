@@ -1848,6 +1848,18 @@
                     </div>
                 </div>
 
+                <div class="section">
+                    <button type="button" class="btn secondary w-full" onclick="window.location.assign('操作指南.html')" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 12px;border:none;background:transparent;box-shadow:none;text-align:left;color:inherit;">
+                        <span style="font-size:15px;font-weight:600;">操作指南</span>
+                        <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
+                    </button>
+                    <hr style="margin:8px 0;border:0;border-top:1px solid var(--border-color);">
+                    <button type="button" class="btn secondary w-full dev-feature d-none" onclick="openAnonymousFeedbackBoard()" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 12px;border:none;background:transparent;box-shadow:none;text-align:left;color:inherit;">
+                        <span style="font-size:15px;font-weight:600;">意见反馈</span>
+                        <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
+                    </button>
+                </div>
+
                 <!-- 用户信息子页面 -->
                 <div id="settingsSubPage-userInfo" class="settings-sub-page d-none">
                     <div class="section">
@@ -2816,6 +2828,33 @@
         </div>
     </div>
     <div id="globalToast" class="global-toast d-none"></div>
+
+    <!-- 匿名留言板 -->
+    <div id="feedbackBoardModal" class="history-record-modal d-none" aria-hidden="true">
+        <div class="history-record-overlay" onclick="closeAnonymousFeedbackBoard()"></div>
+        <div class="history-record-content feedback-board-content">
+            <div class="history-record-header">
+                <h2>匿名留言板</h2>
+                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeAnonymousFeedbackBoard()" aria-label="关闭" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+            </div>
+            <div class="history-record-body">
+                <p class="text-gray" style="font-size:0.9rem;margin-bottom:8px;">可以匿名留言，我们只会保存在当前设备浏览器中。</p>
+                <div class="feedback-board-form">
+                    <textarea id="feedbackBoardInput" rows="4" placeholder="写下你的建议或问题（最多 300 字）"></textarea>
+                    <div class="d-flex justify-between items-center gap-2 mt-2">
+                        <small id="feedbackBoardCount" class="text-gray">0/300</small>
+                        <button type="button" class="btn" onclick="submitAnonymousFeedback()">发布留言</button>
+                    </div>
+                </div>
+                <hr style="margin:10px 0;border:0;border-top:1px solid var(--border-color);">
+                <div id="feedbackBoardList" class="feedback-board-list"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
     <script>
@@ -2931,5 +2970,7 @@
 </body>
 </html>
 </html>
+
+
 
 

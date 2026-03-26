@@ -2825,7 +2825,7 @@ input:focus, select:focus {
     min-height: calc(100vh - var(--desktop-nav-height, 72px));
 }
 
-#settings.settings-subpage-open > :not(.settings-sub-page):not(.modal):not(.history-record-modal) {
+#settings.settings-subpage-open > :not(.settings-sub-page):not(.modal):not(.history-record-modal):not(.schedule-todo-card-modal):not(.settlement-modal) {
     display: none !important;
 }
 
@@ -3023,6 +3023,57 @@ input:focus, select:focus {
         font-size: 0.72rem;
         border-radius: 8px;
     }
+}
+
+/* 匿名留言板 */
+.feedback-board-content {
+    max-width: 680px;
+}
+
+.feedback-board-form textarea {
+    width: 100%;
+    min-height: 90px;
+    resize: vertical;
+}
+
+.feedback-board-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 42vh;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.feedback-board-item {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px;
+    background: var(--bg-color);
+}
+
+.feedback-board-item-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-light);
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.feedback-board-item-content {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-color);
+    white-space: normal;
+    word-break: break-word;
+}
+
+.feedback-board-item-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
 }
 
 /* 子页面保存按钮：黑底白字 */

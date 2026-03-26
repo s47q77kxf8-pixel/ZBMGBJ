@@ -23,6 +23,22 @@ let deletedExternalIdsSyncTimer = null;
 let lastOrdersSyncAt = '';
 let cloudOrderTombstoneSkipCount = 0;
 
+// 匿名留言板（本地存储）
+const FEEDBACK_BOARD_STORAGE_KEY = 'mg_anonymous_feedback_board_v1';
+
+function ensureOverlayOnBody(id) {
+    try {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        if (el.parentElement !== document.body) {
+            document.body.appendChild(el);
+        }
+        return el;
+    } catch (_) {
+        return null;
+    }
+}
+
 // 设置页面子页面切换函数
 function showSettingsSubPage(pageName) {
     const settingsPage = document.getElementById('settings');
@@ -9686,6 +9702,142 @@ function showGlobalToast(message, duration = 2000) {
     }, duration);
 }
 
+function getAnonymousFeedbackList() {
+    try {
+        const raw = localStorage.getItem(FEEDBACK_BOARD_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(item => item && typeof item === 'object');
+    } catch (_) {
+        return [];
+    }
+}
+
+function saveAnonymousFeedbackList(list) {
+    try {
+        localStorage.setItem(FEEDBACK_BOARD_STORAGE_KEY, JSON.stringify(Array.isArray(list) ? list : []));
+    } catch (_) {}
+}
+
+function formatAnonymousFeedbackTime(ts) {
+    try {
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return '';
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mi = String(d.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+    } catch (_) {
+        return '';
+    }
+}
+
+function renderAnonymousFeedbackBoard() {
+    const listEl = document.getElementById('feedbackBoardList');
+    if (!listEl) return;
+    const list = getAnonymousFeedbackList().sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    if (!list.length) {
+        listEl.innerHTML = '<div class="text-gray" style="font-size:0.9rem; padding:8px 0;">还没有留言，写下第一条建议吧。</div>';
+        return;
+    }
+    const html = list.map(item => {
+        const id = String(item.id || '');
+        const content = String(item.content || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/\n/g, '<br>');
+        const time = formatAnonymousFeedbackTime(item.createdAt);
+        return `
+            <div class="feedback-board-item">
+                <div class="feedback-board-item-meta">
+                    <span>匿名用户</span>
+                    <span>${time}</span>
+                </div>
+                <div class="feedback-board-item-content">${content}</div>
+                <div class="feedback-board-item-actions">
+                    <button type="button" class="btn secondary btn-compact" onclick="deleteAnonymousFeedback('${id}')">删除</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    listEl.innerHTML = html;
+}
+
+function openAnonymousFeedbackBoard() {
+    const modal = document.getElementById('feedbackBoardModal');
+    if (!modal) return;
+    modal.classList.remove('d-none');
+    modal.setAttribute('aria-hidden', 'false');
+    renderAnonymousFeedbackBoard();
+    const input = document.getElementById('feedbackBoardInput');
+    const count = document.getElementById('feedbackBoardCount');
+    if (input && count) {
+        count.textContent = `${(input.value || '').length}/300`;
+        setTimeout(() => { try { input.focus(); } catch (_) {} }, 0);
+    }
+}
+
+function closeAnonymousFeedbackBoard() {
+    const modal = document.getElementById('feedbackBoardModal');
+    if (!modal) return;
+    modal.classList.add('d-none');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function submitAnonymousFeedback() {
+    const input = document.getElementById('feedbackBoardInput');
+    if (!input) return;
+    const content = String(input.value || '').trim();
+    if (!content) {
+        showGlobalToast('请先输入留言内容');
+        return;
+    }
+    if (content.length > 300) {
+        showGlobalToast('留言不能超过 300 字');
+        return;
+    }
+    const list = getAnonymousFeedbackList();
+    list.push({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        content,
+        createdAt: Date.now()
+    });
+    saveAnonymousFeedbackList(list);
+    input.value = '';
+    const count = document.getElementById('feedbackBoardCount');
+    if (count) count.textContent = '0/300';
+    renderAnonymousFeedbackBoard();
+    showGlobalToast('留言已发布');
+}
+
+function deleteAnonymousFeedback(id) {
+    const targetId = String(id || '');
+    if (!targetId) return;
+    const list = getAnonymousFeedbackList();
+    const next = list.filter(item => String(item && item.id) !== targetId);
+    saveAnonymousFeedbackList(next);
+    renderAnonymousFeedbackBoard();
+    showGlobalToast('已删除留言');
+}
+
+(function bindAnonymousFeedbackInputCounter() {
+    document.addEventListener('input', function (e) {
+        const t = e && e.target;
+        if (!t || t.id !== 'feedbackBoardInput') return;
+        const max = 300;
+        if ((t.value || '').length > max) {
+            t.value = t.value.slice(0, max);
+        }
+        const count = document.getElementById('feedbackBoardCount');
+        if (count) count.textContent = `${(t.value || '').length}/${max}`;
+    });
+})();
+
 // 网络守护：断网提示 + 手动重试 + 自动重连探测
 function mgInitNetworkGuard() {
     if (window.__mgNetworkGuardInited) return;
@@ -12172,6 +12324,7 @@ function addScheduleTodoTag() {
 
 function openScheduleTodoCardModal(recordId) {
     scheduleTodoCardModalRecordId = recordId;
+    ensureOverlayOnBody('scheduleTodoCardModal');
     var item = history.find(function (h) { return h.id === recordId; });
     var isPlaceholder = !!(item && item.isSchedulePlaceholder);
     ['scheduleTodoBtnCancel', 'scheduleTodoBtnWaste', 'scheduleTodoBtnNormal'].forEach(function (id) {
@@ -12201,6 +12354,7 @@ function closeScheduleTodoCardModal() {
 function openScheduleTodoTagModal(recordId) {
     if (recordId == null) return;
     scheduleTodoCardModalRecordId = recordId;
+    ensureOverlayOnBody('scheduleTodoTagModal');
     scheduleTodoTagManageMode = false;
     loadScheduleTodoPresetTags();
     renderScheduleTodoTagEditor();
@@ -12440,6 +12594,7 @@ function debouncedFillFromHistory() {
 }
 
 function openSettlementModal(recordId, preSelectedType) {
+    ensureOverlayOnBody('settlementModal');
     var item = history.find(function (h) { return h.id === recordId; });
     if (!item) {
         showGlobalToast('未找到该排单');
