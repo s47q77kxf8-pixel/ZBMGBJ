@@ -23,6 +23,57 @@ let deletedExternalIdsSyncTimer = null;
 let lastOrdersSyncAt = '';
 let cloudOrderTombstoneSkipCount = 0;
 
+// 设置页面子页面切换函数
+function showSettingsSubPage(pageName) {
+    const settingsPage = document.getElementById('settings');
+
+    // 重置所有子页面状态
+    document.querySelectorAll('.settings-sub-page').forEach(el => {
+        el.classList.add('d-none');
+        el.classList.remove('subpage-hosting-child');
+    });
+
+    // 显示选中的子页面
+    const subPage = document.getElementById('settingsSubPage-' + pageName);
+    if (subPage) {
+        subPage.classList.remove('d-none');
+
+        // 兼容异常 DOM 嵌套：若目标子页面被包在另一个 settings-sub-page 内，
+        // 需要把祖先 settings-sub-page 一并显示；并标记为“承载子页”以隐藏其自身内容。
+        let parent = subPage.parentElement;
+        while (parent && parent !== document.body) {
+            if (parent.classList && parent.classList.contains('settings-sub-page')) {
+                parent.classList.remove('d-none');
+                parent.classList.add('subpage-hosting-child');
+            }
+            parent = parent.parentElement;
+        }
+
+        if (settingsPage) settingsPage.classList.add('settings-subpage-open');
+
+        // 渲染对应内容
+        if (pageName === 'processSettings') {
+            renderProcessSettings();
+        } else if (pageName === 'productSettings') {
+            renderProductSettings();
+        } else if (pageName === 'coefficientSettings') {
+            renderCoefficientSettings();
+        } else if (pageName === 'userInfo') {
+            loadSettings();
+        }
+    }
+}
+
+function hideSettingsSubPage() {
+    const settingsPage = document.getElementById('settings');
+    // 隐藏所有子页面并清理承载状态
+    document.querySelectorAll('.settings-sub-page').forEach(el => {
+        el.classList.add('d-none');
+        el.classList.remove('subpage-hosting-child');
+    });
+    if (settingsPage) settingsPage.classList.remove('settings-subpage-open');
+}
+
 function loadLastOrdersSyncAt() {
     try {
         lastOrdersSyncAt = String(localStorage.getItem('mg_last_orders_sync_at') || '');

@@ -72,10 +72,6 @@
         <symbol id="i-moon" viewBox="0 0 24 24">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
-        <symbol id="i-user" viewBox="0 0 24 24">
-            <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
-            <path d="M6 21c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </symbol>
         <symbol id="i-checkbox" viewBox="0 0 24 24">
             <path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -369,6 +365,47 @@
             <path d="M4 12a8 8 0 1 0 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             <path d="M8 16l-4-4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <text x="12" y="17" text-anchor="middle" font-size="7" fill="currentColor" font-weight="bold">制</text>
+        </symbol>
+        <!-- 制品图标：盒子/包裹 -->
+        <symbol id="i-package" viewBox="0 0 24 24">
+            <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 12L2 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 12v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 12l10-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- 工具/工艺图标：扳手 -->
+        <symbol id="i-wrench" viewBox="0 0 24 24">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <!-- 工具箱图标 -->
+        <symbol id="i-toolbox" viewBox="0 0 24 24">
+            <rect x="2" y="6" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 11v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- 制品图标：收藏盒 -->
+        <symbol id="i-product-box" viewBox="0 0 24 24">
+            <rect x="3" y="6" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 6V4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 4h8" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 11l2 2-2 2-2-2 2-2z" fill="none" stroke="currentColor" stroke-width="2"/>
+        </symbol>
+        <!-- 系数图标：表格 -->
+        <symbol id="i-coefficient-slider" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M3 9h18" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M9 21V9" fill="none" stroke="currentColor" stroke-width="2"/>
+        </symbol>
+        <!-- 用户图标：原来的用户图标 -->
+        <symbol id="i-user" viewBox="0 0 24 24">
+            <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M6 21c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- 设置图标：身份卡片 -->
+        <symbol id="i-settings-user" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="10" r="2" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 16h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
     </svg>
     <div class="app-container">
@@ -1789,42 +1826,66 @@
                     </div>
 
                 </div>
-                <!-- 用户信息 -->
+                <!-- 快捷入口：四个图标 -->
                 <div class="section">
-                    <div class="section-title-row d-flex justify-between items-center">
-                        <h2>用户信息</h2>
-                        <a href="操作指南.html" target="_blank" rel="noopener" class="guide-link-with-icon" title="操作指南">
-                            <svg class="icon sm" aria-hidden="true"><use href="#i-note"></use></svg>
-                            <span>操作指南</span>
-                        </a>
+                    <div class="quick-entry-grid">
+                        <button class="quick-entry-btn" onclick="showSettingsSubPage('userInfo')">
+                            <svg class="icon" aria-hidden="true"><use href="#i-settings-user"></use></svg>
+                            <span class="quick-entry-label">用户<br>信息</span>
+                        </button>
+                        <button class="quick-entry-btn" onclick="showSettingsSubPage('productSettings')">
+                            <svg class="icon" aria-hidden="true"><use href="#i-product-box"></use></svg>
+                            <span class="quick-entry-label">制品<br>设置</span>
+                        </button>
+                        <button class="quick-entry-btn" onclick="showSettingsSubPage('coefficientSettings')">
+                            <svg class="icon" aria-hidden="true"><use href="#i-coefficient-slider"></use></svg>
+                            <span class="quick-entry-label">系数<br>设置</span>
+                        </button>
+                        <button class="quick-entry-btn" onclick="showSettingsSubPage('processSettings')">
+                            <svg class="icon" aria-hidden="true"><use href="#i-toolbox"></use></svg>
+                            <span class="quick-entry-label">工艺<br>设置</span>
+                        </button>
                     </div>
-                    <div class="form-row artist-info-row-1">
-                        <div class="form-group">
-                            <label for="artistId">用户ID</label>
-                            <input type="text" id="artistId" placeholder="请输入用户ID">
+                </div>
+
+                <!-- 用户信息子页面 -->
+                <div id="settingsSubPage-userInfo" class="settings-sub-page d-none">
+                    <div class="section">
+                        <div class="settings-subpage-header section-title-row">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>用户信息</h2>
+                            <div class="settings-subpage-actions">
+                                <button class="btn btn-compact" onclick="saveSettings()">保存</button>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="artistContact">联系方式</label>
-                            <input type="text" id="artistContact" placeholder="请输入联系方式" onchange="updateArtistInfo('contact', this.value)">
+                        <div class="form-row artist-info-row-1">
+                            <div class="form-group">
+                                <label for="artistId">用户ID</label>
+                                <input type="text" id="artistId" placeholder="请输入用户ID">
+                            </div>
+                            <div class="form-group">
+                                <label for="artistContact">联系方式</label>
+                                <input type="text" id="artistContact" placeholder="请输入联系方式" onchange="updateArtistInfo('contact', this.value)">
+                            </div>
+                            <div class="form-group">
+                                <label for="artistRole">身份</label>
+                                <select id="artistRole" onchange="updateArtistInfo('role', this.value)">
+                                    <option value="美工">美工</option>
+                                    <option value="画师">画师</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="artistRole">身份</label>
-                            <select id="artistRole" onchange="updateArtistInfo('role', this.value)">
-                                <option value="美工">美工</option>
-                                <option value="画师">画师</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row artist-info-row-2">
-                        <div class="form-group">
-                            <label for="defaultDuration">默认工期（天）</label>
-                            <input type="number" id="defaultDuration" placeholder="请输入默认工期" min="0" step="1" onchange="updateArtistInfo('defaultDuration', this.value)">
-                            <small class="text-gray">填写开始时间后自动计算截稿时间</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="depositRate">定金比例（%）</label>
-                            <input type="number" id="depositRate" placeholder="如 50" min="0" max="100" step="1" onchange="updateDepositRate(this.value)">
-                            <small class="text-gray">小票可显示「需付定金」= 实付×比例</small>
+                        <div class="form-row artist-info-row-2">
+                            <div class="form-group">
+                                <label for="defaultDuration">默认工期（天）</label>
+                                <input type="number" id="defaultDuration" placeholder="请输入默认工期" min="0" step="1" onchange="updateArtistInfo('defaultDuration', this.value)">
+                                <small class="text-gray">填写开始时间后自动计算截稿时间</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="depositRate">定金比例（%）</label>
+                                <input type="number" id="depositRate" placeholder="如 50" min="0" max="100" step="1" onchange="updateDepositRate(this.value)">
+                                <small class="text-gray">小票可显示「需付定金」= 实付×比例</small>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1859,21 +1920,26 @@
                         </button>
                     </div>
                 </div>
-                <div class="section">
-                    <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
-                        <h2>制品设置</h2>
-                        <div class="d-flex items-center gap-2">
-                            <button class="btn add-product-setting btn-compact" onclick="openAddProductModal()">添加</button>
-                            <button class="btn secondary btn-compact" onclick="document.getElementById('excelImportInput').click()">导入</button>
-                            <button class="btn secondary btn-compact" onclick="exportToExcel()">导出</button>
-                            <input type="file" id="excelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importFromExcel(event)">
+                <!-- 制品设置子页面 -->
+                <div id="settingsSubPage-productSettings" class="settings-sub-page d-none">
+                    <div class="section">
+                        <div class="settings-subpage-header mb-4">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>制品设置</h2>
+                            <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn add-product-setting btn-compact" onclick="openAddProductModal()">添加</button>
+                                <button class="btn secondary btn-compact" onclick="document.getElementById('excelImportInput').click()">导入</button>
+                                <button class="btn secondary btn-compact" onclick="exportToExcel()">导出</button>
+                                <button class="btn secondary btn-compact" onclick="resetToDefaultSettings()">恢复默认</button>
+                                <button class="btn btn-compact" onclick="saveSettings()">保存</button>
+                                <input type="file" id="excelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importFromExcel(event)">
+                            </div>
                         </div>
-                    </div>
-                    <div id="productSettingsContainer">
-                    <!-- 制品设置将通过JavaScript动态添加 -->
-                    </div>
-                    <!-- 添加制品弹窗 -->
-                    <div id="addProductModal" class="modal d-none">
+                        <div id="productSettingsContainer">
+                        <!-- 制品设置将通过JavaScript动态添加 -->
+                        </div>
+                        <!-- 添加制品弹窗 -->
+                        <div id="addProductModal" class="modal d-none">
                         <div class="modal-content">
                             <div class="modal-header">
                                 <h3>添加制品设置</h3>
@@ -1967,17 +2033,23 @@
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="section">
-                    <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
-                        <h2>系数设置</h2>
-                        <div class="d-flex items-center gap-2">
-                            <button class="btn add-product-setting btn-compact" onclick="openAddCoefficientModal()">添加</button>
-                            <button class="btn secondary btn-compact" onclick="document.getElementById('coefficientExcelImportInput').click()">导入</button>
-                            <button class="btn secondary btn-compact" onclick="exportCoefficientsToExcel()">导出</button>
-                            <input type="file" id="coefficientExcelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importCoefficientsFromExcel(event)">
-                        </div>
                     </div>
+                </div>
+                <!-- 系数设置子页面 -->
+                <div id="settingsSubPage-coefficientSettings" class="settings-sub-page d-none">
+                    <div class="section">
+                        <div class="settings-subpage-header mb-4">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>系数设置</h2>
+                            <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn add-product-setting btn-compact" onclick="openAddCoefficientModal()">添加</button>
+                                <button class="btn secondary btn-compact" onclick="document.getElementById('coefficientExcelImportInput').click()">导入</button>
+                                <button class="btn secondary btn-compact" onclick="exportCoefficientsToExcel()">导出</button>
+                                <button class="btn secondary btn-compact" onclick="resetToDefaultSettings()">恢复默认</button>
+                                <button class="btn btn-compact" onclick="saveSettings()">保存</button>
+                                <input type="file" id="coefficientExcelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importCoefficientsFromExcel(event)">
+                            </div>
+                        </div>
                     <!-- 加价类：用途系数、加急系数，可添加其他（可折叠大组） -->
                     <div class="category-group-container">
                         <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupPricingUp')">
@@ -2240,23 +2312,23 @@
                         </div>
                     </div>
                 </div>
-                <!-- 工艺设置：与制品设置同级，可折叠 -->
-                <div class="section">
-                    <div class="category-container">
-                        <div class="category-header" onclick="toggleCategory('process')">
-                            <div class="category-title">工艺设置</div>
-                            <div class="category-actions">
-                                <button class="btn add-process-setting btn-compact" onclick="event.stopPropagation();openAddProcessModal()">添加</button>
-                                <div class="category-toggle">▼</div>
+                <!-- 工艺设置子页面 -->
+                <div id="settingsSubPage-processSettings" class="settings-sub-page d-none">
+                    <div class="section">
+                        <div class="settings-subpage-header mb-4">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>工艺设置</h2>
+                            <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn add-process-setting btn-compact" onclick="openAddProcessModal()">添加</button>
+                                <button class="btn secondary btn-compact" onclick="resetToDefaultSettings()">恢复默认</button>
+                                <button class="btn btn-compact" onclick="saveSettings()">保存</button>
                             </div>
                         </div>
-                        <div class="category-content d-none" id="process-content">
-                            <div class="setting-hint text-gray" style="margin-bottom: 8px;">
-                                默认层数用于计算页勾选该工艺时自动带入，后续可在具体制品里单独修改。
-                            </div>
-                            <div id="processSettingsContainer">
-                                <!-- 工艺设置将通过JavaScript动态添加 -->
-                            </div>
+                        <div class="setting-hint text-gray" style="margin-bottom: 8px;">
+                            默认层数用于计算页勾选该工艺时自动带入，后续可在具体制品里单独修改。
+                        </div>
+                        <div id="processSettingsContainer">
+                            <!-- 工艺设置将通过JavaScript动态添加 -->
                         </div>
                     </div>
                 </div>
@@ -2370,10 +2442,6 @@
                             <button class="btn secondary" onclick="closeAddDiscountReasonModal()">取消</button>
                         </div>
                     </div>
-                </div>
-                <div class="d-flex gap-2 flex-wrap items-center">
-                    <button type="button" class="btn save-settings" onclick="saveSettings()">立即保存</button>
-                    <button type="button" class="btn secondary" onclick="resetToDefaultSettings()">恢复默认设置</button>
                 </div>
             </div>
         <!-- 排单卡片操作弹窗（全局：排单页/记录页点击弹出） -->
@@ -2862,3 +2930,6 @@
     </script>
 </body>
 </html>
+</html>
+
+
