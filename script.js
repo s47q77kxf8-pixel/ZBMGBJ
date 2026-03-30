@@ -4893,12 +4893,14 @@ function getStatsDataset(historySource, filters) {
         if (item.otherFees && Array.isArray(item.otherFees)) {
             item.otherFees.forEach(fee => {
                 const feeName = fee.name || '其他费用';
-                const feeAmount = (fee.amount != null ? Number(fee.amount) : 0) || 0;
+                const unitPrice = fee.unitPrice || fee.amount || 0;
+                const quantity = fee.quantity || 1;
+                const feeAmount = unitPrice * quantity;
                 if (!otherFeesMap[feeName]) {
                     otherFeesMap[feeName] = { name: feeName, count: 0, amountTotal: 0, orderIds: [] };
                 }
                 pushOrderId(otherFeesMap[feeName], item.id);
-                otherFeesMap[feeName].count += 1;
+                otherFeesMap[feeName].count += quantity;
                 otherFeesMap[feeName].amountTotal += feeAmount;
             });
         }
@@ -7447,8 +7449,12 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const projectOriginValue = projectOriginEl ? String(projectOriginEl.value || '').trim() : '';
     const characterNameValue = characterNameEl ? String(characterNameEl.value || '').trim() : '';
     
-    // 计算其他费用总和
-    const otherFeesTotal = Array.isArray(dynamicOtherFees) ? dynamicOtherFees.reduce((sum, fee) => sum + fee.amount, 0) : 0;
+    // 计算其他费用总和（单价 × 数量）
+    const otherFeesTotal = Array.isArray(dynamicOtherFees) ? dynamicOtherFees.reduce((sum, fee) => {
+        const unitPrice = fee.unitPrice || fee.amount;
+        const quantity = fee.quantity || 1;
+        return sum + (unitPrice * quantity);
+    }, 0) : 0;
     const totalOtherFees = otherFeesTotal;
     
     var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
@@ -8705,9 +8711,13 @@ function generateQuote() {
         html += `<div class="receipt-summary-section">`;
         // 合计行
         html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">其他费用合计</div><div class="receipt-summary-value">¥${quoteData.totalOtherFees.toFixed(2)}</div></div>`;
-        // 详细费用
+        // 详细费用（显示单价、数量、总价）
         quoteData.otherFees.forEach(fee => {
-            html += `<div class="receipt-summary-fee-detail receipt-summary-row"><div class="receipt-summary-label">${fee.name}</div><div class="receipt-summary-value">¥${fee.amount.toFixed(2)}</div></div>`;
+            const unitPrice = fee.unitPrice || fee.amount;
+            const quantity = fee.quantity || 1;
+            const totalPrice = unitPrice * quantity;
+            const quantityText = quantity > 1 ? ` × ${quantity}` : '';
+            html += `<div class="receipt-summary-fee-detail receipt-summary-row"><div class="receipt-summary-label">${fee.name}<span style="color: #888; font-size: 0.9em;">¥${unitPrice.toFixed(2)}${quantityText}</span></div><div class="receipt-summary-value">¥${totalPrice.toFixed(2)}</div></div>`;
         });
         html += `</div>`;
     }
@@ -13411,7 +13421,9 @@ function computeAndRenderOtherFeesWaste(item, wf, selectClass, containerId, amou
     var otherFeesAmount = 0;
     var otherFeesEntries = [];
     otherFees.forEach(function (fee, fi) {
-        var amt = Number(fee.amount) || 0;
+        var unitPrice = Number(fee.unitPrice || fee.amount) || 0;
+        var quantity = Number(fee.quantity) || 1;
+        var amt = unitPrice * quantity;
         var selectEl = document.querySelector('.' + selectClass + '[data-fi="' + fi + '"]');
         var mode = selectEl ? selectEl.value : 'full';
         var charged = (mode === 'exclude') ? 0 : (mode === 'waste_ratio' ? amt * otherFeesWasteRatio : amt);
@@ -13439,10 +13451,13 @@ function settlementRenderOtherFeesForMode(modePrefix, item, wf) {
             otherFeesEl.innerHTML = '<p class="settlement-hint">无其他费用</p>';
         } else {
             otherFeesEl.innerHTML = otherFees.map(function (fee, fi) {
-                var amt = Number(fee.amount) || 0;
+                var unitPrice = Number(fee.unitPrice || fee.amount) || 0;
+                var quantity = Number(fee.quantity) || 1;
+                var amt = unitPrice * quantity;
+                var quantityText = quantity > 1 ? ' (¥' + unitPrice.toFixed(2) + '×' + quantity + ')' : '';
                 return '<div class="settlement-other-fee-row" data-fi="' + fi + '">' +
                     '<div class="settlement-other-fee-head">' +
-                    '<span class="settlement-other-fee-label">' + (fi + 1) + '、' + (fee.name || '费用') + '</span>' +
+                    '<span class="settlement-other-fee-label">' + (fi + 1) + '、' + (fee.name || '费用') + quantityText + '</span>' +
                     '<select class="settlement-other-fee-select settlement-' + modePrefix.toLowerCase() + '-other-select" data-fi="' + fi + '">' +
                     '<option value="full" selected>按全价</option>' +
                     '<option value="waste_ratio">按废稿比例</option>' +
@@ -16892,7 +16907,9 @@ function addDynamicOtherFee() {
         id: Date.now(),
         type: feeType,
         name: feeName,
-        amount: feeAmount
+        amount: feeAmount,
+        quantity: 1,
+        unitPrice: feeAmount  // 默认单价等于金额
     };
     
     // 添加到动态费用列表
@@ -16915,6 +16932,23 @@ function removeDynamicOtherFee(id) {
     renderDynamicOtherFees();
 }
 
+// 更新动态其他费用数量
+function updateDynamicOtherFeeQuantity(id, quantity) {
+    const fee = dynamicOtherFees.find(f => f.id === id);
+    if (!fee) return;
+    fee.quantity = Math.max(1, parseInt(quantity) || 1);
+    renderDynamicOtherFees();
+}
+
+// 快捷增减动态其他费用数量
+function adjustDynamicOtherFeeQuantity(id, delta) {
+    const fee = dynamicOtherFees.find(f => f.id === id);
+    if (!fee) return;
+    const newQuantity = Math.max(1, (fee.quantity || 1) + delta);
+    fee.quantity = newQuantity;
+    renderDynamicOtherFees();
+}
+
 // 渲染动态其他费用列表
 function renderDynamicOtherFees() {
     const container = document.getElementById('dynamicOtherFees');
@@ -16923,13 +16957,26 @@ function renderDynamicOtherFees() {
     let html = '';
     
     dynamicOtherFees.forEach(fee => {
+        const unitPrice = fee.unitPrice || fee.amount;
+        const quantity = fee.quantity || 1;
+        const totalPrice = unitPrice * quantity;
         html += `
             <div style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important; flex-wrap: nowrap !important; padding: 8px !important; background-color: #f8fafc !important; border-radius: 4px !important; margin-bottom: 8px !important;">
                 <span style="flex: 2 !important; text-align: left !important; min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;">${fee.name}</span>
-                <span style="width: 80px !important; text-align: right !important; flex-shrink: 0 !important;">¥${fee.amount}</span>
+                <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                    <span style="font-size: 12px; color: #666;">¥${unitPrice}×</span>
+                    <div class="process-layers-stepper-wrap">
+                        <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustDynamicOtherFeeQuantity(${fee.id}, -1)">−</button>
+                        <input type="number" id="quantity-${fee.id}" value="${quantity}" min="1" step="1" 
+                               onchange="var v = Math.max(1, parseInt(this.value) || 1); this.value = v; updateDynamicOtherFeeQuantity(${fee.id}, v);" 
+                               class="process-layers-stepper-input" style="width: 50px;">
+                        <button type="button" class="process-layers-stepper-btn" aria-label="加一" onclick="adjustDynamicOtherFeeQuantity(${fee.id}, 1)">+</button>
+                    </div>
+                    <span style="width: 70px; text-align: right; font-weight: 500;">¥${totalPrice.toFixed(2)}</span>
+                </div>
                 <button class="icon-action-btn delete" onclick="removeDynamicOtherFee(${fee.id})" aria-label="删除其他费用" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
-                                        <span class="sr-only">删除</span>
+                    <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
