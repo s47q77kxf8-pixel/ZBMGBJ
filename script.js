@@ -6759,6 +6759,16 @@ function openCalculatorDrawer(skipOrderTimeReset) {
 function closeCalculatorDrawer(returnToPreviousPage) {
     const drawer = document.getElementById('calculatorDrawer');
     if (!drawer) return;
+
+    // 保险：关闭抽屉前把当前备注写回默认设置，避免输入未点“确定”时丢失
+    try {
+        const remarkEl = document.getElementById('orderRemarkText');
+        if (remarkEl && defaultSettings && typeof currentRemarkRecordId !== 'number') {
+            defaultSettings.orderRemark = String(remarkEl.value || '');
+            if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
+        }
+    } catch (_) {}
+
     drawer.classList.remove('open');
     isCalculatorOpen = false;
 
@@ -6870,7 +6880,7 @@ function renderGift(gift) {
         giftTypeOptions,
         '选择或搜索制品类型',
         function(value, label) {
-            updateGiftType(gift.id, label);
+            updateGiftType(gift.id, value, label);
             updateGiftForm(gift.id);
         },
         gift.type
@@ -17165,10 +17175,10 @@ function openOrderRemarkModal(recordId) {
     var modal = document.getElementById('orderRemarkModal');
     var smartExtractBtn = document.getElementById('smartExtractBtn');
     var smartExtractHint = document.querySelector('.order-remark-hint');
-    
-    // 设置当前记录ID
+
+    // 设置当前记录ID（仅记录页编辑时有值）
     currentRemarkRecordId = recordId || null;
-    
+
     if (recordId) {
         // 从记录页打开，隐藏智能提取
         var item = history.find(function (h) { return h.id === recordId; });
@@ -17177,16 +17187,29 @@ function openOrderRemarkModal(recordId) {
         if (smartExtractHint) smartExtractHint.classList.add('d-none');
     } else {
         // 从计算页打开，显示智能提取
-        if (el) el.value = (defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '';
+        if (el) el.value = (defaultSettings && defaultSettings.orderRemark != null) ? String(defaultSettings.orderRemark) : '';
         if (smartExtractBtn) smartExtractBtn.classList.remove('d-none');
         if (smartExtractHint) smartExtractHint.classList.remove('d-none');
     }
-    
+
     if (modal) modal.classList.remove('d-none');
 }
 
 // 企划备注弹窗：关闭并保存
 var currentRemarkRecordId = null;
+
+// 计算页备注实时同步：避免未点“确定”时输入丢失，且防止回填成上一企划备注
+(function bindOrderRemarkLiveSync() {
+    document.addEventListener('input', function (e) {
+        var t = e && e.target;
+        if (!t || t.id !== 'orderRemarkText') return;
+        // 仅在“计算页备注模式”实时写回；记录页编辑模式由关闭时写回历史记录
+        if (currentRemarkRecordId) return;
+        if (!defaultSettings) return;
+        defaultSettings.orderRemark = t.value || '';
+        if (typeof updateOrderRemarkPreview === 'function') updateOrderRemarkPreview();
+    });
+})();
 
 function closeOrderRemarkModal() {
     var el = document.getElementById('orderRemarkText');
@@ -19542,17 +19565,23 @@ window.addEventListener('load', function () {
 
 // 赠品相关函数
 // 更新赠品类型
-function updateGiftType(giftId, productName) {
+function updateGiftType(giftId, value, label) {
     const gift = gifts.find(g => g.id === giftId);
     if (!gift) return;
-    
-    // 根据制品名称查找对应的制品ID
-    const productSetting = productSettings.find(setting => setting.name === productName);
-    if (productSetting) {
-        gift.type = productSetting.id.toString();
-    } else {
-        gift.type = '';
-    }
+
+    // 优先使用下拉组件 value（即制品 id），其次兼容按名称匹配（旧调用）
+    const byId = (value != null && value !== '')
+        ? productSettings.find(setting => String(setting.id) === String(value))
+        : null;
+    const byName = (!byId && label)
+        ? productSettings.find(setting => setting.name === label)
+        : null;
+    const byLegacyName = (!byId && !byName && value)
+        ? productSettings.find(setting => setting.name === value)
+        : null;
+
+    const productSetting = byId || byName || byLegacyName || null;
+    gift.type = productSetting ? String(productSetting.id) : '';
 }
 
 // 更新赠品信息
@@ -19591,7 +19620,7 @@ function updateGiftForm(giftId) {
     if (!gift) return;
     
     const container = document.getElementById(`giftFormOptions-${giftId}`);
-    const productSetting = productSettings.find(p => p.id === parseInt(gift.type));
+    const productSetting = mgFindProductSettingByTypeId(gift.type);
     
     if (!productSetting) {
         container.innerHTML = '<p>请先选择制品类型</p>';
@@ -19644,9 +19673,13 @@ function updateGiftForm(giftId) {
                             return `
                                 <div class="incremental-config-item">
                                     <span class="incremental-config-label">+${config.name} (+¥${config.price}/${config.unit})</span>
-                                    <input type="number" id="${configKey}" value="${currentValue}" min="0" step="1" 
-                                           onchange="updateGiftAdditionalConfig(${giftId}, '${configKey}', parseInt(this.value))" 
-                                           class="incremental-config-input">
+                                    <div class="process-layers-stepper-wrap">
+                                        <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustGiftAdditionalConfig(${giftId}, '${configKey}', -1)">−</button>
+                                        <input type="number" id="${configKey}" value="${currentValue}" min="0" step="1" 
+                                               onchange="var v = Math.max(0, parseInt(this.value) || 0); this.value = v; updateGiftAdditionalConfig(${giftId}, '${configKey}', v)" 
+                                               class="process-layers-stepper-input">
+                                        <button type="button" class="process-layers-stepper-btn" aria-label="加一" onclick="adjustGiftAdditionalConfig(${giftId}, '${configKey}', 1)">+</button>
+                                    </div>
                                     <span class="incremental-config-unit">${config.unit}</span>
                                 </div>
                             `;
@@ -19716,6 +19749,23 @@ function updateGiftAdditionalConfig(giftId, configKey, value) {
     }
     
     gift.additionalConfigs[configKey] = value;
+}
+
+// 快捷增减赠品额外配置数量
+function adjustGiftAdditionalConfig(giftId, configKey, delta) {
+    const gift = gifts.find(g => g.id === giftId);
+    if (!gift) return;
+    
+    if (!gift.additionalConfigs) {
+        gift.additionalConfigs = {};
+    }
+    
+    const current = gift.additionalConfigs[configKey] || 0;
+    const next = Math.max(0, current + delta);
+    gift.additionalConfigs[configKey] = next;
+    
+    const input = document.getElementById(configKey);
+    if (input) input.value = next;
 }
 
 // 切换工艺选择（支持赠品）
