@@ -9147,6 +9147,13 @@ html.theme-dark .settlement-preview {
     text-decoration: line-through;
 }
 
+.record-item-amount-gross {
+    color: var(--text-light);
+    font-size: 0.7rem;
+    font-weight: 400;
+    text-decoration: none;
+}
+
 /* 记录列表：标签基础样式与“已收定”标签 */
 .record-tag {
     display: inline-flex;

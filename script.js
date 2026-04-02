@@ -3869,8 +3869,14 @@ function applyRecordFilters() {
             const rightPart = [ipPart, rolePart].filter(Boolean).join(' - ');
             return [leftWrapped, rightPart].filter(Boolean).join(' ');
         })();
-        const receivableAmount = getRecordReceivableAmount(item);
-        var actualAmount = receivableAmount;
+        // 记录页金额：主显示“净收入”（不含平台手续费），副显示“含手续费”（客户支付）
+        const receivableAmount = getRecordReceivableAmount(item); // net
+        const platformFeeAmt = (item && item.platformFeeAmount != null && isFinite(item.platformFeeAmount)) ? Number(item.platformFeeAmount) : 0;
+        const grossReceivableAmount = (item && item.finalTotal != null && isFinite(item.finalTotal))
+            ? Number(item.finalTotal) // 已存 finalTotal（通常=净收入+手续费）
+            : (receivableAmount || 0) + (platformFeeAmt || 0);
+
+        var actualAmount = receivableAmount; // net actual
         if (item && item.settlement && item.settlement.amount != null) {
             actualAmount = (item.settlement.type === 'normal' && item.depositReceived != null)
                 ? Number(item.depositReceived) + Number(item.settlement.amount)
@@ -3878,11 +3884,17 @@ function applyRecordFilters() {
         }
         var expectedCount = item && item.expectedProductCount ? Number(item.expectedProductCount) : 0;
         const hasSettlementWithDiff = item && item.settlement && (receivableAmount == null || Math.abs((actualAmount || 0) - (receivableAmount || 0)) > 0.001);
+        const hasPlatformFee = (platformFeeAmt || 0) > 0.001 && (grossReceivableAmount || 0) > 0;
+        const grossLineHtml = hasPlatformFee
+            ? `<span class="record-item-amount-gross">含手续费 ${formatMoney(grossReceivableAmount)}</span>`
+            : '';
         const amountHtml = (item && item.isSchedulePlaceholder)
             ? `<span class="record-item-amount record-item-amount-placeholder">${expectedCount > 0 ? expectedCount : '—'} 件</span>`
             : (hasSettlementWithDiff
-                ? `<div class="record-item-amount-wrap"><span class="record-item-amount record-item-amount-actual">${formatMoney(actualAmount)}</span><span class="record-item-amount record-item-amount-receivable">${formatMoney(receivableAmount)}</span></div>`
-                : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`);
+                ? `<div class="record-item-amount-wrap"><span class="record-item-amount record-item-amount-actual">${formatMoney(actualAmount)}</span><span class="record-item-amount record-item-amount-receivable">${formatMoney(receivableAmount)}</span>${grossLineHtml}</div>`
+                : (hasPlatformFee
+                    ? `<div class="record-item-amount-wrap"><span class="record-item-amount record-item-amount-actual">${formatMoney(receivableAmount)}</span>${grossLineHtml}</div>`
+                    : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`));
         const status = getRecordProgressStatus(item);
         const hasDeposit = item && item.depositReceived != null && Number(item.depositReceived) > 0;
         const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
@@ -3893,7 +3905,7 @@ function applyRecordFilters() {
         const customTagHtml = tags.map(function (t) {
             return '<span class="record-tag record-tag-custom" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
         }).join('');
-        const isSelected = selectedHistoryIds.has(item.id);
+        const isSelected = selectedHistoryIds.has(Number(item && item.id));
         return `
             <div class="record-item history-item record-item-clickable${isSelected ? ' selected' : ''}" data-id="${item.id}">
                 <div class="record-item-grid">
@@ -4746,7 +4758,9 @@ function getStatsDataset(historySource, filters) {
             wasteAmountTotal += wasteFeeAmt || 0;
         }
         if (item.settlement && item.settlement.type === 'normal') {
-            var receivable = Number(item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
+            // 统计“结单优惠/差额”口径需与记录页展示一致：优先 agreedAmount，其次 totalBeforePlatformFee；
+            // 若只存了 finalTotal + platformFeeAmount，则退回 finalTotal - platformFeeAmount（避免把平台费误算成优惠）。
+            var receivable = getRecordReceivableAmount(item);
             var actual = receivable;
             if (item.settlement.amount != null)
                 actual = (Number(item.depositReceived || 0)) + Number(item.settlement.amount);
@@ -14627,11 +14641,12 @@ function renderListHistory(filteredHistory) {
 // 生成历史记录项元素
 function generateHistoryItemElement(item) {
     const element = document.createElement('div');
-    element.className = `history-item${selectedHistoryIds.has(item.id) ? ' selected' : ''}`;
+    const itemIdNum = Number(item && item.id);
+    element.className = `history-item${selectedHistoryIds.has(itemIdNum) ? ' selected' : ''}`;
     element.dataset.id = item.id;
     
     element.innerHTML = `
-        <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${selectedHistoryIds.has(item.id) ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
+        <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${selectedHistoryIds.has(itemIdNum) ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
         <div class="history-item-header">
             <div class="history-item-title">报价单 - ${item.clientId}</div>
             <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
@@ -14706,7 +14721,7 @@ function renderGroupedHistory(filteredHistory) {
 
 // 生成历史记录项HTML
 function generateHistoryItemHTML(item) {
-    const isSelected = selectedHistoryIds.has(item.id);
+    const isSelected = selectedHistoryIds.has(Number(item && item.id));
     return `
         <div class="history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
             <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
@@ -14933,16 +14948,17 @@ function clearHistorySearch() {
 // 切换历史记录选中状态
 function toggleHistorySelection(id) {
     const checkbox = document.querySelector(`.history-item-checkbox[data-id="${id}"]`);
+    const idNum = Number(id);
     if (checkbox && checkbox.checked) {
-        selectedHistoryIds.add(id);
+        selectedHistoryIds.add(idNum);
     } else {
-        selectedHistoryIds.delete(id);
+        selectedHistoryIds.delete(idNum);
     }
     
     // 更新选中样式
     const item = document.querySelector(`.history-item[data-id="${id}"]`);
     if (item) {
-        if (selectedHistoryIds.has(id)) {
+        if (selectedHistoryIds.has(idNum)) {
             item.classList.add('selected');
         } else {
             item.classList.remove('selected');
@@ -15169,7 +15185,7 @@ function confirmBatchChangeClient() {
     // 批量修改
     let modifiedCount = 0;
     history.forEach(function (item) {
-        if (selectedHistoryIds.has(item.id)) {
+        if (selectedHistoryIds.has(Number(item && item.id))) {
             item.clientId = newClientId;
             modifiedCount++;
         }
@@ -15198,9 +15214,9 @@ function batchDeleteHistory() {
     }
     
     // 保存要删除的企划（用于云端同步）
-    const itemsToDelete = history.filter(item => selectedHistoryIds.has(item.id));
+    const itemsToDelete = history.filter(item => selectedHistoryIds.has(Number(item && item.id)));
     
-    history = history.filter(item => !selectedHistoryIds.has(item.id));
+    history = history.filter(item => !selectedHistoryIds.has(Number(item && item.id)));
     selectedHistoryIds.clear();
     saveData();
     
@@ -15696,14 +15712,14 @@ function onTemplateSelectChange() {
 // 加载选中的模板
 function loadSelectedTemplate() {
     const templateSelect = document.getElementById('templateSelect');
-    const templateId = parseInt(templateSelect.value);
+    const templateId = String((templateSelect && templateSelect.value) || '').trim();
     
     if (!templateId) {
         alert('请先选择一个模板！');
         return;
     }
     
-    const template = templates.find(t => t.id === templateId);
+    const template = templates.find(t => String(t && t.id) === templateId);
     if (!template) {
         alert('未找到该模板！');
         return;
@@ -15809,13 +15825,13 @@ function loadSelectedTemplate() {
 // 删除模板
 function deleteTemplate() {
     const templateSelect = document.getElementById('templateSelect');
-    const templateId = parseInt(templateSelect.value);
+    const templateId = String((templateSelect && templateSelect.value) || '').trim();
     
     if (!templateId) {
         return;
     }
     
-    const template = templates.find(t => t.id === templateId);
+    const template = templates.find(t => String(t && t.id) === templateId);
     if (!template) {
         alert('未找到该模板！');
         return;
@@ -15825,7 +15841,7 @@ function deleteTemplate() {
         return;
     }
     
-    templates = templates.filter(t => t.id !== templateId);
+    templates = templates.filter(t => String(t && t.id) !== templateId);
     saveData();
     renderTemplateList();
     
@@ -15843,7 +15859,7 @@ function renderTemplateList() {
     const sortedTemplates = [...templates].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     sortedTemplates.forEach(t => {
         const opt = document.createElement('option');
-        opt.value = t.id;
+        opt.value = String(t && t.id);
         const prods = t.products || [];
         const gs = t.gifts || [];
         opt.textContent = t.name + ' (' + prods.length + '个制品, ' + gs.length + '个赠品)';
