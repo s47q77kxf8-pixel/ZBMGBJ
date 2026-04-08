@@ -12447,6 +12447,18 @@ function needDepositChecked() {
     var el = document.getElementById('needDeposit');
     return el ? el.value === 'yes' : false;
 }
+// 根据「平台手续费」下拉选中项自动设置「是否付定金」：无手续费为「是」，有手续费为「否」（未选「--」时不改）
+function applyNeedDepositForPlatformKey(platformKey) {
+    var needEl = document.getElementById('needDeposit');
+    if (!needEl) return;
+    if (platformKey === '' || platformKey == null) return;
+    var fee = 0;
+    if (platformKey !== 'none' && defaultSettings.platformFees && defaultSettings.platformFees[platformKey]) {
+        fee = getCoefficientValue(defaultSettings.platformFees[platformKey]) || 0;
+    }
+    var noFee = platformKey === 'none' || !isFinite(fee) || fee <= 0;
+    needEl.value = noFee ? 'yes' : 'no';
+}
 // 接单平台输入变更时：若与设置中某平台名称一致则自动选中该平台手续费
 function syncOrderPlatformToPlatform() {
     var orderPlatformEl = document.getElementById('orderPlatform');
@@ -12467,10 +12479,12 @@ function syncOrderPlatformToPlatform() {
             platformEl.value = match[0];
             if (typeof onPlatformChangeForDeposit === 'function') onPlatformChangeForDeposit();
         } else {
-            // 未在设置页配置的平台（如QQ/微信等）：手续费选“无”，但不要反向覆盖接单平台文本
+            // 未在设置页配置的平台（如QQ/微信等）：手续费选「无」，但不要反向覆盖接单平台输入框文案
             if (platformFees.none != null) platformEl.value = 'none';
             else platformEl.value = '';
-            // 这里不要调用 onPlatformChangeForDeposit()，避免把接单平台改成“无”
+            if (platformEl.value === 'none') applyNeedDepositForPlatformKey('none');
+            if (typeof debouncedRefreshReceipt === 'function') debouncedRefreshReceipt();
+            // 这里不要调用 onPlatformChangeForDeposit()，避免把接单平台输入改成「无」
         }
     }
 }
@@ -12481,9 +12495,11 @@ function onPlatformChangeForDeposit() {
     if (!platformEl || !orderPlatformEl) return;
     var key = platformEl.value;
 
-    // 如果选择的是“无”，则不修改接单平台的文本，允许保留如 QQ、微信等输入
+    applyNeedDepositForPlatformKey(key);
+
+    // 如果选择的是「无」或未选，则不修改接单平台输入框，允许保留如 QQ、微信等输入
     if (key === 'none' || !key) {
-        if (typeof updateQuoteDisplay === 'function') updateQuoteDisplay();
+        if (typeof debouncedRefreshReceipt === 'function') debouncedRefreshReceipt();
         return;
     }
 
@@ -12492,7 +12508,7 @@ function onPlatformChangeForDeposit() {
         toggleOrderPlatformClear();
     }
     
-    if (typeof updateQuoteDisplay === 'function') updateQuoteDisplay();
+    if (typeof debouncedRefreshReceipt === 'function') debouncedRefreshReceipt();
 }
 // 接单平台一键清空
 function clearOrderPlatformInput() {
@@ -15712,14 +15728,14 @@ function onTemplateSelectChange() {
 // 加载选中的模板
 function loadSelectedTemplate() {
     const templateSelect = document.getElementById('templateSelect');
-    const templateId = String((templateSelect && templateSelect.value) || '').trim();
+    const templateId = parseInt(templateSelect.value);
     
     if (!templateId) {
         alert('请先选择一个模板！');
         return;
     }
     
-    const template = templates.find(t => String(t && t.id) === templateId);
+    const template = templates.find(t => t.id === templateId);
     if (!template) {
         alert('未找到该模板！');
         return;
@@ -15825,13 +15841,13 @@ function loadSelectedTemplate() {
 // 删除模板
 function deleteTemplate() {
     const templateSelect = document.getElementById('templateSelect');
-    const templateId = String((templateSelect && templateSelect.value) || '').trim();
+    const templateId = parseInt(templateSelect.value);
     
     if (!templateId) {
         return;
     }
     
-    const template = templates.find(t => String(t && t.id) === templateId);
+    const template = templates.find(t => t.id === templateId);
     if (!template) {
         alert('未找到该模板！');
         return;
@@ -15841,7 +15857,7 @@ function deleteTemplate() {
         return;
     }
     
-    templates = templates.filter(t => String(t && t.id) !== templateId);
+    templates = templates.filter(t => t.id !== templateId);
     saveData();
     renderTemplateList();
     
@@ -15859,7 +15875,7 @@ function renderTemplateList() {
     const sortedTemplates = [...templates].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     sortedTemplates.forEach(t => {
         const opt = document.createElement('option');
-        opt.value = String(t && t.id);
+        opt.value = t.id;
         const prods = t.products || [];
         const gs = t.gifts || [];
         opt.textContent = t.name + ' (' + prods.length + '个制品, ' + gs.length + '个赠品)';
@@ -18883,7 +18899,8 @@ function renderPlatformFees() {
                 <input type="text" value="${escapedName}" class="flex-1" 
                        onchange="updatePlatformFeeName('${key}', this.value)" placeholder="名称">
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
-                       onchange="updatePlatformFee('${key}', this.value)">
+                       onchange="updatePlatformFee('${key}', this.value)" aria-label="手续费比例">
+                <span class="coefficient-percent-suffix" aria-hidden="true">%</span>
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('platform', '${key}')" aria-label="删除" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>

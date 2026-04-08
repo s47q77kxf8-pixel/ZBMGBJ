@@ -3896,6 +3896,16 @@ html.theme-dark .setting-hint strong {
     box-sizing: border-box !important;
 }
 
+/* 平台手续费：数值为百分比，紧跟输入框显示 % */
+.coefficient-settings .mb-2.d-flex.items-center.gap-2 .coefficient-percent-suffix {
+    flex: 0 0 auto !important;
+    color: var(--text-light);
+    font-size: 0.85rem;
+    line-height: 1;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 /* 系数设置删除按钮 */
 .coefficient-settings .mb-2.d-flex.items-center.gap-2 .btn.danger.small {
     flex: 0 0 auto !important;
