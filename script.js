@@ -22140,6 +22140,20 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     }
 
     const cloudProducts = rowsToPayload('product_settings');
+    const cloudProcess = rowsToPayload('process_settings');
+    const cloudTemplates = rowsToPayload('templates');
+    
+    // 计算同步摘要
+    const mergeSummary = {
+        mode: mergeMode ? 'merge' : 'override',
+        productsCount: cloudProducts.length,
+        processesCount: cloudProcess.length,
+        templatesCount: cloudTemplates.length,
+        productsAddedFromLocal: 0,
+        processesAddedFromLocal: 0,
+        templatesAddedFromLocal: 0
+    };
+
     if (cloudProducts.length || !mergeMode) {
         const deletedSet = getDeletedSet('product_settings');
         if (mergeMode) {
@@ -22157,6 +22171,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
                 const id = localProduct && localProduct.id != null ? String(localProduct.id) : '';
                 if (id && !cloudMap.has(id) && !deletedSet.has(id)) {
                     cloudMap.set(id, localProduct);
+                    mergeSummary.productsAddedFromLocal++;
                 }
             });
             
@@ -22170,7 +22185,6 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
         }
     }
 
-    const cloudProcess = rowsToPayload('process_settings');
     if (cloudProcess.length || !mergeMode) {
         const deletedSet = getDeletedSet('process_settings');
         if (mergeMode) {
@@ -22188,6 +22202,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
                 const id = localProcess && localProcess.id != null ? String(localProcess.id) : '';
                 if (id && !cloudMap.has(id) && !deletedSet.has(id)) {
                     cloudMap.set(id, localProcess);
+                    mergeSummary.processesAddedFromLocal++;
                 }
             });
             
@@ -22201,7 +22216,6 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
         }
     }
 
-    const cloudTemplates = rowsToPayload('templates');
     if (cloudTemplates.length || !mergeMode) {
         const deletedSet = getDeletedSet('templates');
         if (mergeMode) {
@@ -22219,6 +22233,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
                 const id = localTemplate && localTemplate.id != null ? String(localTemplate.id) : '';
                 if (id && !cloudMap.has(id) && !deletedSet.has(id)) {
                     cloudMap.set(id, localTemplate);
+                    mergeSummary.templatesAddedFromLocal++;
                 }
             });
             
@@ -22231,6 +22246,11 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             templates.push(...cloudTemplates);
         }
     }
+
+    // 更新同步摘要
+    window.__mgLastSettingsMergeSummary = mergeSummary;
+    window.__mgLastSyncSummaryAt = Date.now();
+    console.log('[sync-summary][settings-v2]', mergeSummary);
 
     const feeRows = grouped['other_fee_types'] || [];
     const feeObj = {};
