@@ -6753,10 +6753,13 @@ function openCalculatorDrawer(skipOrderTimeReset) {
         gifts = [];
         productIdCounter = 0;
         giftIdCounter = 0;
+        dynamicOtherFees = []; // 清空其他费用
         const productsContainer = document.getElementById('productsContainer');
         const giftsContainer = document.getElementById('giftsContainer');
+        const dynamicOtherFeesContainer = document.getElementById('dynamicOtherFees');
         if (productsContainer) productsContainer.innerHTML = '';
         if (giftsContainer) giftsContainer.innerHTML = '';
+        if (dynamicOtherFeesContainer) dynamicOtherFeesContainer.innerHTML = ''; // 清空其他费用容器
 
         selectedPerItemExtraFeeIds = [];
         renderCalculatorPerItemExtraSelects();
