@@ -21210,6 +21210,16 @@ async function mgCloudUpsertOrder(item, retryCount = 0, context = null, source =
         } else {
             console.log(`[${new Date().toLocaleString()}] ✅ [${source}] 云端同步成功:`, mapped.external_id);
             if (item && item.id) markOrderSynced(item.id);
+            
+            // 更新订单同步摘要
+            const ordersSummary = {
+                mode: 'merge',
+                uploaded: 1,
+                failed: 0,
+                tombstoneBlocked: 0
+            };
+            window.__mgLastOrderSyncSummary = ordersSummary;
+            window.__mgLastSyncSummaryAt = Date.now();
         }
     } catch (err) {
         console.error('云端同步出错:', err);
@@ -22512,6 +22522,11 @@ async function mgSyncSettingsToCloud(silent = false) {
         // 优先尝试 V2（分表分条目 + 软删除）
         const v2Result = await mgTrySyncSettingsToCloudV2(client, artistId);
         if (v2Result && v2Result.supported) {
+            // 更新同步摘要
+            const mergeSummary = v2Result.mergeSummary || { mode: 'merge', productsCount: productSettings.length, processesCount: processSettings.length, templatesCount: templates.length };
+            window.__mgLastSettingsMergeSummary = mergeSummary;
+            window.__mgLastSyncSummaryAt = Date.now();
+            
             if (!silent) {
                 if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已上传到云端（V2）');
                 else alert('设置已上传到云端（V2）');
@@ -22583,6 +22598,10 @@ async function mgSyncSettingsToCloud(silent = false) {
             if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已上传到云端');
             else alert('设置已上传到云端');
         }
+        // 更新同步摘要
+        const mergeSummary = { mode: 'override', productsCount: productSettings.length, processesCount: processSettings.length, templatesCount: templates.length };
+        window.__mgLastSettingsMergeSummary = mergeSummary;
+        window.__mgLastSyncSummaryAt = Date.now();
         window._isSyncingSettings = false;
     } catch (err) {
         console.error('智能合并设置失败:', err);
