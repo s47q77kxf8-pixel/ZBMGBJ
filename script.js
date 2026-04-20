@@ -1160,6 +1160,12 @@ function loadData() {
         
         if (savedProductSettings) {
             productSettings = JSON.parse(savedProductSettings);
+            // 确保所有制品设置都有时间戳
+            productSettings.forEach(setting => {
+                if (!setting.mg_updated_at) {
+                    setting.mg_updated_at = Date.now();
+                }
+            });
         }
         
         if (savedProcessSettings) {
@@ -4233,9 +4239,33 @@ function applyRecordImportOverwrite() {
             defaultSettings[key] = data.calculatorSettings[key];
         });
     }
-    if (data.productSettings != null) productSettings = data.productSettings;
-    if (data.processSettings != null) processSettings = data.processSettings;
-    if (data.templates != null) templates = data.templates;
+    if (data.productSettings != null) {
+        productSettings = data.productSettings;
+        // 确保所有导入的制品设置都有时间戳
+        productSettings.forEach(setting => {
+            if (!setting.mg_updated_at) {
+                setting.mg_updated_at = Date.now();
+            }
+        });
+    }
+    if (data.processSettings != null) {
+        processSettings = data.processSettings;
+        // 确保所有导入的工艺设置都有时间戳
+        processSettings.forEach(setting => {
+            if (!setting.mg_updated_at) {
+                setting.mg_updated_at = Date.now();
+            }
+        });
+    }
+    if (data.templates != null) {
+        templates = data.templates;
+        // 确保所有导入的模板都有时间戳
+        templates.forEach(template => {
+            if (!template.mg_updated_at) {
+                template.mg_updated_at = Date.now();
+            }
+        });
+    }
     saveData();
     applyRecordFilters();
     alert('导入成功，数据已同步到本机。');
@@ -12428,7 +12458,13 @@ function scheduleTodoCardAction(action) {
 
     closeScheduleTodoCardModal();
     if (action === 'edit') editHistoryItem(id);
-    else if (action === 'receipt') { setReceiptFromRecord(); loadQuoteFromHistory(id); }
+    else if (action === 'receipt') { 
+        // todo卡片在排单页，关闭小票后应返回排单页，不要调用setReceiptFromRecord()
+        // 需要确保pageBeforeReceiptDrawer设置为'quote'
+        window.pageBeforeReceiptDrawer = 'quote';
+        window.receiptOpenedFromRecord = false;
+        loadQuoteFromHistory(id); 
+    }
     else if (action === 'remark') openOrderRemarkModal(id);
     else if (action === 'cancel' || action === 'waste_fee' || action === 'normal') {
         var item = history.find(function (h) { return h.id === id; });
@@ -22106,43 +22142,94 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     const cloudProducts = rowsToPayload('product_settings');
     if (cloudProducts.length || !mergeMode) {
         const deletedSet = getDeletedSet('product_settings');
-        const localFiltered = mergeMode
-            ? (productSettings || []).filter(function (it) {
-                const k = it && it.id != null ? String(it.id) : '';
-                return !k || !deletedSet.has(k);
-            })
-            : (productSettings || []);
-        const merged = mergeMode ? mergeArraySettings(cloudProducts, localFiltered, 'id') : cloudProducts;
-        productSettings.length = 0;
-        productSettings.push(...merged);
+        if (mergeMode) {
+            // 合并模式：保留云端制品，只删除明确标记为删除的
+            const cloudMap = new Map();
+            cloudProducts.forEach(product => {
+                const id = product && product.id != null ? String(product.id) : '';
+                if (id) {
+                    cloudMap.set(id, product);
+                }
+            });
+            
+            // 合并本地制品（如果云端没有）
+            (productSettings || []).forEach(localProduct => {
+                const id = localProduct && localProduct.id != null ? String(localProduct.id) : '';
+                if (id && !cloudMap.has(id) && !deletedSet.has(id)) {
+                    cloudMap.set(id, localProduct);
+                }
+            });
+            
+            const merged = Array.from(cloudMap.values());
+            productSettings.length = 0;
+            productSettings.push(...merged);
+        } else {
+            // 非合并模式：直接使用云端制品
+            productSettings.length = 0;
+            productSettings.push(...cloudProducts);
+        }
     }
 
     const cloudProcess = rowsToPayload('process_settings');
     if (cloudProcess.length || !mergeMode) {
         const deletedSet = getDeletedSet('process_settings');
-        const localFiltered = mergeMode
-            ? (processSettings || []).filter(function (it) {
-                const k = it && it.id != null ? String(it.id) : '';
-                return !k || !deletedSet.has(k);
-            })
-            : (processSettings || []);
-        const merged = mergeMode ? mergeArraySettings(cloudProcess, localFiltered, 'id') : cloudProcess;
-        processSettings.length = 0;
-        processSettings.push(...merged);
+        if (mergeMode) {
+            // 合并模式：保留云端工艺，只删除明确标记为删除的
+            const cloudMap = new Map();
+            cloudProcess.forEach(process => {
+                const id = process && process.id != null ? String(process.id) : '';
+                if (id) {
+                    cloudMap.set(id, process);
+                }
+            });
+            
+            // 合并本地工艺（如果云端没有）
+            (processSettings || []).forEach(localProcess => {
+                const id = localProcess && localProcess.id != null ? String(localProcess.id) : '';
+                if (id && !cloudMap.has(id) && !deletedSet.has(id)) {
+                    cloudMap.set(id, localProcess);
+                }
+            });
+            
+            const merged = Array.from(cloudMap.values());
+            processSettings.length = 0;
+            processSettings.push(...merged);
+        } else {
+            // 非合并模式：直接使用云端工艺
+            processSettings.length = 0;
+            processSettings.push(...cloudProcess);
+        }
     }
 
     const cloudTemplates = rowsToPayload('templates');
     if (cloudTemplates.length || !mergeMode) {
         const deletedSet = getDeletedSet('templates');
-        const localFiltered = mergeMode
-            ? (templates || []).filter(function (it) {
-                const k = it && it.id != null ? String(it.id) : '';
-                return !k || !deletedSet.has(k);
-            })
-            : (templates || []);
-        const merged = mergeMode ? mergeArraySettings(cloudTemplates, localFiltered, 'id') : cloudTemplates;
-        templates.length = 0;
-        templates.push(...merged);
+        if (mergeMode) {
+            // 合并模式：保留云端模板，只删除明确标记为删除的
+            const cloudMap = new Map();
+            cloudTemplates.forEach(template => {
+                const id = template && template.id != null ? String(template.id) : '';
+                if (id) {
+                    cloudMap.set(id, template);
+                }
+            });
+            
+            // 合并本地模板（如果云端没有）
+            (templates || []).forEach(localTemplate => {
+                const id = localTemplate && localTemplate.id != null ? String(localTemplate.id) : '';
+                if (id && !cloudMap.has(id) && !deletedSet.has(id)) {
+                    cloudMap.set(id, localTemplate);
+                }
+            });
+            
+            const merged = Array.from(cloudMap.values());
+            templates.length = 0;
+            templates.push(...merged);
+        } else {
+            // 非合并模式：直接使用云端模板
+            templates.length = 0;
+            templates.push(...cloudTemplates);
+        }
     }
 
     const feeRows = grouped['other_fee_types'] || [];
