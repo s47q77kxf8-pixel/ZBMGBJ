@@ -12270,7 +12270,7 @@ function generateFolderName(item) {
         folderName += `${projectOrigin}`;
     }
     if (productCount > 0) {
-        folderName += `-${productCount}制品`;
+        folderName += `-制品${productCount}`;
         if (productDetails) {
             folderName += `（${productDetails}）`;
         }
