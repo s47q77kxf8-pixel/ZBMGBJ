@@ -3907,7 +3907,10 @@ function applyRecordFilters() {
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent">加急单</span>' : '';
         const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order">追加单</span>' : '';
-        const tags = mgNormalizeTags(item);
+        const tags = mgNormalizeTags(item).filter(function (t) {
+            // 过滤掉"追加单"标签，因为它已经通过 crossOrderTagHtml 显示
+            return t.name.toLowerCase() !== '追加单';
+        });
         const customTagHtml = tags.map(function (t) {
             return '<span class="record-tag record-tag-custom" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
         }).join('');
@@ -10472,21 +10475,20 @@ function getScheduleItemsAll() {
     return history.filter(h => {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
-        const hasStart = (h.startTime && String(h.startTime).trim());
-        const hasDeadline = (h.deadline && String(h.deadline).trim());
-        return hasStart || hasDeadline;
+        // 所有未归档的订单都显示在"所有"分类中，包括待排订单
+        return true;
     });
 }
 
-// 待排单：未设置排单时间（无 startTime 和 deadline，排除已完结）
+// 待排单：未设置排单时间（无 startTime 或无 deadline，排除已完结）
 function getScheduleItemsPending() {
     return history.filter(h => {
         if (isOrderSettled(h)) return false;
         ensureProductDoneStates(h);
         const hasStart = (h.startTime && String(h.startTime).trim());
         const hasDeadline = (h.deadline && String(h.deadline).trim());
-        // 既无开始时间也无截稿时间视为待排单
-        return !hasStart && !hasDeadline;
+        // 无开始时间或无截稿时间视为待排单
+        return !hasStart || !hasDeadline;
     });
 }
 
@@ -11820,7 +11822,10 @@ async function renderScheduleTodoSection() {
         const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>' : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent schedule-todo-card-tag">加急单</span>' : '';
         const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order schedule-todo-card-tag">追加单</span>' : '';
-        const customTagHtml = mgNormalizeTags(item).map(function (t) {
+        const customTagHtml = mgNormalizeTags(item).filter(function (t) {
+            // 过滤掉"追加单"标签，因为它已经通过 crossOrderTagHtml 显示
+            return t.name.toLowerCase() !== '追加单';
+        }).map(function (t) {
             return '<span class="record-tag record-tag-custom schedule-todo-card-tag" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
         }).join('');
         const projectName = item && item.projectName ? escapeHtml(String(item.projectName).trim()) : '';
@@ -12139,7 +12144,8 @@ function handleScheduleTodoCardClick(id, event) {
 var scheduleTodoCardModalRecordId = null;
 var scheduleTodoPresetTags = [
     { name: '待回复', color: '#3b82f6' },
-    { name: '做工艺', color: '#8b5cf6' }
+    { name: '做工艺', color: '#8b5cf6' },
+    { name: '追加单', color: '#3b82f6' }
 ];
 var scheduleTodoTagManageMode = false;
 
@@ -12156,6 +12162,13 @@ function loadScheduleTodoPresetTags() {
                 color: String(t.color || '#f59e0b')
             };
         }).filter(function (t) { return !!t && !!t.name; });
+        
+        // 确保"追加单"标签存在于预设标签中
+        const hasCrossOrderTag = scheduleTodoPresetTags.some(tag => tag.name === '追加单');
+        if (!hasCrossOrderTag) {
+            scheduleTodoPresetTags.push({ name: '追加单', color: '#3b82f6' });
+            saveScheduleTodoPresetTags();
+        }
     } catch (e) {}
 }
 
@@ -12168,6 +12181,13 @@ function saveScheduleTodoPresetTags() {
 // 检测订单是否包含跨订单同模的制品
 function hasCrossOrderSameModel(item) {
     if (!item) return false;
+    
+    // 优先检查订单标签中是否包含"追加单"标签（大小写不敏感）
+    const tags = mgNormalizeTags(item);
+    if (tags.some(tag => tag.name.toLowerCase() === '追加单')) {
+        return true;
+    }
+    
     // 检查制品
     if (item.productPrices && item.productPrices.some(function(p) {
         return p && p.crossOrderSameModel;
@@ -12181,6 +12201,95 @@ function hasCrossOrderSameModel(item) {
         return true;
     }
     return false;
+}
+
+// 生成文件夹名
+function generateFolderName(item) {
+    if (!item) return '';
+    
+    // 1. 格式化时间（优先截稿时间，无截稿为开始时间）
+    let timeStr = '';
+    let timeToUse = item.deadline || item.startDate;
+    if (timeToUse) {
+        try {
+            const d = new Date(timeToUse);
+            if (!isNaN(d.getTime())) {
+                timeStr = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+            }
+        } catch (e) {
+            console.error('解析时间失败:', e);
+        }
+    }
+    
+    // 2. 获取接单平台
+    let platform = '其他';
+    if (item.platformType && defaultSettings.platformFees && defaultSettings.platformFees[item.platformType]) {
+        platform = defaultSettings.platformFees[item.platformType].name || item.platformType;
+    } else if (item.contact) {
+        // 兼容旧数据，尝试通过 contact 匹配平台
+        if (defaultSettings.platformFees) {
+            const match = Object.entries(defaultSettings.platformFees).find(function (e) {
+                return String(e[1].name || e[0]).toLowerCase() === String(item.contact).toLowerCase();
+            });
+            if (match) {
+                platform = match[1].name || match[0];
+            } else {
+                platform = item.contact;
+            }
+        }
+    }
+    
+    // 3. 获取单主名
+    const clientId = item.clientId || '匿名单主';
+    
+    // 4. 获取企划名
+    const projectName = item.projectName || '未命名企划';
+    
+    // 5. 获取原作信息
+    const projectOrigin = item.projectOrigin || '';
+    
+    // 6. 计算制品数量和详细信息
+    const products = Array.isArray(item.productPrices) ? item.productPrices : [];
+    const productCount = products.reduce((total, p) => total + (p && p.quantity ? parseInt(p.quantity) : 1), 0);
+    let productDetails = '';
+    if (products.length > 0) {
+        productDetails = products.map(p => {
+            const productName = p.product || '制品';
+            const quantity = p.quantity || 1;
+            const sameModel = p && p.crossOrderSameModel ? '同模' : '';
+            return `${productName}${quantity}${sameModel ? sameModel + quantity : ''}`;
+        }).join('+');
+    }
+    
+    // 7. 按照指定格式拼接成文件夹名
+    let folderName = '';
+    if (timeStr) {
+        folderName += `${timeStr}`;
+    }
+    folderName += `【${platform} ${clientId}】`;
+    folderName += `${projectName}`;
+    if (projectOrigin) {
+        folderName += `-${projectOrigin}`;
+    }
+    if (productCount > 0) {
+        folderName += `-${productCount}制品`;
+        if (productDetails) {
+            folderName += `（${productDetails}）`;
+        }
+    }
+    
+    // 8. 处理特殊字符，确保文件夹名合法
+    folderName = folderName
+        .replace(/[<>"/\\|?*]/g, '') // 移除Windows不允许的字符
+        .replace(/\s+/g, ' ') // 多个空格替换为单个空格
+        .trim();
+    
+    // 处理过长的文件夹名
+    if (folderName.length > 200) {
+        folderName = folderName.substring(0, 197) + '...';
+    }
+    
+    return folderName;
 }
 
 function mgNormalizeTags(item) {
@@ -12423,7 +12532,43 @@ function openScheduleTodoTagModal(recordId) {
     scheduleTodoCardModalRecordId = recordId;
     ensureOverlayOnBody('scheduleTodoTagModal');
     scheduleTodoTagManageMode = false;
-    loadScheduleTodoPresetTags();
+    
+    // 强制重新加载预设标签并确保"追加单"标签存在
+    try {
+        // 从本地存储加载
+        var raw = localStorage.getItem('mg_schedule_todo_preset_tags');
+        if (raw) {
+            try {
+                var parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    scheduleTodoPresetTags = parsed.map(function (t) {
+                        if (!t) return null;
+                        return {
+                            name: String((t.name || '')).trim(),
+                            color: String(t.color || '#f59e0b')
+                        };
+                    }).filter(function (t) { return !!t && !!t.name; });
+                }
+            } catch (e) {
+                console.error('解析预设标签失败:', e);
+            }
+        }
+        
+        // 确保"追加单"标签存在
+        const hasCrossOrderTag = scheduleTodoPresetTags.some(tag => tag.name === '追加单');
+        if (!hasCrossOrderTag) {
+            scheduleTodoPresetTags.push({ name: '追加单', color: '#3b82f6' });
+            // 保存到本地存储
+            try {
+                localStorage.setItem('mg_schedule_todo_preset_tags', JSON.stringify(scheduleTodoPresetTags));
+            } catch (e) {
+                console.error('保存预设标签失败:', e);
+            }
+        }
+    } catch (e) {
+        console.error('处理预设标签失败:', e);
+    }
+    
     renderScheduleTodoTagEditor();
     var el = document.getElementById('scheduleTodoTagModal');
     if (el) el.classList.remove('d-none');
@@ -17350,6 +17495,94 @@ function closeOrderRemarkModal() {
     
     if (modal) modal.classList.add('d-none');
     saveData();
+}
+
+// 生成并显示文件夹名
+function generateAndShowFolderName() {
+    let item = null;
+    
+    if (currentRemarkRecordId) {
+        // 从记录页打开，获取历史记录
+        item = history.find(function (h) { return h.id === currentRemarkRecordId; });
+    } else {
+        // 从计算页打开，获取当前报价数据
+        item = getCurrentQuoteData();
+    }
+    
+    if (!item) {
+        alert('无法获取订单数据');
+        return;
+    }
+    
+    // 生成文件夹名
+    const folderName = generateFolderName(item);
+    
+    if (!folderName) {
+        alert('生成文件夹名失败');
+        return;
+    }
+    
+    // 显示文件夹名模态框
+    const folderNameInput = document.getElementById('generatedFolderName');
+    if (folderNameInput) {
+        folderNameInput.value = folderName;
+    }
+    
+    const modal = document.getElementById('folderNameModal');
+    if (modal) {
+        modal.classList.remove('d-none');
+    }
+}
+
+// 复制文件夹名到剪贴板
+function copyFolderName() {
+    const folderNameInput = document.getElementById('generatedFolderName');
+    if (folderNameInput) {
+        folderNameInput.select();
+        folderNameInput.setSelectionRange(0, 99999);
+        document.execCommand('copy');
+        
+        // 显示复制成功提示
+        alert('文件夹名已复制到剪贴板');
+    }
+}
+
+// 关闭文件夹名模态框
+function closeFolderNameModal() {
+    const modal = document.getElementById('folderNameModal');
+    if (modal) {
+        modal.classList.add('d-none');
+    }
+}
+
+// 获取当前报价数据
+function getCurrentQuoteData() {
+    // 从计算页获取当前报价数据
+    const quoteData = {
+        deadline: document.getElementById('deadline') ? document.getElementById('deadline').value : '',
+        clientId: document.getElementById('clientId') ? document.getElementById('clientId').value : '',
+        projectName: document.getElementById('projectName') ? document.getElementById('projectName').value : '',
+        projectOrigin: document.getElementById('projectOrigin') ? document.getElementById('projectOrigin').value : '',
+        platformType: document.getElementById('platform') ? document.getElementById('platform').value : '',
+        contact: document.getElementById('contact') ? document.getElementById('contact').value : '',
+        productPrices: []
+    };
+    
+    // 获取制品数据
+    const productTable = document.getElementById('productTable');
+    if (productTable) {
+        const productRows = productTable.querySelectorAll('tbody tr[data-product-id]');
+        productRows.forEach(row => {
+            const productName = row.querySelector('[data-field="product"] input') ? row.querySelector('[data-field="product"] input').value : '';
+            const quantity = row.querySelector('[data-field="quantity"] input') ? parseInt(row.querySelector('[data-field="quantity"] input').value) || 1 : 1;
+            
+            if (productName) {
+                quoteData.productPrices.push({ product: productName, quantity: quantity });
+            }
+        });
+    }
+    
+    return quoteData;
 }
 
 // 企划备注查看弹窗：打开（只读，查看某条记录的备注）

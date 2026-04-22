@@ -2740,8 +2740,28 @@
             </div>
             <div class="modal-footer">
                 <button type="button" id="smartExtractBtn" class="btn btn-compact primary" onclick="smartParseOrderRemark()" title="根据备注内容自动识别制品、赠品并填入计算表">智能提取</button>
+                <button type="button" class="btn btn-compact secondary" onclick="generateAndShowFolderName()" title="生成文件夹名并显示">生成文件夹名</button>
                 <button type="button" class="btn btn-compact secondary" onclick="copyOrderRemark()">复制</button>
                 <button type="button" class="btn btn-compact" onclick="closeOrderRemarkModal()">确定</button>
+            </div>
+        </div>
+    </div>
+    <!-- 文件夹名生成结果弹窗 -->
+    <div id="folderNameModal" class="modal d-none">
+        <div class="modal-content modal-content-compact">
+            <div class="modal-header">
+                <h3>生成的文件夹名</h3>
+                <span class="close" onclick="closeFolderNameModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">文件夹名</label>
+                    <input type="text" id="generatedFolderName" class="form-control" readonly>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-compact secondary" onclick="copyFolderName()" title="复制文件夹名">复制</button>
+                <button type="button" class="btn btn-compact" onclick="closeFolderNameModal()">关闭</button>
             </div>
         </div>
     </div>
