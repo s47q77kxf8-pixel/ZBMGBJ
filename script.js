@@ -22619,7 +22619,6 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
 
     // 预设标签处理
     const presetTagRows = grouped['schedule_todo_preset_tags'] || [];
-    const cloudPresetTags = presetTagRows.map(function (r) { return mgSafeClone(r.payload || {}, {}); });
     if (cloudPresetTags.length || !mergeMode) {
         const deletedSet = getDeletedSet('schedule_todo_preset_tags');
         const localFiltered = mergeMode
