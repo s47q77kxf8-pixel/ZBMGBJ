@@ -12237,7 +12237,7 @@ function generateFolderName(item) {
     const clientId = item.clientId || '匿名单主';
     
     // 4. 获取企划名
-    const projectName = item.projectName || '未命名企划';
+    const projectName = item.projectName || '';
     
     // 5. 获取原作信息
     const projectOrigin = item.projectOrigin || '';
@@ -12261,9 +12261,11 @@ function generateFolderName(item) {
         folderName += `${timeStr}`;
     }
     folderName += `【${platform} ${clientId}】`;
-    folderName += `${projectName}`;
-    if (projectOrigin) {
-        folderName += `-${projectOrigin}`;
+    if (projectName) {
+        folderName += `${projectName}`;
+        if (projectOrigin) {
+            folderName += `-${projectOrigin}`;
+        }
     }
     if (productCount > 0) {
         folderName += `-${productCount}制品`;
