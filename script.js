@@ -12266,6 +12266,8 @@ function generateFolderName(item) {
         if (projectOrigin) {
             folderName += `-${projectOrigin}`;
         }
+    } else if (projectOrigin) {
+        folderName += `${projectOrigin}`;
     }
     if (productCount > 0) {
         folderName += `-${productCount}制品`;
