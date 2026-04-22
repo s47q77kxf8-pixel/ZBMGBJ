@@ -12223,19 +12223,13 @@ function generateFolderName(item) {
     
     // 2. 获取接单平台
     let platform = '其他';
-    if (item.platformType && defaultSettings.platformFees && defaultSettings.platformFees[item.platformType]) {
+    if (item.contact) {
+        platform = item.contact;
+    } else if (item.platformType && defaultSettings.platformFees && defaultSettings.platformFees[item.platformType]) {
         platform = defaultSettings.platformFees[item.platformType].name || item.platformType;
-    } else if (item.contact) {
-        // 兼容旧数据，尝试通过 contact 匹配平台
-        if (defaultSettings.platformFees) {
-            const match = Object.entries(defaultSettings.platformFees).find(function (e) {
-                return String(e[1].name || e[0]).toLowerCase() === String(item.contact).toLowerCase();
-            });
-            if (match) {
-                platform = match[1].name || match[0];
-            } else {
-                platform = item.contact;
-            }
+        // 避免显示"无"
+        if (platform === '无') {
+            platform = '其他';
         }
     }
     
