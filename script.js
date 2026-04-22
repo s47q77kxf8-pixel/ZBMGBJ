@@ -12207,9 +12207,9 @@ function hasCrossOrderSameModel(item) {
 function generateFolderName(item) {
     if (!item) return '';
     
-    // 1. 格式化时间（优先截稿时间，无截稿为开始时间）
+    // 1. 格式化时间（优先截稿时间，无截稿为开始时间，都无时使用下单时间）
     let timeStr = '';
-    let timeToUse = item.deadline || item.startDate;
+    let timeToUse = item.deadline || item.startDate || item.timestamp;
     if (timeToUse) {
         try {
             const d = new Date(timeToUse);
@@ -17565,6 +17565,7 @@ function getCurrentQuoteData() {
         projectOrigin: document.getElementById('projectOrigin') ? document.getElementById('projectOrigin').value : '',
         platformType: document.getElementById('platform') ? document.getElementById('platform').value : '',
         contact: document.getElementById('contact') ? document.getElementById('contact').value : '',
+        timestamp: document.getElementById('orderTimeInput') ? document.getElementById('orderTimeInput').value : new Date().toISOString(),
         productPrices: []
     };
     
