@@ -17541,7 +17541,11 @@ function copyFolderName() {
         document.execCommand('copy');
         
         // 显示复制成功提示
-        alert('文件夹名已复制到剪贴板');
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast('文件夹名已复制到剪贴板');
+        } else {
+            alert('文件夹名已复制到剪贴板');
+        }
     }
 }
 
