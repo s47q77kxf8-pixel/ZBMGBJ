@@ -22308,6 +22308,12 @@ function mgBuildSettingsV2LocalState() {
         return { item_id: stableId, payload: mgSafeClone(e, {}) };
     });
 
+    // 预设标签
+    const presetTagItems = (Array.isArray(scheduleTodoPresetTags) ? scheduleTodoPresetTags : []).map(function (tag) {
+        const stableId = mgEnsureStableIdForItem(tag, 'tag');
+        return { item_id: stableId, payload: mgSafeClone(tag, {}) };
+    });
+
     return {
         singletons: [
             { domain: 'calculator_settings', payload: calc },
@@ -22325,7 +22331,8 @@ function mgBuildSettingsV2LocalState() {
             platform_fees: platformFeeItems,
             extra_pricing_up: extraUpItems,
             extra_pricing_down: extraDownItems,
-            per_item_extra_fees: perItemExtraFeeItems
+            per_item_extra_fees: perItemExtraFeeItems,
+            schedule_todo_preset_tags: presetTagItems
         }
     };
 }
@@ -22388,6 +22395,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     const cloudProducts = rowsToPayload('product_settings');
     const cloudProcess = rowsToPayload('process_settings');
     const cloudTemplates = rowsToPayload('templates');
+    const cloudPresetTags = rowsToPayload('schedule_todo_preset_tags');
     
     // 计算同步摘要
     const mergeSummary = {
@@ -22610,6 +22618,39 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             : (defaultSettings.perItemExtraFees || []);
         const mergedPerItemExtraFees = mergeMode ? mergeArraySettings(cloudPerItemExtraFees, localFiltered, 'id') : cloudPerItemExtraFees;
         defaultSettings.perItemExtraFees = mergedPerItemExtraFees;
+    }
+
+    // 预设标签处理
+    const presetTagRows = grouped['schedule_todo_preset_tags'] || [];
+    const cloudPresetTags = presetTagRows.map(function (r) { return mgSafeClone(r.payload || {}, {}); });
+    if (cloudPresetTags.length || !mergeMode) {
+        const deletedSet = getDeletedSet('schedule_todo_preset_tags');
+        const localFiltered = mergeMode
+            ? (scheduleTodoPresetTags || []).filter(function (it) {
+                const k = it && it.name != null ? String(it.name) : '';
+                return !k || !deletedSet.has(k);
+            })
+            : (scheduleTodoPresetTags || []);
+        
+        if (mergeMode) {
+            // 合并模式：保留云端预设标签，添加本地独有的预设标签
+            const cloudNames = new Set(cloudPresetTags.map(tag => tag.name));
+            const merged = [...cloudPresetTags];
+            localFiltered.forEach(localTag => {
+                if (localTag && localTag.name && !cloudNames.has(localTag.name)) {
+                    merged.push(localTag);
+                }
+            });
+            scheduleTodoPresetTags.length = 0;
+            scheduleTodoPresetTags.push(...merged);
+        } else {
+            // 非合并模式：直接使用云端预设标签
+            scheduleTodoPresetTags.length = 0;
+            scheduleTodoPresetTags.push(...cloudPresetTags);
+        }
+        
+        // 保存预设标签
+        saveScheduleTodoPresetTags();
     }
 
     // 保险：V2 合并后再次去重，避免跨端脏数据复现
