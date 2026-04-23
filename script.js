@@ -22400,16 +22400,81 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     const cloudTemplates = rowsToPayload('templates');
     const cloudPresetTags = rowsToPayload('schedule_todo_preset_tags');
     
-    // 计算同步摘要
+    // 计算同步摘要 - 扩展版本
     const mergeSummary = {
         mode: mergeMode ? 'merge' : 'override',
+        timestamp: Date.now(),
         productsCount: cloudProducts.length,
         processesCount: cloudProcess.length,
         templatesCount: cloudTemplates.length,
+        presetTagsCount: cloudPresetTags.length,
         productsAddedFromLocal: 0,
         processesAddedFromLocal: 0,
-        templatesAddedFromLocal: 0
+        templatesAddedFromLocal: 0,
+        productsAdded: [],
+        productsUpdated: [],
+        productsDeleted: [],
+        processesAdded: [],
+        processesUpdated: [],
+        processesDeleted: [],
+        templatesAdded: [],
+        templatesUpdated: [],
+        templatesDeleted: [],
+        otherFeesChanged: [],
+        coefficientsChanged: {
+            usage: [],
+            urgent: [],
+            sameModel: [],
+            discount: [],
+            platform: []
+        },
+        extraPricingChanged: {
+            up: [],
+            down: []
+        },
+        perItemExtraFeesChanged: [],
+        presetTagsChanged: {
+            added: [],
+            removed: [],
+            updated: []
+        },
+        totalChanges: 0
     };
+    
+    // 辅助函数：深度比较两个对象是否相等
+    function deepEqual(obj1, obj2) {
+        try {
+            return JSON.stringify(obj1) === JSON.stringify(obj2);
+        } catch (e) {
+            return false;
+        }
+    }
+    
+    // 辅助函数：获取项目的显示名称
+    function getItemName(item, type) {
+        if (!item) return '未知';
+        if (type === 'product') return item.name || item.product || '制品';
+        if (type === 'process') return item.name || '工艺';
+        if (type === 'template') return item.name || '模板';
+        if (type === 'tag') return item.name || '标签';
+        if (type === 'fee') return item.name || '费用';
+        return String(item.id || item.name || '项目');
+    }
+    
+    // 保存原始本地数据快照，用于后续比较
+    const originalProductSettings = mgSafeClone(productSettings || [], []);
+    const originalProcessSettings = mgSafeClone(processSettings || [], []);
+    const originalTemplates = mgSafeClone(templates || [], []);
+    const originalOtherFees = mgSafeClone(defaultSettings.otherFees || {}, {});
+    const originalUsageCoefficients = mgSafeClone(defaultSettings.usageCoefficients || {}, {});
+    const originalUrgentCoefficients = mgSafeClone(defaultSettings.urgentCoefficients || {}, {});
+    const originalSameModelCoefficients = mgSafeClone(defaultSettings.sameModelCoefficients || {}, {});
+    const originalDiscountCoefficients = mgSafeClone(defaultSettings.discountCoefficients || {}, {});
+    const originalPlatformFees = mgSafeClone(defaultSettings.platformFees || {}, {});
+    const originalExtraPricingUp = mgSafeClone(defaultSettings.extraPricingUp || [], []);
+    const originalExtraPricingDown = mgSafeClone(defaultSettings.extraPricingDown || [], []);
+    const originalPerItemExtraFees = mgSafeClone(defaultSettings.perItemExtraFees || [], []);
+    const originalPresetTags = mgSafeClone(scheduleTodoPresetTags || [], []);
 
     if (cloudProducts.length || !mergeMode) {
         const deletedSet = getDeletedSet('product_settings');
@@ -22440,6 +22505,49 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             productSettings.length = 0;
             productSettings.push(...cloudProducts);
         }
+        
+        // 记录制品变更详情
+        const newProductIds = new Set(productSettings.map(p => p.id ? String(p.id) : ''));
+        const originalProductIds = new Set(originalProductSettings.map(p => p.id ? String(p.id) : ''));
+        
+        // 新增的制品
+        productSettings.forEach(product => {
+            const id = product.id ? String(product.id) : '';
+            if (!originalProductIds.has(id)) {
+                mergeSummary.productsAdded.push({
+                    id: id,
+                    name: getItemName(product, 'product')
+                });
+                mergeSummary.totalChanges++;
+            }
+        });
+        
+        // 删除的制品
+        originalProductSettings.forEach(product => {
+            const id = product.id ? String(product.id) : '';
+            if (!newProductIds.has(id)) {
+                mergeSummary.productsDeleted.push({
+                    id: id,
+                    name: getItemName(product, 'product')
+                });
+                mergeSummary.totalChanges++;
+            }
+        });
+        
+        // 更新的制品
+        originalProductSettings.forEach(original => {
+            const id = original.id ? String(original.id) : '';
+            if (id && newProductIds.has(id)) {
+                const updated = productSettings.find(p => p.id && String(p.id) === id);
+                if (updated && !deepEqual(original, updated)) {
+                    mergeSummary.productsUpdated.push({
+                        id: id,
+                        name: getItemName(updated, 'product')
+                    });
+                    mergeSummary.totalChanges++;
+                }
+            }
+        });
     }
 
     if (cloudProcess.length || !mergeMode) {
@@ -22471,6 +22579,49 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             processSettings.length = 0;
             processSettings.push(...cloudProcess);
         }
+        
+        // 记录工艺变更详情
+        const newProcessIds = new Set(processSettings.map(p => p.id ? String(p.id) : ''));
+        const originalProcessIds = new Set(originalProcessSettings.map(p => p.id ? String(p.id) : ''));
+        
+        // 新增的工艺
+        processSettings.forEach(process => {
+            const id = process.id ? String(process.id) : '';
+            if (!originalProcessIds.has(id)) {
+                mergeSummary.processesAdded.push({
+                    id: id,
+                    name: getItemName(process, 'process')
+                });
+                mergeSummary.totalChanges++;
+            }
+        });
+        
+        // 删除的工艺
+        originalProcessSettings.forEach(process => {
+            const id = process.id ? String(process.id) : '';
+            if (!newProcessIds.has(id)) {
+                mergeSummary.processesDeleted.push({
+                    id: id,
+                    name: getItemName(process, 'process')
+                });
+                mergeSummary.totalChanges++;
+            }
+        });
+        
+        // 更新的工艺
+        originalProcessSettings.forEach(original => {
+            const id = original.id ? String(original.id) : '';
+            if (id && newProcessIds.has(id)) {
+                const updated = processSettings.find(p => p.id && String(p.id) === id);
+                if (updated && !deepEqual(original, updated)) {
+                    mergeSummary.processesUpdated.push({
+                        id: id,
+                        name: getItemName(updated, 'process')
+                    });
+                    mergeSummary.totalChanges++;
+                }
+            }
+        });
     }
 
     if (cloudTemplates.length || !mergeMode) {
@@ -22502,12 +22653,50 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             templates.length = 0;
             templates.push(...cloudTemplates);
         }
+        
+        // 记录模板变更详情
+        const newTemplateIds = new Set(templates.map(t => t.id ? String(t.id) : ''));
+        const originalTemplateIds = new Set(originalTemplates.map(t => t.id ? String(t.id) : ''));
+        
+        // 新增的模板
+        templates.forEach(template => {
+            const id = template.id ? String(template.id) : '';
+            if (!originalTemplateIds.has(id)) {
+                mergeSummary.templatesAdded.push({
+                    id: id,
+                    name: getItemName(template, 'template')
+                });
+                mergeSummary.totalChanges++;
+            }
+        });
+        
+        // 删除的模板
+        originalTemplates.forEach(template => {
+            const id = template.id ? String(template.id) : '';
+            if (!newTemplateIds.has(id)) {
+                mergeSummary.templatesDeleted.push({
+                    id: id,
+                    name: getItemName(template, 'template')
+                });
+                mergeSummary.totalChanges++;
+            }
+        });
+        
+        // 更新的模板
+        originalTemplates.forEach(original => {
+            const id = original.id ? String(original.id) : '';
+            if (id && newTemplateIds.has(id)) {
+                const updated = templates.find(t => t.id && String(t.id) === id);
+                if (updated && !deepEqual(original, updated)) {
+                    mergeSummary.templatesUpdated.push({
+                        id: id,
+                        name: getItemName(updated, 'template')
+                    });
+                    mergeSummary.totalChanges++;
+                }
+            }
+        });
     }
-
-    // 更新同步摘要
-    window.__mgLastSettingsMergeSummary = mergeSummary;
-    window.__mgLastSyncSummaryAt = Date.now();
-    console.log('[sync-summary][settings-v2]', mergeSummary);
 
     const feeRows = grouped['other_fee_types'] || [];
     const feeObj = {};
@@ -22653,6 +22842,174 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
         
         // 保存预设标签
         saveScheduleTodoPresetTags();
+    }
+    
+    // ------------------------------
+    // 记录其他设置的变更详情
+    // ------------------------------
+    
+    // 其他费用变更
+    const newOtherFeesKeys = Object.keys(defaultSettings.otherFees || {});
+    const originalOtherFeesKeys = Object.keys(originalOtherFees || {});
+    const allOtherFeesKeys = new Set([...newOtherFeesKeys, ...originalOtherFeesKeys]);
+    allOtherFeesKeys.forEach(key => {
+        const newValue = defaultSettings.otherFees?.[key];
+        const originalValue = originalOtherFees?.[key];
+        if (!deepEqual(newValue, originalValue)) {
+            const changeType = !originalValue ? '新增' : (!newValue ? '删除' : '更新');
+            mergeSummary.otherFeesChanged.push({
+                key: key,
+                type: changeType,
+                name: getItemName(newValue || originalValue, 'fee')
+            });
+            mergeSummary.totalChanges++;
+        }
+    });
+    
+    // 系数设置变更
+    function recordCoefficientChanges(newObj, originalObj, typeName, summaryKey) {
+        const newKeys = Object.keys(newObj || {});
+        const originalKeys = Object.keys(originalObj || {});
+        const allKeys = new Set([...newKeys, ...originalKeys]);
+        allKeys.forEach(key => {
+            const newValue = newObj?.[key];
+            const originalValue = originalObj?.[key];
+            if (!deepEqual(newValue, originalValue)) {
+                const changeType = !originalValue ? '新增' : (!newValue ? '删除' : '更新');
+                mergeSummary.coefficientsChanged[summaryKey].push({
+                    key: key,
+                    type: changeType
+                });
+                mergeSummary.totalChanges++;
+            }
+        });
+    }
+    recordCoefficientChanges(defaultSettings.usageCoefficients, originalUsageCoefficients, '用量', 'usage');
+    recordCoefficientChanges(defaultSettings.urgentCoefficients, originalUrgentCoefficients, '加急', 'urgent');
+    recordCoefficientChanges(defaultSettings.sameModelCoefficients, originalSameModelCoefficients, '同模', 'sameModel');
+    recordCoefficientChanges(defaultSettings.discountCoefficients, originalDiscountCoefficients, '折扣', 'discount');
+    recordCoefficientChanges(defaultSettings.platformFees, originalPlatformFees, '平台', 'platform');
+    
+    // 额外定价变更 (上/下)
+    function recordArrayChanges(newArray, originalArray, targetArray) {
+        const newItemsById = new Map();
+        (newArray || []).forEach(item => {
+            if (item && item.id) {
+                newItemsById.set(String(item.id), item);
+            }
+        });
+        const originalItemsById = new Map();
+        (originalArray || []).forEach(item => {
+            if (item && item.id) {
+                originalItemsById.set(String(item.id), item);
+            }
+        });
+        
+        const allIds = new Set([...newItemsById.keys(), ...originalItemsById.keys()]);
+        allIds.forEach(id => {
+            const newValue = newItemsById.get(id);
+            const originalValue = originalItemsById.get(id);
+            if (!deepEqual(newValue, originalValue)) {
+                const changeType = !originalValue ? '新增' : (!newValue ? '删除' : '更新');
+                targetArray.push({
+                    id: id,
+                    type: changeType,
+                    name: getItemName(newValue || originalValue, 'fee')
+                });
+                mergeSummary.totalChanges++;
+            }
+        });
+    }
+    recordArrayChanges(defaultSettings.extraPricingUp, originalExtraPricingUp, mergeSummary.extraPricingChanged.up);
+    recordArrayChanges(defaultSettings.extraPricingDown, originalExtraPricingDown, mergeSummary.extraPricingChanged.down);
+    recordArrayChanges(defaultSettings.perItemExtraFees, originalPerItemExtraFees, mergeSummary.perItemExtraFeesChanged);
+    
+    // 预设标签变更
+    const newTagsByName = new Map();
+    (scheduleTodoPresetTags || []).forEach(tag => {
+        if (tag && tag.name) {
+            newTagsByName.set(String(tag.name), tag);
+        }
+    });
+    const originalTagsByName = new Map();
+    (originalPresetTags || []).forEach(tag => {
+        if (tag && tag.name) {
+            originalTagsByName.set(String(tag.name), tag);
+        }
+    });
+    
+    const allTagNames = new Set([...newTagsByName.keys(), ...originalTagsByName.keys()]);
+    allTagNames.forEach(name => {
+        const newValue = newTagsByName.get(name);
+        const originalValue = originalTagsByName.get(name);
+        if (!deepEqual(newValue, originalValue)) {
+            if (!originalValue) {
+                mergeSummary.presetTagsChanged.added.push({
+                    name: name
+                });
+                mergeSummary.totalChanges++;
+            } else if (!newValue) {
+                mergeSummary.presetTagsChanged.removed.push({
+                    name: name
+                });
+                mergeSummary.totalChanges++;
+            } else {
+                mergeSummary.presetTagsChanged.updated.push({
+                    name: name
+                });
+                mergeSummary.totalChanges++;
+            }
+        }
+    });
+    
+    // 更新同步摘要
+    window.__mgLastSettingsMergeSummary = mergeSummary;
+    window.__mgLastSyncSummaryAt = Date.now();
+    
+    // 输出详细的同步摘要日志
+    console.log('[sync-summary][settings-v2] 同步摘要:', mergeSummary);
+    if (mergeSummary.productsAdded.length || mergeSummary.productsUpdated.length || mergeSummary.productsDeleted.length) {
+        console.log('[sync-summary][settings-v2] 制品变更:', {
+            新增: mergeSummary.productsAdded,
+            更新: mergeSummary.productsUpdated,
+            删除: mergeSummary.productsDeleted
+        });
+    }
+    if (mergeSummary.processesAdded.length || mergeSummary.processesUpdated.length || mergeSummary.processesDeleted.length) {
+        console.log('[sync-summary][settings-v2] 工艺变更:', {
+            新增: mergeSummary.processesAdded,
+            更新: mergeSummary.processesUpdated,
+            删除: mergeSummary.processesDeleted
+        });
+    }
+    if (mergeSummary.templatesAdded.length || mergeSummary.templatesUpdated.length || mergeSummary.templatesDeleted.length) {
+        console.log('[sync-summary][settings-v2] 模板变更:', {
+            新增: mergeSummary.templatesAdded,
+            更新: mergeSummary.templatesUpdated,
+            删除: mergeSummary.templatesDeleted
+        });
+    }
+    if (mergeSummary.otherFeesChanged.length) {
+        console.log('[sync-summary][settings-v2] 其他费用变更:', mergeSummary.otherFeesChanged);
+    }
+    if (mergeSummary.coefficientsChanged.usage.length || 
+        mergeSummary.coefficientsChanged.urgent.length || 
+        mergeSummary.coefficientsChanged.sameModel.length || 
+        mergeSummary.coefficientsChanged.discount.length || 
+        mergeSummary.coefficientsChanged.platform.length) {
+        console.log('[sync-summary][settings-v2] 系数设置变更:', mergeSummary.coefficientsChanged);
+    }
+    if (mergeSummary.extraPricingChanged.up.length || 
+        mergeSummary.extraPricingChanged.down.length) {
+        console.log('[sync-summary][settings-v2] 额外定价变更:', mergeSummary.extraPricingChanged);
+    }
+    if (mergeSummary.perItemExtraFeesChanged.length) {
+        console.log('[sync-summary][settings-v2] 每件额外费用变更:', mergeSummary.perItemExtraFeesChanged);
+    }
+    if (mergeSummary.presetTagsChanged.added.length || 
+        mergeSummary.presetTagsChanged.removed.length || 
+        mergeSummary.presetTagsChanged.updated.length) {
+        console.log('[sync-summary][settings-v2] 预设标签变更:', mergeSummary.presetTagsChanged);
     }
 
     // 保险：V2 合并后再次去重，避免跨端脏数据复现
