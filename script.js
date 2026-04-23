@@ -22352,10 +22352,31 @@ function mgDomainItemsToObject(grouped, domain) {
 }
 
 function mgApplySettingsV2(singletons, items, mergeMode) {
+    // 性能监控计时器
+    const perfTimings = {
+        startTime: Date.now(),
+        steps: {},
+        mark(name) {
+            const now = Date.now();
+            this.steps[name] = now - (this.lastTime || this.startTime);
+            this.lastTime = now;
+        },
+        report() {
+            this.mark('total');
+            console.group('⚡ 同步性能分析');
+            console.table(this.steps);
+            console.log(`总耗时: ${Date.now() - this.startTime}ms`);
+            console.groupEnd();
+            return { ...this.steps, total: Date.now() - this.startTime };
+        }
+    };
+    perfTimings.mark('init');
+
     const singletonMap = new Map();
     (singletons || []).forEach(function (row) {
         if (row && row.domain) singletonMap.set(String(row.domain), row.payload || {});
     });
+    perfTimings.mark('singletonParse');
 
     const calc = singletonMap.get('calculator_settings');
     if (calc && typeof calc === 'object') {
@@ -22372,6 +22393,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             ? mergeObjectSettings(artistInfo, defaultSettings.artistInfo || {})
             : mgSafeClone(artistInfo, {});
     }
+    perfTimings.mark('calcSettingsApply');
 
     const grouped = {};
     const deletedByDomain = {};
@@ -22386,6 +22408,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
         if (!grouped[domain]) grouped[domain] = [];
         grouped[domain].push(row);
     });
+    perfTimings.mark('itemsGrouping');
 
     function getDeletedSet(domain) {
         return deletedByDomain[String(domain)] || new Set();
@@ -22399,6 +22422,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     const cloudProcess = rowsToPayload('process_settings');
     const cloudTemplates = rowsToPayload('templates');
     const cloudPresetTags = rowsToPayload('schedule_todo_preset_tags');
+    perfTimings.mark('cloudDataParse');
     
     // 计算同步摘要 - 扩展版本
     const mergeSummary = {
@@ -22475,6 +22499,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     const originalExtraPricingDown = mgSafeClone(defaultSettings.extraPricingDown || [], []);
     const originalPerItemExtraFees = mgSafeClone(defaultSettings.perItemExtraFees || [], []);
     const originalPresetTags = mgSafeClone(scheduleTodoPresetTags || [], []);
+    perfTimings.mark('snapshotSave');
 
     if (cloudProducts.length || !mergeMode) {
         const deletedSet = getDeletedSet('product_settings');
@@ -22549,6 +22574,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             }
         });
     }
+    perfTimings.mark('productMerge');
 
     if (cloudProcess.length || !mergeMode) {
         const deletedSet = getDeletedSet('process_settings');
@@ -22623,6 +22649,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             }
         });
     }
+    perfTimings.mark('processMerge');
 
     if (cloudTemplates.length || !mergeMode) {
         const deletedSet = getDeletedSet('templates');
@@ -22697,6 +22724,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             }
         });
     }
+    perfTimings.mark('templateMerge');
 
     const feeRows = grouped['other_fee_types'] || [];
     const feeObj = {};
@@ -22843,6 +22871,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
         // 保存预设标签
         saveScheduleTodoPresetTags();
     }
+    perfTimings.mark('otherSettingsMerge');
     
     // ------------------------------
     // 记录其他设置的变更详情
@@ -22961,6 +22990,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
             }
         }
     });
+    perfTimings.mark('changeTracking');
     
     // 更新同步摘要
     window.__mgLastSettingsMergeSummary = mergeSummary;
@@ -23011,9 +23041,13 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
         mergeSummary.presetTagsChanged.updated.length) {
         console.log('[sync-summary][settings-v2] 预设标签变更:', mergeSummary.presetTagsChanged);
     }
+    perfTimings.mark('logging');
 
     // 保险：V2 合并后再次去重，避免跨端脏数据复现
     mgSanitizeSettingsDuplicates();
+    
+    // 报告性能分析
+    perfTimings.report();
 }
 
 async function mgTryLoadSettingsFromCloudV2(client, artistId, mergeMode) {
