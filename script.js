@@ -9396,6 +9396,16 @@ function openReceiptDrawer() {
     if (window.innerWidth <= 768) {
         document.body.style.overflow = 'hidden';
     }
+
+    // 移动端：点击遮罩关闭小票；PC端：遮罩不拦截点击
+    const overlay = drawer.querySelector('.receipt-drawer-overlay');
+    if (overlay) {
+        overlay.onclick = function() {
+            if (window.innerWidth <= 768) {
+                handleReceiptDrawerClose();
+            }
+        };
+    }
 }
 
 // 关闭小票抽屉
@@ -9843,13 +9853,6 @@ function openAnonymousFeedbackBoard() {
     if (!modal) return;
     modal.classList.remove('d-none');
     modal.setAttribute('aria-hidden', 'false');
-    renderAnonymousFeedbackBoard();
-    const input = document.getElementById('feedbackBoardInput');
-    const count = document.getElementById('feedbackBoardCount');
-    if (input && count) {
-        count.textContent = `${(input.value || '').length}/300`;
-        setTimeout(() => { try { input.focus(); } catch (_) {} }, 0);
-    }
 }
 
 function closeAnonymousFeedbackBoard() {
@@ -17495,6 +17498,75 @@ function closeOrderRemarkModal() {
     saveData();
 }
 
+// 为备注弹窗添加拖动功能
+function initModalDraggable() {
+    const modals = [
+        document.getElementById('orderRemarkModal'),
+        document.getElementById('orderRemarkViewModal')
+    ];
+    
+    modals.forEach(modal => {
+        if (!modal) return;
+        
+        const content = modal.querySelector('.modal-content');
+        const header = modal.querySelector('.modal-header');
+        
+        if (!content || !header) return;
+        
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+        
+        // 初始化位置
+        content.style.left = '50%';
+        content.style.top = '50%';
+        content.style.transform = 'translate(-50%, -50%)';
+        content.style.margin = '0';
+        
+        header.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            // 获取当前位置（不考虑transform）
+            const rect = content.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+            
+            header.style.cursor = 'grabbing';
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            const x = e.clientX - startX;
+            const y = e.clientY - startY;
+            
+            // 直接设置位置，不使用transform
+            content.style.left = `${startLeft + x}px`;
+            content.style.top = `${startTop + y}px`;
+            content.style.transform = 'none';
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                header.style.cursor = 'move';
+            }
+        });
+        
+        header.addEventListener('mouseleave', () => {
+            if (isDragging) {
+                isDragging = false;
+                header.style.cursor = 'move';
+            }
+        });
+    });
+}
+
+// 初始化拖动功能
+initModalDraggable();
+
 // 生成并显示文件夹名
 function generateAndShowFolderName() {
     let item = null;
@@ -18658,7 +18730,7 @@ function renderExtraPricingDown() {
 // 更新扩展加价/折扣的某一选项的 value 或 name
 function updateExtraPricingOption(id, upDown, optKey, field, value) {
     const list = upDown === 'up' ? defaultSettings.extraPricingUp : defaultSettings.extraPricingDown;
-    const e = list && list.find(x => x.id === id);
+    const e = list && list.find(x => x.id == id);
     if (e && e.options && e.options[optKey]) {
         if (field === 'value') {
             e.options[optKey].value = parseFloat(value) || 0;
@@ -18667,6 +18739,8 @@ function updateExtraPricingOption(id, upDown, optKey, field, value) {
         }
         e.mg_updated_at = Date.now();
         saveData();
+        renderCoefficientSettings();
+        updateCalculatorCoefficientSelects();
     }
 }
 

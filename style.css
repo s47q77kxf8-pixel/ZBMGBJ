@@ -1577,11 +1577,12 @@ body {
 }
 
 .receipt-drawer.open {
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .receipt-drawer.open .receipt-drawer-overlay {
-    opacity: 1;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .receipt-drawer.open .receipt-drawer-panel {
@@ -2410,9 +2411,7 @@ input:focus, select:focus {
     background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
     z-index: 10050;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    display: block;
     padding: 1rem;
     box-sizing: border-box;
     overflow-y: auto;
@@ -2432,7 +2431,26 @@ input:focus, select:focus {
     box-shadow: var(--shadow-md);
     animation: slideIn 0.3s ease-out;
     flex-shrink: 0;
-    margin: auto;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    transition: none;
+}
+
+.modal-content-compact {
+    max-width: 400px;
+    padding: 1rem;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    transition: none;
+}
+
+.modal-header {
+    cursor: move;
+    user-select: none;
 }
 
 .modal-content-compact {
@@ -2531,10 +2549,10 @@ input:focus, select:focus {
     max-width: 480px;
 }
 
-/* 企划备注弹窗：显示在计算抽屉之上（计算抽屉 z-index 10002） */
+/* 企划备注弹窗：显示在计算抽屉和小票抽屉之上（小票抽屉 z-index 99997） */
 #orderRemarkModal,
 #orderRemarkViewModal {
-    z-index: 10010;
+    z-index: 99998;
 }
 
 /* 企划备注查看弹窗：限制高度，内容区可滚动，关闭按钮始终可见 */
@@ -5595,12 +5613,12 @@ input:checked + .toggle-slider:before {
 }
 
 .receipt-drawer.open {
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .receipt-drawer.open .receipt-drawer-overlay {
-    opacity: 1;
-    pointer-events: auto;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .receipt-drawer.open .receipt-drawer-panel {
@@ -5637,6 +5655,15 @@ input:checked + .toggle-slider:before {
         border-radius: 999px;
         background: var(--border-color);
         margin: 0.4rem auto 0;
+    }
+
+    .receipt-drawer.open {
+        pointer-events: auto;
+    }
+
+    .receipt-drawer.open .receipt-drawer-overlay {
+        pointer-events: auto;
+        opacity: 1;
     }
 }
 
@@ -7593,7 +7620,7 @@ input:checked + .toggle-slider:before {
 .schedule-todo-card-modal {
     position: fixed;
     inset: 0;
-    z-index: 10001;
+    z-index: 99999;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -10649,12 +10676,12 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
 }
 
 .receipt-drawer.open {
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .receipt-drawer.open .receipt-drawer-overlay {
-    opacity: 1;
-    pointer-events: auto;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .receipt-drawer.open .receipt-drawer-panel {
@@ -10696,6 +10723,15 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
         border-radius: 999px;
         background: var(--border-color);
         margin: 0.4rem auto 0;
+    }
+
+    .receipt-drawer.open {
+        pointer-events: auto;
+    }
+
+    .receipt-drawer.open .receipt-drawer-overlay {
+        pointer-events: auto;
+        opacity: 1;
     }
 }
 
