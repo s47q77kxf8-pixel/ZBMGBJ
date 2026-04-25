@@ -2757,10 +2757,25 @@
     <div id="folderNameModal" class="modal d-none">
         <div class="modal-content modal-content-compact">
             <div class="modal-header">
-                <h3>生成文件夹名</h3>
+                <h3>快捷排单</h3>
                 <span class="close" onclick="closeFolderNameModal()">&times;</span>
             </div>
             <div class="modal-body">
+                <div class="mb-3">
+                    <div class="d-flex gap-2">
+                        <div class="flex-1">
+                            <label class="form-label">开始时间</label>
+                            <input type="date" id="folderStartTimeInput" class="form-control">
+                        </div>
+                        <div class="flex-1">
+                            <label class="form-label">截稿时间</label>
+                            <input type="date" id="folderDeadlineInput" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <h4>生成文件夹名</h4>
+                </div>
                 <div class="mb-3">
                     <label class="form-label">时间选择</label>
                     <div class="folder-time-selector">
@@ -2781,6 +2796,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-compact secondary" onclick="copyFolderName()" title="复制文件夹名">复制</button>
+                <button type="button" class="btn btn-compact primary" onclick="updateOrderScheduleDates()" title="更新排单时间">保存排单</button>
                 <button type="button" class="btn btn-compact" onclick="closeFolderNameModal()">关闭</button>
             </div>
         </div>

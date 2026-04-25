@@ -17640,6 +17640,16 @@ function openFolderNameModalFromTodo(recordId) {
     folderSelectedTimeType = 'deadline';
     updateFolderTimeButtons('deadline');
 
+    // 填充开始时间和截稿时间
+    const startTimeInput = document.getElementById('folderStartTimeInput');
+    const deadlineInput = document.getElementById('folderDeadlineInput');
+    if (startTimeInput) {
+        startTimeInput.value = item.startDate ? formatDateForInput(item.startDate) : '';
+    }
+    if (deadlineInput) {
+        deadlineInput.value = item.deadline ? formatDateForInput(item.deadline) : '';
+    }
+
     const folderName = generateFolderName(item, 'deadline');
     const folderNameInput = document.getElementById('generatedFolderName');
     if (folderNameInput) {
@@ -17652,12 +17662,59 @@ function openFolderNameModalFromTodo(recordId) {
     }
 }
 
+// 格式化日期为input日期格式 (YYYY-MM-DD)
+function formatDateForInput(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        return d.toISOString().split('T')[0];
+    } catch (e) {
+        return '';
+    }
+}
+
+// 更新排单时间
+function updateOrderScheduleDates() {
+    if (!folderModalRecordId) return;
+    
+    const item = history.find(function (h) { return h.id === folderModalRecordId; });
+    if (!item) return;
+    
+    const startTimeInput = document.getElementById('folderStartTimeInput');
+    const deadlineInput = document.getElementById('folderDeadlineInput');
+    
+    if (startTimeInput && startTimeInput.value) {
+        item.startDate = startTimeInput.value;
+    }
+    if (deadlineInput && deadlineInput.value) {
+        item.deadline = deadlineInput.value;
+    }
+    
+    // 保存数据
+    saveData();
+    
+    // 更新文件夹名
+    updateFolderName();
+    
+    showGlobalToast('排单时间已更新');
+}
+
 // 更新文件夹名（根据选中的时间类型）
 function updateFolderName() {
     let item = null;
 
     if (folderModalRecordId) {
         item = history.find(function (h) { return h.id === folderModalRecordId; });
+        // 先更新item的开始时间和截稿时间
+        const startTimeInput = document.getElementById('folderStartTimeInput');
+        const deadlineInput = document.getElementById('folderDeadlineInput');
+        if (startTimeInput && startTimeInput.value) {
+            item.startDate = startTimeInput.value;
+        }
+        if (deadlineInput && deadlineInput.value) {
+            item.deadline = deadlineInput.value;
+        }
     } else if (currentRemarkRecordId) {
         item = history.find(function (h) { return h.id === currentRemarkRecordId; });
     } else {
@@ -17713,6 +17770,23 @@ function selectFolderTimeType(timeType) {
 function onFolderCustomTimeChange() {
     updateFolderName();
 }
+
+// 开始时间或截稿时间变化时更新文件夹名
+function initFolderDateInputs() {
+    const startTimeInput = document.getElementById('folderStartTimeInput');
+    const deadlineInput = document.getElementById('folderDeadlineInput');
+    if (startTimeInput) {
+        startTimeInput.addEventListener('change', updateFolderName);
+    }
+    if (deadlineInput) {
+        deadlineInput.addEventListener('change', updateFolderName);
+    }
+}
+
+// 初始化日期输入框事件监听
+document.addEventListener('DOMContentLoaded', function() {
+    initFolderDateInputs();
+});
 
 // 复制文件夹名到剪贴板
 function copyFolderName() {
