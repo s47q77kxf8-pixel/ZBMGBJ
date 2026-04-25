@@ -287,6 +287,9 @@
             <path d="M6 4h10l2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             <path d="M12 9v6M9 12h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24">
+            <path d="M4 4h6l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </symbol>
         <symbol id="i-copy-new" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             <path d="M14 2v6h6M12 11v6M9 14h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -2475,9 +2478,19 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-note"></use></svg>
                             <span>备注</span>
                         </button>
+                    </div>
+                    <div class="schedule-todo-card-modal-row">
                         <button type="button" class="schedule-todo-card-modal-btn danger" onclick="scheduleTodoCardAction('delete')" title="删除">
                             <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                             <span>删除</span>
+                        </button>
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnCustomTag" onclick="scheduleTodoCardAction('custom_tag')" title="标签">
+                            <span class="custom-tag-circle-icon" aria-hidden="true">#</span>
+                            <span>标签</span>
+                        </button>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('folder')" title="排单生成文件夹">
+                            <svg class="icon" aria-hidden="true"><use href="#i-folder"></use></svg>
+                            <span>排单</span>
                         </button>
                     </div>
                     <div class="schedule-todo-card-modal-row">
@@ -2492,10 +2505,6 @@
                         <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnNormal" onclick="scheduleTodoCardAction('normal')" title="结单">
                             <svg class="icon" aria-hidden="true"><use href="#i-check-circle"></use></svg>
                             <span>结单</span>
-                        </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnCustomTag" onclick="scheduleTodoCardAction('custom_tag')" title="标签">
-                            <span class="custom-tag-circle-icon" aria-hidden="true">#</span>
-                            <span>标签</span>
                         </button>
                     </div>
                 </div>
@@ -2739,7 +2748,6 @@
             </div>
             <div class="modal-footer">
                 <button type="button" id="smartExtractBtn" class="btn btn-compact primary" onclick="smartParseOrderRemark()" title="根据备注内容自动识别制品、赠品并填入计算表">智能提取</button>
-                <button type="button" class="btn btn-compact secondary" onclick="generateAndShowFolderName()" title="生成文件夹名并显示">生成文件夹名</button>
                 <button type="button" class="btn btn-compact secondary" onclick="copyOrderRemark()">复制</button>
                 <button type="button" class="btn btn-compact" onclick="closeOrderRemarkModal()">确定</button>
             </div>
@@ -2749,10 +2757,23 @@
     <div id="folderNameModal" class="modal d-none">
         <div class="modal-content modal-content-compact">
             <div class="modal-header">
-                <h3>生成的文件夹名</h3>
+                <h3>生成文件夹名</h3>
                 <span class="close" onclick="closeFolderNameModal()">&times;</span>
             </div>
             <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">时间选择</label>
+                    <div class="folder-time-selector">
+                        <div class="folder-time-options" id="folderTimeOptions">
+                            <button type="button" class="folder-time-btn active" data-time-type="deadline" onclick="selectFolderTimeType('deadline')">截稿时间</button>
+                            <button type="button" class="folder-time-btn" data-time-type="startDate" onclick="selectFolderTimeType('startDate')">开始时间</button>
+                            <button type="button" class="folder-time-btn" data-time-type="timestamp" onclick="selectFolderTimeType('timestamp')">下单时间</button>
+                            <button type="button" class="folder-time-btn" data-time-type="today" onclick="selectFolderTimeType('today')">今日</button>
+                            <button type="button" class="folder-time-btn" data-time-type="custom" onclick="selectFolderTimeType('custom')">自定义</button>
+                        </div>
+                        <input type="date" id="folderCustomTimeInput" class="form-control mt-2 d-none" onchange="onFolderCustomTimeChange()">
+                    </div>
+                </div>
                 <div class="mb-3">
                     <label class="form-label">文件夹名</label>
                     <input type="text" id="generatedFolderName" class="form-control" readonly>

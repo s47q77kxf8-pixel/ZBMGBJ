@@ -12212,12 +12212,30 @@ function hasCrossOrderSameModel(item) {
 }
 
 // 生成文件夹名
-function generateFolderName(item) {
+// timeType: 指定使用的时间类型，不指定则按默认顺序（截稿时间 > 开始时间 > 下单时间）
+// customTime: 当timeType为'custom'或'today'时使用的自定义时间
+function generateFolderName(item, timeType, customTime) {
     if (!item) return '';
-    
-    // 1. 格式化时间（优先截稿时间，无截稿为开始时间，都无时使用下单时间）
+
+    // 1. 格式化时间（根据timeType或默认顺序）
     let timeStr = '';
-    let timeToUse = item.deadline || item.startDate || item.timestamp;
+    let timeToUse = null;
+
+    if (timeType === 'today') {
+        timeToUse = new Date().toISOString();
+    } else if (timeType === 'custom' && customTime) {
+        timeToUse = customTime;
+    } else if (timeType === 'deadline') {
+        timeToUse = item.deadline;
+    } else if (timeType === 'startDate') {
+        timeToUse = item.startDate;
+    } else if (timeType === 'timestamp') {
+        timeToUse = item.timestamp;
+    } else {
+        // 默认顺序：截稿时间 > 开始时间 > 下单时间
+        timeToUse = item.deadline || item.startDate || item.timestamp;
+    }
+
     if (timeToUse) {
         try {
             const d = new Date(timeToUse);
@@ -12609,12 +12627,15 @@ function scheduleTodoCardAction(action) {
         openScheduleTodoTagModal(id);
         return;
     }
+    if (action === 'folder') {
+        closeScheduleTodoCardModal();
+        openFolderNameModalFromTodo(id);
+        return;
+    }
 
     closeScheduleTodoCardModal();
     if (action === 'edit') editHistoryItem(id);
     else if (action === 'receipt') { 
-        // todo卡片在排单页，关闭小票后应返回排单页，不要调用setReceiptFromRecord()
-        // 需要确保pageBeforeReceiptDrawer设置为'quote'
         window.pageBeforeReceiptDrawer = 'quote';
         window.receiptOpenedFromRecord = false;
         loadQuoteFromHistory(id); 
@@ -17572,41 +17593,125 @@ function initModalDraggable() {
 // 初始化拖动功能
 initModalDraggable();
 
-// 生成并显示文件夹名
+// 全局变量：文件夹名弹窗当前选中的时间类型和记录ID
+let folderModalRecordId = null;
+let folderSelectedTimeType = 'deadline';
+
+// 生成并显示文件夹名（从备注弹窗打开，保持原有逻辑）
 function generateAndShowFolderName() {
     let item = null;
-    
+
     if (currentRemarkRecordId) {
-        // 从记录页打开，获取历史记录
         item = history.find(function (h) { return h.id === currentRemarkRecordId; });
     } else {
-        // 从计算页打开，获取当前报价数据
         item = getCurrentQuoteData();
     }
-    
+
     if (!item) {
         alert('无法获取订单数据');
         return;
     }
-    
-    // 生成文件夹名
-    const folderName = generateFolderName(item);
-    
-    if (!folderName) {
-        alert('生成文件夹名失败');
-        return;
-    }
-    
-    // 显示文件夹名模态框
+
+    folderModalRecordId = currentRemarkRecordId;
+    folderSelectedTimeType = 'deadline';
+    updateFolderTimeButtons('deadline');
+
+    const folderName = generateFolderName(item, 'deadline');
     const folderNameInput = document.getElementById('generatedFolderName');
     if (folderNameInput) {
         folderNameInput.value = folderName;
     }
-    
+
     const modal = document.getElementById('folderNameModal');
     if (modal) {
         modal.classList.remove('d-none');
     }
+}
+
+// 从todo卡片打开文件夹名弹窗
+function openFolderNameModalFromTodo(recordId) {
+    var item = history.find(function (h) { return h.id === recordId; });
+    if (!item) {
+        alert('无法获取订单数据');
+        return;
+    }
+
+    folderModalRecordId = recordId;
+    folderSelectedTimeType = 'deadline';
+    updateFolderTimeButtons('deadline');
+
+    const folderName = generateFolderName(item, 'deadline');
+    const folderNameInput = document.getElementById('generatedFolderName');
+    if (folderNameInput) {
+        folderNameInput.value = folderName;
+    }
+
+    const modal = document.getElementById('folderNameModal');
+    if (modal) {
+        modal.classList.remove('d-none');
+    }
+}
+
+// 更新文件夹名（根据选中的时间类型）
+function updateFolderName() {
+    let item = null;
+
+    if (folderModalRecordId) {
+        item = history.find(function (h) { return h.id === folderModalRecordId; });
+    } else if (currentRemarkRecordId) {
+        item = history.find(function (h) { return h.id === currentRemarkRecordId; });
+    } else {
+        item = getCurrentQuoteData();
+    }
+
+    if (!item) return;
+
+    let folderName;
+    if (folderSelectedTimeType === 'custom') {
+        const customTimeInput = document.getElementById('folderCustomTimeInput');
+        const customTime = customTimeInput ? customTimeInput.value : '';
+        folderName = generateFolderName(item, 'custom', customTime);
+    } else {
+        folderName = generateFolderName(item, folderSelectedTimeType);
+    }
+
+    const folderNameInput = document.getElementById('generatedFolderName');
+    if (folderNameInput) {
+        folderNameInput.value = folderName;
+    }
+}
+
+// 更新时间选择按钮状态
+function updateFolderTimeButtons(activeType) {
+    const buttons = document.querySelectorAll('.folder-time-btn');
+    buttons.forEach(function(btn) {
+        if (btn.dataset.timeType === activeType) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    const customInput = document.getElementById('folderCustomTimeInput');
+    if (customInput) {
+        if (activeType === 'custom') {
+            customInput.classList.remove('d-none');
+        } else {
+            customInput.classList.add('d-none');
+        }
+    }
+}
+
+// 选择时间类型
+function selectFolderTimeType(timeType) {
+    folderSelectedTimeType = timeType;
+    updateFolderTimeButtons(timeType);
+    updateFolderName();
+}
+
+// 自定义时间变化时更新文件夹名
+function onFolderCustomTimeChange() {
+    updateFolderName();
 }
 
 // 复制文件夹名到剪贴板
