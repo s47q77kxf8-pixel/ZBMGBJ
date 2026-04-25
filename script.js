@@ -10633,6 +10633,11 @@ function getOrderItemQuantityTotal(item) {
 
 // 企划已完成的制品数量（按 quantity 求和，支持部分完成）
 function getOrderDoneQuantityTotal(item) {
+    // 已结单的企划视为全部完成
+    if (item.settlement && item.settlement.type === 'normal') {
+        return getOrderItemQuantityTotal(item);
+    }
+    
     ensureProductDoneStates(item);
     const products = Array.isArray(item.productPrices) ? item.productPrices : [];
     const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
