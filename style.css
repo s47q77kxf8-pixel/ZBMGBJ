@@ -2524,7 +2524,7 @@ input:focus, select:focus {
     box-sizing: border-box;
     font-family: inherit;
     min-height: 200px;
-    max-height: 400px;
+    max-height: none;
 }
 
 .modal-footer {
