@@ -2416,6 +2416,7 @@ input:focus, select:focus {
     box-sizing: border-box;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    pointer-events: none;
 }
 
 .modal-content {
@@ -2436,6 +2437,7 @@ input:focus, select:focus {
     left: 50%;
     transform: translate(-50%, -50%);
     transition: none;
+    pointer-events: auto;
 }
 
 .modal-content-compact {
