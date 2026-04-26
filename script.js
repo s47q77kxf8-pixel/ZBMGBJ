@@ -17700,37 +17700,6 @@ function updateOrderScheduleDates() {
     showGlobalToast('排单时间已更新');
 }
 
-function setQuickDate(field, option) {
-    const today = new Date();
-    let targetDate;
-    
-    if (option === 'today') {
-        targetDate = today;
-    } else if (option === 'tomorrow') {
-        targetDate = new Date(today);
-        targetDate.setDate(today.getDate() + 1);
-    } else if (option === 'nextweek') {
-        targetDate = new Date(today);
-        targetDate.setDate(today.getDate() + 7);
-    }
-    
-    const dateStr = targetDate.toISOString().split('T')[0];
-    
-    if (field === 'start') {
-        const startInput = document.getElementById('folderStartTimeInput');
-        if (startInput) {
-            startInput.value = dateStr;
-        }
-    } else if (field === 'deadline') {
-        const deadlineInput = document.getElementById('folderDeadlineInput');
-        if (deadlineInput) {
-            deadlineInput.value = dateStr;
-        }
-    }
-    
-    onScheduleDateChange();
-}
-
 function onScheduleDateChange() {
     updateFolderName();
 }
