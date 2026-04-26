@@ -7639,6 +7639,7 @@ input:checked + .toggle-slider:before {
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(4px);
+    pointer-events: none;
 }
 .schedule-todo-card-modal-content {
     position: relative;
@@ -9039,6 +9040,7 @@ html.theme-dark .settlement-preview {
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
+    pointer-events: none;
 }
 .history-record-content {
     position: relative;
