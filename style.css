@@ -2510,7 +2510,6 @@ input:focus, select:focus {
     margin: 1rem 0;
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
 
@@ -2521,9 +2520,11 @@ input:focus, select:focus {
     border-radius: var(--radius-md);
     font-size: 0.9375rem;
     line-height: 1.5;
-    resize: none;
+    resize: vertical;
     box-sizing: border-box;
     font-family: inherit;
+    min-height: 200px;
+    max-height: 400px;
 }
 
 .modal-footer {
