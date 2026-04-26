@@ -17644,7 +17644,7 @@ function openFolderNameModalFromTodo(recordId) {
     const startTimeInput = document.getElementById('folderStartTimeInput');
     const deadlineInput = document.getElementById('folderDeadlineInput');
     if (startTimeInput) {
-        startTimeInput.value = item.startDate ? formatDateForInput(item.startDate) : '';
+        startTimeInput.value = item.startDate ? formatDateForInput(item.startDate) : (item.startTime ? formatDateForInput(item.startTime) : '');
     }
     if (deadlineInput) {
         deadlineInput.value = item.deadline ? formatDateForInput(item.deadline) : '';
@@ -17686,6 +17686,7 @@ function updateOrderScheduleDates() {
     
     if (startTimeInput && startTimeInput.value) {
         item.startDate = startTimeInput.value;
+        item.startTime = startTimeInput.value; // 同时更新startTime以保持一致
     }
     if (deadlineInput && deadlineInput.value) {
         item.deadline = deadlineInput.value;
@@ -17725,6 +17726,7 @@ function updateFolderName() {
         const deadlineInput = document.getElementById('folderDeadlineInput');
         if (startTimeInput && startTimeInput.value) {
             item.startDate = startTimeInput.value;
+            item.startTime = startTimeInput.value; // 同时更新startTime以保持一致
         }
         if (deadlineInput && deadlineInput.value) {
             item.deadline = deadlineInput.value;
