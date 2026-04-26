@@ -17697,6 +17697,16 @@ function updateOrderScheduleDates() {
     // 更新文件夹名
     updateFolderName();
     
+    // 重新渲染排单页面的todo卡片，使时间变化立即显示
+    if (typeof renderScheduleTodoSection === 'function') {
+        renderScheduleTodoSection();
+    }
+    
+    // 重新渲染排单日历
+    if (typeof renderScheduleCalendar === 'function') {
+        renderScheduleCalendar();
+    }
+    
     showGlobalToast('排单时间已更新');
 }
 
