@@ -8027,7 +8027,6 @@ input:checked + .toggle-slider:before {
     margin: 0;
 }
 .schedule-section-secondary {
-    background: var(--bg-secondary, #fafafa);
 }
 .schedule-section-secondary .schedule-section-title {
     color: var(--text-light, #999);
