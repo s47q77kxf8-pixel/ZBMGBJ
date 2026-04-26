@@ -2521,7 +2521,7 @@ input:focus, select:focus {
     border-radius: var(--radius-md);
     font-size: 0.9375rem;
     line-height: 1.5;
-    resize: vertical;
+    resize: none;
     box-sizing: border-box;
     font-family: inherit;
 }
