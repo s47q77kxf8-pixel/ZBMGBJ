@@ -2755,49 +2755,55 @@
     </div>
     <!-- 文件夹名生成结果弹窗 -->
     <div id="folderNameModal" class="modal d-none">
-        <div class="modal-content modal-content-compact">
+        <div class="modal-content modal-content-compact modal-schedule">
             <div class="modal-header">
                 <h3>快捷排单</h3>
                 <span class="close" onclick="closeFolderNameModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <div class="d-flex gap-2">
-                        <div class="flex-1">
-                            <label class="form-label">开始时间</label>
-                            <input type="date" id="folderStartTimeInput" class="form-control">
+                <div class="schedule-section">
+                    <div class="schedule-section-header">
+                        <span class="schedule-section-title">排单时间</span>
+                    </div>
+                    <div class="schedule-date-row">
+                        <div class="schedule-date-field">
+                            <label class="form-label-sm">开始</label>
+                            <input type="date" id="folderStartTimeInput" class="form-control form-control-sm" onchange="onScheduleDateChange()">
                         </div>
-                        <div class="flex-1">
-                            <label class="form-label">截稿时间</label>
-                            <input type="date" id="folderDeadlineInput" class="form-control">
+                        <div class="schedule-date-arrow">→</div>
+                        <div class="schedule-date-field">
+                            <label class="form-label-sm">截稿</label>
+                            <input type="date" id="folderDeadlineInput" class="form-control form-control-sm" onchange="onScheduleDateChange()">
                         </div>
                     </div>
-                </div>
-                <div class="mb-3">
-                    <h4>生成文件夹名</h4>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">时间选择</label>
-                    <div class="folder-time-selector">
-                        <div class="folder-time-options" id="folderTimeOptions">
-                            <button type="button" class="folder-time-btn active" data-time-type="deadline" onclick="selectFolderTimeType('deadline')">截稿时间</button>
-                            <button type="button" class="folder-time-btn" data-time-type="startDate" onclick="selectFolderTimeType('startDate')">开始时间</button>
-                            <button type="button" class="folder-time-btn" data-time-type="timestamp" onclick="selectFolderTimeType('timestamp')">下单时间</button>
-                            <button type="button" class="folder-time-btn" data-time-type="today" onclick="selectFolderTimeType('today')">今日</button>
-                            <button type="button" class="folder-time-btn" data-time-type="custom" onclick="selectFolderTimeType('custom')">自定义</button>
-                        </div>
-                        <input type="date" id="folderCustomTimeInput" class="form-control mt-2 d-none" onchange="onFolderCustomTimeChange()">
+                    <div class="schedule-quick-btns">
+                        <button type="button" class="quick-btn" onclick="setQuickDate('start', 'today')">今天</button>
+                        <button type="button" class="quick-btn" onclick="setQuickDate('start', 'tomorrow')">明天</button>
+                        <button type="button" class="quick-btn" onclick="setQuickDate('deadline', 'today')">今天</button>
+                        <button type="button" class="quick-btn" onclick="setQuickDate('deadline', 'tomorrow')">明天</button>
+                        <button type="button" class="quick-btn" onclick="setQuickDate('deadline', 'nextweek')">下周</button>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">文件夹名</label>
-                    <input type="text" id="generatedFolderName" class="form-control" readonly>
+                <div class="schedule-divider"></div>
+                <div class="schedule-section schedule-section-secondary">
+                    <div class="schedule-section-header">
+                        <span class="schedule-section-title">文件夹名</span>
+                    </div>
+                    <div class="folder-time-options" id="folderTimeOptions">
+                        <button type="button" class="folder-time-btn active" data-time-type="deadline" onclick="selectFolderTimeType('deadline')">截稿</button>
+                        <button type="button" class="folder-time-btn" data-time-type="startDate" onclick="selectFolderTimeType('startDate')">开始</button>
+                        <button type="button" class="folder-time-btn" data-time-type="timestamp" onclick="selectFolderTimeType('timestamp')">下单</button>
+                        <button type="button" class="folder-time-btn" data-time-type="today" onclick="selectFolderTimeType('today')">今日</button>
+                        <button type="button" class="folder-time-btn" data-time-type="custom" onclick="selectFolderTimeType('custom')">自定义</button>
+                    </div>
+                    <input type="date" id="folderCustomTimeInput" class="form-control form-control-sm mt-2 d-none" onchange="onFolderCustomTimeChange()">
+                    <input type="text" id="generatedFolderName" class="form-control form-control-sm mt-2" readonly placeholder="选择时间后生成">
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-compact secondary" onclick="copyFolderName()" title="复制文件夹名">复制</button>
-                <button type="button" class="btn btn-compact primary" onclick="updateOrderScheduleDates()" title="更新排单时间">保存排单</button>
-                <button type="button" class="btn btn-compact" onclick="closeFolderNameModal()">关闭</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="copyFolderName()" title="复制文件夹名">复制</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="updateOrderScheduleDates()" title="保存排单时间">保存排单</button>
+                <button type="button" class="btn btn-sm" onclick="closeFolderNameModal()">关闭</button>
             </div>
         </div>
     </div>
