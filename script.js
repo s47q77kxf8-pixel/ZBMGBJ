@@ -17692,8 +17692,18 @@ function updateOrderScheduleDates() {
         item.deadline = deadlineInput.value;
     }
     
-    // 保存数据
+    // 更新最后修改时间戳，确保云端不会覆盖本地修改
+    item.mg_updated_at = Date.now();
+    
+    // 保存数据到本地
     saveData();
+    
+    // 同步到云端
+    if (mgIsCloudEnabled()) {
+        mgCloudUpsertOrder(item, 0, null, 'schedule').catch(err => {
+            console.error('云端同步排单时间失败:', err);
+        });
+    }
     
     // 更新文件夹名
     updateFolderName();
