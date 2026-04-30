@@ -21438,6 +21438,67 @@ async function mgCloudFetchOrders(filters = {}) {
     }
 }
 
+// 智能合并历史记录：比较本地和云端，保留较新版本
+function smartMergeHistory(localHistory, cloudHistory) {
+    const result = [];
+    const localMap = new Map();
+    const cloudMap = new Map();
+    
+    (localHistory || []).forEach(item => {
+        if (item && item.id) {
+            localMap.set(String(item.id), item);
+        }
+    });
+    (cloudHistory || []).forEach(item => {
+        if (item && item.id) {
+            cloudMap.set(String(item.id), item);
+        }
+    });
+    
+    const allIds = new Set([...localMap.keys(), ...cloudMap.keys()]);
+    const mergeLog = [];
+    
+    allIds.forEach(id => {
+        const localItem = localMap.get(id);
+        const cloudItem = cloudMap.get(id);
+        
+        if (localItem && cloudItem) {
+            const localTs = localItem.mg_updated_at || 0;
+            const cloudTs = cloudItem.mg_updated_at || 0;
+            
+            if (localTs > cloudTs) {
+                result.push(localItem);
+                mergeLog.push({ id: id, action: 'kept-local', reason: 'newer' });
+            } else {
+                result.push(cloudItem);
+                mergeLog.push({ id: id, action: 'used-cloud', reason: 'newer' });
+            }
+        } else if (localItem) {
+            result.push(localItem);
+            mergeLog.push({ id: id, action: 'kept-local', reason: 'only-local' });
+        } else if (cloudItem) {
+            result.push(cloudItem);
+            mergeLog.push({ id: id, action: 'added-cloud', reason: 'only-cloud' });
+        }
+    });
+    
+    if (mergeLog.length > 0) {
+        console.group('🔄 历史记录智能合并');
+        console.log('合并统计:', {
+            total: result.length,
+            keptLocal: mergeLog.filter(m => m.action.startsWith('kept-local')).length,
+            usedCloud: mergeLog.filter(m => m.action.startsWith('used-cloud') || m.action.startsWith('added-cloud')).length
+        });
+        console.log('详细日志:', mergeLog.slice(0, 20));
+        if (mergeLog.length > 20) {
+            console.log(`...还有 ${mergeLog.length - 20} 条`);
+        }
+        console.groupEnd();
+    }
+    
+    return result;
+}
+
 // 跟踪未同步的企划ID
 let unsyncedOrderIds = new Set();
 
@@ -22105,10 +22166,11 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
             }, 6);
             report(uploadCount, true);
             
-            // 拉取所有企划并合并
+            // 拉取所有企划并智能合并
             try {
-                const mergedHistory = await mgCloudFetchOrders();
-                if (mergedHistory.length > 0) {
+                const cloudHistory = await mgCloudFetchOrders();
+                if (cloudHistory.length > 0) {
+                    const mergedHistory = smartMergeHistory(history, cloudHistory);
                     history = mergedHistory;
                     saveData();
                 }
@@ -24421,10 +24483,11 @@ init = function() {
                     }
                 }, 4);
                 
-                // 拉取所有企划（包含刚上传的）
+                // 拉取所有企划（包含刚上传的）并智能合并
                 try {
-                    const mergedHistory = await mgCloudFetchOrders();
-                    if (mergedHistory.length > 0) {
+                    const cloudHistory = await mgCloudFetchOrders();
+                    if (cloudHistory.length > 0) {
+                        const mergedHistory = smartMergeHistory(history, cloudHistory);
                         history = mergedHistory;
                         if (typeof saveData === 'function') saveData();
                     }
