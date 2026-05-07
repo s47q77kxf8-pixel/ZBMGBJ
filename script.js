@@ -23,6 +23,118 @@ let deletedExternalIdsSyncTimer = null;
 let lastOrdersSyncAt = '';
 let cloudOrderTombstoneSkipCount = 0;
 
+// ========== 回收站功能 ==========
+const MG_ORDER_TRASH_KEY = 'mg_order_trash_v1';
+const MG_TRASH_RETENTION_DAYS = 30;
+const MG_TRASH_MAX_ITEMS = 100;
+let mgOrderTrash = { items: [] };
+
+function loadTrash() {
+    try {
+        const raw = localStorage.getItem(MG_ORDER_TRASH_KEY);
+        if (raw) {
+            mgOrderTrash = JSON.parse(raw);
+            if (!mgOrderTrash.items) mgOrderTrash.items = [];
+        }
+    } catch (e) {
+        mgOrderTrash = { items: [] };
+    }
+}
+
+function saveTrash() {
+    try {
+        localStorage.setItem(MG_ORDER_TRASH_KEY, JSON.stringify(mgOrderTrash));
+    } catch (e) {
+        console.error('保存回收站失败:', e);
+    }
+}
+
+function moveToTrash(item) {
+    if (!item || !item.id) return;
+    loadTrash();
+    const extId = item.external_id || item.id;
+    if (mgOrderTrash.items.some(t => t.id === item.id)) return;
+    const trashItem = {
+        id: item.id,
+        external_id: extId,
+        deletedAt: Date.now(),
+        data: JSON.parse(JSON.stringify(item))
+    };
+    mgOrderTrash.items.unshift(trashItem);
+    if (mgOrderTrash.items.length > MG_TRASH_MAX_ITEMS) {
+        mgOrderTrash.items = mgOrderTrash.items.slice(0, MG_TRASH_MAX_ITEMS);
+    }
+    saveTrash();
+    updateTrashBadge();
+}
+
+function restoreFromTrash(orderId) {
+    const idx = mgOrderTrash.items.findIndex(t => t.id === orderId);
+    if (idx === -1) return false;
+    const trashItem = mgOrderTrash.items[idx];
+    const existingIndex = history.findIndex(h => h.id === orderId);
+    if (existingIndex !== -1) {
+        history[existingIndex] = trashItem.data;
+    } else {
+        history.push(trashItem.data);
+    }
+    mgOrderTrash.items.splice(idx, 1);
+    saveTrash();
+    saveData();
+    applyHistoryFilters();
+    if (document.getElementById('recordContainer')) applyRecordFilters();
+    updateTrashBadge();
+    return true;
+}
+
+function permanentDelete(orderId) {
+    const idx = mgOrderTrash.items.findIndex(t => t.id === orderId);
+    if (idx === -1) return;
+    mgOrderTrash.items.splice(idx, 1);
+    saveTrash();
+    updateTrashBadge();
+    renderTrashDrawer();
+}
+
+function cleanupExpiredTrash() {
+    loadTrash();
+    const now = Date.now();
+    const threshold = MG_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const before = mgOrderTrash.items.length;
+    mgOrderTrash.items = mgOrderTrash.items.filter(t => (now - t.deletedAt) < threshold);
+    if (mgOrderTrash.items.length < before) {
+        saveTrash();
+        updateTrashBadge();
+    }
+}
+
+function getTrashCount() {
+    return mgOrderTrash.items ? mgOrderTrash.items.length : 0;
+}
+
+function updateTrashBadge() {
+    const badge = document.getElementById('trashBadge');
+    if (!badge) return;
+    const count = getTrashCount();
+    if (count > 0) {
+        badge.textContent = count;
+        badge.classList.remove('d-none');
+    } else {
+        badge.classList.add('d-none');
+    }
+}
+
+function getTrashTimeAgo(deletedAt) {
+    const diff = Date.now() - deletedAt;
+    const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+    const hours = Math.floor(diff / (60 * 60 * 1000));
+    const minutes = Math.floor(diff / (60 * 1000));
+    if (days > 0) return days + '天前';
+    if (hours > 0) return hours + '小时前';
+    if (minutes > 0) return minutes + '分钟前';
+    return '刚刚';
+}
+
 // 匿名留言板（本地存储）
 const FEEDBACK_BOARD_STORAGE_KEY = 'mg_anonymous_feedback_board_v1';
 
@@ -740,7 +852,12 @@ function init() {
 
     // 加载未同步企划列表
     loadUnsyncedOrders();
-    
+
+    // 加载并清理回收站
+    loadTrash();
+    cleanupExpiredTrash();
+    updateTrashBadge();
+
     // 昼夜模式：先应用主题，再监听系统偏好
     applyTheme();
     if (window.matchMedia) {
@@ -3554,6 +3671,164 @@ function closeRecordFilterDrawer() {
         showPage(returnPage);
         window.pageBeforeRecordFilterDrawer = null;
     }
+}
+
+function toggleTrashDrawer() {
+    const drawer = document.getElementById('trashDrawer');
+    if (!drawer) return;
+    if (drawer.classList.contains('d-none') || !drawer.classList.contains('active')) {
+        loadTrash();
+        renderTrashDrawer();
+        drawer.classList.remove('d-none');
+        drawer.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    } else {
+        closeTrashDrawer();
+    }
+}
+
+function closeTrashDrawer() {
+    const drawer = document.getElementById('trashDrawer');
+    if (drawer) {
+        drawer.classList.remove('active');
+        drawer.classList.add('d-none');
+        drawer.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    }
+}
+
+let selectedTrashIds = new Set();
+
+function toggleSelectTrash(orderId) {
+    if (selectedTrashIds.has(orderId)) {
+        selectedTrashIds.delete(orderId);
+    } else {
+        selectedTrashIds.add(orderId);
+    }
+    renderTrashDrawer();
+}
+
+function batchRestoreTrash() {
+    if (selectedTrashIds.size === 0) return;
+    const ids = Array.from(selectedTrashIds);
+    ids.forEach(id => restoreFromTrash(id));
+    selectedTrashIds.clear();
+    closeTrashDrawer();
+}
+
+function batchPermanentDeleteTrash() {
+    if (selectedTrashIds.size === 0) return;
+    if (!confirm('确定永久删除选中的 ' + selectedTrashIds.size + ' 条记录？')) return;
+    const ids = Array.from(selectedTrashIds);
+    ids.forEach(id => permanentDelete(id));
+    selectedTrashIds.clear();
+}
+
+function renderTrashDrawer() {
+    const body = document.getElementById('trashDrawerBody');
+    if (!body) return;
+    loadTrash();
+    const items = mgOrderTrash.items || [];
+    if (items.length === 0) {
+        body.innerHTML = '<p style="text-align:center;color:#999;padding:40px 0;">回收站为空</p>';
+        return;
+    }
+    let html = '<p style="color:#666;font-size:13px;margin-bottom:12px;">已删除的企划可在30天内恢复</p>';
+    // 批量操作栏
+    html += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
+    html += '<button type="button" onclick="toggleSelectAllTrash();" class="btn secondary" style="padding:6px 12px;font-size:12px;">';
+    html += selectedTrashIds.size === items.length ? '取消全选' : '全选';
+    html += '</button>';
+    html += '<button type="button" onclick="batchRestoreTrash();" class="btn" style="padding:6px 12px;font-size:12px;" ';
+    html += selectedTrashIds.size === 0 ? 'disabled' : '';
+    html += '>批量恢复</button>';
+    html += '<button type="button" onclick="batchPermanentDeleteTrash();" class="btn danger" style="padding:6px 12px;font-size:12px;" ';
+    html += selectedTrashIds.size === 0 ? 'disabled' : '';
+    html += '>批量删除</button>';
+    html += '<span style="font-size:12px;color:#666;margin-left:auto;line-height:32px;">' + selectedTrashIds.size + '/' + items.length + ' 选中</span>';
+    html += '</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+    items.forEach(item => {
+        const name = item.data && item.data.clientName ? item.data.clientName : (item.data && item.data.client ? item.data.client : '未知');
+        const timeAgo = getTrashTimeAgo(item.deletedAt);
+        const isSelected = selectedTrashIds.has(item.id);
+        // 为了避免id特殊字符问题，我们用数组索引
+        const index = mgOrderTrash.items.indexOf(item);
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f5f5f5;border-radius:8px;">';
+        html += '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">';
+        html += '<input type="checkbox" style="width:18px;height:18px;cursor:pointer;z-index:10;position:relative;" ';
+        html += 'onclick="toggleSelectTrashByIndex(' + index + ');" ';
+        html += isSelected ? 'checked' : '';
+        html += '>';
+        html += '<div style="flex:1;min-width:0;">';
+        html += '<div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + name + '</div>';
+        html += '<div style="font-size:12px;color:#999;">' + timeAgo + '删除</div>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div style="display:flex;gap:6px;flex-shrink:0;">';
+        html += '<button type="button" class="btn secondary" style="padding:4px 10px;font-size:12px;" onclick="singleRestoreTrashByIndex(' + index + ');return false;">恢复</button>';
+        html += '<button type="button" class="btn danger" style="padding:4px 10px;font-size:12px;" onclick="singlePermanentDeleteTrashByIndex(' + index + ');return false;">删除</button>';
+        html += '</div></div>';
+    });
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+function toggleSelectTrashByIndex(index) {
+    loadTrash();
+    const items = mgOrderTrash.items || [];
+    if (index < 0 || index >= items.length) return;
+    const item = items[index];
+    const orderId = item.id;
+    if (selectedTrashIds.has(orderId)) {
+        selectedTrashIds.delete(orderId);
+    } else {
+        selectedTrashIds.add(orderId);
+    }
+    renderTrashDrawer();
+}
+
+function singleRestoreTrashByIndex(index) {
+    loadTrash();
+    const items = mgOrderTrash.items || [];
+    if (index < 0 || index >= items.length) return;
+    const item = items[index];
+    if (restoreFromTrash(item.id)) {
+        renderTrashDrawer();
+    }
+}
+
+function singlePermanentDeleteTrashByIndex(index) {
+    if (!confirm('确定永久删除？')) return;
+    loadTrash();
+    const items = mgOrderTrash.items || [];
+    if (index < 0 || index >= items.length) return;
+    const item = items[index];
+    permanentDelete(item.id);
+    renderTrashDrawer();
+}
+
+function singleRestoreTrash(orderId) {
+    if (restoreFromTrash(orderId)) {
+        renderTrashDrawer();
+    }
+}
+
+function singlePermanentDeleteTrash(orderId) {
+    if (!confirm('确定永久删除？')) return;
+    permanentDelete(orderId);
+    renderTrashDrawer();
+}
+
+function toggleSelectAllTrash() {
+    loadTrash();
+    const items = mgOrderTrash.items || [];
+    if (selectedTrashIds.size === items.length) {
+        selectedTrashIds.clear();
+    } else {
+        items.forEach(item => selectedTrashIds.add(item.id));
+    }
+    renderTrashDrawer();
 }
 
 function onRecordFilterChange() {
@@ -7661,17 +7936,18 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                     additionalConfigs.forEach((config, index) => {
                         const configKey = `config_${product.id}_${index}`;
                         const count = product.additionalConfigs[configKey] || 0;
+                        const total = count * config.price;
                         if (count > 0) {
-                            const total = count * config.price;
                             basePrice += total;
-                            additionalConfigDetails.push({
-                                name: config.name,
-                                price: config.price,
-                                unit: config.unit,
-                                count: count,
-                                total: total
-                            });
                         }
+                        // 保存所有配置项（包括 count=0），保持索引一致
+                        additionalConfigDetails.push({
+                            name: config.name,
+                            price: config.price,
+                            unit: config.unit,
+                            count: count,
+                            total: total
+                        });
                     });
                 }
             }
@@ -7794,6 +8070,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         // 如果是基础+递增价类型，保存额外配置详情
         if (productSetting.priceType === 'config') {
             productPriceInfo.additionalConfigDetails = additionalConfigDetails || [];
+            productPriceInfo.baseConfigCount = product.baseConfigCount != null ? product.baseConfigCount : 1;
             // 兼容旧格式
             if (additionalConfigDetails.length === 0 && productSetting.additionalPrice) {
                 const totalAdditionalCount = product.sides !== 'single' && product.sides !== 'double' ? parseInt(product.sides) - 1 : 0;
@@ -7851,6 +8128,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         
         // 计算基础价格
         let basePrice = 0;
+        let giftAdditionalConfigDetails = [];
         switch (productSetting.priceType) {
             case 'fixed':
                 basePrice = productSetting.price;
@@ -7861,6 +8139,26 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             case 'config':
                 const giftBaseCount = gift.baseConfigCount != null ? gift.baseConfigCount : 1;
                 basePrice = giftBaseCount > 0 ? productSetting.basePrice * giftBaseCount : 0;
+                // 计算附加配置价格
+                const additionalConfigs = productSetting.additionalConfigs || [];
+                if (gift.additionalConfigs) {
+                    additionalConfigs.forEach((config, index) => {
+                        const configKey = `config_${gift.id}_${index}`;
+                        const count = gift.additionalConfigs[configKey] || 0;
+                        const total = count * config.price;
+                        if (count > 0) {
+                            basePrice += total;
+                        }
+                        // 保存所有配置项（包括 count=0），保持索引一致
+                        giftAdditionalConfigDetails.push({
+                            name: config.name,
+                            price: config.price,
+                            unit: config.unit,
+                            count: count,
+                            total: total
+                        });
+                    });
+                }
                 break;
         }
         
@@ -7955,6 +8253,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             // 添加基础配置信息（如果是基础+递增价类型）
             productType: productSetting.priceType,
             baseConfig: productSetting.baseConfig,
+            baseConfigCount: productSetting.priceType === 'config' ? (gift.baseConfigCount != null ? gift.baseConfigCount : 1) : undefined,
+            additionalConfigDetails: productSetting.priceType === 'config' ? giftAdditionalConfigDetails : undefined,
             // 添加单双面价相关信息
             sides: gift.sides,
             productId: giftTypeId,
@@ -15747,10 +16047,16 @@ function editHistoryItem(id) {
                     // 恢复各递增项数量，供 updateProductForm 中显示
                     if (!product.additionalConfigs) product.additionalConfigs = {};
                     const addConfigs = productSetting.additionalConfigs || [];
-                    productPrice.additionalConfigDetails.forEach((detail, index) => {
-                        const configKey = 'config_' + product.id + '_' + index;
-                        product.additionalConfigs[configKey] = detail.count || 0;
+                    // 优先用名称匹配，避免索引错位
+                    productPrice.additionalConfigDetails.forEach((detail) => {
+                        const configIndex = addConfigs.findIndex(c => c.name === detail.name);
+                        if (configIndex !== -1) {
+                            const configKey = 'config_' + product.id + '_' + configIndex;
+                            product.additionalConfigs[configKey] = detail.count || 0;
+                        }
                     });
+                    // 恢复基础配置数量
+                    product.baseConfigCount = productPrice.baseConfigCount != null ? productPrice.baseConfigCount : 1;
                 } else if (productPrice.productType === 'config' && productPrice.totalAdditionalCount !== undefined) {
                     product.sides = (productPrice.totalAdditionalCount + 1).toString();
                 }
@@ -15806,10 +16112,17 @@ function editHistoryItem(id) {
                         gift.sides = (totalConfig + 1).toString();
                     }
                     if (!gift.additionalConfigs) gift.additionalConfigs = {};
-                    giftPrice.additionalConfigDetails.forEach((detail, index) => {
-                        const configKey = 'config_' + gift.id + '_' + index;
-                        gift.additionalConfigs[configKey] = detail.count || 0;
+                    const addConfigs = giftSetting.additionalConfigs || [];
+                    // 优先用名称匹配，避免索引错位
+                    giftPrice.additionalConfigDetails.forEach((detail) => {
+                        const configIndex = addConfigs.findIndex(c => c.name === detail.name);
+                        if (configIndex !== -1) {
+                            const configKey = 'config_' + gift.id + '_' + configIndex;
+                            gift.additionalConfigs[configKey] = detail.count || 0;
+                        }
                     });
+                    // 恢复基础配置数量
+                    gift.baseConfigCount = giftPrice.baseConfigCount != null ? giftPrice.baseConfigCount : 1;
                 } else if (giftPrice.productType === 'config' && giftPrice.totalAdditionalCount !== undefined) {
                     gift.sides = (giftPrice.totalAdditionalCount + 1).toString();
                 }
@@ -16265,7 +16578,8 @@ function loadQuoteFromHistory(id) {
 function deleteHistoryItem(id) {
     const item = history.find(item => item.id === id);
     if (!item) return;
-    
+
+    moveToTrash(item);
     history = history.filter(item => item.id !== id);
     selectedHistoryIds.delete(id);
     saveData();

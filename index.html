@@ -1423,6 +1423,11 @@
                                             <span class="page-action-label" id="recordFilterBtnText">筛选</span>
                                             <span id="recordFilterBadge" class="filter-badge d-none">0</span>
                                         </button>
+                                        <button class="btn secondary page-filter-btn-with-label" id="recordTrashBtn" onclick="toggleTrashDrawer()" aria-label="回收站" title="回收站">
+                                            <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
+                                            <span class="page-action-label">回收站</span>
+                                            <span id="trashBadge" class="filter-badge d-none">0</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -1541,6 +1546,22 @@
                             <button type="button" class="btn w-full" onclick="applyRecordImportMerge()">新增合并记录</button>
                         </div>
                         <p class="text-gray mt-2" style="font-size:0.85rem;">覆盖：用文件中的记录与设置替换本机。新增：仅将文件中新记录合并到本机，本机设置不变。</p>
+                    </div>
+                </div>
+            </div>
+            <!-- 回收站抽屉 -->
+            <div id="trashDrawer" class="history-filter-drawer d-none" aria-hidden="true">
+                <div class="filter-drawer-overlay" onclick="closeTrashDrawer()"></div>
+                <div class="filter-drawer-content" style="max-width:480px;">
+                    <div class="filter-drawer-header">
+                        <h3>回收站</h3>
+                        <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeTrashDrawer()" aria-label="关闭" title="关闭">
+                            <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                            <span class="sr-only">关闭</span>
+                        </button>
+                    </div>
+                    <div class="filter-drawer-body" id="trashDrawerBody">
+                        <!-- JS 渲染内容 -->
                     </div>
                 </div>
             </div>
