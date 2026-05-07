@@ -7097,12 +7097,20 @@ function updateProductForm(productId) {
                 });
             }
             
+            const baseConfigCount = product.baseConfigCount != null ? product.baseConfigCount : 1;
             html = `
                 <div class="form-row">
                     <div class="form-group incremental-config-group">
                         <label>基础+递增价</label>
                         <div class="incremental-config-base">
                             <span>基础价 (${productSetting.baseConfig})：¥${productSetting.basePrice}</span>
+                            <div class="process-layers-stepper-wrap" style="margin-left:8px;">
+                                <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustProductBaseConfigCount(${productId}, -1)">−</button>
+                                <input type="number" id="baseConfigCount_${productId}" value="${baseConfigCount}" min="0" step="1" 
+                                       onchange="var v = Math.max(0, parseInt(this.value) || 0); this.value = v; updateProductBaseConfigCount(${productId}, v)" 
+                                       class="process-layers-stepper-input">
+                                <button type="button" class="process-layers-stepper-btn" aria-label="加一" onclick="adjustProductBaseConfigCount(${productId}, 1)">+</button>
+                            </div>
                         </div>
                         ${additionalConfigs.map((config, index) => {
                             const configKey = `config_${productId}_${index}`;
@@ -7295,6 +7303,25 @@ function updateProductAdditionalConfig(productId, configKey, value) {
         }
         product.additionalConfigs[configKey] = value || 0;
     }
+}
+
+// 更新制品基础配置数量
+function updateProductBaseConfigCount(productId, value) {
+    const product = products.find(p => p.id === productId);
+    if (product) {
+        product.baseConfigCount = Math.max(0, parseInt(value) || 0);
+    }
+}
+
+// 快捷增减制品基础配置数量（基础+递增价）
+function adjustProductBaseConfigCount(productId, delta) {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    const current = product.baseConfigCount != null ? product.baseConfigCount : 1;
+    const next = Math.max(0, current + delta);
+    updateProductBaseConfigCount(productId, next);
+    const input = document.getElementById('baseConfigCount_' + productId);
+    if (input) input.value = next;
 }
 
 // 快捷增减递增数量（基础+递增价）
@@ -7597,7 +7624,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                 basePrice = product.sides === 'single' ? productSetting.priceSingle : productSetting.priceDouble;
                 break;
             case 'config':
-                basePrice = productSetting.basePrice;
+                const baseConfigCount = product.baseConfigCount != null ? product.baseConfigCount : 1;
+                basePrice = baseConfigCount > 0 ? productSetting.basePrice * baseConfigCount : 0;
                 break;
             case 'nodes':
                 basePrice = (product.nodeTotalPrice != null && product.nodeTotalPrice !== '') ? parseFloat(product.nodeTotalPrice) : (productSetting.price || 0);
@@ -7740,7 +7768,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             product: productSetting.name,
             category: productSetting.category || '其他', // 添加分类字段
             basePrice: basePrice,
-            baseConfigPrice: productSetting.priceType === 'config' && productSetting.baseConfig ? (productSetting.basePrice || 0) : undefined,
+            baseConfigPrice: productSetting.priceType === 'config' && productSetting.baseConfig ? (basePrice || 0) : undefined,
             quantity: product.quantity,
             sameModelCount: product.crossOrderSameModel ? crossOrderSameModelCount : sameModelCount,
             sameModelUnitPrice: sameModelUnitPrice,
@@ -7831,7 +7859,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                 basePrice = gift.sides === 'single' ? productSetting.priceSingle : productSetting.priceDouble;
                 break;
             case 'config':
-                basePrice = productSetting.basePrice;
+                const giftBaseCount = gift.baseConfigCount != null ? gift.baseConfigCount : 1;
+                basePrice = giftBaseCount > 0 ? productSetting.basePrice * giftBaseCount : 0;
                 break;
         }
         
@@ -8337,10 +8366,13 @@ function generateQuote() {
                     }
                     baseConfigVal = item.basePrice - additionalTotal;
                 }
-                var baseConfigExtraPerPiece = fullPriceQuantity > 0 ? (fullPriceExtraTotal / fullPriceQuantity) : 0;
-                var baseConfigDisplayVal = baseConfigVal + baseConfigExtraPerPiece;
-                var shouldHideBaseConfigPrice = Math.abs(baseConfigDisplayVal - fullUnitWithExtra) < 0.001;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                // 如果基础配置价格为0，不显示这一行
+                if (baseConfigVal > 0) {
+                    var baseConfigExtraPerPiece = fullPriceQuantity > 0 ? (fullPriceExtraTotal / fullPriceQuantity) : 0;
+                    var baseConfigDisplayVal = baseConfigVal + baseConfigExtraPerPiece;
+                    var shouldHideBaseConfigPrice = Math.abs(baseConfigDisplayVal - fullUnitWithExtra) < 0.001;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                }
             }
             // 配件明细（仅单价）- 跨订单同模时也显示
             if (item.productType === 'config') {
@@ -8497,10 +8529,13 @@ function generateQuote() {
                         }
                         baseConfigValGift = item.basePrice - additionalTotalGift;
                     }
-                    var baseConfigGiftExtraPerPiece = fullPriceQuantityGift > 0 ? (giftFullExtraTotal / fullPriceQuantityGift) : 0;
-                    var baseConfigGiftDisplayVal = baseConfigValGift + baseConfigGiftExtraPerPiece;
-                    var shouldHideGiftBaseConfigPrice = Math.abs(baseConfigGiftDisplayVal - giftFullUnitWithExtra) < 0.001;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideGiftBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigGiftDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    // 如果基础配置价格为0，不显示基础配置行
+                    if (baseConfigValGift > 0) {
+                        var baseConfigGiftExtraPerPiece = fullPriceQuantityGift > 0 ? (giftFullExtraTotal / fullPriceQuantityGift) : 0;
+                        var baseConfigGiftDisplayVal = baseConfigValGift + baseConfigGiftExtraPerPiece;
+                        var shouldHideGiftBaseConfigPrice = Math.abs(baseConfigGiftDisplayVal - giftFullUnitWithExtra) < 0.001;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideGiftBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigGiftDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    }
                     
                     // 配件明细（仅单价）
                     if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
@@ -20299,12 +20334,20 @@ function updateGiftForm(giftId) {
                 });
             }
             
+            const giftBaseConfigCount = gift.baseConfigCount != null ? gift.baseConfigCount : 1;
             html = `
                 <div class="form-row">
                     <div class="form-group incremental-config-group">
                         <label>基础+递增价</label>
                         <div class="incremental-config-base">
                             <span>基础价 (${productSetting.baseConfig})：¥${productSetting.basePrice}</span>
+                            <div class="process-layers-stepper-wrap" style="margin-left:8px;">
+                                <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustGiftBaseConfigCount(${giftId}, -1)">−</button>
+                                <input type="number" id="giftBaseConfigCount_${giftId}" value="${giftBaseConfigCount}" min="0" step="1" 
+                                       onchange="var v = Math.max(0, parseInt(this.value) || 0); this.value = v; updateGiftBaseConfigCount(${giftId}, v)" 
+                                       class="process-layers-stepper-input">
+                                <button type="button" class="process-layers-stepper-btn" aria-label="加一" onclick="adjustGiftBaseConfigCount(${giftId}, 1)">+</button>
+                            </div>
                         </div>
                         ${additionalConfigs.map((config, index) => {
                             const configKey = `gift_config_${giftId}_${index}`;
@@ -20388,6 +20431,25 @@ function updateGiftAdditionalConfig(giftId, configKey, value) {
     }
     
     gift.additionalConfigs[configKey] = value;
+}
+
+// 更新赠品基础配置数量
+function updateGiftBaseConfigCount(giftId, value) {
+    const gift = gifts.find(g => g.id === giftId);
+    if (gift) {
+        gift.baseConfigCount = Math.max(0, parseInt(value) || 0);
+    }
+}
+
+// 快捷增减赠品基础配置数量（基础+递增价）
+function adjustGiftBaseConfigCount(giftId, delta) {
+    const gift = gifts.find(g => g.id === giftId);
+    if (!gift) return;
+    const current = gift.baseConfigCount != null ? gift.baseConfigCount : 1;
+    const next = Math.max(0, current + delta);
+    updateGiftBaseConfigCount(giftId, next);
+    const input = document.getElementById('giftBaseConfigCount_' + giftId);
+    if (input) input.value = next;
 }
 
 // 快捷增减赠品额外配置数量
