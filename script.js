@@ -8044,7 +8044,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             product: productSetting.name,
             category: productSetting.category || '其他', // 添加分类字段
             basePrice: basePrice,
-            baseConfigPrice: productSetting.priceType === 'config' && productSetting.baseConfig ? (basePrice || 0) : undefined,
+            baseConfigPrice: productSetting.priceType === 'config' && productSetting.baseConfig ? (productSetting.basePrice * (product.baseConfigCount || 1)) : undefined,
             quantity: product.quantity,
             sameModelCount: product.crossOrderSameModel ? crossOrderSameModelCount : sameModelCount,
             sameModelUnitPrice: sameModelUnitPrice,
@@ -8254,6 +8254,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             productType: productSetting.priceType,
             baseConfig: productSetting.baseConfig,
             baseConfigCount: productSetting.priceType === 'config' ? (gift.baseConfigCount != null ? gift.baseConfigCount : 1) : undefined,
+            baseConfigPrice: productSetting.priceType === 'config' && productSetting.baseConfig ? (productSetting.basePrice * (gift.baseConfigCount || 1)) : undefined,
             additionalConfigDetails: productSetting.priceType === 'config' ? giftAdditionalConfigDetails : undefined,
             // 添加单双面价相关信息
             sides: gift.sides,
@@ -8655,15 +8656,20 @@ function generateQuote() {
             // 跨订单同模时不显示全价配置行，只显示配件
             if (item.productType === 'config' && item.baseConfig && !item.crossOrderSameModel) {
                 // 基础配置价格（不含配件）
-                let baseConfigVal = item.baseConfigPrice;
-                if (baseConfigVal == null) {
-                    // 兼容旧数据：从 basePrice 减去配件总额
+                // 优先使用 baseConfigCount 计算，兼容新旧数据
+                let baseConfigVal = 0;
+                const baseConfigCount = item.baseConfigCount != null ? item.baseConfigCount : 1;
+                if (item.baseConfigPrice != null && baseConfigCount === 1) {
+                    baseConfigVal = item.baseConfigPrice;
+                } else {
+                    // 计算配件总额
                     let additionalTotal = 0;
                     if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
                         additionalTotal = item.additionalConfigDetails.reduce((sum, c) => sum + (c.total || 0), 0);
                     } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
                         additionalTotal = item.totalAdditionalCount * item.additionalPrice;
                     }
+                    // 基础配置价格 = 总基础价 - 配件总额
                     baseConfigVal = item.basePrice - additionalTotal;
                 }
                 // 如果基础配置价格为0，不显示这一行
@@ -8819,8 +8825,13 @@ function generateQuote() {
                 
                 // config：树形明细（仅单价，不显示数量和小计）
                 if (item.productType === 'config' && item.baseConfig) {
-                    let baseConfigValGift = item.baseConfigPrice;
-                    if (baseConfigValGift == null) {
+                    // 基础配置价格（不含配件）
+                    // 优先使用 baseConfigCount 计算，兼容新旧数据
+                    let baseConfigValGift = 0;
+                    const baseConfigCount = item.baseConfigCount != null ? item.baseConfigCount : 1;
+                    if (item.baseConfigPrice != null && baseConfigCount === 1) {
+                        baseConfigValGift = item.baseConfigPrice;
+                    } else {
                         let additionalTotalGift = 0;
                         if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
                             additionalTotalGift = item.additionalConfigDetails.reduce((sum, c) => sum + (c.total || 0), 0);
