@@ -13326,7 +13326,11 @@ function showSettlementForm(type) {
         settlementRenderWasteFeeForm();
         var wasteFinalAmountEl = document.getElementById('settlementWasteFinalAmount');
         if (wasteFinalAmountEl) {
-            wasteFinalAmountEl.addEventListener('input', settlementUpdatePreview);
+            wasteFinalAmountManuallySet = false;
+            wasteFinalAmountEl.addEventListener('input', function () {
+                wasteFinalAmountManuallySet = true;
+                settlementUpdatePreview();
+            });
             // 编辑已有废稿记录时，预填废稿费应收（定金抵扣逻辑下 amount=本次收款，输入框=废稿费应收）
             var refItem = history.find(function (h) { return h.id === settlementModalRecordId; });
             if (refItem && refItem.settlement && refItem.settlement.type === 'waste_fee' && refItem.settlement.wasteFee) {
@@ -13778,6 +13782,8 @@ function settlementUpdatePreview() {
     previewContent.innerHTML = html;
 }
 
+var wasteFinalAmountManuallySet = false;
+
 function settlementRenderWasteFeeForm() {
     var item = history.find(function (h) { return h.id === settlementModalRecordId; });
     if (!item) return;
@@ -13896,7 +13902,7 @@ function settlementUpdateWastePreview() {
         amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
     }
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-    if (finalAmountEl) finalAmountEl.value = amount.toFixed(2);
+    if (finalAmountEl && !wasteFinalAmountManuallySet) finalAmountEl.value = amount.toFixed(2);
 }
 
 // 按已完成制品及工艺比例：计算单行制品金额（产品+工艺，同模在行内、工艺按已做层数）
@@ -14280,7 +14286,7 @@ function settlementUpdatePercentTotalPreview() {
     var other = computeAndRenderOtherFeesWaste(item, wf, 'settlement-percenttotal-other-select', 'settlementPercentTotalOtherFees', 'settlementPercentTotalOtherAmount');
     var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-    if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+    if (finalAmountEl && !wasteFinalAmountManuallySet) finalAmountEl.value = totalReceivable.toFixed(2);
     settlementUpdatePreview();
 }
 
@@ -14304,7 +14310,7 @@ function settlementUpdateFixedPerItemPreview() {
     var other = computeAndRenderOtherFeesWaste(item, wf, 'settlement-fixedperitem-other-select', 'settlementFixedPerItemOtherFees', 'settlementFixedPerItemOtherAmount');
     var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-    if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+    if (finalAmountEl && !wasteFinalAmountManuallySet) finalAmountEl.value = totalReceivable.toFixed(2);
     settlementUpdatePreview();
 }
 
@@ -14319,7 +14325,7 @@ function settlementUpdateFixedAmountPreview() {
     var other = computeAndRenderOtherFeesWaste(item, wf, 'settlement-fixedamount-other-select', 'settlementFixedAmountOtherFees', 'settlementFixedAmountOtherAmount');
     var totalReceivable = wasteFee + other.otherFeesAmount;
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-    if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+    if (finalAmountEl && !wasteFinalAmountManuallySet) finalAmountEl.value = totalReceivable.toFixed(2);
     settlementUpdatePreview();
 }
 
@@ -14419,7 +14425,7 @@ function settlementUpdateWasteByPiecePreview() {
     var otherAmountEl = document.getElementById('settlementOtherFeesAmount');
     if (otherAmountEl) otherAmountEl.textContent = '¥' + otherFeesAmount.toFixed(2);
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-    if (finalAmountEl) finalAmountEl.value = totalReceivable.toFixed(2);
+    if (finalAmountEl && !wasteFinalAmountManuallySet) finalAmountEl.value = totalReceivable.toFixed(2);
     settlementUpdatePreview();
 }
 
@@ -14734,7 +14740,8 @@ function settlementConfirm() {
             });
             var totalWasteReceivable = wasteFeeAmount + otherFeesAmount;
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalWasteReceivable) : totalWasteReceivable;
+            var _rawFee = finalAmountEl ? parseFloat(finalAmountEl.value) : NaN;
+            var feeAmount = !isNaN(_rawFee) ? _rawFee : totalWasteReceivable;
             feeAmount = Math.max(0, feeAmount);
             var dep = Number(item.depositReceived || 0);
             if (!isFinite(dep) || dep < 0) dep = 0;
@@ -14782,7 +14789,8 @@ function settlementConfirm() {
             
             var totalReceivable = wasteFee + otherFeesAmount;
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            var _rawFee = finalAmountEl ? parseFloat(finalAmountEl.value) : NaN;
+            var feeAmount = !isNaN(_rawFee) ? _rawFee : totalReceivable;
             feeAmount = Math.max(0, feeAmount);
             var dep = Number(item.depositReceived || 0);
             if (!isFinite(dep) || dep < 0) dep = 0;
@@ -14831,7 +14839,8 @@ function settlementConfirm() {
             
             var totalReceivable = wasteFee + otherFeesAmount;
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            var _rawFee = finalAmountEl ? parseFloat(finalAmountEl.value) : NaN;
+            var feeAmount = !isNaN(_rawFee) ? _rawFee : totalReceivable;
             feeAmount = Math.max(0, feeAmount);
             var dep = Number(item.depositReceived || 0);
             if (!isFinite(dep) || dep < 0) dep = 0;
@@ -14874,7 +14883,8 @@ function settlementConfirm() {
             
             var totalReceivable = wasteFee + otherFeesAmount;
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || totalReceivable) : totalReceivable;
+            var _rawFee = finalAmountEl ? parseFloat(finalAmountEl.value) : NaN;
+            var feeAmount = !isNaN(_rawFee) ? _rawFee : totalReceivable;
             feeAmount = Math.max(0, feeAmount);
             var dep = Number(item.depositReceived || 0);
             if (!isFinite(dep) || dep < 0) dep = 0;
@@ -14905,7 +14915,8 @@ function settlementConfirm() {
             document.querySelectorAll('.settlement-process-done-item').forEach(function (cb) { processDone[parseInt(cb.dataset.idx, 10)] = cb.checked; });
             var amount = computeWasteFeeAmount(item, rule, rate, fixedPerItem, minAmount, maxAmount, charged, processDone);
             var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
-            var feeAmount = finalAmountEl ? (parseFloat(finalAmountEl.value) || amount) : amount;
+            var _rawFee = finalAmountEl ? parseFloat(finalAmountEl.value) : NaN;
+            var feeAmount = !isNaN(_rawFee) ? _rawFee : amount;
             feeAmount = Math.max(0, feeAmount);
             var dep = Number(item.depositReceived || 0);
             if (!isFinite(dep) || dep < 0) dep = 0;
