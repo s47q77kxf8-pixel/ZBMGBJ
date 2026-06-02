@@ -75,6 +75,9 @@
             <path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
+        <symbol id="i-checkbox-empty" viewBox="0 0 24 24">
+            <path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
         <!-- 小票右上角图标·线性备选：设置 -->
         <symbol id="i-settings-line-c3-l3" viewBox="0 0 24 24">
             <path d="M2 6h20M2 12h20M2 18h20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -1571,6 +1574,14 @@
                     <header class="stats-header d-flex justify-between items-center">
                         <h1 class="stats-title">统计</h1>
                         <div class="stats-actions d-flex gap-2 items-center">
+                            <button type="button" class="btn secondary page-filter-btn-with-label" id="statsHideAmountBtn" onclick="toggleStatsPrivacy('hideAmount')" aria-label="隐藏金额" title="隐藏金额">
+                                <svg class="icon" aria-hidden="true" id="statsHideAmountIcon"><use href="#i-checkbox-empty"></use></svg>
+                                <span class="page-action-label">隐藏金额</span>
+                            </button>
+                            <button type="button" class="btn secondary page-filter-btn-with-label" id="statsMaskClientBtn" onclick="toggleStatsPrivacy('maskClient')" aria-label="隐藏单主" title="隐藏单主">
+                                <svg class="icon" aria-hidden="true" id="statsMaskClientIcon"><use href="#i-checkbox-empty"></use></svg>
+                                <span class="page-action-label">隐藏单主</span>
+                            </button>
                             <button type="button" class="btn secondary page-filter-btn-with-label" id="statsReportBtn" onclick="openStatsReportModal()" aria-label="生成时光报告" title="生成时光报告">
                                 <svg class="icon" aria-hidden="true"><use href="#i-note"></use></svg>
                                 <span class="page-action-label">时光报告</span>

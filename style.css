@@ -2206,6 +2206,11 @@ input:focus, select:focus {
     font-size: 0.75rem;
 }
 
+.btn.xsmall {
+    padding: 0.25em 0.5em;
+    font-size: 0.65rem;
+}
+
 .add-product {
     width: 100%;
     padding: 0.6em 1em;

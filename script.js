@@ -5665,14 +5665,18 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
 function renderStatsKpis(totals) {
     const grid = document.getElementById('statsKpiGrid');
     if (!grid) return;
+    const privacy = getStatsPrivacyState();
     const fmt = (v, isMoney) => {
         if (typeof v !== 'number' || !isFinite(v)) return '—';
-        if (isMoney) return '¥' + v.toFixed(2);
+        if (isMoney) {
+            if (privacy.hideAmount) return '¥***';
+            return '¥' + v.toFixed(2);
+        }
         if (v === Math.floor(v)) return String(v);
         return v.toFixed(1);
     };
     const discountTotalVal = totals.discountTotal != null ? totals.discountTotal : (totals.discountAmountTotal || 0);
-    const discountTotalDisplay = discountTotalVal > 0 ? ('-¥' + discountTotalVal.toFixed(2)) : fmt(discountTotalVal, true);
+    const discountTotalDisplay = discountTotalVal > 0 ? (privacy.hideAmount ? '-¥***' : ('-¥' + discountTotalVal.toFixed(2))) : fmt(discountTotalVal, true);
     grid.innerHTML = `
         <div class="kpi-section-title">核心指标</div>
         <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('企划数')}" role="button" tabindex="0"><div class="kpi-label">企划数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
@@ -5919,6 +5923,7 @@ function renderStatsTopLists(byClient, byProduct) {
     const container = document.getElementById('statsTopLists');
     if (!container) return;
     const defaultShow = 10;
+    const privacy = getStatsPrivacyState();
     const clientByOrders = [...byClient].sort((a, b) => b.orderCount - a.orderCount);
     const clientByRevenue = byClient.slice();
     
@@ -5931,6 +5936,20 @@ function renderStatsTopLists(byClient, byProduct) {
         return '<button type="button" class="stats-row-action" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '" aria-label="查看企划">' +
             '<svg class="icon"><use href="#i-filter"></use></svg>' +
             '</button>';
+    };
+    
+    // 格式化金额
+    var formatMoney = function (amount) {
+        if (privacy.hideAmount) return '¥***';
+        return '¥' + (amount || 0).toFixed(2);
+    };
+    
+    // 格式化单主名
+    var formatClientName = function (name) {
+        if (privacy.maskClientName) {
+            return maskClientName(name);
+        }
+        return name || '—';
     };
     
     let html = '<h3 class="stats-block-title">Top 单主</h3>';
@@ -5948,12 +5967,12 @@ function renderStatsTopLists(byClient, byProduct) {
     html += '<div id="statsTopClientOrders" class="stats-top-list-wrap">';
     html += '<div id="statsTopClientOrdersList" class="stats-top-list">';
     clientByOrders.slice(0, defaultShow).forEach((c, i) => {
-        var label = '单主：' + (c.clientId || '—');
+        var label = '单主：' + formatClientName(c.clientId);
         var encodedLabel = encodeURIComponent(label);
         var viewBtn = buildViewOrdersBtn(c.orderIds, label);
         html += '<div class="stats-top-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encodeURIComponent(JSON.stringify(c.orderIds || [])) + '" data-stats-focus-label="' + encodedLabel + '">' +
             '<span class="stats-top-rank">' + (i + 1) + '</span>' +
-            '<span class="stats-top-name">' + (c.clientId || '—') + '</span>' +
+            '<span class="stats-top-name">' + formatClientName(c.clientId) + '</span>' +
             '<span class="stats-top-val">' + c.orderCount + ' 单</span>' +
             (viewBtn ? '<span class="stats-top-action">' + viewBtn + '</span>' : '') +
             '</div>';
@@ -5962,12 +5981,12 @@ function renderStatsTopLists(byClient, byProduct) {
     if (clientByOrders.length > defaultShow) {
         html += '<div id="statsTopClientOrdersMore" class="stats-top-list d-none">';
         clientByOrders.slice(defaultShow).forEach((c, i) => {
-            var label = '单主：' + (c.clientId || '—');
+            var label = '单主：' + formatClientName(c.clientId);
             var encodedLabel = encodeURIComponent(label);
             var viewBtn = buildViewOrdersBtn(c.orderIds, label);
             html += '<div class="stats-top-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encodeURIComponent(JSON.stringify(c.orderIds || [])) + '" data-stats-focus-label="' + encodedLabel + '">' +
                 '<span class="stats-top-rank">' + (defaultShow + i + 1) + '</span>' +
-                '<span class="stats-top-name">' + (c.clientId || '—') + '</span>' +
+                '<span class="stats-top-name">' + formatClientName(c.clientId) + '</span>' +
                 '<span class="stats-top-val">' + c.orderCount + ' 单</span>' +
                 (viewBtn ? '<span class="stats-top-action">' + viewBtn + '</span>' : '') +
                 '</div>';
@@ -5978,13 +5997,13 @@ function renderStatsTopLists(byClient, byProduct) {
     html += '<div id="statsTopClientRevenue" class="stats-top-list-wrap d-none">';
     html += '<div id="statsTopClientRevenueList" class="stats-top-list">';
     clientByRevenue.slice(0, defaultShow).forEach((c, i) => {
-        var label = '单主：' + (c.clientId || '—');
+        var label = '单主：' + formatClientName(c.clientId);
         var encodedLabel = encodeURIComponent(label);
         var viewBtn = buildViewOrdersBtn(c.orderIds, label);
         html += '<div class="stats-top-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encodeURIComponent(JSON.stringify(c.orderIds || [])) + '" data-stats-focus-label="' + encodedLabel + '">' +
             '<span class="stats-top-rank">' + (i + 1) + '</span>' +
-            '<span class="stats-top-name">' + (c.clientId || '—') + '</span>' +
-            '<span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span>' +
+            '<span class="stats-top-name">' + formatClientName(c.clientId) + '</span>' +
+            '<span class="stats-top-val">' + formatMoney(c.revenueTotal) + '</span>' +
             (viewBtn ? '<span class="stats-top-action">' + viewBtn + '</span>' : '') +
             '</div>';
     });
@@ -5992,13 +6011,13 @@ function renderStatsTopLists(byClient, byProduct) {
     if (clientByRevenue.length > defaultShow) {
         html += '<div id="statsTopClientRevenueMore" class="stats-top-list d-none">';
         clientByRevenue.slice(defaultShow).forEach((c, i) => {
-            var label = '单主：' + (c.clientId || '—');
+            var label = '单主：' + formatClientName(c.clientId);
             var encodedLabel = encodeURIComponent(label);
             var viewBtn = buildViewOrdersBtn(c.orderIds, label);
             html += '<div class="stats-top-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encodeURIComponent(JSON.stringify(c.orderIds || [])) + '" data-stats-focus-label="' + encodedLabel + '">' +
                 '<span class="stats-top-rank">' + (defaultShow + i + 1) + '</span>' +
-                '<span class="stats-top-name">' + (c.clientId || '—') + '</span>' +
-                '<span class="stats-top-val">¥' + (c.revenueTotal || 0).toFixed(2) + '</span>' +
+                '<span class="stats-top-name">' + formatClientName(c.clientId) + '</span>' +
+                '<span class="stats-top-val">' + formatMoney(c.revenueTotal) + '</span>' +
                 (viewBtn ? '<span class="stats-top-action">' + viewBtn + '</span>' : '') +
                 '</div>';
         });
@@ -6464,6 +6483,7 @@ function renderStatsPage() {
         if (saved.endDate && quickEnd) quickEnd.value = saved.endDate;
         onStatsFilterChange();
     }
+    loadStatsPrivacyState();
     updateStatsFilterBadge();
     applyStatsFilters();
 }
@@ -6502,10 +6522,76 @@ function getStatsReportState() {
             preset: 'social',
             modules: { opening: true, kpi: true, busy: true, topProduct: true, aov: true, revenue: true, closing: true },
             showAmount: true,
-            themeId: 'follow'
+            themeId: 'follow',
+            hideAmount: false,
+            maskClientName: false
         };
     }
     return window.statsReportState;
+}
+
+function getStatsPrivacyState() {
+    const st = getStatsReportState();
+    return {
+        hideAmount: st.hideAmount || false,
+        maskClientName: st.maskClientName || false
+    };
+}
+
+function maskClientName(name) {
+    if (!name || typeof name !== 'string') return '—';
+    if (name.length <= 1) return name;
+    const firstChar = name.charAt(0);
+    return firstChar + '***';
+}
+
+function toggleStatsPrivacy(type) {
+    const st = getStatsReportState();
+    const hideAmountBtn = document.getElementById('statsHideAmountBtn');
+    const maskClientBtn = document.getElementById('statsMaskClientBtn');
+    const hideAmountIcon = document.getElementById('statsHideAmountIcon');
+    const maskClientIcon = document.getElementById('statsMaskClientIcon');
+    
+    if (type === 'hideAmount') {
+        st.hideAmount = !st.hideAmount;
+        if (hideAmountBtn) {
+            hideAmountBtn.classList.toggle('active', st.hideAmount);
+        }
+        if (hideAmountIcon) {
+            hideAmountIcon.querySelector('use').setAttribute('href', st.hideAmount ? '#i-checkbox' : '#i-checkbox-empty');
+        }
+    } else if (type === 'maskClient') {
+        st.maskClientName = !st.maskClientName;
+        if (maskClientBtn) {
+            maskClientBtn.classList.toggle('active', st.maskClientName);
+        }
+        if (maskClientIcon) {
+            maskClientIcon.querySelector('use').setAttribute('href', st.maskClientName ? '#i-checkbox' : '#i-checkbox-empty');
+        }
+    }
+    
+    applyStatsFilters();
+}
+
+function loadStatsPrivacyState() {
+    const st = getStatsReportState();
+    const hideAmountBtn = document.getElementById('statsHideAmountBtn');
+    const maskClientBtn = document.getElementById('statsMaskClientBtn');
+    const hideAmountIcon = document.getElementById('statsHideAmountIcon');
+    const maskClientIcon = document.getElementById('statsMaskClientIcon');
+    
+    if (hideAmountBtn) {
+        hideAmountBtn.classList.toggle('active', st.hideAmount || false);
+    }
+    if (hideAmountIcon) {
+        hideAmountIcon.querySelector('use').setAttribute('href', (st.hideAmount || false) ? '#i-checkbox' : '#i-checkbox-empty');
+    }
+    if (maskClientBtn) {
+        maskClientBtn.classList.toggle('active', st.maskClientName || false);
+    }
+    if (maskClientIcon) {
+        maskClientIcon.querySelector('use').setAttribute('href', (st.maskClientName || false) ? '#i-checkbox' : '#i-checkbox-empty');
+    }
 }
 
 function buildStatsReportThemeOptions() {
