@@ -4951,6 +4951,13 @@ function getStatsDataset(historySource, filters) {
     let totalPlatformFeeSum = 0;
     let discountAmountTotal = 0;
     let discountByCoefficientTotal = 0;
+    // 赠品统计变量
+    let giftItemCount = 0;
+    let giftAmountTotal = 0;
+    let giftOrderCount = 0;
+    const giftOrderIds = [];
+    const giftMap = {};
+    
     const allOrderIds = [];
     const overdueOrderIds = [];
     const everOverdueOrderIds = [];
@@ -4994,7 +5001,44 @@ function getStatsDataset(historySource, filters) {
         const revenue = getAmount(item);
         revenueTotal += revenue;
         const products = Array.isArray(item.productPrices) ? item.productPrices : [];
-        const gifts = includeGifts && Array.isArray(item.giftPrices) ? item.giftPrices : [];
+        const gifts = Array.isArray(item.giftPrices) ? item.giftPrices : [];
+        
+        // ===== 赠品统计 =====
+        if (gifts.length > 0) {
+            giftOrderCount++;
+            pushOrderId({ orderIds: giftOrderIds }, item.id);
+            
+            gifts.forEach(p => {
+                const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
+                giftItemCount += qty;
+                const originalPrice = Number(p.giftOriginalPrice) || Number(p.productTotal) || 0;
+                giftAmountTotal += originalPrice;
+                
+                // 按赠品名称统计
+                const giftName = p.product || '赠品';
+                if (!giftMap[giftName]) {
+                    giftMap[giftName] = { name: giftName, orderCount: 0, itemCount: 0, amountTotal: 0, orderIds: [] };
+                }
+                pushOrderId(giftMap[giftName], item.id);
+                giftMap[giftName].orderCount++;
+                giftMap[giftName].itemCount += qty;
+                giftMap[giftName].amountTotal += originalPrice;
+            });
+            
+            // 将赠品金额算入折扣统计
+            if (!discountByReason['赠品']) {
+                discountByReason['赠品'] = { name: '赠品', orderCount: 0, amountTotal: 0, orderIds: [] };
+            }
+            pushOrderId(discountByReason['赠品'], item.id);
+            discountByReason['赠品'].orderCount++;
+            const giftTotalForItem = gifts.reduce((sum, p) => {
+                const originalPrice = Number(p.giftOriginalPrice) || Number(p.productTotal) || 0;
+                return sum + originalPrice;
+            }, 0);
+            discountByReason['赠品'].amountTotal += giftTotalForItem;
+            discountAmountTotal += giftTotalForItem;
+            pushOrderId({ orderIds: discountOrderIds }, item.id);
+        }
         const states = item.productDoneStates || [];
         const doneQuantities = item.productDoneQuantities || [];
         let nItems = products.length + gifts.length;
@@ -5443,6 +5487,8 @@ function getStatsDataset(historySource, filters) {
         }
     };
 
+    const byGift = Object.values(giftMap).sort((a, b) => b.amountTotal - a.amountTotal);
+    
     return {
         filteredRecords: list,
         totals: {
@@ -5471,6 +5517,11 @@ function getStatsDataset(historySource, filters) {
             productUnitPriceWithoutSameModel,
             productItemCountWithSameModel: categoryQuantityTotal,
             productItemCountWithoutSameModel: categoryMainCountTotal,
+            // 赠品统计
+            giftItemCount,
+            giftAmountTotal,
+            giftOrderCount,
+            giftOrderIds,
             allOrderIds,
             overdueOrderIds,
             everOverdueOrderIds,
@@ -5485,6 +5536,7 @@ function getStatsDataset(historySource, filters) {
         monthlyAgg,
         byClient,
         byProduct,
+        byGift,
         byStatus,
         byUsage,
         byUrgent,
@@ -5697,6 +5749,9 @@ function renderStatsKpis(totals) {
         <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.everOverdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('曾经逾期')}" role="button" tabindex="0"><div class="kpi-label">曾经逾期</div><div class="kpi-value" id="kpiEverOverdueOrders">${totals.everOverdueOrderCount ?? 0}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.cancelOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('撤单')}" role="button" tabindex="0"><div class="kpi-label">撤单</div><div class="kpi-value kpi-value-small" id="kpiCancel">${totals.cancelOrderCount || 0} 单 / ${fmt(totals.cancelAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.wasteOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('废稿')}" role="button" tabindex="0"><div class="kpi-label">废稿</div><div class="kpi-value kpi-value-small" id="kpiWaste">${totals.wasteOrderCount || 0} 单 / ${fmt(totals.wasteAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.giftOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('含赠品企划')}" role="button" tabindex="0"><div class="kpi-label">含赠品企划</div><div class="kpi-value" id="kpiGiftOrderCount">${totals.giftOrderCount || 0}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
+        <div class="kpi-card"><div class="kpi-label">赠品件数</div><div class="kpi-value" id="kpiGiftItemCount">${totals.giftItemCount || 0}</div></div>
+        <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.giftOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('赠品原价')}" role="button" tabindex="0"><div class="kpi-label">赠品原价</div><div class="kpi-value kpi-value-small" id="kpiGiftAmount">${fmt(totals.giftAmountTotal || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-section-title">费用</div>
         <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.otherFeesOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('其他费用')}" role="button" tabindex="0"><div class="kpi-label">其他费用</div><div class="kpi-value" id="kpiOtherFees">${fmt(totals.totalOtherFeesSum || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.platformFeeOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('平台费')}" role="button" tabindex="0"><div class="kpi-label">平台费</div><div class="kpi-value" id="kpiPlatformFee">${fmt(totals.totalPlatformFeeSum || 0, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
@@ -8884,7 +8939,8 @@ function generateQuote() {
                 }
             }
             
-            const productTotalGift = item.productTotal || (item.basePrice * item.quantity);
+            // 使用完整的赠品原价（包含工艺和额外费用）
+            const productTotalGift = item.giftOriginalPrice;
             
             // 总览行（赠品特殊：显示¥0.00 + 划线原价）
             if (canMergeGift) {
