@@ -8764,13 +8764,16 @@ function generateQuote() {
         } else {
             // 需要拆明细
             if (item.productType === 'config') {
-                // config：当“首行项(制品行)单价 == 全价制品单价”时，首行显示“—”避免重复
-                if (!hasSameModel && !hasProcess) {
+                // config：当没有额外配件时显示成品单价；有同模或工艺时首行显示“—”（明细行显示具体单价）
+                if (!hasAdditionalConfig) {
                     var configExtraPerPiece = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
                     var configUnitWithExtra = finishedProductUnitPrice + configExtraPerPiece;
-                    var fullUnitNoSameNoProcess = configUnitWithExtra;
-                    var hideTopUnit = Math.abs(configUnitWithExtra - fullUnitNoSameNoProcess) < 0.001;
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${hideTopUnit ? '<span style="color:#999;">—</span>' : ('¥' + configUnitWithExtra.toFixed(2))}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${configUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                } else if (!hasSameModel && !hasProcess) {
+                    // 有额外配件但无同模无工艺：显示成品单价（已包含配件）
+                    var configExtraPerPiece2 = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
+                    var configUnitWithExtra2 = finishedProductUnitPrice + configExtraPerPiece2;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${configUnitWithExtra2.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
                 } else {
                     html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
                 }
@@ -8818,7 +8821,7 @@ function generateQuote() {
                     var baseConfigExtraPerPiece = fullPriceQuantity > 0 ? (fullPriceExtraTotal / fullPriceQuantity) : 0;
                     var baseConfigDisplayVal = baseConfigVal + baseConfigExtraPerPiece;
                     var shouldHideBaseConfigPrice = Math.abs(baseConfigDisplayVal - fullUnitWithExtra) < 0.001;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}×${baseConfigCount}</div><div class="receipt-col-1">${shouldHideBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                 }
             }
             // 配件明细（仅单价）- 跨订单同模时也显示
