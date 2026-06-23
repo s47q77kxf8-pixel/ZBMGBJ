@@ -1152,6 +1152,13 @@ function loadData() {
             history.forEach(item => {
                 ensureProductDoneStates(item);
             });
+            // 去重：移除ID重复的记录，保留第一条
+            const seenIds = new Set();
+            history = history.filter(item => {
+                if (seenIds.has(item.id)) return false;
+                seenIds.add(item.id);
+                return true;
+            });
         }
         
         if (savedSettings) {
@@ -10624,7 +10631,7 @@ function saveToHistory() {
         const productLen = (quoteData.productPrices || []).length;
         const giftLen = (quoteData.giftPrices || []).length;
         const productDoneStates = Array(productLen + giftLen).fill(false);
-        const newId = Date.now();
+        const newId = Date.now() + Math.floor(Math.random() * 1000);
         history.unshift({
             id: newId,
             ...quoteData,
@@ -22548,6 +22555,13 @@ async function mgShowCloudEnableModal() {
                     return extId && !cloudIds.has(extId);
                 });
                 history = [...cloudHistory, ...localOnlyOrders];
+                // 去重：移除ID重复的记录，保留第一条
+                const seenIds = new Set();
+                history = history.filter(item => {
+                    if (seenIds.has(item.id)) return false;
+                    seenIds.add(item.id);
+                    return true;
+                });
                 saveData();
                 if (typeof updateDisplay === 'function') updateDisplay();
                 if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
