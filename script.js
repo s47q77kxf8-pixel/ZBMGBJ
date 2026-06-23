@@ -12315,6 +12315,8 @@ async function renderScheduleTodoSection() {
         else if (item.deadline) rangeText = '截稿 ' + toMd(item.deadline);
         else if (item.startTime) rangeText = '开始 ' + toMd(item.startTime);
         const client = item.clientId || '单主';
+        const platform = item.contact || '';
+        const clientWithPlatform = platform ? (platform + ' ' + client) : client;
         const progress = doneCount + '/' + total;
         const status = getRecordProgressStatus(item);
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
@@ -12458,7 +12460,7 @@ async function renderScheduleTodoSection() {
             + '      <span class="schedule-todo-card-sep"></span>'
             + '      <span class="schedule-todo-card-range">' + rangeText + '</span>'
             + '      <span class="schedule-todo-card-sep-inline"></span>'
-            + '      <span class="schedule-todo-card-client">' + client + '</span>'
+            + '      <span class="schedule-todo-card-client">' + clientWithPlatform + '</span>'
             + '      <span class="schedule-todo-card-sep-dot">\u00B7</span>'
             + '      <span class="schedule-todo-card-progress">' + progress + '</span>'
             + '      <span class="schedule-todo-card-right">'
