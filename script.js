@@ -8835,7 +8835,7 @@ function generateQuote() {
             if (item.productType === 'config') {
                 if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
                     item.additionalConfigDetails.forEach(config => {
-                        // 每件该配件合计价
+                        if (config.count <= 0) return;
                         const perPiecePrice = config.price * config.count;
                         html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${config.name}×${config.count}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     });
@@ -9003,6 +9003,7 @@ function generateQuote() {
                     // 配件明细（仅单价）
                     if (item.additionalConfigDetails && item.additionalConfigDetails.length > 0) {
                         item.additionalConfigDetails.forEach(config => {
+                            if (config.count <= 0) return;
                             const perPiecePriceGift = config.price * config.count;
                             html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${config.name}×${config.count}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                         });
