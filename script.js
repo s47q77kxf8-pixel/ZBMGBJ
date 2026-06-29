@@ -12272,7 +12272,7 @@ async function renderScheduleTodoSection() {
         modulesEl.innerHTML = '<p class="schedule-todo-empty">该日期暂无排单</p>';
         return;
     }
-    // 排序：按「截稿时间 > 开始时间 > 接单时间」优先级取一个可用时间，升序；同时间下已全部完成的卡片移到最后
+    // 排序：已全部完成的卡片始终沉底，未完成的按「截稿时间 > 开始时间 > 接单时间」升序
     const sortedItems = items.slice().sort((a, b) => {
         ensureProductDoneStates(a);
         ensureProductDoneStates(b);
@@ -12280,6 +12280,9 @@ async function renderScheduleTodoSection() {
         const bTotal = (Array.isArray(b.productPrices) ? b.productPrices.length : 0) + (Array.isArray(b.giftPrices) ? b.giftPrices.length : 0);
         const aDone = aTotal > 0 && (a.productDoneStates || []).filter(Boolean).length === aTotal;
         const bDone = bTotal > 0 && (b.productDoneStates || []).filter(Boolean).length === bTotal;
+
+        // 已完成的始终排在未完成的后面
+        if (aDone !== bDone) return Number(aDone) - Number(bDone);
 
         function pickSortTime(it) {
             // 优先级：deadline -> startTime -> timestamp(接单/下单时间)
@@ -12296,9 +12299,7 @@ async function renderScheduleTodoSection() {
 
         const ta = pickSortTime(a);
         const tb = pickSortTime(b);
-        if (ta !== tb) return ta - tb;
-        // 同时间：未完成排前
-        return Number(aDone) - Number(bDone);
+        return ta - tb;
     });
     var toMd = function(str) {
         if (!str) return '—';
