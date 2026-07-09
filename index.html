@@ -563,9 +563,12 @@
                             <label for="projectName">企划名</label>
                             <input type="text" id="projectName" placeholder="请输入企划名（可填中/外文）">
                         </div>
-                        <div class="form-group flex-1">
+                        <div class="form-group flex-1 project-origin-input-wrap">
                             <label for="projectOrigin">原作（IP）</label>
-                            <input type="text" id="projectOrigin" placeholder="请输入原作（IP）">
+                            <input type="text" id="projectOrigin" placeholder="请输入原作（IP）" oninput="debouncedShowProjectOriginMatches()" onblur="scheduleHideProjectOriginMatchList()">
+                            <div id="projectOriginMatchWrap" class="project-origin-match-dropdown d-none">
+                                <ul id="projectOriginMatchList"></ul>
+                            </div>
                         </div>
                     </div>
                     <div class="form-row">
@@ -2776,7 +2779,7 @@
             </div>
             <div class="modal-body">
                 <p class="order-remark-hint text-gray">输入或粘贴单主发的备注后，点击下方<strong>「智能提取」</strong>，可自动识别制品与赠品并填入报价表。</p>
-                <textarea id="orderRemarkText" rows="10" placeholder="粘贴企划备注，再点下方「智能提取」自动识别&#10;&#10;示例：&#10;拍立得 单面 2个&#10;吧唧 10个 双面 带背景&#10;赠品：头像 3个"></textarea>
+                <textarea id="orderRemarkText" rows="10" placeholder="粘贴企划备注，再点下方「智能提取」自动识别&#10;&#10;支持提取：单主(主催/客户)、联系方式、用途、原作、角色、生日、英文名、企划主题、制品、赠品、抠图费等&#10;&#10;示例：&#10;◆主催：用户昵称&#10;◆QQ：123456789&#10;◆用途：同人商用&#10;◆原作：作品名称&#10;◆角色：角色名称&#10;◆生日：1月1日&#10;◆英文名：English Name&#10;◆企划主题名(中英双语)：企划名称 / Project Name&#10;◆制品工艺及尺寸：&#10;① 拍立得双面，单面烫色，6.5*10cm&#10;② 吧唧，单面烫金，58mm&#10;◆想添加的文字：&#10;① 角色名或语录&#10;◆其他要求：无特殊要求&#10;◆是否需要抠图：是&#10;&#10;也支持简式：&#10;拍立得 单面 2个&#10;吧唧 10个 双面 带背景&#10;赠品：头像 3个"></textarea>
             </div>
             <div class="modal-footer">
                 <button type="button" id="smartExtractBtn" class="btn btn-compact primary" onclick="smartParseOrderRemark()" title="根据备注内容自动识别制品、赠品并填入计算表">智能提取</button>

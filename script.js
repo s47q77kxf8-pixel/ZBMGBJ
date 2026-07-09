@@ -5299,10 +5299,14 @@ function getStatsDataset(historySource, filters) {
         clientMap[cid].revenueTotal += revenue;
 
         const ipName = (item.projectOrigin && String(item.projectOrigin).trim()) ? String(item.projectOrigin).trim() : '—';
-        if (!ipMap[ipName]) ipMap[ipName] = { name: ipName, orderCount: 0, amountTotal: 0, orderIds: [] };
-        pushOrderId(ipMap[ipName], item.id);
-        ipMap[ipName].orderCount += 1;
-        ipMap[ipName].amountTotal += revenue;
+        const normalizedIp = ipName === '—' ? '—' : normalizeIpName(ipName);
+        if (!ipMap[normalizedIp]) ipMap[normalizedIp] = { name: normalizedIp, orderCount: 0, amountTotal: 0, orderIds: [], originalNames: [] };
+        pushOrderId(ipMap[normalizedIp], item.id);
+        ipMap[normalizedIp].orderCount += 1;
+        ipMap[normalizedIp].amountTotal += revenue;
+        if (ipMap[normalizedIp].originalNames.indexOf(ipName) === -1) {
+            ipMap[normalizedIp].originalNames.push(ipName);
+        }
 
         products.forEach(p => {
             const name = p.product || '制品';
@@ -5622,7 +5626,6 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
     var hasOtherFees = byOtherFees && byOtherFees.length > 0;
     var hasProcess = byProcess && byProcess.length > 0;
     var hasIp = byIp && byIp.length > 0;
-    // 折扣原因：与「用途」「加急」类似，按「单数 / 金额」展示
     var discountReasons = (discountByReason && typeof discountByReason === 'object')
         ? Object.values(discountByReason).filter(function (r) {
             return r && (r.orderCount > 0 || r.amountTotal > 0);
@@ -5643,53 +5646,101 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             '</button>';
     };
 
-    if (hasStatus) {
-        tabs.push('<button type="button" class="btn secondary small active" data-dist-tab="status">状态</button>');
-        var shtml = '';
-        byStatus.forEach(function (s) {
-            if (s.orderCount > 0 || s.amountTotal > 0) {
-                var ids = Array.isArray(s.orderIds) ? s.orderIds.slice() : [];
-                var encoded = encodeURIComponent(JSON.stringify(ids));
-                var label = '状态：' + (s.status || '—');
-                var encodedLabel = encodeURIComponent(label);
-                shtml += '<div class="stats-status-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span class="stats-status-name">' + (s.status || '—') + '</span><div class="stats-dim-right"><span class="stats-status-val stats-dim-val">' + s.orderCount + ' 单 / ¥' + (s.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(s.orderIds, label) + '</div></div>';
+    var sortState = container._distSort || { key: 'amountTotal', dir: 'desc' };
+
+    var makeSortLabel = function (label, key) {
+        var active = sortState.key === key;
+        var arrow = active ? (sortState.dir === 'asc' ? ' ↑' : ' ↓') : '';
+        return '<button type="button" class="stats-dist-sort-btn' + (active ? ' is-sorted' : '') + '" data-dist-sort="' + key + '">' + label + arrow + '</button>';
+    };
+
+    var sortData = function (data, nameKey, countKey, amountKey) {
+        return data.slice().sort(function (a, b) {
+            var key = sortState.key;
+            var va, vb;
+            if (key === 'name') {
+                va = (a[nameKey] || '');
+                vb = (b[nameKey] || '');
+            } else if (key === 'count') {
+                va = Number(a[countKey]) || 0;
+                vb = Number(b[countKey]) || 0;
+            } else {
+                va = Number(a[amountKey]) || 0;
+                vb = Number(b[amountKey]) || 0;
             }
+            if (key === 'name') {
+                var c = (va === vb) ? 0 : (va < vb ? -1 : 1);
+                return sortState.dir === 'asc' ? c : -c;
+            }
+            return sortState.dir === 'asc' ? (va - vb) : (vb - va);
+        });
+    };
+
+    if (hasStatus) {
+        tabs.push('<button type="button" class="btn secondary small" data-dist-tab="status">状态</button>');
+        var sortedStatus = sortData(byStatus.filter(function (s) { return s.orderCount > 0 || s.amountTotal > 0; }), 'status', 'orderCount', 'amountTotal');
+        var shtml = '<div class="stats-dist-header">' + makeSortLabel('状态', 'name') + makeSortLabel('单数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
+        sortedStatus.forEach(function (s) {
+            var ids = Array.isArray(s.orderIds) ? s.orderIds.slice() : [];
+            var encoded = encodeURIComponent(JSON.stringify(ids));
+            var label = '状态：' + (s.status || '—');
+            var encodedLabel = encodeURIComponent(label);
+            shtml += '<div class="stats-status-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span class="stats-status-name">' + (s.status || '—') + '</span><div class="stats-dim-right"><span class="stats-status-val stats-dim-val">' + s.orderCount + ' 单 / ¥' + (s.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(s.orderIds, label) + '</div></div>';
         });
         panels.push({ id: 'status', html: '<div class="stats-status-list">' + shtml + '</div>' });
     }
     if (hasUsage) {
-        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="usage">用途</button>');
-        var uhtml = '';
-        byUsage.forEach(function (r) { var label = '用途：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); uhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        tabs.push('<button type="button" class="btn secondary small" data-dist-tab="usage">用途</button>');
+        var sortedUsage = sortData(byUsage, 'name', 'orderCount', 'amountTotal');
+        var uhtml = '<div class="stats-dist-header">' + makeSortLabel('用途', 'name') + makeSortLabel('单数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
+        sortedUsage.forEach(function (r) { var label = '用途：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); uhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'usage', html: '<div class="stats-dim-list">' + uhtml + '</div>' });
     }
     if (hasUrgent) {
-        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="urgent">加急</button>');
-        var ghtml = '';
-        byUrgent.forEach(function (r) { var label = '加急：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ghtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        tabs.push('<button type="button" class="btn secondary small" data-dist-tab="urgent">加急</button>');
+        var sortedUrgent = sortData(byUrgent, 'name', 'orderCount', 'amountTotal');
+        var ghtml = '<div class="stats-dist-header">' + makeSortLabel('加急', 'name') + makeSortLabel('单数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
+        sortedUrgent.forEach(function (r) { var label = '加急：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ghtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'urgent', html: '<div class="stats-dim-list">' + ghtml + '</div>' });
     }
     if (hasOtherFees) {
-        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="otherFees">其他费用</button>');
-        var ofhtml = '';
-        byOtherFees.forEach(function (r) { var label = '其他费用：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ofhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        tabs.push('<button type="button" class="btn secondary small" data-dist-tab="otherFees">其他费用</button>');
+        var sortedOtherFees = sortData(byOtherFees, 'name', 'count', 'amountTotal');
+        var ofhtml = '<div class="stats-dist-header">' + makeSortLabel('费用项', 'name') + makeSortLabel('次数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
+        sortedOtherFees.forEach(function (r) { var label = '其他费用：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ofhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'otherFees', html: '<div class="stats-dim-list">' + ofhtml + '</div>' });
     }
     if (hasProcess) {
-        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="process">工艺</button>');
-        var prhtml = '';
-        byProcess.forEach(function (r) { var label = '工艺：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); prhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        tabs.push('<button type="button" class="btn secondary small" data-dist-tab="process">工艺</button>');
+        var sortedProcess = sortData(byProcess, 'name', 'count', 'feeTotal');
+        var prhtml = '<div class="stats-dist-header">' + makeSortLabel('工艺', 'name') + makeSortLabel('次数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
+        sortedProcess.forEach(function (r) { var label = '工艺：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); prhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'process', html: '<div class="stats-dim-list">' + prhtml + '</div>' });
     }
     if (hasIp) {
-        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="ip">IP</button>');
-        var iphtml = '';
-        byIp.forEach(function (r) { var label = 'IP：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); iphtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        tabs.push('<button type="button" class="btn secondary small" data-dist-tab="ip">IP</button>');
+        var sortedIp = sortData(byIp, 'name', 'orderCount', 'amountTotal');
+        var iphtml = '<div class="stats-dist-header">' + makeSortLabel('IP', 'name') + makeSortLabel('单数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
+        sortedIp.forEach(function (r) { 
+            var label = 'IP：' + (r.name || '—'); 
+            var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; 
+            var encoded = encodeURIComponent(JSON.stringify(ids)); 
+            var encodedLabel = encodeURIComponent(label);
+            var originalNames = Array.isArray(r.originalNames) ? r.originalNames : [];
+            var titleAttr = '';
+            if (originalNames.length > 1) {
+                var allNames = originalNames.join('；');
+                titleAttr = ' title="' + allNames.replace(/"/g, '&quot;') + '"';
+            }
+            iphtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"' + titleAttr + '><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; 
+        });
         panels.push({ id: 'ip', html: '<div class="stats-dim-list">' + iphtml + '</div>' });
     }
     if (hasDiscount) {
-        tabs.push('<button type="button" class="btn secondary small' + (tabs.length === 0 ? ' active' : '') + '" data-dist-tab="discount">折扣</button>');
-        var dhtml = discountReasons.map(function (r) {
+        tabs.push('<button type="button" class="btn secondary small" data-dist-tab="discount">折扣</button>');
+        var sortedDiscount = sortData(discountReasons, 'name', 'orderCount', 'amountTotal');
+        var dhtml = '<div class="stats-dist-header">' + makeSortLabel('折扣原因', 'name') + makeSortLabel('单数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
+        dhtml += sortedDiscount.map(function (r) {
             var name = (r && r.name) ? r.name : '—';
             var count = (r && r.orderCount) ? r.orderCount : 0;
             var amt = (r && r.amountTotal != null && isFinite(r.amountTotal)) ? Number(r.amountTotal) : 0;
@@ -5702,20 +5753,38 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         panels.push({ id: 'discount', html: '<div class="stats-dim-list">' + dhtml + '</div>' });
     }
     var firstId = panels.length ? panels[0].id : null;
+    var activeTab = container._distActiveTab || firstId;
     var html = '<h3 class="stats-block-title">数据分布</h3>';
     html += '<div class="stats-top-tabs">' + tabs.join('') + '</div>';
     panels.forEach(function (p, i) {
-        html += '<div id="statsDistPanel' + p.id + '" class="stats-dist-panel-wrap' + (p.id === firstId ? '' : ' d-none') + '">' + p.html + '</div>';
+        html += '<div id="statsDistPanel' + p.id + '" class="stats-dist-panel-wrap' + (p.id === activeTab ? '' : ' d-none') + '">' + p.html + '</div>';
     });
     container.innerHTML = html;
     container.querySelectorAll('[data-dist-tab]').forEach(function (btn) {
+        var tab = btn.dataset.distTab;
+        if (tab === activeTab) btn.classList.add('active');
         btn.addEventListener('click', function () {
             var tab = this.dataset.distTab;
+            container._distActiveTab = tab;
             container.querySelectorAll('[data-dist-tab]').forEach(function (b) { b.classList.remove('active'); });
             this.classList.add('active');
             container.querySelectorAll('.stats-dist-panel-wrap').forEach(function (w) { w.classList.add('d-none'); });
             var panel = document.getElementById('statsDistPanel' + tab);
             if (panel) panel.classList.remove('d-none');
+        });
+    });
+    container.querySelectorAll('.stats-dist-sort-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var key = this.dataset.distSort;
+            if (!key) return;
+            var s = container._distSort || { key: 'amountTotal', dir: 'desc' };
+            container._distSort = {
+                key: key,
+                dir: s.key === key ? (s.dir === 'desc' ? 'asc' : 'desc') : 'desc'
+            };
+            var activeTab = container.querySelector('[data-dist-tab].active');
+            container._distActiveTab = activeTab ? activeTab.dataset.distTab : firstId;
+            renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, byIp, discountByReason);
         });
     });
     bindStatsCardOrderLinks(container);
@@ -7830,7 +7899,7 @@ function convertGiftToProduct(giftId) {
         type: gift.type,
         sides: gift.sides || 'single',
         quantity: gift.quantity || 1,
-        sameModel: gift.sameModel !== undefined ? gift.sameModel : false,
+        sameModel: gift.sameModel !== undefined ? gift.sameModel : true,
         crossOrderSameModel: gift.crossOrderSameModel || false,
         extraFeeIds: gift.extraFeeIds || [],
         processes: gift.processes || {},
@@ -13327,6 +13396,93 @@ function hideClientIdMatchList() {
     if (wrap) wrap.classList.add('d-none');
 }
 
+// IP名称归一化：提取中文核心或保留外文
+function normalizeIpName(ip) {
+    if (!ip) return ip;
+    var str = String(ip).trim();
+    if (!str) return str;
+    
+    var chinesePart = str.match(/[\u4e00-\u9fff]+/g);
+    if (chinesePart && chinesePart.length > 0) {
+        return chinesePart.join('').trim();
+    }
+    
+    var cleaned = str
+        .replace(/[（\(].*?[）\)]/g, '')
+        .replace(/[【\[].*?[】\]]/g, '')
+        .replace(/[\s_]+/g, ' ')
+        .trim();
+    
+    return cleaned || str;
+}
+
+// 获取过往IP列表（去重）
+function getProjectOriginMatchList(keyword) {
+    if (!Array.isArray(history) || history.length === 0) return [];
+    var keyLower = keyword ? String(keyword).trim().toLowerCase() : '';
+    var seen = {};
+    var list = [];
+    for (var i = history.length - 1; i >= 0; i--) {
+        var item = history[i];
+        if (!item) continue;
+        var origin = (item.projectOrigin != null) ? String(item.projectOrigin).trim() : '';
+        if (!origin || seen[origin]) continue;
+        if (keyLower) {
+            var originLower = origin.toLowerCase();
+            if (originLower.indexOf(keyLower) < 0) continue;
+        }
+        seen[origin] = true;
+        list.push(origin);
+        if (list.length >= 10) break;
+    }
+    return list;
+}
+
+function showProjectOriginMatches() {
+    var originEl = document.getElementById('projectOrigin');
+    var wrap = document.getElementById('projectOriginMatchWrap');
+    var listEl = document.getElementById('projectOriginMatchList');
+    if (!originEl || !wrap || !listEl) return;
+    var keyword = (originEl.value || '').trim();
+    var matches = getProjectOriginMatchList(keyword);
+    if (matches.length === 0) {
+        wrap.classList.add('d-none');
+        listEl.innerHTML = '';
+        return;
+    }
+    listEl.innerHTML = matches.map(function (m) {
+        var mEsc = (m || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        return '<li class="project-origin-match-item" role="button" tabindex="0" data-origin="' + mEsc + '">' + mEsc + '</li>';
+    }).join('');
+    wrap.classList.remove('d-none');
+    listEl.querySelectorAll('.project-origin-match-item').forEach(function (li) {
+        li.addEventListener('click', function () {
+            var origin = li.getAttribute('data-origin') || '';
+            origin = origin.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+            if (originEl) originEl.value = origin;
+            hideProjectOriginMatchList();
+        });
+    });
+}
+
+var projectOriginMatchDebounceTimer = null;
+function debouncedShowProjectOriginMatches() {
+    if (projectOriginMatchDebounceTimer) clearTimeout(projectOriginMatchDebounceTimer);
+    projectOriginMatchDebounceTimer = setTimeout(showProjectOriginMatches, 200);
+}
+
+var hideProjectOriginMatchTimer = null;
+function scheduleHideProjectOriginMatchList() {
+    if (hideProjectOriginMatchTimer) clearTimeout(hideProjectOriginMatchTimer);
+    hideProjectOriginMatchTimer = setTimeout(hideProjectOriginMatchList, 150);
+}
+function hideProjectOriginMatchList() {
+    if (hideProjectOriginMatchTimer) clearTimeout(hideProjectOriginMatchTimer);
+    hideProjectOriginMatchTimer = null;
+    var wrap = document.getElementById('projectOriginMatchWrap');
+    if (wrap) wrap.classList.add('d-none');
+}
+
 // 选中一项时填充单主ID、接单平台、联系方式后，不再自动覆盖；仅当用户输入关键字并选择时填充
 // 根据单主 ID（或关键字）从历史记录自动填充接单平台和联系方式（先精确匹配，再关键字包含匹配，取最近一条）
 function fillOrderPlatformAndContactFromHistory() {
@@ -18455,8 +18611,29 @@ function smartParseOrderRemark() {
     
     var lines = text.split('\n');
     var isGiftSection = false;
+    var isProductListSection = false;
+    var isTextListSection = false;
     var parsedProductCount = 0;
     var parsedGiftCount = 0;
+    
+    // 字段别名映射表
+    var fieldAliases = {
+        clientId: ['主催', '客户', '甲方', '老板', '约主', '单主'],
+        contactInfo: ['QQ', '微信', '电话', '手机', '联系方式'],
+        usage: ['用途', '使用用途', '用途说明'],
+        ip: ['原作', 'IP', '作品', '来源', '出处'],
+        character: ['角色', '人物', '角色名', '姓名'],
+        birthday: ['生日', '出生日期', '生贺'],
+        englishName: ['英文名', '英文名称', 'EN名', '英文'],
+        projectName: ['企划主题名', '主题名', '企划名', '项目名'],
+        productList: ['制品工艺及尺寸', '制品列表', '制作清单'],
+        textList: ['想添加的文字', '文字内容', '文字要求'],
+        otherReq: ['其他要求', '特殊要求', '补充说明'],
+        needCutout: ['是否需要抠图', '抠图', '修图', '精修']
+    };
+    
+    // 解析出的字段值
+    var parsedFields = {};
     
     // 从一行中解析出一项：先尝试多种固定格式，再尝试“行内含类型名+数字”
     function parseOneLine(ln) {
@@ -18465,31 +18642,54 @@ function smartParseOrderRemark() {
         var quantity = 1;
         var hasBackground = false;
         var matchedSetting = null;
-        // 中文数字
-        var cnNum = ln.match(/([一二两三四五六七八九十百千\d]+)\s*个?\s*张?/);
-        var numFromCn = cnNum ? (function(n) {
-            var map = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10 };
-            if (/^\d+$/.test(n)) return parseInt(n, 10);
-            if (n === '两') return 2;
-            for (var k in map) { if (n === k) return map[k]; }
-            return null;
-        })(cnNum[1].replace(/个|张/g, '').trim()) : null;
-        var numMatch = ln.match(/\d+/);
-        var num = numMatch ? parseInt(numMatch[0], 10) : (numFromCn || 1);
-        if (num > 0) quantity = num;
+        var processes = [];
+        var size = '';
+        
         if (/双面/.test(ln)) sides = 'double';
         if (/带背景/.test(ln)) hasBackground = true;
-        // 格式1：类型 单面/双面? 数字 个/张? 带背景?
-        var m1 = ln.match(/^([^\s\d]+?)\s*(单面|双面)?\s*(\d+)\s*(个|张)?\s*(带背景)?/i);
+        
+        // 提取尺寸（优先匹配尺寸格式，避免尺寸数字被当作数量）
+        var sizeMatch = ln.match(/([\d.]+[\s×*×][\d.]+[cmmm]+?)/);
+        if (!sizeMatch) sizeMatch = ln.match(/(\d+[\s×*×]\d+)/);
+        if (!sizeMatch) sizeMatch = ln.match(/(\d+\.?\d*\s*[cmmm]+)/);
+        if (sizeMatch) size = sizeMatch[1];
+        
+        // 提取工艺
+        if (processSettings.length) {
+            processSettings.forEach(function(p) {
+                if (ln.indexOf(p.name) !== -1) {
+                    processes.push(p.id.toString());
+                }
+            });
+        }
+        
+        // 提取数量（只匹配带单位的数字，避免尺寸数字被当作数量）
+        var quantityMatch = ln.match(/(\d+)\s*(个|张|份|组|套)/);
+        if (!quantityMatch) quantityMatch = ln.match(/(\d+)\s*个/);
+        if (quantityMatch) {
+            quantity = parseInt(quantityMatch[1], 10);
+        } else {
+            var cnNum = ln.match(/([一二两三四五六七八九十百千]+)\s*(个|张|份|组|套)/);
+            if (cnNum) {
+                var map = { '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10 };
+                var cnVal = cnNum[1].replace(/个|张|份|组|套/g, '').trim();
+                if (/^\d+$/.test(cnVal)) quantity = parseInt(cnVal, 10);
+                else if (cnVal === '两') quantity = 2;
+                else if (map[cnVal]) quantity = map[cnVal];
+            }
+        }
+        
+        // 格式1：类型 单面/双面? 数字 个/张? 带背景?（只有带单位时才设置数量）
+        var m1 = ln.match(/^([^\s\d]+?)\s*(单面|双面)?\s*(\d+)\s*(个|张|份|组|套)\s*(带背景)?/i);
         if (m1) {
             typeName = m1[1];
             if (m1[2]) sides = m1[2] === '双面' ? 'double' : 'single';
             quantity = parseInt(m1[3], 10) || quantity;
             hasBackground = !!m1[5];
         }
-        // 格式2：数字 个/张? 类型 单面/双面? 带背景?
+        // 格式2：数字 个/张? 类型 单面/双面? 带背景?（只有带单位时才设置数量）
         if (!typeName) {
-            var m2 = ln.match(/^(\d+)\s*(个|张)?\s+([^\s\d]+?)(?:\s*(单面|双面))?(?:\s*(带背景))?/i);
+            var m2 = ln.match(/^(\d+)\s*(个|张|份|组|套)\s+([^\s\d]+?)(?:\s*(单面|双面))?(?:\s*(带背景))?/i);
             if (m2) {
                 typeName = m2[3];
                 quantity = parseInt(m2[1], 10) || quantity;
@@ -18497,16 +18697,16 @@ function smartParseOrderRemark() {
                 hasBackground = !!m2[5];
             }
         }
-        // 格式3：类型 数字 或 类型 中文数 个
+        // 格式3：类型 数字+单位 或 类型 中文数+单位（只有带单位时才设置数量）
         if (!typeName) {
-            var m3 = ln.match(/^([^\s\d]+?)\s*(\d+)\s*(个|张)?/);
+            var m3 = ln.match(/^([^\s\d]+?)\s*(\d+)\s*(个|张|份|组|套)/);
             if (m3) {
                 typeName = m3[1];
                 quantity = parseInt(m3[2], 10) || quantity;
             }
         }
         if (!typeName && cnNum) {
-            var m3b = ln.match(/^([^\s\d一二三四五六七八九十两]+?)\s*[一二三四五六七八九十两]+\s*个?/);
+            var m3b = ln.match(/^([^\s\d一二三四五六七八九十两]+?)\s*[一二三四五六七八九十两]+\s*(个|张|份|组|套)/);
             if (m3b) {
                 typeName = m3b[1];
                 if (numFromCn) quantity = numFromCn;
@@ -18544,7 +18744,82 @@ function smartParseOrderRemark() {
             });
         }
         if (!matchedSetting) return null;
-        return { typeId: matchedSetting.id.toString(), sides: sides, quantity: quantity, hasBackground: hasBackground };
+        return { typeId: matchedSetting.id.toString(), sides: sides, quantity: quantity, hasBackground: hasBackground, processes: processes, size: size };
+    }
+    
+    // 正则转义函数
+    function escapeRegex(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    
+    // 匹配字段名（返回所有匹配的字段，支持单行多字段，支持多种分隔符）
+    function matchFieldName(line) {
+        var matches = [];
+        var sortedFields = Object.keys(fieldAliases).sort(function(a, b) {
+            var aMaxLen = Math.max.apply(null, fieldAliases[a].map(function(s) { return s.length; }));
+            var bMaxLen = Math.max.apply(null, fieldAliases[b].map(function(s) { return s.length; }));
+            return bMaxLen - aMaxLen;
+        });
+        
+        for (var fi = 0; fi < sortedFields.length; fi++) {
+            var fieldKey = sortedFields[fi];
+            var aliases = fieldAliases[fieldKey];
+            for (var i = 0; i < aliases.length; i++) {
+                var alias = aliases[i];
+                var escapedAlias = escapeRegex(alias);
+                var patterns = [
+                    '\\s*(?:◆|●|•|-|\\*|【|】)?\\s*' + escapedAlias + '(?:[^\\n：:]*)?\\s*[：:]\\s*([^\\n]+?)(?=\\s*(?:◆|●|•|-|\\*|【|】)\\s*|$)',
+                    '\\s*(?:◆|●|•|-|\\*|【|】)?\\s*' + escapedAlias + '\\s+(?:是|为)?\\s*([^\\n]+?)(?=\\s*(?:◆|●|•|-|\\*|【|】)\\s*|$)',
+                    '^\\s*' + escapedAlias + '(?:[^\\n：:]*)?\\s*[：:]\\s*([^\\n]+)$',
+                    '^\\s*' + escapedAlias + '\\s+(?:是|为)?\\s*([^\\n]+)$'
+                ];
+                
+                for (var pi = 0; pi < patterns.length; pi++) {
+                    var regex = new RegExp(patterns[pi], 'g');
+                    regex.lastIndex = 0;
+                    var match;
+                    while ((match = regex.exec(line)) !== null) {
+                        var value = match[1].trim();
+                        if (value && !/^[\s：:]*$/.test(value)) {
+                            matches.push({ field: fieldKey, value: value });
+                        }
+                    }
+                }
+            }
+        }
+        return matches.length > 0 ? matches : null;
+    }
+    
+    // 是否为编号行（①②③ 或 1. 2. 3. 或 (1) (2) (3) 或 - 或 *）
+    function isNumberedLine(line) {
+        return /^(?:[①②③④⑤⑥⑦⑧⑨⑩]|\d+\.|\(\d+\)|\d+\s*[-、.]|-|\*)\s+/.test(line);
+    }
+    
+    // 提取编号行内容
+    function extractNumberedContent(line) {
+        return line.replace(/^(?:[①②③④⑤⑥⑦⑧⑨⑩]|\d+\.|\(\d+\)|\d+\s*[-、.]|-|\*)\s+/, '').trim();
+    }
+    
+    // 匹配用途系数
+    function matchUsageCoefficient(name) {
+        for (var key in defaultSettings.usageCoefficients) {
+            var coeff = defaultSettings.usageCoefficients[key];
+            if (coeff.name && (coeff.name.indexOf(name) !== -1 || name.indexOf(coeff.name) !== -1)) {
+                return key;
+            }
+        }
+        return null;
+    }
+    
+    // 匹配加急系数
+    function matchUrgentCoefficient(name) {
+        for (var key in defaultSettings.urgentCoefficients) {
+            var coeff = defaultSettings.urgentCoefficients[key];
+            if (coeff.name && (coeff.name.indexOf(name) !== -1 || name.indexOf(coeff.name) !== -1)) {
+                return key;
+            }
+        }
+        return null;
     }
     
     for (var i = 0; i < lines.length; i++) {
@@ -18554,10 +18829,80 @@ function smartParseOrderRemark() {
         // 检测是否进入赠品区域
         if (line.match(/^赠品[：:]/i)) {
             isGiftSection = true;
+            isProductListSection = false;
+            isTextListSection = false;
             line = line.replace(/^赠品[：:]/i, '').trim();
             if (!line) continue;
         }
         
+        // 检查是否为字段行
+        var fieldMatches = matchFieldName(line);
+        if (fieldMatches) {
+            isGiftSection = false;
+            for (var mi = 0; mi < fieldMatches.length; mi++) {
+                var fieldMatch = fieldMatches[mi];
+                if (fieldMatch.field === 'productList') {
+                    isProductListSection = true;
+                    isTextListSection = false;
+                } else if (fieldMatch.field === 'textList') {
+                    isTextListSection = true;
+                    isProductListSection = false;
+                } else {
+                    isProductListSection = false;
+                    isTextListSection = false;
+                    parsedFields[fieldMatch.field] = fieldMatch.value;
+                }
+            }
+            continue;
+        }
+        
+        // 检查是否为编号行
+        if (isNumberedLine(line)) {
+            var content = extractNumberedContent(line);
+            if (!content) continue;
+            
+            if (isTextListSection) {
+                if (!parsedFields.textListItems) parsedFields.textListItems = [];
+                parsedFields.textListItems.push(content);
+                continue;
+            }
+            
+            if (isProductListSection || isGiftSection) {
+                var parsed = parseOneLine(content);
+                if (parsed) {
+                    if (isGiftSection) {
+                        giftIdCounter++;
+                        var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity };
+                        gifts.push(gift);
+                        renderGift(gift);
+                        parsedGiftCount++;
+                    } else {
+                        productIdCounter++;
+                        var product = {
+                            id: productIdCounter,
+                            type: parsed.typeId,
+                            sides: parsed.sides,
+                            quantity: parsed.quantity,
+                            sameModel: true,
+                            hasBackground: parsed.hasBackground,
+                            processes: {}
+                        };
+                        // 添加工艺
+                        if (parsed.processes.length > 0) {
+                            parsed.processes.forEach(function(pid) {
+                                product.processes[pid] = 1;
+                            });
+                        }
+                        products.push(product);
+                        renderProduct(product);
+                        parsedProductCount++;
+                    }
+                }
+            }
+            continue;
+        }
+        
+        // 普通制品行
         var parsed = parseOneLine(line);
         if (parsed) {
             if (isGiftSection) {
@@ -18577,9 +18922,94 @@ function smartParseOrderRemark() {
                     hasBackground: parsed.hasBackground,
                     processes: {}
                 };
+                if (parsed.processes.length > 0) {
+                    parsed.processes.forEach(function(pid) {
+                        product.processes[pid] = 1;
+                    });
+                }
                 products.push(product);
                 renderProduct(product);
                 parsedProductCount++;
+            }
+        }
+    }
+    
+    // 填充表单字段
+    if (parsedFields.clientId) {
+        var clientIdEl = document.getElementById('clientId');
+        if (clientIdEl) clientIdEl.value = parsedFields.clientId;
+    }
+    if (parsedFields.contactInfo) {
+        var contactInfoEl = document.getElementById('contactInfo');
+        if (contactInfoEl) contactInfoEl.value = parsedFields.contactInfo;
+    }
+    if (parsedFields.usage) {
+        var usageKey = matchUsageCoefficient(parsedFields.usage);
+        if (usageKey) {
+            var usageEl = document.getElementById('usage');
+            if (usageEl) usageEl.value = usageKey;
+        }
+    }
+    
+    // 填充企划信息区域
+    if (parsedFields.projectName) {
+        var projNameEl = document.getElementById('projectName');
+        if (projNameEl) projNameEl.value = parsedFields.projectName;
+    }
+    if (parsedFields.ip) {
+        var originEl = document.getElementById('projectOrigin');
+        if (originEl) originEl.value = parsedFields.ip;
+    }
+    if (parsedFields.character) {
+        var charEl = document.getElementById('characterName');
+        if (charEl) charEl.value = parsedFields.character;
+    }
+    
+    // 将生日、英文名、其他要求等信息添加到备注字段
+    var extraNotes = [];
+    if (parsedFields.birthday) extraNotes.push('[生日] ' + parsedFields.birthday);
+    if (parsedFields.englishName) extraNotes.push('[英文名] ' + parsedFields.englishName);
+    if (parsedFields.otherReq) extraNotes.push('[其他要求] ' + parsedFields.otherReq);
+    if (parsedFields.textListItems && parsedFields.textListItems.length > 0) {
+        extraNotes.push('[想添加的文字]');
+        parsedFields.textListItems.forEach(function(t) { if (t) extraNotes.push('  - ' + t); });
+    }
+    
+    if (extraNotes.length > 0) {
+        var noteEl = document.getElementById('orderRemarkText');
+        if (noteEl) {
+            var currentNote = noteEl.value || '';
+            var newNote = extraNotes.join('\n') + '\n\n' + currentNote;
+            noteEl.value = newNote.trim();
+        }
+    }
+    
+    if (parsedFields.needCutout && /是|需要/.test(parsedFields.needCutout)) {
+        var cutoutFeeId = null;
+        var cutoutAmount = 0;
+        for (var feeKey in defaultSettings.otherFees) {
+            var fee = defaultSettings.otherFees[feeKey];
+            if (fee.name && fee.name.indexOf('抠图') !== -1) {
+                cutoutFeeId = feeKey;
+                cutoutAmount = fee.amount || fee.value || 0;
+                break;
+            }
+        }
+        if (cutoutFeeId && cutoutAmount > 0) {
+            var cutoutFeeName = defaultSettings.otherFees[cutoutFeeId].name;
+            var cutoutFee = {
+                id: Date.now(),
+                type: 'other_' + cutoutFeeId,
+                name: cutoutFeeName,
+                amount: cutoutAmount,
+                quantity: 1,
+                unitPrice: cutoutAmount
+            };
+            if (typeof dynamicOtherFees !== 'undefined') {
+                dynamicOtherFees.push(cutoutFee);
+                if (typeof renderDynamicOtherFees === 'function') {
+                    renderDynamicOtherFees();
+                }
             }
         }
     }
@@ -18590,11 +19020,21 @@ function smartParseOrderRemark() {
     }
     
     // 智能提取后提示：制品/赠品分别统计
-    if (parsedProductCount > 0 || parsedGiftCount > 0) {
-        var parts = [];
-        if (parsedProductCount > 0) parts.push('制品 ' + parsedProductCount + ' 项');
-        if (parsedGiftCount > 0) parts.push('赠品 ' + parsedGiftCount + ' 项');
-        showGlobalToast('已识别 ' + parts.join('、'));
+    var recognizedParts = [];
+    if (parsedFields.clientId) recognizedParts.push('单主');
+    if (parsedFields.contactInfo) recognizedParts.push('联系方式');
+    if (parsedFields.usage) recognizedParts.push('用途');
+    if (parsedFields.ip) recognizedParts.push('原作');
+    if (parsedFields.character) recognizedParts.push('角色');
+    if (parsedFields.birthday) recognizedParts.push('生日');
+    if (parsedFields.englishName) recognizedParts.push('英文名');
+    if (parsedFields.projectName) recognizedParts.push('企划主题');
+    if (parsedProductCount > 0) recognizedParts.push('制品 ' + parsedProductCount + ' 项');
+    if (parsedGiftCount > 0) recognizedParts.push('赠品 ' + parsedGiftCount + ' 项');
+    if (parsedFields.needCutout && /是|需要/.test(parsedFields.needCutout)) recognizedParts.push('抠图费');
+    
+    if (recognizedParts.length > 0) {
+        showGlobalToast('已识别 ' + recognizedParts.join('、'));
     } else {
         showGlobalToast('未识别到有效内容');
     }

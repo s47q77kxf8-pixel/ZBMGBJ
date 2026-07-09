@@ -1921,6 +1921,44 @@ html.theme-dark .btn-remark-full:active {
     outline: none;
 }
 
+.project-origin-input-wrap {
+    position: relative;
+}
+.project-origin-match-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+.project-origin-match-dropdown ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.project-origin-match-item {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+}
+.project-origin-match-item:last-child {
+    border-bottom: none;
+}
+.project-origin-match-item:hover,
+.project-origin-match-item:focus {
+    background: var(--primary-light, rgba(0, 0, 0, 0.04));
+    outline: none;
+}
+
 /* 接单平台：清空键在框内（参考制品类型选择框） */
 .order-platform-input-wrap {
     position: relative;
@@ -9798,11 +9836,7 @@ html.theme-dark .settlement-preview {
     gap: 0.4rem;
     font-size: 0.85rem;
 }
-/* 数据分布-折扣面板：理由/系数较多时可滚动 */
-#statsDistPaneldiscount .stats-dim-list {
-    max-height: 240px;
-    overflow-y: auto;
-}
+
 .stats-status-item,
 .stats-dim-item {
     display: flex;
@@ -10123,6 +10157,32 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
 }
 .stats-category-summary-th-sort.is-sorted {
     color: var(--primary-color);
+}
+.stats-dist-header {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 0.25rem;
+}
+.stats-dist-sort-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+}
+.stats-dist-sort-btn:hover {
+    color: var(--text-color);
+    background: var(--bg-hover);
+}
+.stats-dist-sort-btn.is-sorted {
+    color: var(--primary-color);
+    font-weight: 500;
 }
 .stats-category-summary-row td {
     border-bottom: 1px solid rgba(148, 163, 184, 0.25);
