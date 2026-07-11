@@ -5620,6 +5620,11 @@ function openStatsDistributionOrders(orderIds, focusLabel) {
 function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, byIp, discountByReason) {
     const container = document.getElementById('statsDistribution');
     if (!container) return;
+    const privacy = getStatsPrivacyState();
+    var fmtMoney = function (v) {
+        if (privacy.hideAmount) return '¥***';
+        return '¥' + (Number(v) || 0).toFixed(2);
+    };
     var hasStatus = byStatus && byStatus.some(function (s) { return s.orderCount > 0 || s.amountTotal > 0; });
     var hasUsage = byUsage && byUsage.length > 0;
     var hasUrgent = byUrgent && byUrgent.length > 0;
@@ -5685,7 +5690,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             var encoded = encodeURIComponent(JSON.stringify(ids));
             var label = '状态：' + (s.status || '—');
             var encodedLabel = encodeURIComponent(label);
-            shtml += '<div class="stats-status-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span class="stats-status-name">' + (s.status || '—') + '</span><div class="stats-dim-right"><span class="stats-status-val stats-dim-val">' + s.orderCount + ' 单 / ¥' + (s.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(s.orderIds, label) + '</div></div>';
+            shtml += '<div class="stats-status-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span class="stats-status-name">' + (s.status || '—') + '</span><div class="stats-dim-right"><span class="stats-status-val stats-dim-val">' + s.orderCount + ' 单 / ' + fmtMoney(s.amountTotal) + '</span>' + buildViewOrdersBtn(s.orderIds, label) + '</div></div>';
         });
         panels.push({ id: 'status', html: '<div class="stats-status-list">' + shtml + '</div>' });
     }
@@ -5693,28 +5698,28 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         tabs.push('<button type="button" class="btn secondary small" data-dist-tab="usage">用途</button>');
         var sortedUsage = sortData(byUsage, 'name', 'orderCount', 'amountTotal');
         var uhtml = '<div class="stats-dist-header">' + makeSortLabel('用途', 'name') + makeSortLabel('单数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
-        sortedUsage.forEach(function (r) { var label = '用途：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); uhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        sortedUsage.forEach(function (r) { var label = '用途：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); uhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ' + fmtMoney(r.amountTotal) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'usage', html: '<div class="stats-dim-list">' + uhtml + '</div>' });
     }
     if (hasUrgent) {
         tabs.push('<button type="button" class="btn secondary small" data-dist-tab="urgent">加急</button>');
         var sortedUrgent = sortData(byUrgent, 'name', 'orderCount', 'amountTotal');
         var ghtml = '<div class="stats-dist-header">' + makeSortLabel('加急', 'name') + makeSortLabel('单数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
-        sortedUrgent.forEach(function (r) { var label = '加急：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ghtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        sortedUrgent.forEach(function (r) { var label = '加急：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ghtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ' + fmtMoney(r.amountTotal) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'urgent', html: '<div class="stats-dim-list">' + ghtml + '</div>' });
     }
     if (hasOtherFees) {
         tabs.push('<button type="button" class="btn secondary small" data-dist-tab="otherFees">其他费用</button>');
         var sortedOtherFees = sortData(byOtherFees, 'name', 'count', 'amountTotal');
         var ofhtml = '<div class="stats-dist-header">' + makeSortLabel('费用项', 'name') + makeSortLabel('次数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
-        sortedOtherFees.forEach(function (r) { var label = '其他费用：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ofhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        sortedOtherFees.forEach(function (r) { var label = '其他费用：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); ofhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ' + fmtMoney(r.amountTotal) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'otherFees', html: '<div class="stats-dim-list">' + ofhtml + '</div>' });
     }
     if (hasProcess) {
         tabs.push('<button type="button" class="btn secondary small" data-dist-tab="process">工艺</button>');
         var sortedProcess = sortData(byProcess, 'name', 'count', 'feeTotal');
         var prhtml = '<div class="stats-dist-header">' + makeSortLabel('工艺', 'name') + makeSortLabel('次数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
-        sortedProcess.forEach(function (r) { var label = '工艺：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); prhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ¥' + (r.feeTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        sortedProcess.forEach(function (r) { var label = '工艺：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); prhtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.count + ' 次 / ' + fmtMoney(r.feeTotal) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
         panels.push({ id: 'process', html: '<div class="stats-dim-list">' + prhtml + '</div>' });
     }
     if (hasIp) {
@@ -5732,7 +5737,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
                 var allNames = originalNames.join('；');
                 titleAttr = ' title="' + allNames.replace(/"/g, '&quot;') + '"';
             }
-            iphtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"' + titleAttr + '><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ¥' + (r.amountTotal || 0).toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; 
+            iphtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"' + titleAttr + '><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ' + fmtMoney(r.amountTotal) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; 
         });
         panels.push({ id: 'ip', html: '<div class="stats-dim-list">' + iphtml + '</div>' });
     }
@@ -5748,7 +5753,8 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : [];
             var encoded = encodeURIComponent(JSON.stringify(ids));
             var encodedLabel = encodeURIComponent(label);
-            return '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + name + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + count + ' 单 / -¥' + amt.toFixed(2) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>';
+            var amtDisplay = privacy.hideAmount ? '-¥***' : ('-¥' + amt.toFixed(2));
+            return '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + name + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + count + ' 单 / ' + amtDisplay + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>';
         }).join('');
         panels.push({ id: 'discount', html: '<div class="stats-dim-list">' + dhtml + '</div>' });
     }
@@ -5972,7 +5978,9 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     const maxOrd = Math.max(1, ...displayAgg.map(d => d.orders));
     const maxItem = Math.max(1, ...displayAgg.map(d => d.itemTotal || 0));
     const maxRate = 100;
+    const privacy = getStatsPrivacyState();
     const fmtMoneyCompact = (v) => {
+        if (privacy.hideAmount) return '¥***';
         const n = Number(v) || 0;
         return '¥' + n.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
     };
@@ -6213,6 +6221,7 @@ function renderStatsCategorySummary(summary) {
     container._categorySummary = summary;
     const rows = summary && Array.isArray(summary.rows) ? summary.rows : [];
     const totals = summary && summary.totals ? summary.totals : null;
+    const privacy = getStatsPrivacyState();
     const fmtInt = (v) => {
         const n = Number(v);
         if (!isFinite(n)) return '—';
@@ -6221,6 +6230,7 @@ function renderStatsCategorySummary(summary) {
     const fmtMoney = (v) => {
         const n = Number(v);
         if (!isFinite(n)) return '—';
+        if (privacy.hideAmount) return '¥***';
         return '¥' + n.toFixed(2);
     };
 
