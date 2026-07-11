@@ -27,6 +27,14 @@ backup_*/
 # 敏感配置文件（包含API密钥，不在公开仓库中暴露）
 supabase-config.js
 
+# 开发工具页面
+clear_tags.html
+icon-selector-all.html
+icon-selector.html
+
+# 旧版仪表盘页面（已不再使用）
+dashboard.html
+
 # 构建输出
 build/
 dist/
