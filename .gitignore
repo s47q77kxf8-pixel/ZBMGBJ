@@ -24,6 +24,9 @@ backup_*/
 .env.local
 .env.*.local
 
+# 敏感配置文件（包含API密钥，不在公开仓库中暴露）
+supabase-config.js
+
 # 构建输出
 build/
 dist/
