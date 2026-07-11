@@ -4894,6 +4894,7 @@ function getStatsDataset(historySource, filters) {
             byClient: [],
             byProduct: [],
             byStatus: [],
+            byPlatform: [],
             byUsage: [],
             byUrgent: [],
             byProcess: [],
@@ -4979,6 +4980,7 @@ function getStatsDataset(historySource, filters) {
     const clientMap = {};
     const productMap = {};
     const statusMap = {};
+    const platformMap = {};
     const usageMap = {};
     const urgentMap = {};
     const processMap = {};
@@ -5283,6 +5285,12 @@ function getStatsDataset(historySource, filters) {
         statusMap[status].orderCount += 1;
         statusMap[status].amountTotal += revenue;
 
+        const platform = (item.contact && String(item.contact).trim()) ? String(item.contact).trim() : '—';
+        if (!platformMap[platform]) platformMap[platform] = { name: platform, orderCount: 0, amountTotal: 0, orderIds: [] };
+        pushOrderId(platformMap[platform], item.id);
+        platformMap[platform].orderCount += 1;
+        platformMap[platform].amountTotal += revenue;
+
         const dateStr = useDeadline ? (item.deadline ? normalizeYmd(item.deadline) : '') : (item.timestamp ? new Date(item.timestamp).toISOString().slice(0, 10) : '');
         if (dateStr) {
             if (!dailyMap[dateStr]) dailyMap[dateStr] = { date: dateStr, revenue: 0, orders: 0, itemTotal: 0, itemDone: 0 };
@@ -5475,6 +5483,7 @@ function getStatsDataset(historySource, filters) {
     const byClient = Object.values(clientMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
     const byProduct = Object.values(productMap).sort((a, b) => b.revenueTotal - a.revenueTotal);
     const byStatus = ['待排单', '未开始', '进行中', '已完成', '已逾期', '已撤单', '有废稿', '已结单', '已收定', '占位单'].map(s => statusMap[s] || { status: s, orderCount: 0, amountTotal: 0, orderIds: [] });
+    const byPlatform = Object.values(platformMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byUsage = Object.values(usageMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byUrgent = Object.values(urgentMap).sort((a, b) => b.amountTotal - a.amountTotal);
     const byOtherFees = Object.values(otherFeesMap).sort((a, b) => b.amountTotal - a.amountTotal);
@@ -5549,6 +5558,7 @@ function getStatsDataset(historySource, filters) {
         byProduct,
         byGift,
         byStatus,
+        byPlatform,
         byUsage,
         byUrgent,
         byOtherFees,
@@ -5617,7 +5627,7 @@ function openStatsDistributionOrders(orderIds, focusLabel) {
     if (typeof showGlobalToast === 'function') showGlobalToast('已切换为仅显示这 ' + ids.length + ' 条统计企划');
 }
 
-function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, byIp, discountByReason) {
+function renderStatsDistribution(byStatus, byPlatform, byUsage, byUrgent, byOtherFees, byProcess, byIp, discountByReason) {
     const container = document.getElementById('statsDistribution');
     if (!container) return;
     const privacy = getStatsPrivacyState();
@@ -5626,6 +5636,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         return '¥' + (Number(v) || 0).toFixed(2);
     };
     var hasStatus = byStatus && byStatus.some(function (s) { return s.orderCount > 0 || s.amountTotal > 0; });
+    var hasPlatform = byPlatform && byPlatform.some(function (p) { return p.orderCount > 0 || p.amountTotal > 0; });
     var hasUsage = byUsage && byUsage.length > 0;
     var hasUrgent = byUrgent && byUrgent.length > 0;
     var hasOtherFees = byOtherFees && byOtherFees.length > 0;
@@ -5637,7 +5648,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
         })
         : [];
     var hasDiscount = discountReasons.length > 0;
-    if (!hasStatus && !hasUsage && !hasUrgent && !hasOtherFees && !hasProcess && !hasIp && !hasDiscount) { container.innerHTML = ''; container.classList.add('d-none'); return; }
+    if (!hasStatus && !hasPlatform && !hasUsage && !hasUrgent && !hasOtherFees && !hasProcess && !hasIp && !hasDiscount) { container.innerHTML = ''; container.classList.add('d-none'); return; }
     container.classList.remove('d-none');
     var tabs = [];
     var panels = [];
@@ -5693,6 +5704,13 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             shtml += '<div class="stats-status-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span class="stats-status-name">' + (s.status || '—') + '</span><div class="stats-dim-right"><span class="stats-status-val stats-dim-val">' + s.orderCount + ' 单 / ' + fmtMoney(s.amountTotal) + '</span>' + buildViewOrdersBtn(s.orderIds, label) + '</div></div>';
         });
         panels.push({ id: 'status', html: '<div class="stats-status-list">' + shtml + '</div>' });
+    }
+    if (hasPlatform) {
+        tabs.push('<button type="button" class="btn secondary small" data-dist-tab="platform">接单平台</button>');
+        var sortedPlatform = sortData(byPlatform.filter(function (p) { return p.orderCount > 0 || p.amountTotal > 0; }), 'name', 'orderCount', 'amountTotal');
+        var phtml = '<div class="stats-dist-header">' + makeSortLabel('平台', 'name') + makeSortLabel('单数', 'count') + makeSortLabel('金额', 'amountTotal') + '</div>';
+        sortedPlatform.forEach(function (r) { var label = '接单平台：' + (r.name || '—'); var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : []; var encoded = encodeURIComponent(JSON.stringify(ids)); var encodedLabel = encodeURIComponent(label); phtml += '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + (r.name || '—') + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + r.orderCount + ' 单 / ' + fmtMoney(r.amountTotal) + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>'; });
+        panels.push({ id: 'platform', html: '<div class="stats-dim-list">' + phtml + '</div>' });
     }
     if (hasUsage) {
         tabs.push('<button type="button" class="btn secondary small" data-dist-tab="usage">用途</button>');
@@ -5790,7 +5808,7 @@ function renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byPro
             };
             var activeTab = container.querySelector('[data-dist-tab].active');
             container._distActiveTab = activeTab ? activeTab.dataset.distTab : firstId;
-            renderStatsDistribution(byStatus, byUsage, byUrgent, byOtherFees, byProcess, byIp, discountByReason);
+            renderStatsDistribution(byStatus, byPlatform, byUsage, byUrgent, byOtherFees, byProcess, byIp, discountByReason);
         });
     });
     bindStatsCardOrderLinks(container);
@@ -6588,7 +6606,7 @@ function applyStatsFilters() {
     renderStatsTrends(dataset.dailyAgg, dataset.weeklyAgg, dataset.monthlyAgg);
     renderStatsTopLists(dataset.byClient, dataset.byProduct);
     renderStatsCategorySummary(dataset.categorySummary);
-    renderStatsDistribution(dataset.byStatus, dataset.byUsage, dataset.byUrgent, dataset.byOtherFees, dataset.byProcess, dataset.byIp, dataset.totals.discountByReason);
+    renderStatsDistribution(dataset.byStatus, dataset.byPlatform, dataset.byUsage, dataset.byUrgent, dataset.byOtherFees, dataset.byProcess, dataset.byIp, dataset.totals.discountByReason);
 }
 
 function renderStatsPage() {
