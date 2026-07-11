@@ -24,8 +24,8 @@ backup_*/
 .env.local
 .env.*.local
 
-# 敏感配置文件（包含API密钥，不在公开仓库中暴露）
-supabase-config.js
+# supabase-config.js 包含 ANON_KEY（公开密钥），需要提交到仓库以支持 GitHub Pages 部署
+# ANON_KEY 配合 RLS 策略可保护数据安全
 
 # 开发工具页面
 clear_tags.html
