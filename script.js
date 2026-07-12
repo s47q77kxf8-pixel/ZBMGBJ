@@ -19146,6 +19146,20 @@ function saveSettings() {
     else alert('设置已保存！');
 }
 
+function savePricingCalculationMode() {
+    const upMode = document.getElementById('pricingUpModeSelect')?.value || 'multiplicative';
+    const downMode = document.getElementById('pricingDownModeSelect')?.value || 'multiplicative';
+    
+    defaultSettings.pricingCalculationMode = {
+        up: upMode,
+        down: downMode
+    };
+    
+    saveData();
+    
+    if (typeof showGlobalToast === 'function') showGlobalToast('计算模式已保存');
+}
+
 // 管理递增配置项
 let additionalConfigsList = [];
 
@@ -19920,6 +19934,12 @@ function renderCoefficientSettings() {
     renderCalculatorPerItemExtraSelects();
     updateCalculatorBuiltinSelects();
     updateCalculatorCoefficientSelects();
+    
+    const mode = defaultSettings.pricingCalculationMode || { up: 'multiplicative', down: 'multiplicative' };
+    const upSelect = document.getElementById('pricingUpModeSelect');
+    const downSelect = document.getElementById('pricingDownModeSelect');
+    if (upSelect) upSelect.value = mode.up || 'multiplicative';
+    if (downSelect) downSelect.value = mode.down || 'multiplicative';
 }
 
 // 渲染扩展加价类系数（设置页）

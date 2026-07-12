@@ -2106,6 +2106,13 @@
                             <span class="coefficient-class-title">加价类</span>
                             <div class="category-group-toggle" id="categoryGroupPricingUp-toggle">▼</div>
                         </div>
+                        <div class="calculation-mode-selector">
+                            <label>计算模式：</label>
+                            <select id="pricingUpModeSelect" class="form-select" onchange="savePricingCalculationMode()">
+                                <option value="multiplicative">乘法模式</option>
+                                <option value="additive">加法模式</option>
+                            </select>
+                        </div>
                         <div class="category-group-content d-none" id="categoryGroupPricingUp-content">
                             <!-- 用途系数 -->
                             <div class="category-container">
@@ -2149,6 +2156,13 @@
                         <div class="category-group-header" onclick="toggleCategoryGroup('categoryGroupPricingDown')">
                             <span class="coefficient-class-title">折扣类</span>
                             <div class="category-group-toggle" id="categoryGroupPricingDown-toggle">▼</div>
+                        </div>
+                        <div class="calculation-mode-selector">
+                            <label>计算模式：</label>
+                            <select id="pricingDownModeSelect" class="form-select" onchange="savePricingCalculationMode()">
+                                <option value="multiplicative">乘法模式</option>
+                                <option value="additive">加法模式</option>
+                            </select>
                         </div>
                         <div class="category-group-content d-none" id="categoryGroupPricingDown-content">
                             <!-- 折扣系数 -->
