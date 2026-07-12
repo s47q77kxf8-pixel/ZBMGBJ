@@ -2113,12 +2113,16 @@
                                     <option value="multiplicative" selected>乘法模式</option>
                                     <option value="additive">加法模式</option>
                                 </select>
-                                <div class="calculation-mode-help">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-tooltip">
-                                        <strong>乘法模式</strong>：系数相乘（用途=2，加急=1.5 → 2×1.5=3）<br>
-                                        <strong>加法模式</strong>：系数增量相加（用途=2，加急=1.5 → 1+(2-1)+(1.5-1)=2.5）
-                                    </div>
+                                <button class="mode-help-btn" onclick="toggleModeHelp('up')" onmouseenter="toggleModeHelp('up')" onmouseleave="toggleModeHelp('up')" title="查看计算说明">
+                                    <span class="mode-help-icon">?</span>
+                                </button>
+                            </div>
+                            <div class="mode-help-content d-none" id="modeHelpUp">
+                                <div class="mode-help-item">
+                                    <strong>乘法模式</strong>：系数相乘（用途=2，加急=1.5 → 2×1.5=3）
+                                </div>
+                                <div class="mode-help-item">
+                                    <strong>加法模式</strong>：系数增量相加（用途=2，加急=1.5 → 1+(2-1)+(1.5-1)=2.5）
                                 </div>
                             </div>
                             <!-- 用途系数 -->
@@ -2171,12 +2175,16 @@
                                     <option value="multiplicative" selected>乘法模式</option>
                                     <option value="additive">加法模式</option>
                                 </select>
-                                <div class="calculation-mode-help">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-tooltip">
-                                        <strong>乘法模式</strong>：系数相乘（折扣=0.9，扩展折扣=0.95 → 0.9×0.95=0.855）<br>
-                                        <strong>加法模式</strong>：系数增量相加（折扣=0.9，扩展折扣=0.95 → 1+(0.9-1)+(0.95-1)=0.85）
-                                    </div>
+                                <button class="mode-help-btn" onclick="toggleModeHelp('down')" onmouseenter="toggleModeHelp('down')" onmouseleave="toggleModeHelp('down')" title="查看计算说明">
+                                    <span class="mode-help-icon">?</span>
+                                </button>
+                            </div>
+                            <div class="mode-help-content d-none" id="modeHelpDown">
+                                <div class="mode-help-item">
+                                    <strong>乘法模式</strong>：系数相乘（折扣=0.9，扩展折扣=0.95 → 0.9×0.95=0.855）
+                                </div>
+                                <div class="mode-help-item">
+                                    <strong>加法模式</strong>：系数增量相加（折扣=0.9，扩展折扣=0.95 → 1+(0.9-1)+(0.95-1)=0.85）
                                 </div>
                             </div>
                             <!-- 折扣系数 -->
