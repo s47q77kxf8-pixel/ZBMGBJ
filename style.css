@@ -3221,6 +3221,42 @@ input:focus, select:focus {
     padding: 0.35rem 0.5rem;
     font-size: 0.85rem;
 }
+.calculation-mode-help {
+    position: relative;
+    cursor: help;
+}
+.calculation-mode-help .help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+.calculation-mode-help .help-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--text);
+    white-space: nowrap;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.calculation-mode-help:hover .help-tooltip {
+    display: block;
+}
 
 @media (max-width: 768px) {
     .text-gray { font-size: 0.55rem; }
