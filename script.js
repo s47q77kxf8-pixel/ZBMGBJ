@@ -19157,7 +19157,24 @@ function savePricingCalculationMode() {
     
     saveData();
     
+    updateModeDescription('up', upMode);
+    updateModeDescription('down', downMode);
+    
     if (typeof showGlobalToast === 'function') showGlobalToast('计算模式已保存');
+}
+
+function updateModeDescription(type, mode) {
+    const descEl = document.querySelector('#categoryGroupPricing' + type.charAt(0).toUpperCase() + type.slice(1) + '-content .calculation-mode-desc');
+    if (descEl) {
+        descEl.textContent = mode === 'multiplicative' ? '系数相乘' : '系数相加';
+    }
+}
+
+function toggleModeHelp(type) {
+    const helpEl = document.getElementById('modeHelp' + type.charAt(0).toUpperCase() + type.slice(1));
+    if (helpEl) {
+        helpEl.classList.toggle('d-none');
+    }
 }
 
 // 管理递增配置项
@@ -19940,6 +19957,9 @@ function renderCoefficientSettings() {
     const downSelect = document.getElementById('pricingDownModeSelect');
     if (upSelect) upSelect.value = mode.up || 'multiplicative';
     if (downSelect) downSelect.value = mode.down || 'multiplicative';
+    
+    updateModeDescription('up', mode.up || 'multiplicative');
+    updateModeDescription('down', mode.down || 'multiplicative');
 }
 
 // 渲染扩展加价类系数（设置页）
