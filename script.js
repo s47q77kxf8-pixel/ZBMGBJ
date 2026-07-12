@@ -718,6 +718,11 @@ const defaultSettings = {
     perItemExtraFees: [],
     // 可扩展的折扣类系数（折扣为内置；此处为后期添加的）
     extraPricingDown: [],
+    // 系数计算模式：加价类和折扣类分别独立设置
+    pricingCalculationMode: {
+        up: 'multiplicative',   // 加价类：'multiplicative'（乘法）或 'additive'（加法）
+        down: 'multiplicative'  // 折扣类：'multiplicative'（乘法）或 'additive'（加法）
+    },
     // 小票自定义设置
     receiptCustomization: {
         theme: 'classic',  // 主题名称：classic, modern, warm, dark, minimal
@@ -8108,8 +8113,57 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             });
         }
     });
-    const pricingUpProduct = usage * urgent * extraUpProduct;
-    const pricingDownProduct = discount * extraDownProduct;
+    
+    const calculationMode = defaultSettings.pricingCalculationMode || { up: 'multiplicative', down: 'multiplicative' };
+    const upMode = calculationMode.up || 'multiplicative';
+    const downMode = calculationMode.down || 'multiplicative';
+    
+    const upCoefficients = [];
+    const downCoefficients = [];
+    
+    const usageName = defaultSettings.usageCoefficients[usageType]?.name || '用途';
+    const urgentName = defaultSettings.urgentCoefficients[urgentType]?.name || '加急';
+    const discountName = defaultSettings.discountCoefficients[discountType]?.name || '折扣';
+    
+    let pricingUpProduct;
+    if (upMode === 'additive') {
+        pricingUpProduct = 1 + (usage - 1) + (urgent - 1) + (extraUpProduct - 1);
+        if (usage !== 1) upCoefficients.push({ name: usageName, value: usage, adjustment: usage - 1 });
+        if (urgent !== 1) upCoefficients.push({ name: urgentName, value: urgent, adjustment: urgent - 1 });
+        extraUpSelections.forEach(sel => {
+            if (sel.value !== 1) {
+                upCoefficients.push({ name: sel.optionName, value: sel.value, adjustment: sel.value - 1 });
+            }
+        });
+    } else {
+        pricingUpProduct = usage * urgent * extraUpProduct;
+        if (usage !== 1) upCoefficients.push({ name: usageName, value: usage });
+        if (urgent !== 1) upCoefficients.push({ name: urgentName, value: urgent });
+        extraUpSelections.forEach(sel => {
+            if (sel.value !== 1) {
+                upCoefficients.push({ name: sel.optionName, value: sel.value });
+            }
+        });
+    }
+    
+    let pricingDownProduct;
+    if (downMode === 'additive') {
+        pricingDownProduct = 1 + (discount - 1) + (extraDownProduct - 1);
+        if (discount !== 1) downCoefficients.push({ name: discountName, value: discount, adjustment: discount - 1 });
+        extraDownSelections.forEach(sel => {
+            if (sel.value !== 1) {
+                downCoefficients.push({ name: sel.optionName, value: sel.value, adjustment: sel.value - 1 });
+            }
+        });
+    } else {
+        pricingDownProduct = discount * extraDownProduct;
+        if (discount !== 1) downCoefficients.push({ name: discountName, value: discount });
+        extraDownSelections.forEach(sel => {
+            if (sel.value !== 1) {
+                downCoefficients.push({ name: sel.optionName, value: sel.value });
+            }
+        });
+    }
     
     // 计算每个制品的价格
     const productPrices = [];
@@ -8588,6 +8642,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         extraDownSelections: extraDownSelections,
         pricingUpProduct: pricingUpProduct,
         pricingDownProduct: pricingDownProduct,
+        pricingCalculationMode: { up: upMode, down: downMode },
+        upCoefficients: upCoefficients,
+        downCoefficients: downCoefficients,
         otherFees: dynamicOtherFees,
         totalOtherFees: totalOtherFees,
         platformFee: platformFee,
@@ -9188,92 +9245,84 @@ function generateQuote() {
         // 合计行
         const upDisplay = parseFloat(up.toFixed(4)).toString();
         html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">加价合计：${upDisplay}×</div><div class="receipt-summary-value">¥${(base * up).toFixed(2)}</div></div>`;
-        // 详细系数
-        const upCoefficients = [];
-        // 用途系数
-        let usageValue = (quoteData.usage !== undefined && quoteData.usage !== null) ? Number(quoteData.usage) : 1;
-        let usageName = quoteData.usageName || '用途系数';
-        if (!isFinite(usageValue)) usageValue = 1;
-        // 兼容老数据：若历史单未保存 usage 值，则退回按类型读取当前设置
-        if ((quoteData.usage === undefined || quoteData.usage === null) && quoteData.usageType && defaultSettings.usageCoefficients[quoteData.usageType]) {
-            const usageOption = defaultSettings.usageCoefficients[quoteData.usageType];
-            usageValue = getCoefficientValue(usageOption);
-            if (!quoteData.usageName) usageName = (usageOption && usageOption.name) ? usageOption.name : '用途系数';
-        }
-        if (usageValue !== 1) {
-            upCoefficients.push({
-                name: usageName,
-                value: usageValue
-            });
-        }
-        // 加急系数
-        let urgentValue = (quoteData.urgent !== undefined && quoteData.urgent !== null) ? Number(quoteData.urgent) : 1;
-        let urgentName = quoteData.urgentName || '加急系数';
-        if (!isFinite(urgentValue)) urgentValue = 1;
-        // 兼容老数据：若历史单未保存 urgent 值，则退回按类型读取当前设置
-        if ((quoteData.urgent === undefined || quoteData.urgent === null) && quoteData.urgentType && defaultSettings.urgentCoefficients[quoteData.urgentType]) {
-            const urgentOption = defaultSettings.urgentCoefficients[quoteData.urgentType];
-            urgentValue = getCoefficientValue(urgentOption);
-            if (!quoteData.urgentName) urgentName = (urgentOption && urgentOption.name) ? urgentOption.name : '加急系数';
-        }
-        if (urgentValue !== 1) {
-            upCoefficients.push({
-                name: urgentName,
-                value: urgentValue
-            });
-        }
-        // 扩展加价类系数
-        if (quoteData.extraUpSelections && quoteData.extraUpSelections.length > 0) {
-            quoteData.extraUpSelections.forEach(sel => {
-                let v = (sel && sel.value != null) ? Number(sel.value) : 1;
-                if (!isFinite(v)) v = 1;
-                // 兼容老数据：未保存 value 时，尝试按 id+key 从当前配置回填
-                if ((sel == null || sel.value == null) && sel && sel.id != null) {
-                    const m = (defaultSettings.extraPricingUp || []).find(x => x && x.id == sel.id);
-                    const k = sel.optionValue != null ? sel.optionValue : sel.selectedKey;
-                    if (m && m.options && k != null && m.options[k] != null) v = getCoefficientValue(m.options[k]) || 1;
-                }
-                if (Math.abs(v - 1) > 0.001) {
-                    upCoefficients.push({
-                        name: sel.optionName || sel.moduleName || '扩展加价系数',
-                        value: v
-                    });
-                }
-            });
-        }
-        // 向后兼容：如果没有保存扩展系数信息，但up不等于usage*urgent，说明有扩展系数
-        if (upCoefficients.length === 0 && up !== 1) {
-            const calculatedUp = (quoteData.usage || 1) * (quoteData.urgent || 1);
-            if (Math.abs(up - calculatedUp) > 0.001) {
-                // 有扩展系数但未保存详细信息，显示总系数
-                const extraValue = up / calculatedUp;
-                if (Math.abs(extraValue - 1) > 0.001) {
-                    upCoefficients.push({
-                        name: '扩展加价系数',
-                        value: extraValue
-                    });
-                }
-            } else if (Math.abs(calculatedUp - 1) > 0.001) {
-                // 如果calculatedUp !== 1，说明usage或urgent不是1，但它们没有被添加到upCoefficients
-                // 这可能是因为找不到匹配的选项，直接使用值显示
-                if (quoteData.usage !== undefined && quoteData.usage !== 1) {
-                    upCoefficients.push({
-                        name: '用途系数',
-                        value: quoteData.usage
-                    });
-                }
-                if (quoteData.urgent !== undefined && quoteData.urgent !== 1) {
-                    upCoefficients.push({
-                        name: '加急系数',
-                        value: quoteData.urgent
-                    });
+        
+        const upMode = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.up) || 'multiplicative';
+        let displayUpCoefficients = [];
+        
+        if (quoteData.upCoefficients && quoteData.upCoefficients.length > 0) {
+            displayUpCoefficients = quoteData.upCoefficients.map(coeff => ({
+                name: coeff.name,
+                value: coeff.value,
+                adjustment: coeff.adjustment
+            }));
+        } else {
+            const upCoefficients = [];
+            let usageValue = (quoteData.usage !== undefined && quoteData.usage !== null) ? Number(quoteData.usage) : 1;
+            let usageName = quoteData.usageName || '用途系数';
+            if (!isFinite(usageValue)) usageValue = 1;
+            if ((quoteData.usage === undefined || quoteData.usage === null) && quoteData.usageType && defaultSettings.usageCoefficients[quoteData.usageType]) {
+                const usageOption = defaultSettings.usageCoefficients[quoteData.usageType];
+                usageValue = getCoefficientValue(usageOption);
+                if (!quoteData.usageName) usageName = (usageOption && usageOption.name) ? usageOption.name : '用途系数';
+            }
+            if (usageValue !== 1) {
+                upCoefficients.push({ name: usageName, value: usageValue });
+            }
+            
+            let urgentValue = (quoteData.urgent !== undefined && quoteData.urgent !== null) ? Number(quoteData.urgent) : 1;
+            let urgentName = quoteData.urgentName || '加急系数';
+            if (!isFinite(urgentValue)) urgentValue = 1;
+            if ((quoteData.urgent === undefined || quoteData.urgent === null) && quoteData.urgentType && defaultSettings.urgentCoefficients[quoteData.urgentType]) {
+                const urgentOption = defaultSettings.urgentCoefficients[quoteData.urgentType];
+                urgentValue = getCoefficientValue(urgentOption);
+                if (!quoteData.urgentName) urgentName = (urgentOption && urgentOption.name) ? urgentOption.name : '加急系数';
+            }
+            if (urgentValue !== 1) {
+                upCoefficients.push({ name: urgentName, value: urgentValue });
+            }
+            
+            if (quoteData.extraUpSelections && quoteData.extraUpSelections.length > 0) {
+                quoteData.extraUpSelections.forEach(sel => {
+                    let v = (sel && sel.value != null) ? Number(sel.value) : 1;
+                    if (!isFinite(v)) v = 1;
+                    if ((sel == null || sel.value == null) && sel && sel.id != null) {
+                        const m = (defaultSettings.extraPricingUp || []).find(x => x && x.id == sel.id);
+                        const k = sel.optionValue != null ? sel.optionValue : sel.selectedKey;
+                        if (m && m.options && k != null && m.options[k] != null) v = getCoefficientValue(m.options[k]) || 1;
+                    }
+                    if (Math.abs(v - 1) > 0.001) {
+                        upCoefficients.push({ name: sel.optionName || sel.moduleName || '扩展加价系数', value: v });
+                    }
+                });
+            }
+            
+            if (upCoefficients.length === 0 && up !== 1) {
+                const calculatedUp = (quoteData.usage || 1) * (quoteData.urgent || 1);
+                if (Math.abs(up - calculatedUp) > 0.001) {
+                    const extraValue = up / calculatedUp;
+                    if (Math.abs(extraValue - 1) > 0.001) {
+                        upCoefficients.push({ name: '扩展加价系数', value: extraValue });
+                    }
+                } else if (Math.abs(calculatedUp - 1) > 0.001) {
+                    if (quoteData.usage !== undefined && quoteData.usage !== 1) {
+                        upCoefficients.push({ name: '用途系数', value: quoteData.usage });
+                    }
+                    if (quoteData.urgent !== undefined && quoteData.urgent !== 1) {
+                        upCoefficients.push({ name: '加急系数', value: quoteData.urgent });
+                    }
                 }
             }
+            displayUpCoefficients = upCoefficients;
         }
-        // 显示系数明细
-        upCoefficients.forEach(coeff => {
+        
+        displayUpCoefficients.forEach(coeff => {
             const coeffDisplay = parseFloat(coeff.value.toFixed(4)).toString();
-            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value"></div></div>`;
+            let adjustmentDisplay = '';
+            if (upMode === 'additive' && coeff.adjustment !== undefined && coeff.adjustment !== null) {
+                const adjAmount = base * coeff.adjustment;
+                adjustmentDisplay = '+¥' + adjAmount.toFixed(2);
+            }
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value">${adjustmentDisplay}</div></div>`;
         });
         html += `</div>`;
     }
@@ -9284,70 +9333,69 @@ function generateQuote() {
         // 合计行
         const downDisplay = parseFloat(down.toFixed(4)).toString();
         html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">折扣合计：${downDisplay}×</div><div class="receipt-summary-value">-¥${Math.abs(discountAmount).toFixed(2)}</div></div>`;
-        // 详细系数
-        const downCoefficients = [];
-        // 折扣系数
-        let discountValue = (quoteData.discount !== undefined && quoteData.discount !== null) ? Number(quoteData.discount) : 1;
-        let discountName = quoteData.discountName || '折扣系数';
-        if (!isFinite(discountValue)) discountValue = 1;
-        // 兼容老数据：若历史单未保存 discount 值，则退回按类型读取当前设置
-        if ((quoteData.discount === undefined || quoteData.discount === null) && quoteData.discountType && defaultSettings.discountCoefficients[quoteData.discountType]) {
-            const discountOption = defaultSettings.discountCoefficients[quoteData.discountType];
-            discountValue = getCoefficientValue(discountOption);
-            if (!quoteData.discountName) discountName = (discountOption && discountOption.name) ? discountOption.name : '折扣系数';
-        }
-        if (discountValue !== 1) {
-            downCoefficients.push({
-                name: discountName,
-                value: discountValue
-            });
-        }
-        // 扩展折扣类系数
-        if (quoteData.extraDownSelections && quoteData.extraDownSelections.length > 0) {
-            quoteData.extraDownSelections.forEach(sel => {
-                let v = (sel && sel.value != null) ? Number(sel.value) : 1;
-                if (!isFinite(v)) v = 1;
-                // 兼容老数据：未保存 value 时，尝试按 id+key 从当前配置回填
-                if ((sel == null || sel.value == null) && sel && sel.id != null) {
-                    const m = (defaultSettings.extraPricingDown || []).find(x => x && x.id == sel.id);
-                    const k = sel.optionValue != null ? sel.optionValue : sel.selectedKey;
-                    if (m && m.options && k != null && m.options[k] != null) v = getCoefficientValue(m.options[k]) || 1;
-                }
-                if (Math.abs(v - 1) > 0.001) {
-                    downCoefficients.push({
-                        name: sel.optionName || sel.moduleName || '扩展折扣系数',
-                        value: v
-                    });
-                }
-            });
-        }
-        // 向后兼容：如果没有保存扩展系数信息，但down不等于discount，说明有扩展系数
-        if (downCoefficients.length === 0 && down !== 1) {
-            const calculatedDown = quoteData.discount || 1;
-            if (Math.abs(down - calculatedDown) > 0.001) {
-                // 有扩展系数但未保存详细信息，显示总系数
-                const extraValue = down / calculatedDown;
-                if (Math.abs(extraValue - 1) > 0.001) {
-                    downCoefficients.push({
-                        name: '扩展折扣系数',
-                        value: extraValue
-                    });
-                }
-            } else if (Math.abs(calculatedDown - 1) > 0.001) {
-                // 如果calculatedDown !== 1，说明discount不是1，但它没有被添加到downCoefficients
-                // 这可能是因为找不到匹配的选项，直接使用值显示
-                if (quoteData.discount !== undefined && quoteData.discount !== 1) {
-                    downCoefficients.push({
-                        name: '折扣系数',
-                        value: quoteData.discount
-                    });
+        
+        const downMode = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.down) || 'multiplicative';
+        let displayDownCoefficients = [];
+        
+        if (quoteData.downCoefficients && quoteData.downCoefficients.length > 0) {
+            displayDownCoefficients = quoteData.downCoefficients.map(coeff => ({
+                name: coeff.name,
+                value: coeff.value,
+                adjustment: coeff.adjustment
+            }));
+        } else {
+            const downCoefficients = [];
+            let discountValue = (quoteData.discount !== undefined && quoteData.discount !== null) ? Number(quoteData.discount) : 1;
+            let discountName = quoteData.discountName || '折扣系数';
+            if (!isFinite(discountValue)) discountValue = 1;
+            if ((quoteData.discount === undefined || quoteData.discount === null) && quoteData.discountType && defaultSettings.discountCoefficients[quoteData.discountType]) {
+                const discountOption = defaultSettings.discountCoefficients[quoteData.discountType];
+                discountValue = getCoefficientValue(discountOption);
+                if (!quoteData.discountName) discountName = (discountOption && discountOption.name) ? discountOption.name : '折扣系数';
+            }
+            if (discountValue !== 1) {
+                downCoefficients.push({ name: discountName, value: discountValue });
+            }
+            
+            if (quoteData.extraDownSelections && quoteData.extraDownSelections.length > 0) {
+                quoteData.extraDownSelections.forEach(sel => {
+                    let v = (sel && sel.value != null) ? Number(sel.value) : 1;
+                    if (!isFinite(v)) v = 1;
+                    if ((sel == null || sel.value == null) && sel && sel.id != null) {
+                        const m = (defaultSettings.extraPricingDown || []).find(x => x && x.id == sel.id);
+                        const k = sel.optionValue != null ? sel.optionValue : sel.selectedKey;
+                        if (m && m.options && k != null && m.options[k] != null) v = getCoefficientValue(m.options[k]) || 1;
+                    }
+                    if (Math.abs(v - 1) > 0.001) {
+                        downCoefficients.push({ name: sel.optionName || sel.moduleName || '扩展折扣系数', value: v });
+                    }
+                });
+            }
+            
+            if (downCoefficients.length === 0 && down !== 1) {
+                const calculatedDown = quoteData.discount || 1;
+                if (Math.abs(down - calculatedDown) > 0.001) {
+                    const extraValue = down / calculatedDown;
+                    if (Math.abs(extraValue - 1) > 0.001) {
+                        downCoefficients.push({ name: '扩展折扣系数', value: extraValue });
+                    }
+                } else if (Math.abs(calculatedDown - 1) > 0.001) {
+                    if (quoteData.discount !== undefined && quoteData.discount !== 1) {
+                        downCoefficients.push({ name: '折扣系数', value: quoteData.discount });
+                    }
                 }
             }
+            displayDownCoefficients = downCoefficients;
         }
-        // 显示系数明细
-        downCoefficients.forEach(coeff => {
+        
+        displayDownCoefficients.forEach(coeff => {
             const coeffDisplay = parseFloat(coeff.value.toFixed(4)).toString();
-            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value"></div></div>`;
+            let adjustmentDisplay = '';
+            if (downMode === 'additive' && coeff.adjustment !== undefined && coeff.adjustment !== null) {
+                const adjAmount = base * up * (1 - coeff.value);
+                adjustmentDisplay = '-¥' + adjAmount.toFixed(2);
+            }
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value">${adjustmentDisplay}</div></div>`;
         });
         html += `</div>`;
     }
