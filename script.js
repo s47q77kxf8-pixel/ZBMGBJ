@@ -9244,7 +9244,7 @@ function generateQuote() {
         html += `<div class="receipt-summary-section">`;
         // 合计行
         const upDisplay = parseFloat(up.toFixed(4)).toString();
-        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">加价合计：${upDisplay}×</div><div class="receipt-summary-value">¥${(base * up).toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">加价后小计：${upDisplay}×</div><div class="receipt-summary-value">¥${(base * up).toFixed(2)}</div></div>`;
         
         const upMode = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.up) || 'multiplicative';
         let displayUpCoefficients = [];
@@ -9437,7 +9437,7 @@ function generateQuote() {
     // 平台费 = 约定实收×费率（平台收取，不经过我手）
     if (quoteData.platformFeeAmount > 0) {
         const platformFeeRate = quoteData.platformFee || 0;
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%（平台收取）</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
         // 客户实付 = 约定实收 + 平台费
         var customerPays = quoteData.finalTotal != null ? quoteData.finalTotal : (agreed + quoteData.platformFeeAmount);
         html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${customerPays.toFixed(2)}</div></div>`;
@@ -9449,7 +9449,7 @@ function generateQuote() {
         var finalPays = quoteData.finalTotal != null ? quoteData.finalTotal : (quoteData.platformFeeAmount > 0 ? (agreed + quoteData.platformFeeAmount) : agreed);
         var rate = (defaultSettings && defaultSettings.depositRate != null) ? Number(defaultSettings.depositRate) : 0.3;
         var depositAmount = Math.round(finalPays * rate * 100) / 100;
-        html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label">需付定金</div><div class="receipt-summary-value">¥${depositAmount.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label">需付定金（${Math.round(rate * 100)}%）</div><div class="receipt-summary-value">¥${depositAmount.toFixed(2)}</div></div>`;
     }
     // 如已填写实际已收定金，则在金额小结中单独展示一行“已收定金”
     var depSummary = Number(quoteData.depositReceived || 0);
