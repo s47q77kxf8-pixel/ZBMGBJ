@@ -19166,7 +19166,7 @@ function savePricingCalculationMode() {
 function updateModeDescription(type, mode) {
     const descEl = document.querySelector('#categoryGroupPricing' + type.charAt(0).toUpperCase() + type.slice(1) + '-content .calculation-mode-desc');
     if (descEl) {
-        descEl.textContent = mode === 'multiplicative' ? '用途×加急 (例：2×1.5=3)' : '1+(用途-1)+(加急-1) (例：1+(2-1)+(1.5-1)=2.5)';
+        descEl.textContent = mode === 'multiplicative' ? '用途×加急' : '1+(用途-1)+(加急-1)';
     }
 }
 
