@@ -3886,6 +3886,11 @@ function onRecordFilterChange() {
     } else {
         if (customDateRange) customDateRange.classList.add('d-none');
     }
+    // 用户主动操作筛选时，清除统计页跳转留下的聚焦筛选
+    if (statsFocusedOrderIds) {
+        statsFocusedOrderIds = null;
+        statsFocusedLabel = '';
+    }
     updateRecordFilterBadge();
 }
 
@@ -13246,29 +13251,47 @@ function jumpToParentOrder(parentOrderId) {
         showGlobalToast('原单已删除');
         return;
     }
+
+    function scrollAndHighlight() {
+        var card = document.querySelector('.record-item[data-id="' + parentOrderId + '"]') ||
+                   document.querySelector('.schedule-todo-card[data-order-id="' + parentOrderId + '"]');
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.style.boxShadow = '0 0 0 2px #3b82f6';
+            setTimeout(function () { card.style.boxShadow = ''; }, 1500);
+        }
+    }
+
     if (activeTab === 'quote') {
-        setTimeout(function () {
-            var card = document.querySelector('.schedule-todo-card[data-order-id="' + parentOrderId + '"]');
-            if (card) {
-                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                card.style.boxShadow = '0 0 0 2px #3b82f6';
-                setTimeout(function () { card.style.boxShadow = ''; }, 1500);
-            } else {
-                if (typeof showPage === 'function') showPage('record');
-                setTimeout(function () {
-                    statsFocusedOrderIds = new Set([parentOrderId]);
-                    statsFocusedLabel = '原单';
-                    applyRecordFilters();
-                }, 100);
+        // 排单页：先在排单页找卡片，找不到则跳转记录页
+        var card = document.querySelector('.schedule-todo-card[data-order-id="' + parentOrderId + '"]');
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.style.boxShadow = '0 0 0 2px #3b82f6';
+            setTimeout(function () { card.style.boxShadow = ''; }, 1500);
+        } else {
+            // 排单页无此卡片，跳转记录页定位
+            clearStatsFocusedOrders(true);
+            if (typeof showPage === 'function') showPage('record');
+            setTimeout(scrollAndHighlight, 300);
+        }
+    } else if (activeTab === 'record') {
+        // 记录页：先尝试定位，找不到则清除筛选后重试
+        var recordCard = document.querySelector('.record-item[data-id="' + parentOrderId + '"]');
+        if (recordCard) {
+            scrollAndHighlight();
+        } else {
+            // 卡片可能被筛选隐藏，清除聚焦筛选后重试
+            if (statsFocusedOrderIds) {
+                clearStatsFocusedOrders(true);
             }
-        }, 300);
+            setTimeout(scrollAndHighlight, 200);
+        }
     } else {
-        statsFocusedOrderIds = new Set([parentOrderId]);
-        statsFocusedLabel = '原单';
+        // 其他页面：跳转记录页定位
+        clearStatsFocusedOrders(true);
         if (typeof showPage === 'function') showPage('record');
-        setTimeout(function () {
-            applyRecordFilters();
-        }, 100);
+        setTimeout(scrollAndHighlight, 300);
     }
 }
 
