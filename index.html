@@ -156,6 +156,20 @@
         <symbol id="i-plus" viewBox="0 0 24 24">
             <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
+        <symbol id="i-plus-circle" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M12 8v8M8 12h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-link" viewBox="0 0 24 24">
+            <path d="M10 13a5 5 0 0 1 0-7l-1.828 1.828A3 3 0 0 0 10 8a3 3 0 0 0 0-6 7 7 0 0 1 0 12l1.828-1.828A3 3 0 0 0 10 16a3 3 0 0 0 0 6 7 7 0 0 1 0-12z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-chain" viewBox="0 0 24 24">
+            <circle cx="8" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="16" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        </symbol>
+        <symbol id="i-branch" viewBox="0 0 24 24">
+            <path d="M12 2v20M12 10l-3-3M12 10l3-3M12 14l-3 3M12 14l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
         <symbol id="i-note" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
             <path d="M14 2v6h6M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -2529,8 +2543,6 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-note"></use></svg>
                             <span>备注</span>
                         </button>
-                    </div>
-                    <div class="schedule-todo-card-modal-row">
                         <button type="button" class="schedule-todo-card-modal-btn danger" onclick="scheduleTodoCardAction('delete')" title="删除">
                             <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                             <span>删除</span>
@@ -2539,12 +2551,12 @@
                             <span class="custom-tag-circle-icon" aria-hidden="true">#</span>
                             <span>标签</span>
                         </button>
+                    </div>
+                    <div class="schedule-todo-card-modal-row">
                         <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('folder')" title="排单生成文件夹">
                             <svg class="icon" aria-hidden="true"><use href="#i-folder"></use></svg>
                             <span>排单</span>
                         </button>
-                    </div>
-                    <div class="schedule-todo-card-modal-row">
                         <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnCancel" onclick="scheduleTodoCardAction('cancel')" title="撤单">
                             <svg class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>
                             <span>撤单</span>
@@ -2557,6 +2569,41 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-check-circle"></use></svg>
                             <span>结单</span>
                         </button>
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnAppend" onclick="scheduleTodoCardAction('append_order')" title="追加单">
+                            <svg class="icon" aria-hidden="true"><use href="#i-plus-circle"></use></svg>
+                            <span>追加单</span>
+                        </button>
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnUnlink" onclick="scheduleTodoCardAction('unlink_append')" title="取消关联" style="display:none;">
+                            <svg class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>
+                            <span>取消关联</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 追加单列表弹窗 -->
+        <div id="appendOrderListModal" class="modal d-none">
+            <div class="modal-content modal-content-compact">
+                <div class="modal-header">
+                    <h3>追加单列表</h3>
+                    <span class="close" onclick="closeAppendOrderListModal()">&times;</span>
+                </div>
+                <div class="modal-body" id="appendOrderListBody">
+                </div>
+            </div>
+        </div>
+        <!-- 跨订单同模智能提示弹窗 -->
+        <div id="crossOrderSmartPromptModal" class="modal d-none">
+            <div class="modal-content modal-content-compact">
+                <div class="modal-header">
+                    <h3>💡 智能提示</h3>
+                    <span class="close" onclick="closeCrossOrderSmartPrompt()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p id="crossOrderSmartPromptMsg" style="margin-bottom:12px;"></p>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button type="button" class="btn secondary" onclick="closeCrossOrderSmartPrompt()">取消</button>
+                        <button type="button" class="btn" id="crossOrderSmartPromptConfirmBtn" onclick="confirmCrossOrderSmartPrompt()">开启同模</button>
                     </div>
                 </div>
             </div>

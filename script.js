@@ -78,6 +78,19 @@ function restoreFromTrash(orderId) {
     } else {
         history.push(trashItem.data);
     }
+
+    // 恢复原单后，更新所有关联追加单的 parentOrderTitle
+    const restoredOrder = trashItem.data;
+    if (restoredOrder.appendOrderIds && restoredOrder.appendOrderIds.length > 0) {
+        const newParentTitle = restoredOrder.projectName || restoredOrder.clientId || '';
+        restoredOrder.appendOrderIds.forEach(function (appendId) {
+            var appendOrder = history.find(function (h) { return h.id === appendId; });
+            if (appendOrder) {
+                appendOrder.parentOrderTitle = newParentTitle;
+            }
+        });
+    }
+
     mgOrderTrash.items.splice(idx, 1);
     saveTrash();
     saveData();
@@ -3761,10 +3774,31 @@ function renderTrashDrawer() {
     html += '</div>';
     html += '<div style="display:flex;flex-direction:column;gap:8px;">';
     items.forEach(item => {
-        const name = item.data && item.data.clientName ? item.data.clientName : (item.data && item.data.client ? item.data.client : '未知');
+        const data = item.data || {};
+        const clientId = data.clientId || '';
+        const contact = data.contact || '';
+        const clientDisplay = contact ? (contact + ' ' + clientId) : clientId;
+        const projectName = data.projectName || '';
+        const projectOrigin = data.projectOrigin || '';
+        const characterName = data.characterName || '';
+        const projectSummary = [];
+        if (projectName) projectSummary.push(projectName);
+        if (projectOrigin) projectSummary.push(projectOrigin);
+        if (characterName) projectSummary.push(characterName);
+        const projectDisplay = projectSummary.join(' · ') || '无企划信息';
+        const timestamp = data.timestamp;
+        let shortDate = '—';
+        if (timestamp) {
+            const d = new Date(timestamp);
+            if (!isNaN(d.getTime())) {
+                shortDate = (d.getMonth() + 1) + '.' + String(d.getDate()).padStart(2, '0');
+            }
+        }
+        const scheduleRange = data.startTime && data.deadline 
+            ? toMd(data.startTime) + ' → ' + toMd(data.deadline)
+            : (data.deadline ? '截稿 ' + toMd(data.deadline) : (data.startTime ? '开始 ' + toMd(data.startTime) : '待排单'));
         const timeAgo = getTrashTimeAgo(item.deletedAt);
         const isSelected = selectedTrashIds.has(item.id);
-        // 为了避免id特殊字符问题，我们用数组索引
         const index = mgOrderTrash.items.indexOf(item);
         html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f5f5f5;border-radius:8px;">';
         html += '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">';
@@ -3773,8 +3807,9 @@ function renderTrashDrawer() {
         html += isSelected ? 'checked' : '';
         html += '>';
         html += '<div style="flex:1;min-width:0;">';
-        html += '<div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + name + '</div>';
-        html += '<div style="font-size:12px;color:#999;">' + timeAgo + '删除</div>';
+        html += '<div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;">' + escapeHtml(clientDisplay || '未知') + '</div>';
+        html += '<div style="font-size:13px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;">' + escapeHtml(projectDisplay) + '</div>';
+        html += '<div style="font-size:12px;color:#999;margin-top:2px;">' + shortDate + ' | ' + escapeHtml(scheduleRange) + ' | ID:' + item.id + ' · ' + timeAgo + '删除</div>';
         html += '</div>';
         html += '</div>';
         html += '<div style="display:flex;gap:6px;flex-shrink:0;">';
@@ -4194,6 +4229,25 @@ function applyRecordFilters() {
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent">加急单</span>' : '';
         const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order">追加单</span>' : '';
+        // 追加单关联信息行（记录页）
+        var recordAppendLinkHtml = '';
+        if (item && item.parentOrderId) {
+            var recParentExists = history.find(function (h) { return h.id === item.parentOrderId; });
+            var recParentTitle = recParentExists ? escapeHtml(item.parentOrderTitle || '原单') : '原单已删除';
+            var recParentClickAttr = recParentExists ? ('onclick="event.stopPropagation(); jumpToParentOrder(' + item.parentOrderId + ')"') : '';
+            recordAppendLinkHtml = '<div class="append-order-link-row" ' + recParentClickAttr + '>'
+                + '<span>关联原单：' + recParentTitle + '</span>'
+                + '</div>';
+        } else if (item && item.appendOrderIds && item.appendOrderIds.length > 0) {
+            var recValidAppendCount = item.appendOrderIds.filter(function (aid) {
+                return history.find(function (h) { return h.id === aid; });
+            }).length;
+            if (recValidAppendCount > 0) {
+                recordAppendLinkHtml = '<div class="append-order-count-row" onclick="event.stopPropagation(); openAppendOrdersInRecord(' + item.id + ')">'
+                    + '<span>关联追加单：' + recValidAppendCount + '个</span>'
+                    + '</div>';
+            }
+        }
         const tags = mgNormalizeTags(item).filter(function (t) {
             // 过滤掉"追加单"标签，因为它已经通过 crossOrderTagHtml 显示
             return t.name.toLowerCase() !== '追加单';
@@ -4224,6 +4278,7 @@ function applyRecordFilters() {
                     <div class="record-item-bottom-row">
                         <div class="record-item-bottom-left">
                             ${projectSummary ? `<div class="record-item-project">${projectSummary}</div>` : ''}
+                            ${recordAppendLinkHtml}
                             <div class="record-item-meta">
                                 <span class="record-item-date">${shortDate}</span>
                                 <span class="record-item-meta-sep">|</span>
@@ -7312,6 +7367,8 @@ function openCalculatorDrawer(skipOrderTimeReset) {
             quoteData = null;
         }
         window.editingHistoryId = null;
+        // 重置追加单智能提示状态
+        resetCrossOrderSmartPromptState();
         if (typeof initScheduleColorPreview === 'function') initScheduleColorPreview();
         var agreedInputEl = document.getElementById('agreedAmountInput');
         if (agreedInputEl) agreedInputEl.value = '';
@@ -7868,6 +7925,8 @@ function updateProductType(id, productName) {
         const productSetting = productSettings.find(setting => setting.name === productName);
         if (productSetting) {
             product.type = productSetting.id.toString();
+            // 追加单智能提示：检测制品类型是否与原单相同
+            checkCrossOrderSmartPrompt(productName);
         } else {
             // 如果找不到对应的制品类型，清空类型
             product.type = '';
@@ -8672,6 +8731,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         characterName: characterNameValue,
         customTag: (quoteData && quoteData.customTag) ? String(quoteData.customTag).trim() : '',
         tags: (quoteData && Array.isArray(quoteData.tags)) ? JSON.parse(JSON.stringify(quoteData.tags)) : [],
+        parentOrderId: (quoteData && quoteData.parentOrderId) ? quoteData.parentOrderId : null,
+        parentOrderTitle: (quoteData && quoteData.parentOrderTitle) ? quoteData.parentOrderTitle : null,
         timestamp: (function () { var el = document.getElementById('orderTimeInput'); var v = el && el.value ? el.value.trim() : ''; if (v) { var d = new Date(v + 'T00:00:00'); if (!isNaN(d.getTime())) return d.toISOString(); } return new Date().toISOString(); })()
     };
     
@@ -10762,7 +10823,8 @@ function saveToHistory() {
                 productDoneStates: doneStates,
                 productDailyDone: Array.isArray(existing.productDailyDone) ? existing.productDailyDone : [],
                 settlement: existing.settlement,
-                status: existing.status
+                status: existing.status,
+                appendOrderIds: existing.appendOrderIds || []
             };
             savedOrderId = editingId;
             showGlobalToast('排单已更新！');
@@ -12477,6 +12539,25 @@ async function renderScheduleTodoSection() {
         const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>' : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent schedule-todo-card-tag">加急单</span>' : '';
         const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order schedule-todo-card-tag">追加单</span>' : '';
+        // 追加单关联信息行
+        var appendLinkHtml = '';
+        if (item && item.parentOrderId) {
+            var parentExists = history.find(function (h) { return h.id === item.parentOrderId; });
+            var parentTitle = parentExists ? escapeHtml(item.parentOrderTitle || '原单') : '原单已删除';
+            var parentClickAttr = parentExists ? ('onclick="event.stopPropagation(); jumpToParentOrder(' + item.parentOrderId + ')"') : '';
+            appendLinkHtml = '<div class="append-order-link-row append-order-link-row-schedule" ' + parentClickAttr + '>'
+                + '<span>关联原单：' + parentTitle + '</span>'
+                + '</div>';
+        } else if (item && item.appendOrderIds && item.appendOrderIds.length > 0) {
+            var validAppendCount = item.appendOrderIds.filter(function (aid) {
+                return history.find(function (h) { return h.id === aid; });
+            }).length;
+            if (validAppendCount > 0) {
+                appendLinkHtml = '<div class="append-order-count-row append-order-count-row-schedule" onclick="event.stopPropagation(); openAppendOrdersInRecord(' + item.id + ')">'
+                    + '<span>关联追加单：' + validAppendCount + '个</span>'
+                    + '</div>';
+            }
+        }
         const customTagHtml = mgNormalizeTags(item).filter(function (t) {
             // 过滤掉"追加单"标签，因为它已经通过 crossOrderTagHtml 显示
             return t.name.toLowerCase() !== '追加单';
@@ -12606,7 +12687,7 @@ async function renderScheduleTodoSection() {
         });
 
         cardHtmls.push(''
-            + '<div class="schedule-todo-card" onclick="handleScheduleTodoCardClick(' + item.id + ', event)">'
+            + '<div class="schedule-todo-card" data-order-id="' + item.id + '" onclick="handleScheduleTodoCardClick(' + item.id + ', event)">'
             + '  <div class="schedule-todo-card-main">'
             + '    <div class="schedule-todo-card-head">'
             + '      <span class="schedule-todo-card-dot" style="background-color:' + dotColor + '"></span>'
@@ -12631,6 +12712,7 @@ async function renderScheduleTodoSection() {
             + '      </span>'
             + '    </div>'
             + (projectSummary ? ('    <div class="schedule-todo-card-project">' + projectSummary + '</div>') : '')
+            + appendLinkHtml
             + '    <div class="schedule-todo-card-products">'
             + '      <div class="schedule-todo-chips-wrap">' + allChipsHtml + '</div>'
             + '    </div>'
@@ -12836,13 +12918,18 @@ function saveScheduleTodoPresetTags() {
 // 检测订单是否包含跨订单同模的制品
 function hasCrossOrderSameModel(item) {
     if (!item) return false;
-    
-    // 优先检查订单标签中是否包含"追加单"标签（大小写不敏感）
+
+    // 优先基于 parentOrderId 判断（只要关联了原单就是追加单）
+    if (item.parentOrderId) {
+        return true;
+    }
+
+    // 兼容旧数据：检查标签中是否有"追加单"标签
     const tags = mgNormalizeTags(item);
     if (tags.some(tag => tag.name.toLowerCase() === '追加单')) {
         return true;
     }
-    
+
     // 检查制品
     if (item.productPrices && item.productPrices.some(function(p) {
         return p && p.crossOrderSameModel;
@@ -12856,6 +12943,330 @@ function hasCrossOrderSameModel(item) {
         return true;
     }
     return false;
+}
+
+// ========== 追加单关联功能 ==========
+
+// 智能提示：已提示过的制品类型，避免重复
+var _crossOrderPromptedTypes = new Set();
+// 智能提示回调
+var _crossOrderSmartPromptCallback = null;
+
+/**
+ * 判断订单是否为追加单（基于 parentOrderId 字段）
+ */
+function isAppendOrder(item) {
+    return !!(item && item.parentOrderId);
+}
+
+/**
+ * 创建追加单
+ */
+function createAppendOrder(parentOrder) {
+    if (!parentOrder) return;
+    // 不支持多层追加
+    if (isAppendOrder(parentOrder)) {
+        showGlobalToast('追加单不能再创建追加单');
+        return;
+    }
+
+    // 生成新ID
+    var newId = Date.now() + Math.floor(Math.random() * 1000);
+
+    // 复制原单的基础信息，制品/赠品清空
+    var newOrder = {
+        id: newId,
+        clientId: parentOrder.clientId || '',
+        contact: parentOrder.contact || '',
+        contactInfo: parentOrder.contactInfo || '',
+        platformType: parentOrder.platformType || '',
+        projectName: parentOrder.projectName || '',
+        projectOrigin: parentOrder.projectOrigin || '',
+        characterName: parentOrder.characterName || '',
+        usageType: parentOrder.usageType || '',
+        urgentType: parentOrder.urgentType || '',
+        discountType: parentOrder.discountType || '',
+        sameModelType: parentOrder.sameModelType || '',
+        scheduleColorIndex: parentOrder.scheduleColorIndex,
+        // 关联信息
+        parentOrderId: parentOrder.id,
+        parentOrderTitle: parentOrder.projectName || parentOrder.clientId || '',
+        // 制品/赠品清空
+        productPrices: [],
+        giftPrices: [],
+        productDoneStates: [],
+        productNodeDoneStates: [],
+        productDoneQuantities: [],
+        // 标签：保留原单标签 + 追加单标签
+        tags: mgNormalizeTags(parentOrder).filter(function (t) {
+            return t.name !== '追加单';
+        }).concat([{ name: '追加单', color: '#3b82f6' }]),
+        customTag: '',
+        // 基础数据
+        productSettings: parentOrder.productSettings || null,
+        processSettings: parentOrder.processSettings || null,
+        timestamp: new Date().toISOString(),
+        // 跨订单同模默认关闭
+    };
+
+    // 给原单添加追加单ID
+    if (!parentOrder.appendOrderIds) {
+        parentOrder.appendOrderIds = [];
+    }
+    parentOrder.appendOrderIds.push(newId);
+
+    // 保存
+    history.unshift(newOrder);
+    saveData();
+
+    // 云端同步
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        markOrderUnsynced(newId);
+        mgCloudUpsertOrder(newOrder, 0, null, 'save').catch(function (err) {
+            console.error('追加单云端同步失败:', err);
+        });
+        // 更新原单
+        markOrderUnsynced(parentOrder.id);
+        mgCloudUpsertOrder(parentOrder, 0, null, 'update').catch(function (err) {
+            console.error('原单云端同步失败:', err);
+        });
+    }
+
+    // 打开计算抽屉编辑新单
+    editHistoryItem(newId);
+    showGlobalToast('已创建追加单');
+}
+
+/**
+ * 取消追加单关联
+ */
+function unlinkAppendOrder(appendOrderId) {
+    var item = history.find(function (h) { return h.id === appendOrderId; });
+    if (!item || !item.parentOrderId) return;
+
+    if (!confirm('确认取消与原单的关联？')) return;
+
+    // 找到原单
+    var parentOrder = history.find(function (h) { return h.id === item.parentOrderId; });
+
+    // 从原单的追加单列表中移除
+    if (parentOrder && parentOrder.appendOrderIds) {
+        parentOrder.appendOrderIds = parentOrder.appendOrderIds.filter(function (id) {
+            return id !== appendOrderId;
+        });
+        // 保存原单
+        if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+            markOrderUnsynced(parentOrder.id);
+            mgCloudUpsertOrder(parentOrder, 0, null, 'update').catch(function (err) {
+                console.error('原单云端同步失败:', err);
+            });
+        }
+    }
+
+    // 清空追加单的关联信息
+    item.parentOrderId = null;
+    item.parentOrderTitle = null;
+
+    // 保存
+    saveData();
+
+    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        markOrderUnsynced(appendOrderId);
+        mgCloudUpsertOrder(item, 0, null, 'update').catch(function (err) {
+            console.error('追加单云端同步失败:', err);
+        });
+    }
+
+    // 刷新界面
+    renderScheduleTodoSection();
+    if (document.getElementById('recordContainer')) {
+        applyRecordFilters();
+    }
+
+    showGlobalToast('已取消关联');
+}
+
+/**
+ * 打开追加单列表弹窗
+ */
+function openAppendOrderListModal(parentOrderId) {
+    var parentOrder = history.find(function (h) { return h.id === parentOrderId; });
+    if (!parentOrder || !parentOrder.appendOrderIds || parentOrder.appendOrderIds.length === 0) return;
+
+    var body = document.getElementById('appendOrderListBody');
+    if (!body) return;
+
+    var html = '';
+    parentOrder.appendOrderIds.forEach(function (appendId, idx) {
+        var appendOrder = history.find(function (h) { return h.id === appendId; });
+        if (!appendOrder) {
+            html += '<div class="append-order-list-item" style="opacity:0.5;"><div class="append-order-list-item-info"><div class="append-order-list-item-title">已删除</div></div></div>';
+            return;
+        }
+        var title = escapeHtml((appendOrder.projectName || appendOrder.clientId || '追加单'));
+        var amount = (typeof getRecordReceivableAmount === 'function') ? getRecordReceivableAmount(appendOrder) : 0;
+        var qty = getOrderItemQuantityTotal(appendOrder);
+        var dateStr = '';
+        if (appendOrder.timestamp) {
+            var d = new Date(appendOrder.timestamp);
+            if (!isNaN(d.getTime())) dateStr = (d.getMonth() + 1) + '.' + d.getDate();
+        }
+        html += '<div class="append-order-list-item" onclick="jumpToAppendOrder(' + appendId + ')">'
+            + '<div class="append-order-list-item-info">'
+            + '<div class="append-order-list-item-title">' + title + '</div>'
+            + '<div class="append-order-list-item-meta">' + formatMoney(amount) + '  ' + qty + '件  ' + dateStr + '</div>'
+            + '</div>'
+            + '<span class="append-order-list-item-arrow">→</span>'
+            + '</div>';
+    });
+
+    body.innerHTML = html;
+    var modal = document.getElementById('appendOrderListModal');
+    if (modal) modal.classList.remove('d-none');
+}
+
+function closeAppendOrderListModal() {
+    var modal = document.getElementById('appendOrderListModal');
+    if (modal) modal.classList.add('d-none');
+}
+
+/**
+ * 跳转到追加单（排单页滚动/记录页筛选）
+ */
+function jumpToAppendOrder(orderId) {
+    closeAppendOrderListModal();
+    if (activeTab === 'quote') {
+        setTimeout(function () {
+            var card = document.querySelector('.schedule-todo-card[data-order-id="' + orderId + '"]');
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.boxShadow = '0 0 0 2px #3b82f6';
+                setTimeout(function () { card.style.boxShadow = ''; }, 1500);
+            } else {
+                if (typeof showPage === 'function') showPage('record');
+            }
+        }, 300);
+    } else {
+        if (typeof showPage === 'function') showPage('record');
+    }
+}
+
+/**
+ * 在记录页显示指定原单的所有追加单
+ */
+function openAppendOrdersInRecord(parentOrderId) {
+    var parentOrder = history.find(function (h) { return h.id === parentOrderId; });
+    if (!parentOrder || !parentOrder.appendOrderIds || parentOrder.appendOrderIds.length === 0) {
+        showGlobalToast('没有追加单');
+        return;
+    }
+    // 获取有效的追加单ID
+    var validAppendIds = parentOrder.appendOrderIds.filter(function (aid) {
+        return history.find(function (h) { return h.id === aid; });
+    });
+    if (validAppendIds.length === 0) {
+        showGlobalToast('没有追加单');
+        return;
+    }
+    // 使用 statsFocusedOrderIds 机制筛选显示
+    statsFocusedOrderIds = new Set(validAppendIds);
+    statsFocusedLabel = '追加单';
+    // 跳转记录页
+    if (typeof showPage === 'function') showPage('record');
+    // 触发筛选
+    setTimeout(function () {
+        applyRecordFilters();
+    }, 100);
+}
+
+/**
+ * 跳转到原单
+ */
+function jumpToParentOrder(parentOrderId) {
+    var parentOrder = history.find(function (h) { return h.id === parentOrderId; });
+    if (!parentOrder) {
+        showGlobalToast('原单已删除');
+        return;
+    }
+    if (activeTab === 'quote') {
+        setTimeout(function () {
+            var card = document.querySelector('.schedule-todo-card[data-order-id="' + parentOrderId + '"]');
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.boxShadow = '0 0 0 2px #3b82f6';
+                setTimeout(function () { card.style.boxShadow = ''; }, 1500);
+            } else {
+                if (typeof showPage === 'function') showPage('record');
+            }
+        }, 300);
+    } else {
+        if (typeof showPage === 'function') showPage('record');
+    }
+}
+
+/**
+ * 跨订单同模智能提示
+ */
+function checkCrossOrderSmartPrompt(productType) {
+    // 仅在追加单中触发
+    if (!quoteData || !quoteData.parentOrderId) return;
+    // 检查是否已提示过
+    if (_crossOrderPromptedTypes.has(productType)) return;
+
+    // 找到原单
+    var parentOrder = history.find(function (h) { return h.id === quoteData.parentOrderId; });
+    if (!parentOrder || !parentOrder.productPrices) return;
+
+    // 检查原单中是否有相同类型的制品
+    var hasSameType = parentOrder.productPrices.some(function (p) {
+        return p && p.product === productType;
+    });
+    if (!hasSameType) return;
+
+    // 标记已提示
+    _crossOrderPromptedTypes.add(productType);
+
+    // 弹出智能提示
+    var msgEl = document.getElementById('crossOrderSmartPromptMsg');
+    if (msgEl) {
+        msgEl.textContent = '检测到「' + productType + '」与原单制品类型相同，是否开启跨订单同模？\n\n开启后可享受同模优惠价格';
+        msgEl.style.whiteSpace = 'pre-line';
+    }
+    _crossOrderSmartPromptCallback = productType;
+    var modal = document.getElementById('crossOrderSmartPromptModal');
+    if (modal) modal.classList.remove('d-none');
+}
+
+function closeCrossOrderSmartPrompt() {
+    var modal = document.getElementById('crossOrderSmartPromptModal');
+    if (modal) modal.classList.add('d-none');
+    _crossOrderSmartPromptCallback = null;
+}
+
+function confirmCrossOrderSmartPrompt() {
+    var productType = _crossOrderSmartPromptCallback;
+    closeCrossOrderSmartPrompt();
+    if (!productType) return;
+
+    // 找到当前追加单中该类型的制品，开启跨订单同模
+    if (products && products.length > 0) {
+        products.forEach(function (p) {
+            if (p && p.product === productType) {
+                p.crossOrderSameModel = true;
+            }
+        });
+    }
+    // 重新计算价格
+    if (typeof calculateQuote === 'function') calculateQuote(false);
+    showGlobalToast('已开启跨订单同模');
+}
+
+/**
+ * 重置智能提示状态（新开计算时调用）
+ */
+function resetCrossOrderSmartPromptState() {
+    _crossOrderPromptedTypes = new Set();
+    _crossOrderSmartPromptCallback = null;
 }
 
 // 生成文件夹名
@@ -13189,6 +13600,14 @@ function openScheduleTodoCardModal(recordId) {
             if (id === 'scheduleTodoBtnNormal') btn.setAttribute('title', '结单');
         }
     });
+
+    // 追加单关联按钮动态显示
+    var appendBtn = document.getElementById('scheduleTodoBtnAppend');
+    var unlinkBtn = document.getElementById('scheduleTodoBtnUnlink');
+    var isAppend = isAppendOrder(item);
+    if (appendBtn) appendBtn.style.display = isAppend ? 'none' : '';
+    if (unlinkBtn) unlinkBtn.style.display = isAppend ? '' : 'none';
+
     var el = document.getElementById('scheduleTodoCardModal');
     if (el) el.classList.remove('d-none');
 }
@@ -13277,6 +13696,17 @@ function scheduleTodoCardAction(action) {
     if (action === 'folder') {
         closeScheduleTodoCardModal();
         openFolderNameModalFromTodo(id);
+        return;
+    }
+    if (action === 'append_order') {
+        closeScheduleTodoCardModal();
+        var parentOrder = history.find(function (h) { return h.id === id; });
+        if (parentOrder) createAppendOrder(parentOrder);
+        return;
+    }
+    if (action === 'unlink_append') {
+        closeScheduleTodoCardModal();
+        unlinkAppendOrder(id);
         return;
     }
 
@@ -16187,7 +16617,30 @@ function batchDeleteHistory() {
     
     // 保存要删除的企划（用于云端同步）
     const itemsToDelete = history.filter(item => selectedHistoryIds.has(Number(item && item.id)));
-    
+
+    // 追加单关联处理：批量删除
+    itemsToDelete.forEach(function (item) {
+        if (!item) return;
+        if (item.parentOrderId) {
+            // 删除追加单：从原单的 appendOrderIds 中移除
+            var parentOrder = history.find(function (h) { return h.id === item.parentOrderId; });
+            if (parentOrder && parentOrder.appendOrderIds) {
+                parentOrder.appendOrderIds = parentOrder.appendOrderIds.filter(function (aid) {
+                    return aid !== item.id;
+                });
+            }
+        }
+        if (item.appendOrderIds && item.appendOrderIds.length > 0) {
+            // 删除原始订单：所有追加单的 parentOrderTitle 更新为「原单已删除」
+            item.appendOrderIds.forEach(function (appendId) {
+                var appendOrder = history.find(function (h) { return h.id === appendId; });
+                if (appendOrder) {
+                    appendOrder.parentOrderTitle = '原单已删除';
+                }
+            });
+        }
+    });
+
     history = history.filter(item => !selectedHistoryIds.has(Number(item && item.id)));
     selectedHistoryIds.clear();
     saveData();
@@ -16282,7 +16735,12 @@ function editHistoryItem(id) {
     if (quoteData) {
         quoteData.customTag = quote.customTag || '';
         quoteData.tags = Array.isArray(quote.tags) ? JSON.parse(JSON.stringify(quote.tags)) : [];
+        // 追加单关联信息
+        quoteData.parentOrderId = quote.parentOrderId || null;
+        quoteData.parentOrderTitle = quote.parentOrderTitle || null;
     }
+    // 重置智能提示状态
+    resetCrossOrderSmartPromptState();
     // 平台手续费在下方 setTimeout 中与系数一并恢复（需等选择器选项就绪）
     // 下单时间改在 rAF 内、抽屉打开后设置，避免时序问题
     if (quote.startTime) {
@@ -16988,6 +17446,26 @@ function loadQuoteFromHistory(id) {
 function deleteHistoryItem(id) {
     const item = history.find(item => item.id === id);
     if (!item) return;
+
+    // 追加单关联处理
+    if (item.parentOrderId) {
+        // 删除追加单：从原单的 appendOrderIds 中移除
+        var parentOrder = history.find(function (h) { return h.id === item.parentOrderId; });
+        if (parentOrder && parentOrder.appendOrderIds) {
+            parentOrder.appendOrderIds = parentOrder.appendOrderIds.filter(function (aid) {
+                return aid !== id;
+            });
+        }
+    }
+    if (item.appendOrderIds && item.appendOrderIds.length > 0) {
+        // 删除原始订单：所有追加单的 parentOrderTitle 更新为「原单已删除」
+        item.appendOrderIds.forEach(function (appendId) {
+            var appendOrder = history.find(function (h) { return h.id === appendId; });
+            if (appendOrder) {
+                appendOrder.parentOrderTitle = '原单已删除';
+            }
+        });
+    }
 
     moveToTrash(item);
     history = history.filter(item => item.id !== id);

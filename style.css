@@ -838,7 +838,7 @@ body {
     display: block;
 }
 .nav-btn-tab .nav-tab-label {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     line-height: 1.2;
     white-space: nowrap;
     color: inherit;
@@ -976,7 +976,7 @@ body {
     background: transparent;
     border-radius: var(--radius-md);
     cursor: pointer;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-color);
     transition: opacity 0.2s, background-color 0.2s;
     box-shadow: none;
@@ -1559,7 +1559,7 @@ body {
 }
 .receipt-agreed-amount-bar .receipt-agreed-btns .btn {
     padding: 0.25rem 0.45rem;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
 }
 .receipt-calc-note {
     font-size: 0.8rem !important;
@@ -1798,7 +1798,7 @@ body {
     font-weight: 500;
 }
 .remark-smart-hint {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     font-weight: 400;
     color: var(--text-light, #6b7280);
 }
@@ -1833,7 +1833,7 @@ body {
     line-height: 1.2;
 }
 .btn-remark-full .remark-label-line1 {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     font-weight: 500;
     color: var(--text-color);
 }
@@ -3350,7 +3350,7 @@ html.theme-dark .guide-link-with-icon:hover {
 }
 
 .image-preview-info {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-light);
     margin-top: 0.25rem;
 }
@@ -3565,7 +3565,7 @@ html.theme-dark .guide-link-with-icon:hover {
 }
 
 .color-value {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-light);
     font-family: 'Courier New', monospace;
     text-align: center;
@@ -3606,7 +3606,7 @@ html.theme-dark .guide-link-with-icon:hover {
     }
     
     .color-picker-label {
-        font-size: 0.7rem;
+        font-size: 0.65rem;
     }
     
     .color-value {
@@ -4607,7 +4607,7 @@ input:checked + .toggle-slider:before {
     
     /* 调整提示文本 */
     .text-gray {
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         margin-top: 0.2rem;
     }
     
@@ -5513,7 +5513,7 @@ input:checked + .toggle-slider:before {
         min-width: 0;
         min-height: 36px;
         padding: 0.4em 0.55em;
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         line-height: 1.3;
         height: auto;
     }
@@ -5966,7 +5966,7 @@ input:checked + .toggle-slider:before {
     right: -4px;
     background: #ef4444;
     color: white;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     padding: 2px 6px;
     border-radius: 10px;
     min-width: 18px;
@@ -6556,7 +6556,7 @@ input:checked + .toggle-slider:before {
         font-size: 0.85rem;
     }
     .history-item-date {
-        font-size: 0.7rem;
+        font-size: 0.65rem;
     }
     .history-item-content {
         font-size: 0.75rem;
@@ -6569,7 +6569,7 @@ input:checked + .toggle-slider:before {
     .history-item-actions .btn {
         min-height: 32px;
         padding: 0.25em 0.5em;
-        font-size: 0.7rem;
+        font-size: 0.65rem;
     }
     .history-item-checkbox {
         top: 0.4rem;
@@ -6639,7 +6639,7 @@ input:checked + .toggle-slider:before {
     
     .process-item-delete {
         padding: 0.3rem 0.5rem;
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         flex: 0 0 auto;
         min-width: 50px;
     }
@@ -7184,7 +7184,7 @@ input:checked + .toggle-slider:before {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 3px;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: rgba(0, 0, 0, 0.45);
     margin-bottom: 6px;
     text-align: center;
@@ -7587,7 +7587,7 @@ input:checked + .toggle-slider:before {
 
     .schedule-todo-wrap-toggle-btn {
         padding: 0.3rem 0.6rem;
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         min-width: 50px;
     }
 }
@@ -7720,7 +7720,7 @@ input:checked + .toggle-slider:before {
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
     padding: 0.75rem 1rem 1rem;
-    min-width: 280px;
+    min-width: 340px;
     overflow: visible;
     animation: scheduleTodoCardModalIn 0.2s ease-out;
 }
@@ -7801,7 +7801,7 @@ input:checked + .toggle-slider:before {
     height: 1.2rem;
 }
 .schedule-todo-card-modal-btn span {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
 }
 
 .custom-tag-circle-icon {
@@ -8061,7 +8061,7 @@ input:checked + .toggle-slider:before {
     flex-shrink: 0;
 }
 .form-label-sm {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-secondary, #666);
     margin-bottom: 0.25rem;
     display: block;
@@ -9349,7 +9349,7 @@ html.theme-dark .settlement-preview {
 
 .record-item-amount-gross {
     color: var(--text-light);
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     font-weight: 400;
     text-decoration: none;
 }
@@ -9693,7 +9693,7 @@ html.theme-dark .settlement-preview {
 }
 .kpi-section-title {
     grid-column: 1 / -1;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     font-weight: 600;
     color: var(--text-light);
     letter-spacing: 0.05em;
@@ -9994,7 +9994,7 @@ html.theme-dark .settlement-preview {
     grid-template-columns: 88px repeat(4, minmax(0, 1fr));
     align-items: center;
     gap: 0.35rem;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-light);
     margin-top: 0.1rem;
     margin-bottom: 0.35rem;
@@ -10561,7 +10561,7 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
         font-size: 0.85rem;
     }
     .schedule-todo-card-progress {
-        font-size: 0.7rem;
+        font-size: 0.65rem;
     }
     .schedule-todo-card-status {
         font-size: 0.65rem !important;
@@ -10599,7 +10599,7 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
         padding-left: 0.7rem;
     }
     .schedule-todo-card-range {
-        font-size: 0.7rem;
+        font-size: 0.65rem;
     }
     .schedule-todo-card-client {
         font-size: 0.8rem;
@@ -10748,7 +10748,7 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
     background: transparent;
     border-radius: var(--radius-md);
     cursor: pointer;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-color);
     transition: opacity 0.2s, background-color 0.2s;
     box-shadow: none;
@@ -11174,4 +11174,135 @@ html.theme-dark .mg-cloud-modal-content p {
 html.theme-dark #mg-cloud-skip-btn {
     background: var(--primary-light) !important;
     color: var(--text-color) !important;
+}
+
+/* ========== 追加单关联样式 ========== */
+
+/* 排单卡片/记录页：追加单关联信息行 */
+.append-order-link-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.65rem;
+    color: #2563eb;
+    margin-top: 0.15rem;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.append-order-link-row:hover {
+    text-decoration: underline;
+}
+.append-order-link-row-schedule {
+    padding-left: 0.7rem;
+}
+.append-order-link-row .append-order-link-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex-shrink: 0;
+}
+.append-order-link-row .append-order-link-arrow {
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+
+/* 原单卡片上的追加单数量提示 */
+.append-order-count-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.65rem;
+    color: #2563eb;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.append-order-count-row:hover {
+    text-decoration: underline;
+}
+.append-order-count-row-schedule {
+    padding-left: 0.7rem;
+}
+.append-order-count-row .append-order-link-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex-shrink: 0;
+}
+.append-order-count-row .append-order-link-arrow {
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+
+/* 追加单列表弹窗 */
+.append-order-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+.append-order-list-item:last-child {
+    border-bottom: none;
+}
+.append-order-list-item:hover {
+    background: rgba(59, 130, 246, 0.06);
+}
+.append-order-list-item-info {
+    flex: 1;
+    min-width: 0;
+}
+.append-order-list-item-title {
+    font-size: 0.85rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.append-order-list-item-meta {
+    font-size: 0.72rem;
+    color: var(--text-light);
+    margin-top: 0.15rem;
+}
+.append-order-list-item-arrow {
+    color: #2563eb;
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+}
+.append-order-list-empty {
+    text-align: center;
+    color: var(--text-light);
+    padding: 1.5rem 0;
+    font-size: 0.85rem;
+}
+
+/* 取消关联按钮样式 */
+#scheduleTodoBtnUnlink {
+    color: #f59e0b;
+}
+#scheduleTodoBtnUnlink:hover {
+    background: rgba(245, 158, 11, 0.1);
+}
+
+/* 移动端：操作弹窗5列响应式 */
+@media (max-width: 480px) {
+    .schedule-todo-card-modal-content {
+        min-width: 0;
+        max-width: 95vw;
+    }
+    .schedule-todo-card-modal-btn {
+        padding: 0.35rem 0.3rem;
+        min-width: 2.2rem;
+        font-size: 0.65rem;
+    }
+    .schedule-todo-card-modal-btn .icon {
+        width: 1rem;
+        height: 1rem;
+    }
+    .schedule-todo-card-modal-btn span {
+        font-size: 0.6rem;
+    }
 }
