@@ -4116,7 +4116,37 @@ function getFilteredHistoryForRecord() {
     }
 
     if (filters.statusFilters && filters.statusFilters.length && filters.statusFilters.indexOf('all') === -1) {
-        filteredHistory = filteredHistory.filter(item => filters.statusFilters.indexOf(getRecordProgressStatus(item).text) !== -1);
+        const statusValues = ['待接单', '未开始', '进行中', '已完成', '已逾期', '已结单', '已撤单', '有废稿'];
+        const tagFilters = filters.statusFilters.filter(f => statusValues.indexOf(f) === -1);
+        const actualStatusFilters = filters.statusFilters.filter(f => statusValues.indexOf(f) !== -1);
+        
+        if (actualStatusFilters.length > 0) {
+            filteredHistory = filteredHistory.filter(item => actualStatusFilters.indexOf(getRecordProgressStatus(item).text) !== -1);
+        }
+        
+        if (tagFilters.length > 0) {
+            filteredHistory = filteredHistory.filter(item => {
+                for (const tag of tagFilters) {
+                    if (tag === '已收定' && item.depositReceived != null && Number(item.depositReceived) > 0) {
+                        return true;
+                    }
+                    if (tag === '占位单' && item.isSchedulePlaceholder) {
+                        return true;
+                    }
+                    if (tag === '加急单' && item.urgent && item.urgent > 1) {
+                        return true;
+                    }
+                    if (tag === '追加单' && hasCrossOrderSameModel(item)) {
+                        return true;
+                    }
+                    const tags = mgNormalizeTags(item);
+                    if (tags.some(t => t && t.name === tag)) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
     }
 
     // 统计页“查看企划”聚焦：仅显示命中的企划
