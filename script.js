@@ -7563,6 +7563,10 @@ function renderProduct(product) {
         <div class="product-item-header">
             <div class="product-item-title">制品 ${product.id}</div>
             <div class="product-item-actions" style="display:flex;gap:4px;margin-left:auto;">
+                <button class="icon-action-btn move-to-top" onclick="moveProductToTop(${product.id})" aria-label="置顶" title="置顶">
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-arrow-to-top"></use></svg>
+                    <span class="sr-only">置顶</span>
+                </button>
                 <button class="icon-action-btn move-up" onclick="moveProduct(${product.id}, -1)" aria-label="上移" title="上移">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-up"></use></svg>
                     <span class="sr-only">上移</span>
@@ -7974,7 +7978,26 @@ function moveProduct(productId, direction) {
     }
     
     if (typeof calculatePrice === 'function') {
-        calculatePrice();
+        calculatePrice(undefined, undefined, undefined, true);
+    }
+}
+
+function moveProductToTop(productId) {
+    const index = products.findIndex(p => p.id === productId);
+    if (index === -1 || index === 0) return;
+    
+    const [removed] = products.splice(index, 1);
+    products.unshift(removed);
+    
+    const container = document.getElementById('productsContainer');
+    const items = Array.from(container.children);
+    const currentEl = items[index];
+    const firstEl = items[0];
+    
+    container.insertBefore(currentEl, firstEl);
+    
+    if (typeof calculatePrice === 'function') {
+        calculatePrice(undefined, undefined, undefined, true);
     }
 }
 
