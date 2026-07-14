@@ -7563,6 +7563,14 @@ function renderProduct(product) {
         <div class="product-item-header">
             <div class="product-item-title">制品 ${product.id}</div>
             <div class="product-item-actions" style="display:flex;gap:4px;margin-left:auto;">
+                <button class="icon-action-btn move-up" onclick="moveProduct(${product.id}, -1)" aria-label="上移" title="上移">
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-up"></use></svg>
+                    <span class="sr-only">上移</span>
+                </button>
+                <button class="icon-action-btn move-down" onclick="moveProduct(${product.id}, 1)" aria-label="下移" title="下移">
+                    <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+                    <span class="sr-only">下移</span>
+                </button>
                 <button class="btn small secondary" onclick="convertProductToGift(${product.id})" title="转为赠品">转赠品</button>
                 <button class="icon-action-btn delete" onclick="removeProduct(${product.id})" aria-label="删除制品" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
@@ -7941,6 +7949,33 @@ function removeProduct(id) {
     const el = document.querySelector(`[data-id="${id}"]`);
     if (el) el.remove();
     syncExpectedProductCountFromProducts();
+}
+
+function moveProduct(productId, direction) {
+    const index = products.findIndex(p => p.id === productId);
+    if (index === -1) return;
+    
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= products.length) return;
+    
+    const temp = products[index];
+    products[index] = products[newIndex];
+    products[newIndex] = temp;
+    
+    const container = document.getElementById('productsContainer');
+    const items = Array.from(container.children);
+    const currentEl = items[index];
+    const targetEl = items[newIndex];
+    
+    if (direction > 0) {
+        container.insertBefore(currentEl, targetEl.nextSibling);
+    } else {
+        container.insertBefore(currentEl, targetEl);
+    }
+    
+    if (typeof calculatePrice === 'function') {
+        calculatePrice();
+    }
 }
 
 // 将制品转为赠品
@@ -19199,6 +19234,16 @@ function smartParseOrderRemark() {
         var processes = [];
         var size = '';
         
+        var productAliasMap = {
+            '吧唧': ['普通吧唧', '异形吧唧'],
+            '徽章': ['普通吧唧', '异形吧唧'],
+            '胸章': ['普通吧唧', '异形吧唧'],
+            '纸片': ['方卡', '背卡', '卡头', '小卡', '透卡', '邮票', '色纸', '拍立得', '明信片', '票根', '纸夹相卡'],
+            '亚克力': ['立牌', '麻将'],
+            '牌': ['立牌'],
+            '图': ['头像']
+        };
+        
         if (/双面/.test(ln)) sides = 'double';
         if (/带背景/.test(ln)) hasBackground = true;
         
@@ -19278,7 +19323,33 @@ function smartParseOrderRemark() {
                 }
             }
         }
-        // 格式4b：备注里写简称（如“吧唧”）能匹配到设置里包含该词的制品名（如“普通吧唧”），优先长词匹配
+        // 格式4c：使用制品别名映射（如“吧唧”→“普通吧唧”、“异形吧唧”）
+        if (!matchedSetting && productSettings.length) {
+            for (var alias in productAliasMap) {
+                if (ln.indexOf(alias) !== -1) {
+                    var targetNames = productAliasMap[alias];
+                    if (!Array.isArray(targetNames)) targetNames = [targetNames];
+                    var found = null;
+                    for (var ti = 0; ti < targetNames.length; ti++) {
+                        found = productSettings.find(function(s) { return s.name === targetNames[ti]; });
+                        if (found) break;
+                    }
+                    if (found) {
+                        matchedSetting = found;
+                        typeName = alias;
+                        break;
+                    } else {
+                        var containsMatch = productSettings.find(function(s) { return s.name.indexOf(alias) !== -1; });
+                        if (containsMatch) {
+                            matchedSetting = containsMatch;
+                            typeName = alias;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // 格式4b：备注里写简称（如“吧唧”）能匹配到设置里包含该词的制品名（如“普通吧唧”），优先匹配最接近的
         if (!matchedSetting && productSettings.length) {
             var hanParts = ln.match(/[\u4e00-\u9fff]{2,}/g) || [];
             var tokens = ln.split(/\s+/).filter(function(t) { return t.length >= 2 && !/^\d+$/.test(t); });
@@ -19288,8 +19359,20 @@ function smartParseOrderRemark() {
             candidates.sort(function(a, b) { return b.length - a.length; });
             for (var ci = 0; ci < candidates.length; ci++) {
                 var cand = candidates[ci];
-                var found = productSettings.find(function(s) { return s.name.indexOf(cand) !== -1; });
-                if (found) { matchedSetting = found; typeName = cand; break; }
+                var foundList = productSettings.filter(function(s) { return s.name.indexOf(cand) !== -1; });
+                if (foundList.length > 0) {
+                    foundList.sort(function(a, b) {
+                        var aScore = a.name.length - cand.length;
+                        var bScore = b.name.length - cand.length;
+                        if (aScore !== bScore) return aScore - bScore;
+                        var aPrefix = a.name.indexOf(cand);
+                        var bPrefix = b.name.indexOf(cand);
+                        return aPrefix - bPrefix;
+                    });
+                    matchedSetting = foundList[0];
+                    typeName = cand;
+                    break;
+                }
             }
         }
         if (typeName && !matchedSetting) {
