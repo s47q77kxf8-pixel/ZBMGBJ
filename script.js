@@ -13255,10 +13255,20 @@ function jumpToParentOrder(parentOrderId) {
                 setTimeout(function () { card.style.boxShadow = ''; }, 1500);
             } else {
                 if (typeof showPage === 'function') showPage('record');
+                setTimeout(function () {
+                    statsFocusedOrderIds = new Set([parentOrderId]);
+                    statsFocusedLabel = '原单';
+                    applyRecordFilters();
+                }, 100);
             }
         }, 300);
     } else {
+        statsFocusedOrderIds = new Set([parentOrderId]);
+        statsFocusedLabel = '原单';
         if (typeof showPage === 'function') showPage('record');
+        setTimeout(function () {
+            applyRecordFilters();
+        }, 100);
     }
 }
 
