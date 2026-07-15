@@ -13511,6 +13511,9 @@ function generateFolderName(item, timeType, customTime) {
         folderName += `${timeStr}`;
     }
     folderName += `【${platform} ${clientId}】`;
+    if (item.urgent && item.urgent > 1) {
+        folderName += `加急-`;
+    }
     if (projectName) {
         folderName += `${projectName}`;
         if (projectOrigin) {
