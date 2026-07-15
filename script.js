@@ -13396,6 +13396,32 @@ function resetCrossOrderSmartPromptState() {
 function generateFolderName(item, timeType, customTime) {
     if (!item) return '';
 
+    // 获取所有关联订单（原单+所有追加单）
+    let relatedOrders = [item];
+    let isAppendGroup = false;
+    
+    if (item.parentOrderId) {
+        // 当前是追加单：找到原单和所有兄弟追加单
+        var parentOrder = history.find(function (h) { return h.id === item.parentOrderId; });
+        if (parentOrder) {
+            relatedOrders = [parentOrder];
+            if (parentOrder.appendOrderIds && Array.isArray(parentOrder.appendOrderIds)) {
+                parentOrder.appendOrderIds.forEach(function (aid) {
+                    var append = history.find(function (h) { return h.id === aid; });
+                    if (append) relatedOrders.push(append);
+                });
+            }
+            isAppendGroup = true;
+        }
+    } else if (item.appendOrderIds && Array.isArray(item.appendOrderIds) && item.appendOrderIds.length > 0) {
+        // 当前是原单且有追加单
+        item.appendOrderIds.forEach(function (aid) {
+            var append = history.find(function (h) { return h.id === aid; });
+            if (append) relatedOrders.push(append);
+        });
+        isAppendGroup = true;
+    }
+
     // 1. 格式化时间（根据timeType或默认顺序）
     let timeStr = '';
     let timeToUse = null;
@@ -13447,12 +13473,31 @@ function generateFolderName(item, timeType, customTime) {
     // 5. 获取原作信息
     const projectOrigin = item.projectOrigin || '';
     
-    // 6. 计算制品数量和详细信息
-    const products = Array.isArray(item.productPrices) ? item.productPrices : [];
-    const productCount = products.reduce((total, p) => total + (p && p.quantity ? parseInt(p.quantity) : 1), 0);
+    // 6. 计算制品数量和详细信息（合并所有关联订单）
+    const mergedProducts = {};
+    relatedOrders.forEach(function (order) {
+        const products = Array.isArray(order.productPrices) ? order.productPrices : [];
+        products.forEach(function (p) {
+            if (!p || !p.product) return;
+            const key = p.product;
+            const qty = p.quantity ? parseInt(p.quantity) : 1;
+            if (mergedProducts[key]) {
+                mergedProducts[key].quantity += qty;
+            } else {
+                mergedProducts[key] = {
+                    product: p.product,
+                    quantity: qty,
+                    crossOrderSameModel: p && p.crossOrderSameModel
+                };
+            }
+        });
+    });
+    
+    const productList = Object.values(mergedProducts);
+    const productCount = productList.reduce((total, p) => total + (p && p.quantity ? p.quantity : 1), 0);
     let productDetails = '';
-    if (products.length > 0) {
-        productDetails = products.map(p => {
+    if (productList.length > 0) {
+        productDetails = productList.map(p => {
             const productName = p.product || '制品';
             const quantity = p.quantity || 1;
             const sameModel = p && p.crossOrderSameModel ? '同模' : '';
