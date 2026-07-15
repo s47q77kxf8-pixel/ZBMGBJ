@@ -13404,9 +13404,10 @@ function generateFolderName(item, timeType, customTime) {
         // 当前是追加单：找到原单和所有兄弟追加单
         var parentOrder = history.find(function (h) { return h.id === item.parentOrderId; });
         if (parentOrder) {
-            relatedOrders = [parentOrder];
+            relatedOrders = [parentOrder, item];
             if (parentOrder.appendOrderIds && Array.isArray(parentOrder.appendOrderIds)) {
                 parentOrder.appendOrderIds.forEach(function (aid) {
+                    if (aid === item.id) return; // 跳过自身，已添加
                     var append = history.find(function (h) { return h.id === aid; });
                     if (append) relatedOrders.push(append);
                 });
