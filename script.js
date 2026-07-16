@@ -8434,7 +8434,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         // 处理多选工艺
         if (product.processes) {
             Object.values(product.processes).forEach(processChoice => {
-                const processSetting = processSettings.find(p => p.id === processChoice.id);
+                const processSetting = processSettings.find(p => String(p.id) === String(processChoice.id));
                 if (processSetting) {
                     // 工艺价格（每层）
                     const processPricePerLayer = (processSetting.price ?? 10);
@@ -17065,8 +17065,9 @@ function editHistoryItem(id) {
                         if (process.name && process.layers) {
                             const ps = processSettings.find(p => p.name === process.name);
                             if (ps) {
-                                product.processes[ps.id] = {
-                                    id: ps.id,
+                                const processIdStr = String(ps.id);
+                                product.processes[processIdStr] = {
+                                    id: processIdStr,
                                     layers: process.layers,
                                     price: ps.price || 10
                                 };
@@ -17133,8 +17134,9 @@ function editHistoryItem(id) {
                         if (process.name && process.layers) {
                             const ps = processSettings.find(p => p.name === process.name);
                             if (ps) {
-                                gift.processes[ps.id] = {
-                                    id: ps.id,
+                                const processIdStr = String(ps.id);
+                                gift.processes[processIdStr] = {
+                                    id: processIdStr,
                                     layers: process.layers,
                                     price: ps.price || 10
                                 };
@@ -19662,10 +19664,11 @@ function smartParseOrderRemark() {
                         // 添加工艺
                         if (parsed.processes.length > 0) {
                             parsed.processes.forEach(function(pid) {
-                                const ps = processSettings.find(p => p.id === pid);
+                                const ps = processSettings.find(p => String(p.id) === String(pid));
                                 if (ps) {
-                                    product.processes[pid] = {
-                                        id: pid,
+                                    const processIdStr = String(pid);
+                                    product.processes[processIdStr] = {
+                                        id: processIdStr,
                                         layers: Math.max(1, parseInt(ps.defaultLayers, 10) || 1),
                                         price: ps.price || 10
                                     };
@@ -19703,10 +19706,11 @@ function smartParseOrderRemark() {
                 };
                 if (parsed.processes.length > 0) {
                     parsed.processes.forEach(function(pid) {
-                        const ps = processSettings.find(p => p.id === pid);
+                        const ps = processSettings.find(p => String(p.id) === String(pid));
                         if (ps) {
-                            product.processes[pid] = {
-                                id: pid,
+                            const processIdStr = String(pid);
+                            product.processes[processIdStr] = {
+                                id: processIdStr,
                                 layers: Math.max(1, parseInt(ps.defaultLayers, 10) || 1),
                                 price: ps.price || 10
                             };
