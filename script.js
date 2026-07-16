@@ -19662,7 +19662,14 @@ function smartParseOrderRemark() {
                         // 添加工艺
                         if (parsed.processes.length > 0) {
                             parsed.processes.forEach(function(pid) {
-                                product.processes[pid] = 1;
+                                const ps = processSettings.find(p => p.id === pid);
+                                if (ps) {
+                                    product.processes[pid] = {
+                                        id: pid,
+                                        layers: Math.max(1, parseInt(ps.defaultLayers, 10) || 1),
+                                        price: ps.price || 10
+                                    };
+                                }
                             });
                         }
                         products.push(product);
@@ -19696,7 +19703,14 @@ function smartParseOrderRemark() {
                 };
                 if (parsed.processes.length > 0) {
                     parsed.processes.forEach(function(pid) {
-                        product.processes[pid] = 1;
+                        const ps = processSettings.find(p => p.id === pid);
+                        if (ps) {
+                            product.processes[pid] = {
+                                id: pid,
+                                layers: Math.max(1, parseInt(ps.defaultLayers, 10) || 1),
+                                price: ps.price || 10
+                            };
+                        }
                     });
                 }
                 products.push(product);
