@@ -10244,6 +10244,13 @@ function maybeReturnToRecordAndCloseReceipt() {
     window.pageBeforeReceiptDrawer = null;
 }
 
+// 返回计算页修改报价
+function returnToCalculatorFromReceipt() {
+    window.receiptOpenedFromRecord = false;
+    closeReceiptDrawer();
+    openCalculatorDrawer(true);
+}
+
 // 处理小票抽屉关闭（遮罩点击或关闭按钮）
 function handleReceiptDrawerClose() {
     // 小票设置打开时：只关设置面板，不关小票抽屉，避免点击下半屏设置时误关小票
