@@ -1968,34 +1968,17 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="currencySelector">默认货币</label>
-                                <select id="currencySelector" onchange="updateCurrencySetting(this.value)">
-                                    <option value="CNY">¥ 人民币 (CNY)</option>
-                                    <option value="USD">$ 美元 (USD)</option>
-                                    <option value="EUR">€ 欧元 (EUR)</option>
-                                    <option value="GBP">£ 英镑 (GBP)</option>
-                                    <option value="JPY">¥ 日元 (JPY)</option>
-                                    <option value="KRW">₩ 韩元 (KRW)</option>
-                                    <option value="HKD">$ 港币 (HKD)</option>
-                                    <option value="TWD">NT$ 台币 (TWD)</option>
-                                    <option value="AUD">$ 澳元 (AUD)</option>
-                                    <option value="CAD">$ 加元 (CAD)</option>
-                                    <option value="SGD">$ 新加坡元 (SGD)</option>
-                                    <option value="CHF">Fr 瑞士法郎 (CHF)</option>
-                                    <option value="SEK">kr 瑞典克朗 (SEK)</option>
-                                    <option value="NOK">kr 挪威克朗 (NOK)</option>
-                                    <option value="DKK">kr 丹麦克朗 (DKK)</option>
-                                    <option value="PLN">zł 波兰兹罗提 (PLN)</option>
-                                    <option value="CZK">Kč 捷克克朗 (CZK)</option>
-                                    <option value="HUF">Ft 匈牙利福林 (HUF)</option>
-                                    <option value="THB">฿ 泰铢 (THB)</option>
-                                    <option value="INR">₹ 印度卢比 (INR)</option>
-                                    <option value="IDR">Rp 印尼卢比 (IDR)</option>
-                                    <option value="MYR">RM 马来西亚林吉特 (MYR)</option>
-                                    <option value="VND">₫ 越南盾 (VND)</option>
-                                    <option value="BRL">R$ 巴西雷亚尔 (BRL)</option>
-                                    <option value="MXN">$ 墨西哥比索 (MXN)</option>
-                                    <option value="ZAR">R 南非兰特 (ZAR)</option>
-                                </select>
+                                <div class="custom-select-wrapper" id="currencySelectWrapper">
+                                    <div class="custom-select-trigger" id="currencySelectTrigger" onclick="toggleCurrencyDropdown()">
+                                        <span id="currencySelectValue">¥ 人民币 (CNY)</span>
+                                        <span class="custom-select-arrow">▼</span>
+                                    </div>
+                                    <div class="custom-select-dropdown" id="currencySelectDropdown">
+                                        <input type="text" class="custom-select-search" id="currencySearchInput" placeholder="输入货币代码、名称或符号..." oninput="filterCurrencyOptions(this.value)">
+                                        <div class="custom-select-options" id="currencyOptionsList"></div>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="currencySelector" value="CNY">
                             </div>
                         </div>
                     </div>

@@ -11306,3 +11306,115 @@ html.theme-dark #mg-cloud-skip-btn {
         font-size: 0.6rem;
     }
 }
+
+/* 自定义货币选择器样式 */
+.custom-select-wrapper {
+    position: relative;
+    width: 100%;
+}
+.custom-select-trigger {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-color);
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.custom-select-trigger:hover {
+    border-color: #9ca3af;
+}
+.custom-select-trigger:focus-within {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+.custom-select-arrow {
+    font-size: 0.65rem;
+    color: var(--text-light);
+    transition: transform 0.2s;
+}
+.custom-select-wrapper.open .custom-select-arrow {
+    transform: rotate(180deg);
+}
+.custom-select-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-md);
+    z-index: 100;
+    display: none;
+    max-height: 280px;
+    overflow: hidden;
+}
+.custom-select-wrapper.open .custom-select-dropdown {
+    display: block;
+}
+.custom-select-search {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-color);
+    font-size: 0.85rem;
+    outline: none;
+    box-sizing: border-box;
+}
+.custom-select-search::placeholder {
+    color: var(--text-light);
+}
+.custom-select-options {
+    max-height: 220px;
+    overflow-y: auto;
+}
+.custom-select-option {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background-color 0.15s;
+}
+.custom-select-option:hover {
+    background: rgba(59, 130, 246, 0.08);
+}
+.custom-select-option.selected {
+    background: rgba(59, 130, 246, 0.12);
+    color: #3b82f6;
+}
+.custom-select-option-symbol {
+    font-size: 1rem;
+    margin-right: 0.5rem;
+}
+.custom-select-option-name {
+    flex: 1;
+    text-align: left;
+}
+.custom-select-option-code {
+    color: var(--text-light);
+    font-size: 0.75rem;
+}
+
+html.theme-dark .custom-select-trigger {
+    border-color: var(--border-color);
+    background: var(--card-bg);
+}
+html.theme-dark .custom-select-trigger:hover {
+    border-color: #52525b;
+}
+html.theme-dark .custom-select-search {
+    background: var(--card-bg);
+    border-bottom-color: var(--border-color);
+}
+html.theme-dark .custom-select-dropdown {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+}

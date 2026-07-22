@@ -3660,7 +3660,93 @@ function updateCurrencySetting(value) {
     defaultSettings.currency = value;
     saveSettings();
     if (typeof refreshReceiptPreview === 'function') refreshReceiptPreview();
+    var currencySelector = document.getElementById('currencySelector');
+    if (currencySelector) currencySelector.value = value;
+    updateCurrencyDisplay(value);
 }
+
+function updateCurrencyDisplay(code) {
+    var currency = defaultSettings.currencyOptions[code] || defaultSettings.currencyOptions.CNY;
+    var displayText = currency.symbol + ' ' + currency.name + ' (' + currency.code + ')';
+    var valueEl = document.getElementById('currencySelectValue');
+    if (valueEl) valueEl.textContent = displayText;
+    
+    var optionsList = document.getElementById('currencyOptionsList');
+    if (optionsList) {
+        optionsList.querySelectorAll('.custom-select-option').forEach(function(opt) {
+            if (opt.dataset.value === code) {
+                opt.classList.add('selected');
+            } else {
+                opt.classList.remove('selected');
+            }
+        });
+    }
+}
+
+function renderCurrencyOptions() {
+    var optionsList = document.getElementById('currencyOptionsList');
+    if (!optionsList) return;
+    
+    var html = '';
+    Object.keys(defaultSettings.currencyOptions).forEach(function(code) {
+        var currency = defaultSettings.currencyOptions[code];
+        html += '<div class="custom-select-option" data-value="' + code + '" onclick="selectCurrency(\'' + code + '\')">' +
+            '<span class="custom-select-option-symbol">' + currency.symbol + '</span>' +
+            '<span class="custom-select-option-name">' + currency.name + '</span>' +
+            '<span class="custom-select-option-code">' + code + '</span>' +
+            '</div>';
+    });
+    optionsList.innerHTML = html;
+}
+
+function toggleCurrencyDropdown() {
+    var wrapper = document.getElementById('currencySelectWrapper');
+    if (!wrapper) return;
+    
+    if (wrapper.classList.contains('open')) {
+        wrapper.classList.remove('open');
+    } else {
+        wrapper.classList.add('open');
+        setTimeout(function() {
+            var searchInput = document.getElementById('currencySearchInput');
+            if (searchInput) {
+                searchInput.value = '';
+                searchInput.focus();
+                filterCurrencyOptions('');
+            }
+        }, 10);
+    }
+}
+
+function filterCurrencyOptions(query) {
+    var options = document.querySelectorAll('.custom-select-option');
+    var q = query.toLowerCase().trim();
+    
+    options.forEach(function(opt) {
+        var code = opt.dataset.value.toLowerCase();
+        var name = opt.querySelector('.custom-select-option-name').textContent.toLowerCase();
+        var symbol = opt.querySelector('.custom-select-option-symbol').textContent;
+        
+        if (!q || code.includes(q) || name.includes(q) || symbol.includes(q)) {
+            opt.style.display = '';
+        } else {
+            opt.style.display = 'none';
+        }
+    });
+}
+
+function selectCurrency(code) {
+    updateCurrencySetting(code);
+    var wrapper = document.getElementById('currencySelectWrapper');
+    if (wrapper) wrapper.classList.remove('open');
+}
+
+document.addEventListener('click', function(e) {
+    var wrapper = document.getElementById('currencySelectWrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        wrapper.classList.remove('open');
+    }
+});
 
 function formatMoney(value) {
     const num = Number(value);
@@ -18762,6 +18848,8 @@ function loadSettings() {
     renderDiscountReasonsList();
     var currencySelector = document.getElementById('currencySelector');
     if (currencySelector) currencySelector.value = defaultSettings.currency || 'CNY';
+    renderCurrencyOptions();
+    updateCurrencyDisplay(defaultSettings.currency || 'CNY');
 }
 
 // 根据废稿费模式显示对应默认值区域（选择哪个模式显示哪个模式默认值）
