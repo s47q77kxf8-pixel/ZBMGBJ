@@ -716,6 +716,37 @@ const defaultSettings = {
     },
     // 定金比例（0~1）
     depositRate: 0.2,
+    // 默认货币
+    currency: 'CNY',
+    // 货币配置
+    currencyOptions: {
+        CNY: { symbol: '¥', name: '人民币', code: 'CNY' },
+        USD: { symbol: '$', name: '美元', code: 'USD' },
+        EUR: { symbol: '€', name: '欧元', code: 'EUR' },
+        GBP: { symbol: '£', name: '英镑', code: 'GBP' },
+        JPY: { symbol: '¥', name: '日元', code: 'JPY' },
+        KRW: { symbol: '₩', name: '韩元', code: 'KRW' },
+        HKD: { symbol: '$', name: '港币', code: 'HKD' },
+        TWD: { symbol: 'NT$', name: '台币', code: 'TWD' },
+        AUD: { symbol: '$', name: '澳元', code: 'AUD' },
+        CAD: { symbol: '$', name: '加元', code: 'CAD' },
+        SGD: { symbol: '$', name: '新加坡元', code: 'SGD' },
+        CHF: { symbol: 'Fr', name: '瑞士法郎', code: 'CHF' },
+        SEK: { symbol: 'kr', name: '瑞典克朗', code: 'SEK' },
+        NOK: { symbol: 'kr', name: '挪威克朗', code: 'NOK' },
+        DKK: { symbol: 'kr', name: '丹麦克朗', code: 'DKK' },
+        PLN: { symbol: 'zł', name: '波兰兹罗提', code: 'PLN' },
+        CZK: { symbol: 'Kč', name: '捷克克朗', code: 'CZK' },
+        HUF: { symbol: 'Ft', name: '匈牙利福林', code: 'HUF' },
+        THB: { symbol: '฿', name: '泰铢', code: 'THB' },
+        INR: { symbol: '₹', name: '印度卢比', code: 'INR' },
+        IDR: { symbol: 'Rp', name: '印尼卢比', code: 'IDR' },
+        MYR: { symbol: 'RM', name: '马来西亚林吉特', code: 'MYR' },
+        VND: { symbol: '₫', name: '越南盾', code: 'VND' },
+        BRL: { symbol: 'R$', name: '巴西雷亚尔', code: 'BRL' },
+        MXN: { symbol: '$', name: '墨西哥比索', code: 'MXN' },
+        ZAR: { symbol: 'R', name: '南非兰特', code: 'ZAR' }
+    },
     // 可扩展的加价类系数
     extraPricingUp: [
         {
@@ -3619,10 +3650,22 @@ function getRecordProgressStatus(item) {
     return { text: '进行中', className: 'record-status--in-progress', pending, overdue };
 }
 
+function getCurrencySymbol(code) {
+    const currencyCode = code || defaultSettings.currency || 'CNY';
+    const currency = defaultSettings.currencyOptions[currencyCode] || defaultSettings.currencyOptions.CNY;
+    return currency.symbol;
+}
+
+function updateCurrencySetting(value) {
+    defaultSettings.currency = value;
+    saveSettings();
+    if (typeof refreshReceiptPreview === 'function') refreshReceiptPreview();
+}
+
 function formatMoney(value) {
     const num = Number(value);
     if (!isFinite(num)) return '—';
-    return '¥' + num.toFixed(2);
+    return getCurrencySymbol() + num.toFixed(2);
 }
 
 function formatRecordShortDate(timestamp) {
@@ -5727,8 +5770,8 @@ function renderStatsDistribution(byStatus, byPlatform, byUsage, byUrgent, byOthe
     if (!container) return;
     const privacy = getStatsPrivacyState();
     var fmtMoney = function (v) {
-        if (privacy.hideAmount) return '¥***';
-        return '¥' + (Number(v) || 0).toFixed(2);
+        if (privacy.hideAmount) return getCurrencySymbol() + '***';
+        return getCurrencySymbol() + (Number(v) || 0).toFixed(2);
     };
     var hasStatus = byStatus && byStatus.some(function (s) { return s.orderCount > 0 || s.amountTotal > 0; });
     var hasPlatform = byPlatform && byPlatform.some(function (p) { return p.orderCount > 0 || p.amountTotal > 0; });
@@ -5866,7 +5909,7 @@ function renderStatsDistribution(byStatus, byPlatform, byUsage, byUrgent, byOthe
             var ids = Array.isArray(r.orderIds) ? r.orderIds.slice() : [];
             var encoded = encodeURIComponent(JSON.stringify(ids));
             var encodedLabel = encodeURIComponent(label);
-            var amtDisplay = privacy.hideAmount ? '-¥***' : ('-¥' + amt.toFixed(2));
+            var amtDisplay = privacy.hideAmount ? '-' + getCurrencySymbol() + '***' : ('-' + getCurrencySymbol() + amt.toFixed(2));
             return '<div class="stats-dim-item stats-row-clickable" role="button" tabindex="0" data-stats-order-ids="' + encoded + '" data-stats-focus-label="' + encodedLabel + '"><span>' + name + '</span><div class="stats-dim-right"><span class="stats-dim-val">' + count + ' 单 / ' + amtDisplay + '</span>' + buildViewOrdersBtn(r.orderIds, label) + '</div></div>';
         }).join('');
         panels.push({ id: 'discount', html: '<div class="stats-dim-list">' + dhtml + '</div>' });
@@ -5916,14 +5959,14 @@ function renderStatsKpis(totals) {
     const fmt = (v, isMoney) => {
         if (typeof v !== 'number' || !isFinite(v)) return '—';
         if (isMoney) {
-            if (privacy.hideAmount) return '¥***';
-            return '¥' + v.toFixed(2);
+            if (privacy.hideAmount) return getCurrencySymbol() + '***';
+            return getCurrencySymbol() + v.toFixed(2);
         }
         if (v === Math.floor(v)) return String(v);
         return v.toFixed(1);
     };
     const discountTotalVal = totals.discountTotal != null ? totals.discountTotal : (totals.discountAmountTotal || 0);
-    const discountTotalDisplay = discountTotalVal > 0 ? (privacy.hideAmount ? '-¥***' : ('-¥' + discountTotalVal.toFixed(2))) : fmt(discountTotalVal, true);
+    const discountTotalDisplay = discountTotalVal > 0 ? (privacy.hideAmount ? '-' + getCurrencySymbol() + '***' : ('-' + getCurrencySymbol() + discountTotalVal.toFixed(2))) : fmt(discountTotalVal, true);
     grid.innerHTML = `
         <div class="kpi-section-title">核心指标</div>
         <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('企划数')}" role="button" tabindex="0"><div class="kpi-label">企划数</div><div class="kpi-value" id="kpiOrderCount">${totals.orderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
@@ -6093,9 +6136,9 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     const maxRate = 100;
     const privacy = getStatsPrivacyState();
     const fmtMoneyCompact = (v) => {
-        if (privacy.hideAmount) return '¥***';
+        if (privacy.hideAmount) return getCurrencySymbol() + '***';
         const n = Number(v) || 0;
-        return '¥' + n.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
+        return getCurrencySymbol() + n.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
     };
     const fmtRate = (v) => {
         const n = Number(v) || 0;
@@ -6192,8 +6235,8 @@ function renderStatsTopLists(byClient, byProduct) {
     
     // 格式化金额
     var formatMoney = function (amount) {
-        if (privacy.hideAmount) return '¥***';
-        return '¥' + (amount || 0).toFixed(2);
+        if (privacy.hideAmount) return getCurrencySymbol() + '***';
+        return getCurrencySymbol() + (amount || 0).toFixed(2);
     };
     
     // 格式化单主名
@@ -6343,8 +6386,8 @@ function renderStatsCategorySummary(summary) {
     const fmtMoney = (v) => {
         const n = Number(v);
         if (!isFinite(n)) return '—';
-        if (privacy.hideAmount) return '¥***';
-        return '¥' + n.toFixed(2);
+        if (privacy.hideAmount) return getCurrencySymbol() + '***';
+        return getCurrencySymbol() + n.toFixed(2);
     };
 
     if (!rows.length || !totals) {
@@ -6942,7 +6985,7 @@ function renderStatsReportPreview() {
     }
 
     function money(v) {
-        return st.showAmount ? formatMoney(v) : '¥***';
+        return st.showAmount ? formatMoney(v) : getCurrencySymbol() + '***';
     }
     function getReportThemeColors() {
         var preset = {
@@ -7697,7 +7740,7 @@ function updateProductForm(productId) {
     
     switch (productSetting.priceType) {
         case 'fixed':
-            html = `<div class="form-row"><div class="form-group"><label>固定价格：¥${productSetting.price}</label></div></div>`;
+            html = `<div class="form-row"><div class="form-group"><label>固定价格：${getCurrencySymbol()}${productSetting.price}</label></div></div>`;
             break;
             
         case 'double':
@@ -7706,8 +7749,8 @@ function updateProductForm(productId) {
                     <div class="form-group">
                         <label for="productSides-${productId}">单双面</label>
                         <select id="productSides-${productId}" onchange="updateProduct(${productId}, 'sides', this.value)">
-                            <option value="single" ${product.sides === 'single' ? 'selected' : ''}>单面 (¥${productSetting.priceSingle})</option>
-                            <option value="double" ${product.sides === 'double' ? 'selected' : ''}>双面 (¥${productSetting.priceDouble})</option>
+                            <option value="single" ${product.sides === 'single' ? 'selected' : ''}>单面 (${getCurrencySymbol()}${productSetting.priceSingle})</option>
+                            <option value="double" ${product.sides === 'double' ? 'selected' : ''}>双面 (${getCurrencySymbol()}${productSetting.priceDouble})</option>
                         </select>
                     </div>
                 </div>
@@ -7732,7 +7775,7 @@ function updateProductForm(productId) {
                     <div class="form-group incremental-config-group">
                         <label>基础+递增价</label>
                         <div class="incremental-config-base">
-                            <span>基础价 (${productSetting.baseConfig})：¥${productSetting.basePrice}</span>
+                            <span>基础价 (${productSetting.baseConfig})：${getCurrencySymbol()}${productSetting.basePrice}</span>
                             <div class="process-layers-stepper-wrap" style="margin-left:8px;">
                                 <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustProductBaseConfigCount(${productId}, -1)">−</button>
                                 <input type="number" id="baseConfigCount_${productId}" value="${baseConfigCount}" min="0" step="1" 
@@ -7746,7 +7789,7 @@ function updateProductForm(productId) {
                             const currentValue = product.additionalConfigs && product.additionalConfigs[configKey] ? product.additionalConfigs[configKey] : 0;
                             return `
                                 <div class="incremental-config-item">
-                                    <span class="incremental-config-label">+${config.name} (¥${config.price})</span>
+                                    <span class="incremental-config-label">+${config.name} (${getCurrencySymbol()}${config.price})</span>
                                     <div class="process-layers-stepper-wrap">
                                         <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustProductAdditionalConfig(${productId}, '${configKey}', -1)">−</button>
                                         <input type="number" id="${configKey}" value="${currentValue}" min="0" step="1" 
@@ -7798,7 +7841,7 @@ function updateProductForm(productId) {
                                     <input type="number" value="${pct}" min="0" max="100" step="1" style="width: 70px;"
                                            onchange="updateProductNodePercent(${productId}, ${idx}, parseFloat(this.value) || 0); updateProductForm(${productId})">
                                     <span class="text-gray">%</span>
-                                    <span class="node-percent-amount text-gray">¥${amount}</span>
+                                    <span class="node-percent-amount text-gray">${getCurrencySymbol()}${amount}</span>
                                     <button type="button" class="icon-action-btn delete" onclick="removeProductNodeInstance(${productId}, ${idx})" aria-label="删除节点" title="删除节点">
                                         <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除节点</span>
@@ -7851,7 +7894,7 @@ function renderCalculatorPerItemExtraSelects() {
     row.classList.remove('d-none');
     var html = list.map(function (fee) {
         var checked = selectedPerItemExtraFeeIds.indexOf(fee.id) !== -1;
-        return '<label class="chip-option" style="display:inline-flex;align-items:center;gap:6px;margin-right:10px;white-space:nowrap;"><input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleCalculatorPerItemExtraFee(\'' + String(fee.id).replace(/'/g, "\\'") + '\',this.checked)"><span>' + String(fee.name || '新增费用').replace(/</g, '&lt;') + ' (¥' + ((Number(fee.amount) || 0).toFixed(2)) + ')</span></label>';
+        return '<label class="chip-option" style="display:inline-flex;align-items:center;gap:6px;margin-right:10px;white-space:nowrap;"><input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleCalculatorPerItemExtraFee(\'' + String(fee.id).replace(/'/g, "\\'") + '\',this.checked)"><span>' + String(fee.name || '新增费用').replace(/</g, '&lt;') + ' (' + getCurrencySymbol() + ((Number(fee.amount) || 0).toFixed(2)) + ')</span></label>';
     }).join('');
     wrap.innerHTML = html;
 }
@@ -9064,10 +9107,10 @@ function generateQuote() {
         // 按节点收费：总览行 + 节点明细
         if (isNodes) {
             const nodeTotal = item.nodeTotalPrice != null ? item.nodeTotalPrice : item.basePrice;
-            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${nodeTotal.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${nodeTotal.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
             if (item.nodeDetails && item.nodeDetails.length > 0) {
                 item.nodeDetails.forEach(node => {
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${(node.name || '节点').replace(/</g, '&lt;')} ${node.percent}%</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1">¥${(node.amount || 0).toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${(node.name || '节点').replace(/</g, '&lt;')} ${node.percent}%</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1">${getCurrencySymbol()}${(node.amount || 0).toFixed(2)}</div></div>`;
                 });
             }
         } else if (canMerge) {
@@ -9075,7 +9118,7 @@ function generateQuote() {
             // fixed/double 无同模无工艺：合并到总览行（方案A下单价应包含每制品增加）
             var mergedExtraPerPiece = (item.quantity > 0) ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
             var mergedUnitPrice = fullPriceUnitPrice + mergedExtraPerPiece;
-            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${mergedUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${mergedUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
         } else {
             // 需要拆明细
             if (item.productType === 'config') {
@@ -9083,18 +9126,18 @@ function generateQuote() {
                 if (!hasAdditionalConfig) {
                     var configExtraPerPiece = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
                     var configUnitWithExtra = finishedProductUnitPrice + configExtraPerPiece;
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${configUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
                 } else if (!hasSameModel && !hasProcess) {
                     // 有额外配件但无同模无工艺：显示成品单价（已包含配件）
                     var configExtraPerPiece2 = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
                     var configUnitWithExtra2 = finishedProductUnitPrice + configExtraPerPiece2;
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">¥${configUnitWithExtra2.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra2.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
                 } else {
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
                 }
             } else {
                 // fixed/double：总览行单价留空
-                html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">¥${item.productTotal.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
             }
             
             // 明细：全价制品行（方案A：每制品增加并入全价/同模单价，不单列）
@@ -9108,7 +9151,7 @@ function generateQuote() {
                     ? (fullPriceUnitPrice + (fullPriceExtraTotal / fullPriceQuantity))
                     : fullPriceUnitPrice;
                 var fullSubtotalWithExtra = (fullPriceUnitPrice * fullPriceQuantity) + fullPriceExtraTotal;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${fullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">¥${fullSubtotalWithExtra.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">${getCurrencySymbol()}${fullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">${getCurrencySymbol()}${fullSubtotalWithExtra.toFixed(2)}</div></div>`;
             }
             
             // config：树形明细（仅单价，不显示数量和小计）
@@ -9136,7 +9179,7 @@ function generateQuote() {
                     var baseConfigExtraPerPiece = fullPriceQuantity > 0 ? (fullPriceExtraTotal / fullPriceQuantity) : 0;
                     var baseConfigDisplayVal = baseConfigVal + baseConfigExtraPerPiece;
                     var shouldHideBaseConfigPrice = Math.abs(baseConfigDisplayVal - fullUnitWithExtra) < 0.001;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}×${baseConfigCount}</div><div class="receipt-col-1">${shouldHideBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}×${baseConfigCount}</div><div class="receipt-col-1">${shouldHideBaseConfigPrice ? '<span style="color:#999;">—</span>' : (getCurrencySymbol() + baseConfigDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                 }
             }
             // 配件明细（仅单价）- 跨订单同模时也显示
@@ -9145,12 +9188,12 @@ function generateQuote() {
                     item.additionalConfigDetails.forEach(config => {
                         if (config.count <= 0) return;
                         const perPiecePrice = config.price * config.count;
-                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${config.name}×${config.count}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${config.name}×${config.count}</div><div class="receipt-col-1">${getCurrencySymbol()}${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     });
                 } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
                     // 兼容旧格式
                     const perPiecePrice = item.additionalPrice * item.totalAdditionalCount;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}×${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}×${item.totalAdditionalCount}</div><div class="receipt-col-1">${getCurrencySymbol()}${perPiecePrice.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                 }
             }
             
@@ -9158,7 +9201,7 @@ function generateQuote() {
             if (hasSameModel) {
                 const _sameMode = quoteData.sameModelMode || defaultSettings.sameModelMode;
                 const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
-                const sameModelHint = (_sameMode === 'minus') ? `−¥${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
+                const sameModelHint = (_sameMode === 'minus') ? `−${getCurrencySymbol()}${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
                 var sameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - (item.crossOrderSameModel ? 0 : extraBase));
                 // 跨订单同模时，所有件都按同模价计算
                 var sameModelDisplayCount = item.crossOrderSameModel ? item.quantity : item.sameModelCount;
@@ -9166,7 +9209,7 @@ function generateQuote() {
                     ? (item.sameModelUnitPrice + (sameExtraTotal / sameModelDisplayCount))
                     : item.sameModelUnitPrice;
                 var sameModelLabel = `同模制品(${sameModelHint})`;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${sameModelLabel}</div><div class="receipt-col-1">¥${sameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${sameModelDisplayCount}</div><div class="receipt-col-1">¥${(item.sameModelTotal + sameExtraTotal).toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${sameModelLabel}</div><div class="receipt-col-1">${getCurrencySymbol()}${sameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${sameModelDisplayCount}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal + sameExtraTotal).toFixed(2)}</div></div>`;
             }
 
             // 工艺行（按每层单价分组，同单价的工艺合并为一行）
@@ -9202,7 +9245,7 @@ function generateQuote() {
                         // 工艺名称（格式：工艺名×层数、工艺名×层数，最多2个）
                         const processNamesWithLayers = processesInRow.map(p => `${p.name}×${p.layers}`).join('、');
                         
-                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">${processNamesWithLayers}</div><div class="receipt-col-1">¥${pricePerLayer.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantity}</div><div class="receipt-col-1">¥${totalFee.toFixed(2)}</div></div>`;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">${processNamesWithLayers}</div><div class="receipt-col-1">${getCurrencySymbol()}${pricePerLayer.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantity}</div><div class="receipt-col-1">${getCurrencySymbol()}${totalFee.toFixed(2)}</div></div>`;
                     }
                 }
             }
@@ -9263,13 +9306,13 @@ function generateQuote() {
             // 总览行（赠品特殊：显示¥0.00 + 划线原价）
             if (canMergeGift) {
                 // fixed/double 无同模无工艺：合并到总览行
-                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">¥${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${getCurrencySymbol()}${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
             } else {
                 // 需要拆明细
                 if (item.productType === 'config') {
-                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">¥${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
                 } else {
-                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">¥0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${productTotalGift.toFixed(2)}</span></div></div>`;
+                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
                 }
                 
                 // 明细：全价制品行（赠品，方案A并入每制品增加）
@@ -9281,7 +9324,7 @@ function generateQuote() {
                     ? (fullPriceUnitPriceGift + (giftFullExtraTotal / fullPriceQuantityGift))
                     : fullPriceUnitPriceGift;
                 var giftFullSubtotalWithExtra = (fullPriceUnitPriceGift * fullPriceQuantityGift) + giftFullExtraTotal;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">¥${giftFullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1">¥${giftFullSubtotalWithExtra.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">${getCurrencySymbol()}${giftFullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1">${getCurrencySymbol()}${giftFullSubtotalWithExtra.toFixed(2)}</div></div>`;
                 
                 // config：树形明细（仅单价，不显示数量和小计）
                 if (item.productType === 'config' && item.baseConfig) {
@@ -9305,7 +9348,7 @@ function generateQuote() {
                         var baseConfigGiftExtraPerPiece = fullPriceQuantityGift > 0 ? (giftFullExtraTotal / fullPriceQuantityGift) : 0;
                         var baseConfigGiftDisplayVal = baseConfigValGift + baseConfigGiftExtraPerPiece;
                         var shouldHideGiftBaseConfigPrice = Math.abs(baseConfigGiftDisplayVal - giftFullUnitWithExtra) < 0.001;
-                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideGiftBaseConfigPrice ? '<span style="color:#999;">—</span>' : ('¥' + baseConfigGiftDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.baseConfig}</div><div class="receipt-col-1">${shouldHideGiftBaseConfigPrice ? '<span style="color:#999;">—</span>' : (getCurrencySymbol() + baseConfigGiftDisplayVal.toFixed(2))}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     }
                     
                     // 配件明细（仅单价）
@@ -9313,11 +9356,11 @@ function generateQuote() {
                         item.additionalConfigDetails.forEach(config => {
                             if (config.count <= 0) return;
                             const perPiecePriceGift = config.price * config.count;
-                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${config.name}×${config.count}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${config.name}×${config.count}</div><div class="receipt-col-1">${getCurrencySymbol()}${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                         });
                     } else if (item.totalAdditionalCount !== undefined && item.totalAdditionalCount > 0 && item.additionalPrice) {
                         const perPiecePriceGift = item.additionalPrice * item.totalAdditionalCount;
-                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}×${item.totalAdditionalCount}</div><div class="receipt-col-1">¥${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">└ ${item.additionalName || '附加项'}×${item.totalAdditionalCount}</div><div class="receipt-col-1">${getCurrencySymbol()}${perPiecePriceGift.toFixed(2)}</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
                     }
                 }
                 
@@ -9325,12 +9368,12 @@ function generateQuote() {
                 if (hasSameModelGift) {
                     const _sameModeGift = quoteData.sameModelMode || defaultSettings.sameModelMode;
                     const _sameMinusGift = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
-                    const sameModelHintGift = (_sameModeGift === 'minus') ? `−¥${_sameMinusGift.toFixed(2)}` : `${sameModelRateGift}x`;
+                    const sameModelHintGift = (_sameModeGift === 'minus') ? `−${getCurrencySymbol()}${_sameMinusGift.toFixed(2)}` : `${sameModelRateGift}x`;
                     var giftSameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - giftExtraBase);
                     var giftSameUnitWithExtra = item.sameModelCount > 0
                         ? (item.sameModelUnitPrice + (giftSameExtraTotal / item.sameModelCount))
                         : item.sameModelUnitPrice;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">¥${giftSameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">¥${(item.sameModelTotal + giftSameExtraTotal).toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">${getCurrencySymbol()}${giftSameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal + giftSameExtraTotal).toFixed(2)}</div></div>`;
                 }
 
                 // 工艺行（按每层单价分组，同单价的工艺合并为一行）
@@ -9365,7 +9408,7 @@ function generateQuote() {
                             // 工艺名称（格式：工艺名×层数、工艺名×层数，最多2个）
                             const processNamesWithLayersGift = processesInRow.map(p => `${p.name}×${p.layers}`).join('、');
                             
-                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">${processNamesWithLayersGift}</div><div class="receipt-col-1">¥${pricePerLayerGift.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantityGift}</div><div class="receipt-col-1">¥${totalFeeGift.toFixed(2)}</div></div>`;
+                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">${processNamesWithLayersGift}</div><div class="receipt-col-1">${getCurrencySymbol()}${pricePerLayerGift.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantityGift}</div><div class="receipt-col-1">${getCurrencySymbol()}${totalFeeGift.toFixed(2)}</div></div>`;
                         }
                     }
                 }
@@ -9390,7 +9433,7 @@ function generateQuote() {
     
     html += `<div class="receipt-summary">`;
     if (showBase) {
-        html += `<div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">¥${base.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">${getCurrencySymbol()}${base.toFixed(2)}</div></div>`;
     }
     
     // 区块1：加价类系数
@@ -9398,7 +9441,7 @@ function generateQuote() {
         html += `<div class="receipt-summary-section">`;
         // 合计行
         const upDisplay = parseFloat(up.toFixed(4)).toString();
-        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">加价后小计：${upDisplay}×</div><div class="receipt-summary-value">¥${(base * up).toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">加价后小计：${upDisplay}×</div><div class="receipt-summary-value">${getCurrencySymbol()}${(base * up).toFixed(2)}</div></div>`;
         
         const upMode = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.up) || 'multiplicative';
         let displayUpCoefficients = [];
@@ -9474,7 +9517,7 @@ function generateQuote() {
             let adjustmentDisplay = '';
             if (upMode === 'additive' && coeff.adjustment !== undefined && coeff.adjustment !== null) {
                 const adjAmount = base * coeff.adjustment;
-                adjustmentDisplay = '+¥' + adjAmount.toFixed(2);
+                adjustmentDisplay = '+' + getCurrencySymbol() + adjAmount.toFixed(2);
             }
             html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value">${adjustmentDisplay}</div></div>`;
         });
@@ -9486,7 +9529,7 @@ function generateQuote() {
         html += `<div class="receipt-summary-section">`;
         // 合计行
         const downDisplay = parseFloat(down.toFixed(4)).toString();
-        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">折扣合计：${downDisplay}×</div><div class="receipt-summary-value">-¥${Math.abs(discountAmount).toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">折扣合计：${downDisplay}×</div><div class="receipt-summary-value">-${getCurrencySymbol()}${Math.abs(discountAmount).toFixed(2)}</div></div>`;
         
         const downMode = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.down) || 'multiplicative';
         let displayDownCoefficients = [];
@@ -9547,7 +9590,7 @@ function generateQuote() {
             let adjustmentDisplay = '';
             if (downMode === 'additive' && coeff.adjustment !== undefined && coeff.adjustment !== null) {
                 const adjAmount = base * up * (1 - coeff.value);
-                adjustmentDisplay = '-¥' + adjAmount.toFixed(2);
+                adjustmentDisplay = '-' + getCurrencySymbol() + adjAmount.toFixed(2);
             }
             html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value">${adjustmentDisplay}</div></div>`;
         });
@@ -9558,14 +9601,14 @@ function generateQuote() {
     if (quoteData.totalOtherFees > 0 && quoteData.otherFees && quoteData.otherFees.length > 0) {
         html += `<div class="receipt-summary-section">`;
         // 合计行
-        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">其他费用合计</div><div class="receipt-summary-value">¥${quoteData.totalOtherFees.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">其他费用合计</div><div class="receipt-summary-value">${getCurrencySymbol()}${quoteData.totalOtherFees.toFixed(2)}</div></div>`;
         // 详细费用（显示单价、数量、总价）
         quoteData.otherFees.forEach(fee => {
             const unitPrice = fee.unitPrice || fee.amount;
             const quantity = fee.quantity || 1;
             const totalPrice = unitPrice * quantity;
             const quantityText = quantity > 1 ? ` × ${quantity}` : '';
-            html += `<div class="receipt-summary-fee-detail receipt-summary-row"><div class="receipt-summary-label">${fee.name}<span style="color: #888; font-size: 0.9em;">¥${unitPrice.toFixed(2)}${quantityText}</span></div><div class="receipt-summary-value">¥${totalPrice.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-summary-fee-detail receipt-summary-row"><div class="receipt-summary-label">${fee.name}<span style="color: #888; font-size: 0.9em;">${getCurrencySymbol()}${unitPrice.toFixed(2)}${quantityText}</span></div><div class="receipt-summary-value">${getCurrencySymbol()}${totalPrice.toFixed(2)}</div></div>`;
         });
         html += `</div>`;
     }
@@ -9576,39 +9619,39 @@ function generateQuote() {
         var showRounding = Math.abs((quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat) - totalBeforePlat) > 0.001;
         if (showRounding) {
             var roundingDiscount = totalBeforePlat - agreed;
-            var valueHtml = `<span class="receipt-rounding-amount">¥${agreed.toFixed(2)}</span><span style="text-decoration: line-through; font-size: 0.9em;">¥${totalBeforePlat.toFixed(2)}</span>`;
+            var valueHtml = `<span class="receipt-rounding-amount">${getCurrencySymbol()}${agreed.toFixed(2)}</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${totalBeforePlat.toFixed(2)}</span>`;
             if (roundingDiscount > 0) {
-                var leftLabel = `<span class="receipt-agreed-row-left"><span class="receipt-agreed-label-bold">应收金额</span><span class="receipt-rounding-discount">（-¥${roundingDiscount.toFixed(2)}）</span></span>`;
+                var leftLabel = `<span class="receipt-agreed-row-left"><span class="receipt-agreed-label-bold">应收金额</span><span class="receipt-rounding-discount">（-${getCurrencySymbol()}${roundingDiscount.toFixed(2)}）</span></span>`;
                 html += `<div class="receipt-summary-row receipt-agreed-row receipt-agreed-row-with-rounding" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">${leftLabel}</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
             } else {
                 html += `<div class="receipt-summary-row receipt-agreed-row" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
             }
         } else {
-            html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap">¥${agreed.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap">${getCurrencySymbol()}${agreed.toFixed(2)}</div></div>`;
         }
     }
     
     // 平台费 = 约定实收×费率（平台收取，不经过我手）
     if (quoteData.platformFeeAmount > 0) {
         const platformFeeRate = quoteData.platformFee || 0;
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%（平台收取）</div><div class="receipt-summary-value">+¥${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%（平台收取）</div><div class="receipt-summary-value">+${getCurrencySymbol()}${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
         // 客户实付 = 约定实收 + 平台费
         var customerPays = quoteData.finalTotal != null ? quoteData.finalTotal : (agreed + quoteData.platformFeeAmount);
-        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${customerPays.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">${getCurrencySymbol()}${customerPays.toFixed(2)}</div></div>`;
     } else {
-        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">¥${finalPay.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">${getCurrencySymbol()}${finalPay.toFixed(2)}</div></div>`;
     }
     // 定金选是时：小票显示需付定金 = 实付金额 × 定金比例（提示值）
     if (quoteData.needDeposit) {
         var finalPays = quoteData.finalTotal != null ? quoteData.finalTotal : (quoteData.platformFeeAmount > 0 ? (agreed + quoteData.platformFeeAmount) : agreed);
         var rate = (defaultSettings && defaultSettings.depositRate != null) ? Number(defaultSettings.depositRate) : 0.3;
         var depositAmount = Math.round(finalPays * rate * 100) / 100;
-        html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label">需付定金（${Math.round(rate * 100)}%）</div><div class="receipt-summary-value">¥${depositAmount.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label">需付定金（${Math.round(rate * 100)}%）</div><div class="receipt-summary-value">${getCurrencySymbol()}${depositAmount.toFixed(2)}</div></div>`;
     }
     // 如已填写实际已收定金，则在金额小结中单独展示一行“已收定金”
     var depSummary = Number(quoteData.depositReceived || 0);
     if (isFinite(depSummary) && depSummary > 0) {
-        html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label"><strong>已收定金</strong></div><div class="receipt-summary-value"><strong>¥${depSummary.toFixed(2)}</strong></div></div>`;
+        html += `<div class="receipt-summary-row receipt-deposit-row"><div class="receipt-summary-label"><strong>已收定金</strong></div><div class="receipt-summary-value"><strong>${getCurrencySymbol()}${depSummary.toFixed(2)}</strong></div></div>`;
     }
 
     // -------- 结算信息（撤单 / 废稿 / 正常结单）--------
@@ -9640,25 +9683,25 @@ function generateQuote() {
             var refundShould = dep; // 当前模型下视为退回全部定金
             html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本单状态：</strong>已撤销，本单作废</div></div>`;
             if (dep > 0) {
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>原已收定金：</strong></div><div class="receipt-summary-value">¥${dep.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>原已收定金：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${dep.toFixed(2)}</div></div>`;
             }
-            html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>需退金额：</strong></div><div class="receipt-summary-value"><strong>¥${refundShould.toFixed(2)}</strong></div></div>`;
-            html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>已退款金额：</strong></div><div class="receipt-summary-value">¥${actual.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>需退金额：</strong></div><div class="receipt-summary-value"><strong>${getCurrencySymbol()}${refundShould.toFixed(2)}</strong></div></div>`;
+            html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>已退款金额：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${actual.toFixed(2)}</div></div>`;
             var refundDiff = actual - refundShould;
             html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">`;
             if (Math.abs(refundDiff) < 0.005) {
                 html += `已全额退还定金。`;
             } else if (refundDiff < 0) {
-                html += `尚未退足，还应退 ¥${Math.abs(refundDiff).toFixed(2)}。`;
+                html += `尚未退足，还应退 ${getCurrencySymbol()}${Math.abs(refundDiff).toFixed(2)}。`;
             } else {
-                html += `已多退 ¥${refundDiff.toFixed(2)}，请注意核对。`;
+                html += `已多退 ${getCurrencySymbol()}${refundDiff.toFixed(2)}，请注意核对。`;
             }
             html += `</div></div>`;
         } else {
             // 非退全款场景：cancel_with_fee、waste_fee 单独输出（定金抵扣逻辑），其余先输出已收定金+本次收款
             // 小票结算区不重复上方已展示的「已收定金」，仅展示与本次结算相关的金额
             if (st.type !== 'cancel_with_fee' && st.type !== 'waste_fee') {
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">¥${actual.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${actual.toFixed(2)}</div></div>`;
             }
 
             if (st.type === 'cancel_with_fee') {
@@ -9675,16 +9718,16 @@ function generateQuote() {
                     feePercentText = (pct > 0 ? pct.toFixed(0) : '0') + '%';
                 }
                 if (feePercentText) {
-                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>跑单费（${feePercentText}）：</strong></div><div class="receipt-summary-value">¥${feeAmount.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>跑单费（${feePercentText}）：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${feeAmount.toFixed(2)}</div></div>`;
                 } else {
-                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>跑单费（应收）：</strong></div><div class="receipt-summary-value">¥${feeAmount.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>跑单费（应收）：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${feeAmount.toFixed(2)}</div></div>`;
                 }
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">¥${actualReceive.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${actualReceive.toFixed(2)}</div></div>`;
                 if (refundExcess > 0) {
-                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>多余定金待退：</strong></div><div class="receipt-summary-value">¥${refundExcess.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>多余定金待退：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${refundExcess.toFixed(2)}</div></div>`;
                 }
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalReceivedFee.toFixed(2)}</div></div>`;
-                var resultLine = '跑单费 ¥' + feeAmount.toFixed(2);
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${totalReceivedFee.toFixed(2)}</div></div>`;
+                var resultLine = '跑单费 ' + getCurrencySymbol() + feeAmount.toFixed(2);
                 if (st.memo) resultLine += '；备注：' + st.memo;
                 html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">${resultLine}</div></div>`;
             } else if (st.type === 'normal') {
@@ -9707,7 +9750,7 @@ function generateQuote() {
                             rateText = rStr + '×';
                         }
                         var leftText = rateText ? (nm + '：' + rateText) : (nm + '：');
-                        var rightText = amt > 0 ? ('-¥' + amt.toFixed(2)) : '';
+                        var rightText = amt > 0 ? ('-' + getCurrencySymbol() + amt.toFixed(2)) : '';
                         if (!rightText) return;
                         html += `<div class="receipt-summary-coefficient-detail receipt-summary-row receipt-discount-row"><div class="receipt-summary-label">${leftText}</div><div class="receipt-summary-value">` +
                                 `<span class="receipt-discount-amount">${rightText}</span></div></div>`;
@@ -9715,8 +9758,8 @@ function generateQuote() {
                 }
 
                 // 合计实收与结算结果（正常结单：企划金额=应收，定金抵扣应收，本次收款，合计实收）
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>企划金额（应收）：</strong></div><div class="receipt-summary-value">¥${receivable.toFixed(2)}</div></div>`;
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalReceived.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>企划金额（应收）：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${receivable.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${totalReceived.toFixed(2)}</div></div>`;
 
                 var diff = totalReceived - receivable;
                 var discountTotal = 0;
@@ -9732,10 +9775,10 @@ function generateQuote() {
                 } else if (diff < 0) {
                     // 少收（有优惠）
                     var totalDiscount = discountTotal > 0 ? discountTotal : (receivable - totalReceived);
-                    html += `本次共减免 ¥${totalDiscount.toFixed(2)}。`;
+                    html += `本次共减免 ${getCurrencySymbol()}${totalDiscount.toFixed(2)}。`;
                 } else {
                     // 多收
-                    html += `多收 ¥${diff.toFixed(2)}，应找零/退款给客户。`;
+                    html += `多收 ${getCurrencySymbol()}${diff.toFixed(2)}，应找零/退款给客户。`;
                 }
                 html += `</div></div>`;
             } else if (st.type === 'waste_fee') {
@@ -9747,16 +9790,16 @@ function generateQuote() {
                 if (!isFinite(actualReceive) || actualReceive < 0) actualReceive = baseWaste - usedDeposit;
                 var totalWasteReceived = baseWaste;
                 var refundExcess = Math.max(0, dep - baseWaste);
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>废稿费（应收）：</strong></div><div class="receipt-summary-value">¥${baseWaste.toFixed(2)}</div></div>`;
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">¥${actualReceive.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>废稿费（应收）：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${baseWaste.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>本次收款：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${actualReceive.toFixed(2)}</div></div>`;
                 if (refundExcess > 0) {
-                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>多余定金待退：</strong></div><div class="receipt-summary-value">¥${refundExcess.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>多余定金待退：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${refundExcess.toFixed(2)}</div></div>`;
                 }
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalWasteReceived.toFixed(2)}</div></div>`;
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">废稿费 ¥${baseWaste.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${totalWasteReceived.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">废稿费 ${getCurrencySymbol()}${baseWaste.toFixed(2)}</div></div>`;
             } else if (st.type !== 'normal' && st.type !== 'waste_fee') {
                 // 其他类型统一展示合计与简单结果
-                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">¥${totalReceived.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>合计实收：</strong></div><div class="receipt-summary-value">${getCurrencySymbol()}${totalReceived.toFixed(2)}</div></div>`;
             }
         }
 
@@ -10095,7 +10138,7 @@ function updateAgreedAmountBar() {
     bar.classList.remove('d-none');
     var calc = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (quoteData.finalTotal || 0);
     var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : calc;
-    calcEl.textContent = '¥' + calc.toFixed(2);
+    calcEl.textContent = getCurrencySymbol() + calc.toFixed(2);
     inputEl.value = quoteData.hasManualAgreed ? agreed : '';
 
     // 手动改价提示：仅在当前为“手动约定金额”状态时展示
@@ -10148,10 +10191,10 @@ function updateAgreedAmountBar() {
             var finalPays = quoteData.finalTotal != null ? quoteData.finalTotal : (quoteData.platformFeeAmount > 0 ? (agreed + quoteData.platformFeeAmount) : agreed);
             var rate = (defaultSettings && defaultSettings.depositRate != null) ? Number(defaultSettings.depositRate) : 0.3;
             var depositAmount = Math.round(finalPays * rate * 100) / 100;
-            topValEl.textContent = '¥' + depositAmount.toFixed(2);
+            topValEl.textContent = getCurrencySymbol() + depositAmount.toFixed(2);
             topRowEl.classList.remove('d-none');
         } else {
-            topValEl.textContent = '¥0.00';
+            topValEl.textContent = getCurrencySymbol() + '0.00';
             topRowEl.classList.add('d-none');
         }
     }
@@ -14560,23 +14603,23 @@ function settlementUpdatePreview() {
         var refundAmount = refundAmountEl ? (parseFloat(refundAmountEl.value) || 0) : 0;
         var refundShould = deposit; // 需退金额 = 已收定金
         html += '<div class="settlement-preview-calc-note">计算：需退金额 = 已收定金。请在「已退款金额」填写实际已退金额，用于核对。</div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">企划金额（应收）：</span><span class="settlement-preview-value">¥' + receivable.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">企划金额（应收）：</span><span class="settlement-preview-value">' + getCurrencySymbol() + receivable.toFixed(2) + '</span></div>';
         if (deposit > 0) {
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">' + getCurrencySymbol() + deposit.toFixed(2) + '</span></div>';
         }
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>需退金额：</strong></span><span class="settlement-preview-value"><strong>¥' + refundShould.toFixed(2) + '</strong></span></div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已退款金额（您填写）：</span><span class="settlement-preview-value">¥' + refundAmount.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>需退金额：</strong></span><span class="settlement-preview-value"><strong>' + getCurrencySymbol() + refundShould.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已退款金额（您填写）：</span><span class="settlement-preview-value">' + getCurrencySymbol() + refundAmount.toFixed(2) + '</span></div>';
         var refundDiff = refundAmount - refundShould;
         html += '<div class="settlement-preview-row settlement-preview-result">';
         if (Math.abs(refundDiff) < 0.005) {
             html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">已全额退还定金</span>';
         } else if (refundDiff < 0) {
-            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">还应退 ¥' + Math.abs(refundDiff).toFixed(2) + '</span>';
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">还应退 ' + getCurrencySymbol() + Math.abs(refundDiff).toFixed(2) + '</span>';
         } else {
-            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">已多退 ¥' + refundDiff.toFixed(2) + '，请注意核对</span>';
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">已多退 ' + getCurrencySymbol() + refundDiff.toFixed(2) + '，请注意核对</span>';
         }
         html += '</div>';
-        html += '<div class="settlement-preview-determine">本次确定：已退 ¥' + refundAmount.toFixed(2) + '</div>';
+        html += '<div class="settlement-preview-determine">本次确定：已退 ' + getCurrencySymbol() + refundAmount.toFixed(2) + '</div>';
     } else if (effectiveType === 'cancel_with_fee') {
         // 撤单收跑单费：计算过程 + 本次确定
         var amountEl = document.getElementById('settlementCancelFeeAmount');
@@ -14594,29 +14637,29 @@ function settlementUpdatePreview() {
             feePercentText = pct.toFixed(0) + '%';
         }
         html += '<div class="settlement-preview-calc-note">计算：定金抵扣 = min(已收定金, 跑单费)，本次收款 = 跑单费 − 定金抵扣；合计实收 = 跑单费。可修改「跑单费（应收）」后查看变化。</div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">企划金额（应收）：</span><span class="settlement-preview-value">¥' + receivable.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">企划金额（应收）：</span><span class="settlement-preview-value">' + getCurrencySymbol() + receivable.toFixed(2) + '</span></div>';
         if (feePercentText) {
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">跑单费（' + feePercentText + '）：</span><span class="settlement-preview-value">¥' + feeAmount.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">跑单费（' + feePercentText + '）：</span><span class="settlement-preview-value">' + getCurrencySymbol() + feeAmount.toFixed(2) + '</span></div>';
         } else {
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">跑单费（应收）：</span><span class="settlement-preview-value">¥' + feeAmount.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">跑单费（应收）：</span><span class="settlement-preview-value">' + getCurrencySymbol() + feeAmount.toFixed(2) + '</span></div>';
         }
         if (deposit > 0) {
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">定金抵扣跑单费：</span><span class="settlement-preview-value">¥' + depositUsed.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">' + getCurrencySymbol() + deposit.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">定金抵扣跑单费：</span><span class="settlement-preview-value">' + getCurrencySymbol() + depositUsed.toFixed(2) + '</span></div>';
         }
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次收款：</span><span class="settlement-preview-value">¥' + actual.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次收款：</span><span class="settlement-preview-value">' + getCurrencySymbol() + actual.toFixed(2) + '</span></div>';
         if (refundExcess > 0) {
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">多余定金待退：</span><span class="settlement-preview-value">¥' + refundExcess.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">多余定金待退：</span><span class="settlement-preview-value">' + getCurrencySymbol() + refundExcess.toFixed(2) + '</span></div>';
         }
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>¥' + totalReceived.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>' + getCurrencySymbol() + totalReceived.toFixed(2) + '</strong></span></div>';
         html += '<div class="settlement-preview-row settlement-preview-result">';
-        var resultText = '跑单费 ¥' + feeAmount.toFixed(2) + '（定金抵扣 ¥' + depositUsed.toFixed(2) + '，本次收款 ¥' + actual.toFixed(2) + '）';
+        var resultText = '跑单费 ' + getCurrencySymbol() + feeAmount.toFixed(2) + '（定金抵扣 ' + getCurrencySymbol() + depositUsed.toFixed(2) + '，本次收款 ' + getCurrencySymbol() + actual.toFixed(2) + '）';
         var memoEl = document.getElementById('settlementMemoCancelFee');
         var memoText = memoEl && memoEl.value ? String(memoEl.value).trim() : '';
         if (memoText) resultText += '；备注：' + memoText;
         html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">' + resultText + '</span>';
         html += '</div>';
-        html += '<div class="settlement-preview-determine">本次确定：本次收款 ¥' + actual.toFixed(2) + '，合计实收 ¥' + totalReceived.toFixed(2) + (refundExcess > 0 ? '；待退定金 ¥' + refundExcess.toFixed(2) : '') + '</div>';
+        html += '<div class="settlement-preview-determine">本次确定：本次收款 ' + getCurrencySymbol() + actual.toFixed(2) + '，合计实收 ' + getCurrencySymbol() + totalReceived.toFixed(2) + (refundExcess > 0 ? '；待退定金 ' + getCurrencySymbol() + refundExcess.toFixed(2) : '') + '</div>';
     } else if (effectiveType === 'waste_fee') {
         // 废稿结算：计算过程 + 本次确定（同跑单费逻辑）
         var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
@@ -14627,21 +14670,21 @@ function settlementUpdatePreview() {
         var totalReceived = feeAmount;
         var refundExcess = Math.max(0, deposit - feeAmount);
         html += '<div class="settlement-preview-calc-note">计算：定金抵扣 = min(已收定金, 废稿费)，本次收款 = 废稿费 − 定金抵扣；合计实收 = 废稿费。可修改「废稿费（应收）」后查看变化。</div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">废稿费（应收）：</span><span class="settlement-preview-value">¥' + feeAmount.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">废稿费（应收）：</span><span class="settlement-preview-value">' + getCurrencySymbol() + feeAmount.toFixed(2) + '</span></div>';
         if (deposit > 0) {
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">定金抵扣废稿费：</span><span class="settlement-preview-value">¥' + depositUsed.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">' + getCurrencySymbol() + deposit.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">定金抵扣废稿费：</span><span class="settlement-preview-value">' + getCurrencySymbol() + depositUsed.toFixed(2) + '</span></div>';
         }
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次收款：</span><span class="settlement-preview-value">¥' + actual.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次收款：</span><span class="settlement-preview-value">' + getCurrencySymbol() + actual.toFixed(2) + '</span></div>';
         if (refundExcess > 0) {
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">多余定金待退：</span><span class="settlement-preview-value">¥' + refundExcess.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">多余定金待退：</span><span class="settlement-preview-value">' + getCurrencySymbol() + refundExcess.toFixed(2) + '</span></div>';
         }
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>¥' + totalReceived.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>' + getCurrencySymbol() + totalReceived.toFixed(2) + '</strong></span></div>';
         html += '<div class="settlement-preview-row settlement-preview-result">';
-        var resultText = '废稿费 ¥' + feeAmount.toFixed(2) + '（定金抵扣 ¥' + depositUsed.toFixed(2) + '，本次收款 ¥' + actual.toFixed(2) + '）';
+        var resultText = '废稿费 ' + getCurrencySymbol() + feeAmount.toFixed(2) + '（定金抵扣 ' + getCurrencySymbol() + depositUsed.toFixed(2) + '，本次收款 ' + getCurrencySymbol() + actual.toFixed(2) + '）';
         html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">' + resultText + '</span>';
         html += '</div>';
-        html += '<div class="settlement-preview-determine">本次确定：本次收款 ¥' + actual.toFixed(2) + '，合计实收 ¥' + totalReceived.toFixed(2) + (refundExcess > 0 ? '；待退定金 ¥' + refundExcess.toFixed(2) : '') + '</div>';
+        html += '<div class="settlement-preview-determine">本次确定：本次收款 ' + getCurrencySymbol() + actual.toFixed(2) + '，合计实收 ' + getCurrencySymbol() + totalReceived.toFixed(2) + (refundExcess > 0 ? '；待退定金 ' + getCurrencySymbol() + refundExcess.toFixed(2) : '') + '</div>';
     } else if (effectiveType === 'normal') {
         // 正常结单
         var amountEl = document.getElementById('settlementNormalAmount');
@@ -14701,11 +14744,11 @@ function settlementUpdatePreview() {
         
         // 结单计算逻辑：企划金额（应收）→ 已收定金 → 本次应收 → 结算优惠 → 合计实收 → 本次收款
         html += '<div class="settlement-preview-calc-note">计算：合计实收 = 已收定金 + 本次收款；本次收款默认本次应收，可在此处直接修改。</div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>企划金额（应收）：</strong></span><span class="settlement-preview-value"><strong>¥' + receivable.toFixed(2) + '</strong></span></div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">¥' + deposit.toFixed(2) + '</span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>企划金额（应收）：</strong></span><span class="settlement-preview-value"><strong>' + getCurrencySymbol() + receivable.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label">已收定金：</span><span class="settlement-preview-value">' + getCurrencySymbol() + deposit.toFixed(2) + '</span></div>';
         if (deposit > 0) {
             var tailBeforeDiscount = Math.max(0, receivable - deposit);
-            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次应收：</span><span class="settlement-preview-value">¥' + tailBeforeDiscount.toFixed(2) + '</span></div>';
+            html += '<div class="settlement-preview-row"><span class="settlement-preview-label">本次应收：</span><span class="settlement-preview-value">' + getCurrencySymbol() + tailBeforeDiscount.toFixed(2) + '</span></div>';
         }
         // 结算优惠
         if (discountReasons.length > 0) {
@@ -14740,10 +14783,10 @@ function settlementUpdatePreview() {
                 var leftText = rateText ? (nm + '：' + rateText) : (nm + '：');
                 var rightText = '';
                 if (amt > 0) {
-                    rightText = '-¥' + amt.toFixed(2);
+                    rightText = '-' + getCurrencySymbol() + amt.toFixed(2);
                 } else if (rateText && sumOneMinusRate > 0 && totalRateDiscount > 0) {
                     var share = totalRateDiscount * (1 - (e.rate || 0)) / sumOneMinusRate;
-                    rightText = '折扣减去金额 -¥' + share.toFixed(2);
+                    rightText = '折扣减去金额 -' + getCurrencySymbol() + share.toFixed(2);
                 } else if (rateText) {
                     rightText = '折扣减去金额';
                 }
@@ -14753,12 +14796,12 @@ function settlementUpdatePreview() {
             });
             var totalDiscountAmount = Math.max(0, receivable - totalReceived);
             if (totalDiscountAmount > 0) {
-                html += '<div class="settlement-preview-row settlement-preview-discount-item"><span class="settlement-preview-label">共减免：</span><span class="settlement-preview-value">-¥' + totalDiscountAmount.toFixed(2) + '</span></div>';
+                html += '<div class="settlement-preview-row settlement-preview-discount-item"><span class="settlement-preview-label">共减免：</span><span class="settlement-preview-value">-' + getCurrencySymbol() + totalDiscountAmount.toFixed(2) + '</span></div>';
             }
             html += '</div>';
         }
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>¥' + totalReceived.toFixed(2) + '</strong></span></div>';
-        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>本次收款：</strong></span><span class="settlement-preview-value"><strong>¥' + actual.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>合计实收：</strong></span><span class="settlement-preview-value"><strong>' + getCurrencySymbol() + totalReceived.toFixed(2) + '</strong></span></div>';
+        html += '<div class="settlement-preview-row"><span class="settlement-preview-label"><strong>本次收款：</strong></span><span class="settlement-preview-value"><strong>' + getCurrencySymbol() + actual.toFixed(2) + '</strong></span></div>';
         
         var diff = totalReceived - receivable;
         html += '<div class="settlement-preview-row settlement-preview-result">';
@@ -14766,12 +14809,12 @@ function settlementUpdatePreview() {
             html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">已结清</span>';
         } else if (diff < 0) {
             var totalDiscount = discountTotal > 0 ? discountTotal : (receivable - totalReceived);
-            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">本次共减免 ¥' + totalDiscount.toFixed(2) + '</span>';
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">本次共减免 ' + getCurrencySymbol() + totalDiscount.toFixed(2) + '</span>';
         } else {
-            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">多收 ¥' + diff.toFixed(2) + '，应找零/退款给客户</span>';
+            html += '<span class="settlement-preview-label">结算结果：</span><span class="settlement-preview-value">多收 ' + getCurrencySymbol() + diff.toFixed(2) + '，应找零/退款给客户</span>';
         }
         html += '</div>';
-        html += '<div class="settlement-preview-determine">本次确定：本次收款 ¥' + actual.toFixed(2) + '，合计实收 ¥' + totalReceived.toFixed(2) + '</div>';
+        html += '<div class="settlement-preview-determine">本次确定：本次收款 ' + getCurrencySymbol() + actual.toFixed(2) + '，合计实收 ' + getCurrencySymbol() + totalReceived.toFixed(2) + '</div>';
     }
     
     previewContent.innerHTML = html;
@@ -14929,11 +14972,11 @@ function settlementRenderPercentTotalForm() {
     var defaultRate = (wf.defaultRate != null ? wf.defaultRate : 30);
     var baseAmount = item.agreedAmount != null ? item.agreedAmount : (item.finalTotal != null ? item.finalTotal : 0);
     
-    document.getElementById('settlementPercentTotalBase').textContent = '¥' + baseAmount.toFixed(2);
+    document.getElementById('settlementPercentTotalBase').textContent = getCurrencySymbol() + baseAmount.toFixed(2);
     document.getElementById('settlementPercentTotalRatio').textContent = defaultRate + '%';
     
     var wasteFee = baseAmount * (defaultRate / 100);
-    document.getElementById('settlementPercentTotalWasteFee').textContent = '¥' + wasteFee.toFixed(2);
+    document.getElementById('settlementPercentTotalWasteFee').textContent = getCurrencySymbol() + wasteFee.toFixed(2);
     
     settlementRenderOtherFeesForMode('PercentTotal', item, wf);
     settlementUpdatePercentTotalPreview();
@@ -15020,11 +15063,11 @@ function computeAndRenderOtherFeesWaste(item, wf, selectClass, containerId, amou
         var rowEl = document.querySelector('#' + containerId + ' .settlement-other-fee-row[data-fi="' + fi + '"]');
         if (rowEl) {
             var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
-            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
+            if (chargedEl) chargedEl.textContent = '本条计入：' + getCurrencySymbol() + charged.toFixed(2);
         }
     });
     var amountEl = document.getElementById(amountElId);
-    if (amountEl) amountEl.textContent = '¥' + otherFeesAmount.toFixed(2);
+    if (amountEl) amountEl.textContent = getCurrencySymbol() + otherFeesAmount.toFixed(2);
     return { otherFeesAmount: otherFeesAmount, otherFeesEntries: otherFeesEntries };
 }
 
@@ -15042,7 +15085,7 @@ function settlementRenderOtherFeesForMode(modePrefix, item, wf) {
                 var unitPrice = Number(fee.unitPrice || fee.amount) || 0;
                 var quantity = Number(fee.quantity) || 1;
                 var amt = unitPrice * quantity;
-                var quantityText = quantity > 1 ? ' (¥' + unitPrice.toFixed(2) + '×' + quantity + ')' : '';
+                var quantityText = quantity > 1 ? ' (' + getCurrencySymbol() + unitPrice.toFixed(2) + '×' + quantity + ')' : '';
                 return '<div class="settlement-other-fee-row" data-fi="' + fi + '">' +
                     '<div class="settlement-other-fee-head">' +
                     '<span class="settlement-other-fee-label">' + (fi + 1) + '、' + (fee.name || '费用') + quantityText + '</span>' +
@@ -15051,7 +15094,7 @@ function settlementRenderOtherFeesForMode(modePrefix, item, wf) {
                     '<option value="waste_ratio">按废稿比例</option>' +
                     '<option value="exclude">不计入</option>' +
                     '</select></div>' +
-                    '<p class="settlement-other-fee-charged">本条计入：¥' + amt.toFixed(2) + '</p></div>';
+                    '<p class="settlement-other-fee-charged">本条计入：' + getCurrencySymbol() + amt.toFixed(2) + '</p></div>';
             }).join('');
             otherFeesEl.querySelectorAll('select').forEach(function (sel) {
                 sel.addEventListener('change', function() {
@@ -15121,7 +15164,7 @@ function settlementRenderWasteByPieceForm() {
                 var layersDoneVal = (savedRow && savedRow.processLayersDone && savedRow.processLayersDone[pi] != null) ? savedRow.processLayersDone[pi] : 0;
                 html += '<label class="settlement-process-layers">' + (proc.name || '工艺') + ' 总' + layers + '层 已做 <span class="settlement-waste-qty-wrap"><button type="button" class="settlement-process-layers-btn settlement-process-layers-minus" data-idx="' + it.idx + '" data-pi="' + pi + '" aria-label="减">−</button><input type="number" class="settlement-process-layers-done" data-idx="' + it.idx + '" data-pi="' + pi + '" min="0" max="' + layers + '" value="' + layersDoneVal + '" step="1"><button type="button" class="settlement-process-layers-btn settlement-process-layers-plus" data-idx="' + it.idx + '" data-pi="' + pi + '" aria-label="加">+</button></span> 层</label>';
             });
-            html += '<div class="settlement-waste-row-amount">本行制品金额：¥0.00</div>';
+            html += '<div class="settlement-waste-row-amount">本行制品金额：' + getCurrencySymbol() + '0.00</div>';
             html += '</div>';
         });
         tableEl.innerHTML = html;
@@ -15253,7 +15296,7 @@ function settlementRenderWasteByPieceForm() {
                     '<option value="waste_ratio"' + (mode === 'waste_ratio' ? ' selected' : '') + '>按废稿比例</option>' +
                     '<option value="exclude"' + (mode === 'exclude' ? ' selected' : '') + '>不计入</option>' +
                     '</select></div>' +
-                    '<p class="settlement-other-fee-charged">本条计入：¥' + chargedDisplay + '</p>';
+                    '<p class="settlement-other-fee-charged">本条计入：' + getCurrencySymbol() + chargedDisplay + '</p>';
             }).join('');
             otherFeesEl.querySelectorAll('select.settlement-other-fee-select').forEach(function (sel) {
                 sel.addEventListener('change', settlementUpdateWasteByPiecePreview);
@@ -15267,7 +15310,7 @@ function settlementRenderWasteByPieceForm() {
     settlementUpdateWasteByPiecePreview();
     var orderPaid = item.agreedAmount != null ? item.agreedAmount : (item.finalTotal != null ? item.finalTotal : 0);
     var previewEl = document.getElementById('settlementWastePreview');
-    if (previewEl) previewEl.textContent = '应收金额：¥' + Number(orderPaid).toFixed(2);
+    if (previewEl) previewEl.textContent = '应收金额：' + getCurrencySymbol() + Number(orderPaid).toFixed(2);
 }
 
 // 按原总额比例：更新预览
@@ -15300,7 +15343,7 @@ function settlementUpdateFixedPerItemPreview() {
     document.getElementById('settlementFixedPerItemCount').textContent = count;
     
     var wasteFee = count * fixedPerItem;
-    document.getElementById('settlementFixedPerItemWasteFee').textContent = '¥' + wasteFee.toFixed(2);
+    document.getElementById('settlementFixedPerItemWasteFee').textContent = getCurrencySymbol() + wasteFee.toFixed(2);
     
     var other = computeAndRenderOtherFeesWaste(item, wf, 'settlement-fixedperitem-other-select', 'settlementFixedPerItemOtherFees', 'settlementFixedPerItemOtherAmount');
     var totalReceivable = wasteFee + other.otherFeesAmount;
@@ -15348,7 +15391,7 @@ function settlementUpdateWasteByPiecePreview() {
             rowAmounts[idx] = rowAmt;
             detailAmount += rowAmt;
             var amountSpan = row.querySelector('.settlement-waste-row-amount');
-            if (amountSpan) amountSpan.textContent = '本行制品金额：¥' + rowAmt.toFixed(2);
+            if (amountSpan) amountSpan.textContent = '本行制品金额：' + getCurrencySymbol() + rowAmt.toFixed(2);
         });
     }
 
@@ -15405,20 +15448,20 @@ function settlementUpdateWasteByPiecePreview() {
         var rowEl = document.querySelector('.settlement-other-fee-row[data-fi="' + fi + '"]');
         if (rowEl) {
             var chargedEl = rowEl.querySelector('.settlement-other-fee-charged');
-            if (chargedEl) chargedEl.textContent = '本条计入：¥' + charged.toFixed(2);
+            if (chargedEl) chargedEl.textContent = '本条计入：' + getCurrencySymbol() + charged.toFixed(2);
         }
     });
 
     var totalReceivable = wasteFeeAmount + otherFeesAmount;
 
     var detailAmountEl = document.getElementById('settlementWasteDetailAmount');
-    if (detailAmountEl) detailAmountEl.textContent = '¥' + detailAmount.toFixed(2);
+    if (detailAmountEl) detailAmountEl.textContent = getCurrencySymbol() + detailAmount.toFixed(2);
     var detailTotalEl = document.getElementById('settlementWasteDetailTotal');
-    if (detailTotalEl) detailTotalEl.textContent = '¥' + feeSubtotal.toFixed(2);
+    if (detailTotalEl) detailTotalEl.textContent = getCurrencySymbol() + feeSubtotal.toFixed(2);
     var subtotalEl = document.getElementById('settlementWasteFeeSubtotal');
-    if (subtotalEl) subtotalEl.textContent = '¥' + feeSubtotal.toFixed(2);
+    if (subtotalEl) subtotalEl.textContent = getCurrencySymbol() + feeSubtotal.toFixed(2);
     var otherAmountEl = document.getElementById('settlementOtherFeesAmount');
-    if (otherAmountEl) otherAmountEl.textContent = '¥' + otherFeesAmount.toFixed(2);
+    if (otherAmountEl) otherAmountEl.textContent = getCurrencySymbol() + otherFeesAmount.toFixed(2);
     var finalAmountEl = document.getElementById('settlementWasteFinalAmount');
     if (finalAmountEl && !wasteFinalAmountManuallySet) finalAmountEl.value = totalReceivable.toFixed(2);
     settlementUpdatePreview();
@@ -15623,7 +15666,7 @@ function settlementUpdateNormalPreview(skipAmountUpdate) {
     var newPlatformFee = hasPlatformFee ? Math.round(currentReceipt * platformFeePct * 100) / 100 : 0;
     if (newPlatformEl) {
         if (hasPlatformFee) {
-            newPlatformEl.textContent = '新平台费：¥' + newPlatformFee.toFixed(2);
+            newPlatformEl.textContent = '新平台费：' + getCurrencySymbol() + newPlatformFee.toFixed(2);
             newPlatformEl.classList.remove('d-none');
         } else {
             newPlatformEl.classList.add('d-none');
@@ -15631,7 +15674,7 @@ function settlementUpdateNormalPreview(skipAmountUpdate) {
         }
     }
     if (ownerPayEl) {
-        ownerPayEl.textContent = '实际单主支付：¥' + (receipt + newPlatformFee).toFixed(2);
+        ownerPayEl.textContent = '实际单主支付：' + getCurrencySymbol() + (receipt + newPlatformFee).toFixed(2);
         ownerPayEl.classList.remove('d-none');
     }
 }
@@ -16234,7 +16277,7 @@ function generateHistoryItemElement(item) {
             接单平台: ${item.contact || ''}\n
             联系方式: ${item.contactInfo || ''}\n
             截稿日: ${item.deadline}\n
-            实收: ¥${getRecordReceivableAmount(item).toFixed(2)}
+            实收: ${getCurrencySymbol()}${getRecordReceivableAmount(item).toFixed(2)}
         </div>
         <div class="history-item-actions">
             <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
@@ -16312,7 +16355,7 @@ function generateHistoryItemHTML(item) {
                 接单平台: ${item.contact || ''}\n
                 联系方式: ${item.contactInfo || ''}\n
                 截稿日: ${item.deadline}\n
-                实收: ¥${getRecordReceivableAmount(item).toFixed(2)}
+                实收: ${getCurrencySymbol()}${getRecordReceivableAmount(item).toFixed(2)}
             </div>
             <div class="history-item-actions">
                 <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
@@ -17773,7 +17816,7 @@ function exportHistoryToExcel() {
         if (st && st.type) {
             if (st.type === 'full_refund') {
                 typeText = '撤单（退全款）';
-                detailText = '需退金额¥' + dep.toFixed(2) + '；已退款¥' + actual.toFixed(2);
+                detailText = '需退金额' + getCurrencySymbol() + dep.toFixed(2) + '；已退款' + getCurrencySymbol() + actual.toFixed(2);
             } else if (st.type === 'cancel_with_fee') {
                 typeText = '撤单（收跑单费）';
                 var cf = st.cancelFee || {};
@@ -17781,21 +17824,21 @@ function exportHistoryToExcel() {
                 var depositUsed = Math.min(dep, feeAmt);
                 totalReceived = feeAmt;
                 if (cf.rule === 'percent' && cf.rate != null) {
-                    detailText = '跑单费' + (cf.rate * 100).toFixed(0) + '%：¥' + feeAmt.toFixed(2);
+                    detailText = '跑单费' + (cf.rate * 100).toFixed(0) + '%：' + getCurrencySymbol() + feeAmt.toFixed(2);
                 } else if (cf.rule === 'fixed' && cf.fixedAmount != null) {
-                    detailText = '跑单费¥' + feeAmt.toFixed(2);
+                    detailText = '跑单费' + getCurrencySymbol() + feeAmt.toFixed(2);
                 } else {
-                    detailText = '跑单费¥' + feeAmt.toFixed(2);
+                    detailText = '跑单费' + getCurrencySymbol() + feeAmt.toFixed(2);
                 }
-                if (dep > 0) detailText += '；定金抵扣¥' + depositUsed.toFixed(2) + '；本次收¥' + actual.toFixed(2);
+                if (dep > 0) detailText += '；定金抵扣' + getCurrencySymbol() + depositUsed.toFixed(2) + '；本次收' + getCurrencySymbol() + actual.toFixed(2);
             } else if (st.type === 'waste_fee') {
                 typeText = '废稿结算';
                 var wf = st.wasteFee || {};
                 var feeAmtWaste = (wf.feeAmount != null && isFinite(wf.feeAmount)) ? Number(wf.feeAmount) : (wf.totalReceivable != null && isFinite(wf.totalReceivable)) ? Number(wf.totalReceivable) : (wf.totalWasteReceivable != null && isFinite(wf.totalWasteReceivable)) ? Number(wf.totalWasteReceivable) : (actual + dep);
                 totalReceived = feeAmtWaste;
                 var depositUsedWaste = Math.min(dep, feeAmtWaste);
-                detailText = '废稿费¥' + feeAmtWaste.toFixed(2);
-                if (dep > 0) detailText += '；定金抵扣¥' + depositUsedWaste.toFixed(2) + '；本次收款¥' + actual.toFixed(2);
+                detailText = '废稿费' + getCurrencySymbol() + feeAmtWaste.toFixed(2);
+                if (dep > 0) detailText += '；定金抵扣' + getCurrencySymbol() + depositUsedWaste.toFixed(2) + '；本次收款' + getCurrencySymbol() + actual.toFixed(2);
             } else if (st.type === 'normal') {
                 typeText = '正常结单';
                 var drs = Array.isArray(st.discountReasons) ? st.discountReasons : [];
@@ -17804,17 +17847,17 @@ function exportHistoryToExcel() {
                         if (!e || !e.name) return '';
                         var a = e.amount != null && isFinite(e.amount) ? e.amount : 0;
                         var r = e.rate != null && isFinite(e.rate) ? e.rate : 0;
-                        if (a > 0) return e.name + '-¥' + a.toFixed(2);
+                        if (a > 0) return e.name + '-' + getCurrencySymbol() + a.toFixed(2);
                         if (r > 0) return e.name + '×' + r.toFixed(2);
                         return e.name;
                     }).filter(Boolean);
                     detailText = '结算优惠：' + parts.join('；');
                 } else {
-                    detailText = '本次收款¥' + actual.toFixed(2);
+                    detailText = '本次收款' + getCurrencySymbol() + actual.toFixed(2);
                 }
             } else {
                 typeText = st.type;
-                detailText = '本次¥' + actual.toFixed(2);
+                detailText = '本次' + getCurrencySymbol() + actual.toFixed(2);
             }
         }
         return { typeText: typeText, detailText: detailText, totalReceived: totalReceived, actual: actual };
@@ -17872,7 +17915,7 @@ function exportHistoryToExcel() {
                 if (product.processDetails && product.processDetails.length > 0) {
                     processInfo = product.processDetails.map(p => {
                         if (p.name && p.layers && p.unitPrice) {
-                            return `${p.name}×${p.layers}层(¥${p.unitPrice.toFixed(2)}/层)`;
+                            return `${p.name}×${p.layers}层(${getCurrencySymbol()}${p.unitPrice.toFixed(2)}/层)`;
                         }
                         return '';
                     }).filter(p => p).join('; ');
@@ -17883,12 +17926,12 @@ function exportHistoryToExcel() {
                 if (product.additionalConfigDetails && product.additionalConfigDetails.length > 0) {
                     additionalConfigInfo = product.additionalConfigDetails.map(c => {
                         if (c.name && c.count && c.unitPrice) {
-                            return `${c.name}×${c.count}${c.unit || ''}(¥${c.unitPrice.toFixed(2)}/${c.unit || '单位'})`;
+                            return `${c.name}×${c.count}${c.unit || ''}(${getCurrencySymbol()}${c.unitPrice.toFixed(2)}/${c.unit || '单位'})`;
                         }
                         return '';
                     }).filter(c => c).join('; ');
                 } else if (product.totalAdditionalCount !== undefined && product.additionalUnit && product.additionalPrice) {
-                    additionalConfigInfo = `额外${product.totalAdditionalCount}${product.additionalUnit}(¥${product.additionalPrice.toFixed(2)}/${product.additionalUnit})`;
+                    additionalConfigInfo = `额外${product.totalAdditionalCount}${product.additionalUnit}(${getCurrencySymbol()}${product.additionalPrice.toFixed(2)}/${product.additionalUnit})`;
                 }
                 
                 // 格式化价格类型
@@ -18623,7 +18666,7 @@ function renderDynamicOtherFees() {
             <div style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important; flex-wrap: nowrap !important; padding: 8px !important; background-color: #f8fafc !important; border-radius: 4px !important; margin-bottom: 8px !important;">
                 <span style="flex: 2 !important; text-align: left !important; min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;">${fee.name}</span>
                 <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
-                    <span style="font-size: 12px; color: #666;">¥${unitPrice}×</span>
+                    <span style="font-size: 12px; color: #666;">${getCurrencySymbol()}${unitPrice}×</span>
                     <div class="process-layers-stepper-wrap">
                         <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustDynamicOtherFeeQuantity(${fee.id}, -1)">−</button>
                         <input type="number" id="quantity-${fee.id}" value="${quantity}" min="1" step="1" 
@@ -18631,7 +18674,7 @@ function renderDynamicOtherFees() {
                                class="process-layers-stepper-input" style="width: 50px;">
                         <button type="button" class="process-layers-stepper-btn" aria-label="加一" onclick="adjustDynamicOtherFeeQuantity(${fee.id}, 1)">+</button>
                     </div>
-                    <span style="width: 70px; text-align: right; font-weight: 500;">¥${totalPrice.toFixed(2)}</span>
+                    <span style="width: 70px; text-align: right; font-weight: 500;">${getCurrencySymbol()}${totalPrice.toFixed(2)}</span>
                 </div>
                 <button class="icon-action-btn delete" onclick="removeDynamicOtherFee(${fee.id})" aria-label="删除其他费用" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
@@ -18717,6 +18760,8 @@ function loadSettings() {
     updateOrderRemarkPreview();
     renderOtherFees();
     renderDiscountReasonsList();
+    var currencySelector = document.getElementById('currencySelector');
+    if (currencySelector) currencySelector.value = defaultSettings.currency || 'CNY';
 }
 
 // 根据废稿费模式显示对应默认值区域（选择哪个模式显示哪个模式默认值）
@@ -22074,7 +22119,7 @@ function updateGiftForm(giftId) {
     
     switch (productSetting.priceType) {
         case 'fixed':
-            html = `<div class="form-row"><div class="form-group"><label>固定价格：¥${productSetting.price}</label></div></div>`;
+            html = `<div class="form-row"><div class="form-group"><label>固定价格：${getCurrencySymbol()}${productSetting.price}</label></div></div>`;
             break;
             
         case 'double':
@@ -22083,8 +22128,8 @@ function updateGiftForm(giftId) {
                     <div class="form-group">
                         <label for="giftSides-${giftId}">单双面</label>
                         <select id="giftSides-${giftId}" onchange="updateGift(${giftId}, 'sides', this.value)">
-                            <option value="single" ${gift.sides === 'single' ? 'selected' : ''}>单面 (¥${productSetting.priceSingle})</option>
-                            <option value="double" ${gift.sides === 'double' ? 'selected' : ''}>双面 (¥${productSetting.priceDouble})</option>
+                            <option value="single" ${gift.sides === 'single' ? 'selected' : ''}>单面 (${getCurrencySymbol()}${productSetting.priceSingle})</option>
+                            <option value="double" ${gift.sides === 'double' ? 'selected' : ''}>双面 (${getCurrencySymbol()}${productSetting.priceDouble})</option>
                         </select>
                     </div>
                 </div>
@@ -22109,7 +22154,7 @@ function updateGiftForm(giftId) {
                     <div class="form-group incremental-config-group">
                         <label>基础+递增价</label>
                         <div class="incremental-config-base">
-                            <span>基础价 (${productSetting.baseConfig})：¥${productSetting.basePrice}</span>
+                            <span>基础价 (${productSetting.baseConfig})：${getCurrencySymbol()}${productSetting.basePrice}</span>
                             <div class="process-layers-stepper-wrap" style="margin-left:8px;">
                                 <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustGiftBaseConfigCount(${giftId}, -1)">−</button>
                                 <input type="number" id="giftBaseConfigCount_${giftId}" value="${giftBaseConfigCount}" min="0" step="1" 
@@ -22123,7 +22168,7 @@ function updateGiftForm(giftId) {
                             const currentValue = gift.additionalConfigs && gift.additionalConfigs[configKey] ? gift.additionalConfigs[configKey] : 0;
                             return `
                                 <div class="incremental-config-item">
-                                    <span class="incremental-config-label">+${config.name} (+¥${config.price}/${config.unit})</span>
+                                    <span class="incremental-config-label">+${config.name} (+${getCurrencySymbol()}${config.price}/${config.unit})</span>
                                     <div class="process-layers-stepper-wrap">
                                         <button type="button" class="process-layers-stepper-btn" aria-label="减一" onclick="adjustGiftAdditionalConfig(${giftId}, '${configKey}', -1)">−</button>
                                         <input type="number" id="${configKey}" value="${currentValue}" min="0" step="1" 
