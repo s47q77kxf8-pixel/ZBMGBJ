@@ -11004,12 +11004,108 @@ function mgInitNetworkGuard() {
     }
 }
 
+// 数据快照功能：保存前自动创建快照，便于异常恢复
+function mgCreateDataSnapshot() {
+    try {
+        const snapshot = {
+            history: JSON.parse(JSON.stringify(history)),
+            timestamp: Date.now(),
+            url: window.location.href
+        };
+        const snapshots = JSON.parse(localStorage.getItem('mg_data_snapshots') || '[]');
+        snapshots.push(snapshot);
+        // 只保留最近10个快照
+        while (snapshots.length > 10) snapshots.shift();
+        localStorage.setItem('mg_data_snapshots', JSON.stringify(snapshots));
+        console.log('[快照] 已创建数据快照，共 ' + snapshots.length + ' 个');
+        return true;
+    } catch (e) {
+        console.error('[快照] 创建失败:', e);
+        return false;
+    }
+}
+
+// 从快照恢复数据
+function mgRestoreFromSnapshot(index) {
+    try {
+        const snapshots = JSON.parse(localStorage.getItem('mg_data_snapshots') || '[]');
+        if (snapshots.length === 0) {
+            alert('没有可用的快照');
+            return false;
+        }
+        const snapshot = snapshots[index != null ? index : snapshots.length - 1];
+        if (!snapshot || !snapshot.history) {
+            alert('快照数据无效');
+            return false;
+        }
+        if (!confirm('确定要恢复到 ' + new Date(snapshot.timestamp).toLocaleString() + ' 的数据吗？\n\n这将覆盖当前所有订单数据！')) {
+            return false;
+        }
+        // 保存当前数据为新快照
+        mgCreateDataSnapshot();
+        // 恢复数据
+        history = snapshot.history;
+        saveData();
+        showGlobalToast('数据已恢复到快照');
+        console.log('[快照] 数据已恢复');
+        return true;
+    } catch (e) {
+        console.error('[快照] 恢复失败:', e);
+        alert('恢复失败: ' + e.message);
+        return false;
+    }
+}
+
+// 显示快照恢复对话框
+function mgShowSnapshotRecoveryDialog() {
+    try {
+        const snapshots = JSON.parse(localStorage.getItem('mg_data_snapshots') || '[]');
+        if (snapshots.length === 0) {
+            alert('没有可用的快照数据。\n\n快照会在每次保存订单时自动创建。');
+            return;
+        }
+        let html = '<h3 style="margin-bottom:16px;">数据快照恢复</h3>';
+        html += '<p style="color:#666;margin-bottom:12px;">选择一个快照恢复（共 ' + snapshots.length + ' 个，最多保留最近10个）：</p>';
+        html += '<div style="max-height:300px;overflow-y:auto;">';
+        snapshots.forEach((snap, idx) => {
+            const orderCount = snap.history ? snap.history.length : 0;
+            const date = new Date(snap.timestamp).toLocaleString();
+            html += '<div style="padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">';
+            html += '<div><div style="font-weight:500;">' + date + '</div><div style="color:#666;font-size:0.85rem;">订单数量: ' + orderCount + '</div></div>';
+            html += '<button class="btn primary small" onclick="mgRestoreFromSnapshot(' + idx + ')">恢复</button>';
+            html += '</div>';
+        });
+        html += '</div>';
+        html += '<div style="margin-top:16px;text-align:right;">';
+        html += '<button class="btn secondary" onclick="closeModal(\'mgSnapshotModal\')">取消</button>';
+        html += '</div>';
+        
+        // 创建或更新模态框
+        let modal = document.getElementById('mgSnapshotModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'mgSnapshotModal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = '<div class="modal-content" style="max-width:500px;"></div>';
+            document.body.appendChild(modal);
+        }
+        modal.querySelector('.modal-content').innerHTML = html;
+        modal.classList.add('active');
+    } catch (e) {
+        console.error('[快照] 显示对话框失败:', e);
+        alert('显示快照对话框失败: ' + e.message);
+    }
+}
+
 // 保存到历史记录
 function saveToHistory() {
     if (!quoteData) {
         alert('请先生成报价单！');
         return;
     }
+    
+    // 保存前自动创建数据快照（用于异常恢复）
+    mgCreateDataSnapshot();
     
     // 从小票页同步当前输入到 quoteData，避免仅在小票页修改「已收定」「约定实收」后点保存未生效
     var depositEl = document.getElementById('receiptDepositInput');
@@ -11039,6 +11135,20 @@ function saveToHistory() {
         const index = history.findIndex(item => item.id === editingId);
         if (index !== -1) {
             const existing = history[index];
+            
+            // 校验编辑模式验证信息，防止误覆盖其他订单
+            if (window._editingVerification && window._editingVerification.id === editingId) {
+                const verification = window._editingVerification;
+                // 检查关键信息是否匹配（clientId 变化可能意味着编辑错了订单）
+                if (quoteData.clientId && verification.clientId && quoteData.clientId !== verification.clientId) {
+                    console.warn('[编辑校验] 警告：单主ID不匹配！', '期望:', verification.clientId, '实际:', quoteData.clientId);
+                    if (!confirm('检测到单主ID发生变化：\n\n原单主ID: ' + verification.clientId + '\n当前单主ID: ' + quoteData.clientId + '\n\n这可能意味着您正在编辑错误的订单！\n\n是否仍然保存？')) {
+                        return;
+                    }
+                }
+                console.log('[编辑校验] 验证通过，继续保存...');
+            }
+            
             const prevLen = (existing.productDoneStates || []).length;
             const newLen = (quoteData.productPrices || []).length;
             let doneStates = existing.productDoneStates;
@@ -11060,9 +11170,11 @@ function saveToHistory() {
         } else {
             showGlobalToast('未找到要更新的排单！');
             window.editingHistoryId = null;
+            window._editingVerification = null;
             return;
         }
         window.editingHistoryId = null;
+        window._editingVerification = null;
     } else {
         // 添加新排单，补全 productDoneStates（制品+赠品）
         const productLen = (quoteData.productPrices || []).length;
@@ -17311,6 +17423,14 @@ function editHistoryItem(id) {
     
     // 保存当前编辑的历史记录ID，用于更新
     window.editingHistoryId = id;
+    // 保存编辑验证信息，用于保存时校验
+    window._editingVerification = {
+        id: id,
+        clientId: quote.clientId || '',
+        projectName: quote.projectName || '',
+        timestamp: quote.timestamp || ''
+    };
+    console.log('[编辑模式] 开始编辑订单:', id, '单主:', quote.clientId, '项目:', quote.projectName);
 
     // 关键修复：进入编辑后，先把 quoteData 对齐到当前被编辑企划
     // 避免后续仅改排单时间/轻微字段时，沿用上一单的 quoteData（导致金额串单、定金丢失）
@@ -17733,6 +17853,14 @@ function loadQuoteFromHistory(id) {
         // 从排单卡片点「小票」进入时，记下原企划 ID，使小票页内点「排单」时覆盖原企划并轻提示
         if (window.receiptOpenedFromRecord) {
             window.editingHistoryId = id;
+            // 保存编辑验证信息
+            window._editingVerification = {
+                id: id,
+                clientId: quote.clientId || '',
+                projectName: quote.projectName || '',
+                timestamp: quote.timestamp || ''
+            };
+            console.log('[编辑模式] 从小票页进入编辑订单:', id);
         }
         // 先切换到报价页面
         showPage('quote');
