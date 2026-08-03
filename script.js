@@ -17850,18 +17850,17 @@ function loadQuoteFromHistory(id) {
             syncExpectedProductCountFromProducts(true);
         }
         
-        // 从排单卡片点「小票」进入时，记下原企划 ID，使小票页内点「排单」时覆盖原企划并轻提示
-        if (window.receiptOpenedFromRecord) {
-            window.editingHistoryId = id;
-            // 保存编辑验证信息
-            window._editingVerification = {
-                id: id,
-                clientId: quote.clientId || '',
-                projectName: quote.projectName || '',
-                timestamp: quote.timestamp || ''
-            };
-            console.log('[编辑模式] 从小票页进入编辑订单:', id);
-        }
+        // 从排单卡片点「小票」进入时，记下原企划 ID，使小票页内点「排单」时弹出覆盖/另存选择
+        // ⚠️ 重要：只要是从历史记录加载的订单（无论从哪个入口），都必须设置 editingHistoryId，否则保存时会创建新单/覆盖其他订单
+        window.editingHistoryId = id;
+        // 保存编辑验证信息
+        window._editingVerification = {
+            id: id,
+            clientId: quote.clientId || '',
+            projectName: quote.projectName || '',
+            timestamp: quote.timestamp || ''
+        };
+        console.log('[编辑模式] 从历史加载订单，进入编辑模式，ID:', id);
         // 先切换到报价页面
         showPage('quote');
         
