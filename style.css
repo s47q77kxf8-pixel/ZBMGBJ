@@ -5937,17 +5937,6 @@ input:checked + .toggle-slider:before {
     display: none;
 }
 
-/* 历史记录筛选按钮和徽章 */
-#historyFilterBtn {
-    position: relative;
-    min-width: 60px;
-    white-space: nowrap;
-    flex-shrink: 0;
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-}
-
 /* 记录页筛选按钮：徽章需相对此按钮定位，避免设置筛选后徽章错位 */
 #recordFilterBtn {
     position: relative;
@@ -6198,23 +6187,6 @@ input:checked + .toggle-slider:before {
     vertical-align: middle;
 }
 
-/* 报价页历史列表容器 */
-.history-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-}
-
-.history-container > p {
-    color: var(--text-light);
-    font-size: 0.85rem;
-    text-align: center;
-    padding: 0.75rem 1rem;
-}
-
 /* 历史记录项卡片（紧凑） */
 .history-item {
     position: relative;
@@ -6223,47 +6195,6 @@ input:checked + .toggle-slider:before {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
-}
-
-.history-item-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.2rem;
-}
-
-.history-item-title {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-color);
-    line-height: 1.2;
-}
-
-.history-item-date {
-    font-size: 0.75rem;
-    color: var(--text-light);
-    white-space: nowrap;
-}
-
-.history-item-content {
-    font-size: 0.8rem;
-    color: var(--text-light);
-    white-space: pre-line;
-    line-height: 1.35;
-    margin-bottom: 0.35rem;
-}
-
-.history-item-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-}
-
-.history-item-actions .btn {
-    padding: 0.3em 0.6em;
-    font-size: 0.75rem;
 }
 
 .history-item-checkbox {
@@ -6526,50 +6457,8 @@ input:checked + .toggle-slider:before {
         font-size: 1rem;
     }
     
-    /* 确保筛选按钮在移动端可见 */
-    #historyFilterBtn {
-        min-width: 50px;
-        padding: 0.5rem 0.75rem;
-        font-size: 0.8rem;
-    }
-    
-    /* 移动端搜索框区域，确保按钮不被压缩 */
-    #historySearchInput {
-        min-width: 0; /* 允许flex压缩 */
-    }
-    
-    /* 报价页历史列表移动端排版（更紧凑） */
-    .history-container {
-        gap: 0.4rem;
-    }
-    .history-container > p {
-        padding: 0.5rem 0.75rem;
-        font-size: 0.8rem;
-    }
     .history-item {
         padding: 0.4rem 0.5rem 0.4rem 1.75rem;
-    }
-    .history-item-header {
-        margin-bottom: 0.15rem;
-    }
-    .history-item-title {
-        font-size: 0.85rem;
-    }
-    .history-item-date {
-        font-size: 0.65rem;
-    }
-    .history-item-content {
-        font-size: 0.75rem;
-        line-height: 1.3;
-        margin-bottom: 0.25rem;
-    }
-    .history-item-actions {
-        gap: 0.25rem;
-    }
-    .history-item-actions .btn {
-        min-height: 32px;
-        padding: 0.25em 0.5em;
-        font-size: 0.65rem;
     }
     .history-item-checkbox {
         top: 0.4rem;
@@ -9143,9 +9032,6 @@ html.theme-dark .settlement-preview {
     overflow-y: auto;
     flex: 1;
     min-height: 0;
-}
-.history-record-body .history-container {
-    margin-top: 0.5rem;
 }
 
 /* 记录页（简洁列表） */

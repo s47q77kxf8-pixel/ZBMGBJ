@@ -54,11 +54,18 @@ function moveToTrash(item) {
     loadTrash();
     const extId = item.external_id || item.id;
     if (mgOrderTrash.items.some(t => t.id === item.id)) return;
+    let dataCopy = null;
+    try {
+        dataCopy = JSON.parse(JSON.stringify(item));
+    } catch (e) {
+        console.error('深拷贝企划数据失败:', e, item);
+        dataCopy = { error: 'Failed to copy data', id: item.id };
+    }
     const trashItem = {
         id: item.id,
         external_id: extId,
         deletedAt: Date.now(),
-        data: JSON.parse(JSON.stringify(item))
+        data: dataCopy
     };
     mgOrderTrash.items.unshift(trashItem);
     if (mgOrderTrash.items.length > MG_TRASH_MAX_ITEMS) {
@@ -94,7 +101,6 @@ function restoreFromTrash(orderId) {
     mgOrderTrash.items.splice(idx, 1);
     saveTrash();
     saveData();
-    applyHistoryFilters();
     if (document.getElementById('recordContainer')) applyRecordFilters();
     updateTrashBadge();
     return true;
@@ -3465,11 +3471,6 @@ function showPage(pageId) {
     if (pageId === 'quote') {
         renderScheduleCalendar();
         renderScheduleTodoSection();
-        if (!quoteData) {
-            const searchInput = document.getElementById('historySearchInput');
-            if (searchInput) applyHistoryFilters();
-            else loadHistory();
-        }
     }
 
     // 记录页：只渲染简洁记录列表（单主ID/金额/完成状态）
@@ -3480,13 +3481,6 @@ function showPage(pageId) {
     // 统计页：渲染 KPI / 趋势 / Top 榜
     if (pageId === 'stats') {
         renderStatsPage();
-    }
-    
-    // 切换到报价页时，初始化筛选徽章
-    if (pageId === 'quote') {
-        setTimeout(function() {
-            updateHistoryFilterBadge();
-        }, 100);
     }
     
     // 切换到报价页时，调整小票缩放（手机端）
@@ -3828,16 +3822,21 @@ function closeRecordFilterDrawer() {
 }
 
 function toggleTrashDrawer() {
-    const drawer = document.getElementById('trashDrawer');
-    if (!drawer) return;
-    if (drawer.classList.contains('d-none') || !drawer.classList.contains('active')) {
-        loadTrash();
-        renderTrashDrawer();
-        drawer.classList.remove('d-none');
-        drawer.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    } else {
-        closeTrashDrawer();
+    try {
+        const drawer = document.getElementById('trashDrawer');
+        if (!drawer) return;
+        if (drawer.classList.contains('d-none') || !drawer.classList.contains('active')) {
+            loadTrash();
+            renderTrashDrawer();
+            drawer.classList.remove('d-none');
+            drawer.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        } else {
+            closeTrashDrawer();
+        }
+    } catch (e) {
+        console.error('toggleTrashDrawer error:', e);
+        alert('打开回收站失败: ' + e.message);
     }
 }
 
@@ -3882,6 +3881,12 @@ function renderTrashDrawer() {
     const body = document.getElementById('trashDrawerBody');
     if (!body) return;
     loadTrash();
+    // 时间格式化为 M.D（与排单卡片一致）
+    const toMd = function(str) {
+        if (!str) return '—';
+        const d = new Date(str);
+        return isNaN(d.getTime()) ? '—' : (d.getMonth() + 1) + '.' + d.getDate();
+    };
     const items = mgOrderTrash.items || [];
     if (items.length === 0) {
         body.innerHTML = '<p style="text-align:center;color:#999;padding:40px 0;">回收站为空</p>';
@@ -4197,7 +4202,7 @@ function getFilteredHistoryForRecord() {
         return { list: [], groupBy: filters.groupBy };
     }
 
-    // 基本复用 loadHistory 的筛选/排序逻辑
+    // 筛选/排序逻辑
     let filteredHistory = history;
 
     if (searchKeyword) {
@@ -4909,26 +4914,8 @@ function exportRecordToExcel() {
         }
     });
 
-    // 直接借用原导出函数的实现细节：把筛选后的数据临时写到一个全局变量并走同一套生成逻辑太重；
-    // 这里偷懒做法：调用原函数前把 record 的值同步到 history 的筛选控件（若存在）再调用原函数。
-    // 若弹窗控件不存在/未打开，则 fallback：直接临时创建导出工作簿（原函数后半段仍会使用 XLSX）。
-    // 为了保持改动小，这里直接复用原函数：创建一个临时容器并赋值到对应 input（如果存在）。
-    const hSearch = document.getElementById('historySearchInput');
-    const hTime = document.getElementById('historyTimeFilter');
-    const hStart = document.getElementById('historyStartDate');
-    const hEnd = document.getElementById('historyEndDate');
-    const hMin = document.getElementById('historyMinPrice');
-    const hMax = document.getElementById('historyMaxPrice');
-    const hSort = document.getElementById('historySortBy');
-    if (hSearch) hSearch.value = searchKeyword;
-    if (hTime) hTime.value = timeFilter;
-    if (hStart) hStart.value = startDate;
-    if (hEnd) hEnd.value = endDate;
-    if (hMin) hMin.value = minPrice;
-    if (hMax) hMax.value = maxPrice;
-    if (hSort) hSort.value = sortBy;
-
-    exportHistoryToExcel();
+    // 直接复用 exportHistoryToExcel 的 Excel 生成逻辑，传入已筛选好的数据避免重复读取控件
+    exportHistoryToExcel(exportData);
 }
 
 // ========== 统计页 ==========
@@ -11254,9 +11241,6 @@ function saveToHistory() {
         if (agreedInputEl) agreedInputEl.value = '';
         if (typeof updateAgreedAmountBar === 'function') updateAgreedAmountBar();
     }
-    const searchInput = document.getElementById('historySearchInput');
-    if (searchInput) applyHistoryFilters();
-    else loadHistory();
 }
 
 // 排单制品完成状态：取单条排单时补全 productDoneStates（含制品+赠品）及 productNodeDoneStates（按节点计价的子节点状态）
@@ -16276,495 +16260,6 @@ function settlementConfirm() {
     showGlobalToast('结算已保存，企划已归档到记录页');
 }
 
-// 加载历史记录（增强版：支持筛选、排序、分组）
-function loadHistory(searchKeyword = '', filters = {}) {
-    const container = document.getElementById('historyContainer');
-    
-    if (history.length === 0) {
-        container.innerHTML = '<p>暂无历史记录</p>';
-        updateBatchDeleteButton();
-        return;
-    }
-    
-    // 1. 关键词搜索过滤
-    let filteredHistory = history;
-    if (searchKeyword) {
-        filteredHistory = history.filter(item => {
-            const keywordLower = searchKeyword.toLowerCase();
-            return (
-                (item.clientId && item.clientId.toLowerCase().includes(keywordLower)) ||
-                (item.contact && item.contact.toLowerCase().includes(keywordLower)) ||
-                (item.deadline && item.deadline.toLowerCase().includes(keywordLower)) ||
-                (item.agreedAmount != null && item.agreedAmount.toString().includes(keywordLower)) ||
-                (item.finalTotal && item.finalTotal.toString().includes(keywordLower)) ||
-                (item.totalProductsPrice && item.totalProductsPrice.toString().includes(keywordLower))
-            );
-        });
-    }
-    
-    // 2. 时间范围筛选
-    if (filters.timeRange && filters.timeRange !== 'all') {
-        const now = new Date();
-        filteredHistory = filteredHistory.filter(item => {
-            const itemDate = new Date(item.timestamp);
-            switch (filters.timeRange) {
-                case 'today':
-                    return itemDate.toDateString() === now.toDateString();
-                case 'week':
-                    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    return itemDate >= weekAgo;
-                case 'month':
-                    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    return itemDate >= monthAgo;
-                case 'custom':
-                    const startDate = filters.startDate ? new Date(filters.startDate) : null;
-                    const endDate = filters.endDate ? new Date(filters.endDate) : null;
-                    if (startDate) startDate.setHours(0, 0, 0, 0);
-                    if (endDate) endDate.setHours(23, 59, 59, 999);
-                    if (startDate && itemDate < startDate) return false;
-                    if (endDate && itemDate > endDate) return false;
-                    return true;
-                default:
-                    return true;
-            }
-        });
-    }
-    
-    // 3. 价格范围筛选
-    if (filters.minPrice !== undefined && filters.minPrice !== '') {
-        filteredHistory = filteredHistory.filter(item => 
-            getRecordReceivableAmount(item) >= parseFloat(filters.minPrice)
-        );
-    }
-    if (filters.maxPrice !== undefined && filters.maxPrice !== '') {
-        filteredHistory = filteredHistory.filter(item => 
-            getRecordReceivableAmount(item) <= parseFloat(filters.maxPrice)
-        );
-    }
-    
-    // 4. 排序
-    if (filters.sortBy) {
-        filteredHistory.sort((a, b) => {
-            switch (filters.sortBy) {
-                case 'time-desc':
-                    return new Date(b.timestamp) - new Date(a.timestamp);
-                case 'time-asc':
-                    return new Date(a.timestamp) - new Date(b.timestamp);
-                case 'price-desc':
-                    return getRecordReceivableAmount(b) - getRecordReceivableAmount(a);
-                case 'price-asc':
-                    return getRecordReceivableAmount(a) - getRecordReceivableAmount(b);
-                case 'client-asc':
-                    return (a.clientId || '').localeCompare(b.clientId || '');
-                case 'client-desc':
-                    return (b.clientId || '').localeCompare(a.clientId || '');
-                default:
-                    return 0;
-            }
-        });
-    } else {
-        // 默认按时间倒序
-        filteredHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    }
-    
-    // 5. 分组显示
-    if (filters.groupBy === 'month') {
-        renderGroupedHistory(filteredHistory);
-    } else {
-        renderListHistory(filteredHistory);
-    }
-}
-
-// 虚拟列表配置
-const VIRTUAL_LIST_CONFIG = {
-  itemHeight: 150, // 每个历史记录项的高度（px）
-  buffer: 2 // 缓冲区大小，上下各多渲染2个项目
-};
-
-// 渲染列表形式的历史记录（虚拟列表）
-function renderListHistory(filteredHistory) {
-    const container = document.getElementById('historyContainer');
-    
-    if (filteredHistory.length === 0) {
-        container.innerHTML = '<p>未找到匹配的历史记录</p>';
-        updateBatchDeleteButton();
-        return;
-    }
-    
-    // 计算基本参数
-    const containerHeight = container.clientHeight || 600; // 默认高度
-    const itemHeight = VIRTUAL_LIST_CONFIG.itemHeight;
-    const visibleCount = Math.ceil(containerHeight / itemHeight);
-    const totalCount = filteredHistory.length;
-    const totalHeight = totalCount * itemHeight;
-    
-    // 创建滚动容器
-    const scrollContainer = document.createElement('div');
-    scrollContainer.style.position = 'relative';
-    scrollContainer.style.height = `${totalHeight}px`;
-    scrollContainer.style.width = '100%';
-    
-    // 创建可见元素容器
-    const visibleContainer = document.createElement('div');
-    visibleContainer.style.position = 'absolute';
-    visibleContainer.style.top = '0';
-    visibleContainer.style.left = '0';
-    visibleContainer.style.width = '100%';
-    
-    container.innerHTML = '';
-    container.appendChild(scrollContainer);
-    scrollContainer.appendChild(visibleContainer);
-    
-    // 渲染可见元素
-    function renderVisibleItems() {
-        const scrollTop = container.scrollTop;
-        const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - VIRTUAL_LIST_CONFIG.buffer);
-        const endIndex = Math.min(totalCount, startIndex + visibleCount + VIRTUAL_LIST_CONFIG.buffer * 2);
-        
-        // 计算偏移量
-        const offsetY = startIndex * itemHeight;
-        visibleContainer.style.transform = `translateY(${offsetY}px)`;
-        
-        // 渲染可见元素
-        visibleContainer.innerHTML = '';
-        for (let i = startIndex; i < endIndex; i++) {
-            const item = filteredHistory[i];
-            if (item) {
-                const itemElement = generateHistoryItemElement(item);
-                visibleContainer.appendChild(itemElement);
-            }
-        }
-        
-        // 恢复复选框状态
-        restoreCheckboxStates();
-    }
-    
-    // 初始渲染
-    renderVisibleItems();
-    
-    // 监听滚动事件（使用节流优化）
-    let scrollTimeout;
-    container.addEventListener('scroll', function() {
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(renderVisibleItems, 16); // 约60fps
-    });
-    
-    // 监听容器大小变化
-    const resizeObserver = new ResizeObserver(() => {
-        renderVisibleItems();
-    });
-    resizeObserver.observe(container);
-    
-    updateBatchDeleteButton();
-}
-
-// 生成历史记录项元素
-function generateHistoryItemElement(item) {
-    const element = document.createElement('div');
-    const itemIdNum = Number(item && item.id);
-    element.className = `history-item${selectedHistoryIds.has(itemIdNum) ? ' selected' : ''}`;
-    element.dataset.id = item.id;
-    
-    element.innerHTML = `
-        <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${selectedHistoryIds.has(itemIdNum) ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
-        <div class="history-item-header">
-            <div class="history-item-title">报价单 - ${item.clientId}</div>
-            <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
-        </div>
-        <div class="history-item-content">
-            接单平台: ${item.contact || ''}\n
-            联系方式: ${item.contactInfo || ''}\n
-            截稿日: ${item.deadline}\n
-            实收: ${getCurrencySymbol()}${getRecordReceivableAmount(item).toFixed(2)}
-        </div>
-        <div class="history-item-actions">
-            <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
-                <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
-                <span class="sr-only">查看详情</span>
-            </button>
-            <button class="icon-action-btn edit" onclick="editHistoryItem(${item.id})" aria-label="编辑" title="编辑">
-                <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
-                <span class="sr-only">编辑</span>
-            </button>
-            <button class="icon-action-btn delete" onclick="if(confirm('确定删除该记录？')) deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
-                <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
-                                    <span class="sr-only">删除</span>
-            </button>
-        </div>
-    `;
-    
-    return element;
-}
-
-// 渲染分组形式的历史记录
-function renderGroupedHistory(filteredHistory) {
-    const container = document.getElementById('historyContainer');
-    
-    if (filteredHistory.length === 0) {
-        container.innerHTML = '<p>未找到匹配的历史记录</p>';
-        updateBatchDeleteButton();
-        return;
-    }
-    
-    // 按月份分组
-    const grouped = {};
-    filteredHistory.forEach(item => {
-        const date = new Date(item.timestamp);
-        const monthKey = `${date.getFullYear()}年${date.getMonth() + 1}月`;
-        if (!grouped[monthKey]) {
-            grouped[monthKey] = [];
-        }
-        grouped[monthKey].push(item);
-    });
-    
-    // 生成HTML
-    let html = '';
-    const sortedMonths = Object.keys(grouped).sort((a, b) => {
-        // 按时间倒序排列
-        return b.localeCompare(a);
-    });
-    
-    sortedMonths.forEach(month => {
-        html += `<div class="history-group">`;
-        html += `<div class="history-group-header">${month} (${grouped[month].length}条)</div>`;
-        html += `<div class="history-group-items">`;
-        grouped[month].forEach(item => {
-            html += generateHistoryItemHTML(item);
-        });
-        html += `</div></div>`;
-    });
-    
-    container.innerHTML = html;
-    updateBatchDeleteButton();
-    restoreCheckboxStates();
-}
-
-// 生成历史记录项HTML
-function generateHistoryItemHTML(item) {
-    const isSelected = selectedHistoryIds.has(Number(item && item.id));
-    return `
-        <div class="history-item${isSelected ? ' selected' : ''}" data-id="${item.id}">
-            <input type="checkbox" class="history-item-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} onchange="toggleHistorySelection(${item.id})">
-            <div class="history-item-header">
-                <div class="history-item-title">报价单 - ${item.clientId}</div>
-                <div class="history-item-date">${new Date(item.timestamp).toLocaleString()}</div>
-            </div>
-            <div class="history-item-content">
-                接单平台: ${item.contact || ''}\n
-                联系方式: ${item.contactInfo || ''}\n
-                截稿日: ${item.deadline}\n
-                实收: ${getCurrencySymbol()}${getRecordReceivableAmount(item).toFixed(2)}
-            </div>
-            <div class="history-item-actions">
-                <button class="icon-action-btn view" onclick="loadQuoteFromHistory(${item.id})" aria-label="查看详情" title="查看详情">
-                    <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
-                    <span class="sr-only">查看详情</span>
-                </button>
-                <button class="icon-action-btn edit" onclick="editHistoryItem(${item.id})" aria-label="编辑" title="编辑">
-                    <svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>
-                    <span class="sr-only">编辑</span>
-                </button>
-                <button class="icon-action-btn delete" onclick="if(confirm('确定删除该记录？')) deleteHistoryItem(${item.id})" aria-label="删除" title="删除">
-                    <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
-                                        <span class="sr-only">删除</span>
-                </button>
-            </div>
-        </div>
-    `;
-}
-
-// ========== 历史记录筛选抽屉控制 ==========
-
-// 切换筛选抽屉显示
-function toggleHistoryFilterDrawer() {
-    const drawer = document.getElementById('historyFilterDrawer');
-    if (drawer) {
-        drawer.classList.toggle('active');
-        if (drawer.classList.contains('active')) {
-            window.pageBeforeHistoryFilterDrawer = activeTab;
-            document.body.style.overflow = 'hidden'; // 防止背景滚动
-            updateHistoryFilterBadge(); // 打开时更新徽章
-        } else {
-            const returnPage = (window.pageBeforeHistoryFilterDrawer === 'quote' || window.pageBeforeHistoryFilterDrawer === 'record' || window.pageBeforeHistoryFilterDrawer === 'stats' || window.pageBeforeHistoryFilterDrawer === 'settings')
-                ? window.pageBeforeHistoryFilterDrawer
-                : 'quote';
-            document.body.style.overflow = '';
-            showPage(returnPage);
-            window.pageBeforeHistoryFilterDrawer = null;
-        }
-    }
-}
-
-// 关闭筛选抽屉
-function closeHistoryFilterDrawer() {
-    const drawer = document.getElementById('historyFilterDrawer');
-    if (drawer) {
-        drawer.classList.remove('active');
-        document.body.style.overflow = '';
-        const returnPage = (window.pageBeforeHistoryFilterDrawer === 'quote' || window.pageBeforeHistoryFilterDrawer === 'record' || window.pageBeforeHistoryFilterDrawer === 'stats' || window.pageBeforeHistoryFilterDrawer === 'settings')
-            ? window.pageBeforeHistoryFilterDrawer
-            : 'quote';
-        showPage(returnPage);
-        window.pageBeforeHistoryFilterDrawer = null;
-    }
-}
-
-// 打开价格历史记录弹窗
-function openHistoryRecordModal() {
-    const modal = document.getElementById('historyRecordModal');
-    if (modal) {
-        modal.classList.remove('d-none');
-        document.body.style.overflow = 'hidden';
-        applyHistoryFilters();
-    }
-}
-
-// 关闭价格历史记录弹窗
-function closeHistoryRecordModal() {
-    const modal = document.getElementById('historyRecordModal');
-    if (modal) {
-        modal.classList.add('d-none');
-        document.body.style.overflow = '';
-        closeHistoryFilterDrawer();
-        renderScheduleCalendar();
-        renderScheduleTodoSection();
-    }
-}
-
-// 筛选条件改变时更新徽章
-function onHistoryFilterChange() {
-    const timeFilter = document.getElementById('historyTimeFilter');
-    const customDateRange = document.getElementById('historyCustomDateRange');
-    
-    // 显示/隐藏自定义日期范围
-    if (timeFilter && timeFilter.value === 'custom') {
-        if (customDateRange) customDateRange.classList.remove('d-none');
-    } else {
-        if (customDateRange) customDateRange.classList.add('d-none');
-    }
-    
-    updateHistoryFilterBadge();
-}
-
-// 更新筛选按钮徽章（显示激活的筛选条件数量）
-function updateHistoryFilterBadge() {
-    const badge = document.getElementById('historyFilterBadge');
-    if (!badge) return;
-    // 始终隐藏筛选徽章
-    badge.classList.add('d-none');
-}
-
-// 重置所有筛选条件
-function resetHistoryFilters() {
-    const timeFilter = document.getElementById('historyTimeFilter');
-    const startDate = document.getElementById('historyStartDate');
-    const endDate = document.getElementById('historyEndDate');
-    const minPrice = document.getElementById('historyMinPrice');
-    const maxPrice = document.getElementById('historyMaxPrice');
-    const sortBy = document.getElementById('historySortBy');
-    const groupBy = document.getElementById('historyGroupBy');
-    const customDateRange = document.getElementById('historyCustomDateRange');
-    
-    if (timeFilter) timeFilter.value = 'all';
-    if (startDate) startDate.value = '';
-    if (endDate) endDate.value = '';
-    if (minPrice) minPrice.value = '';
-    if (maxPrice) maxPrice.value = '';
-    if (sortBy) sortBy.value = 'time-desc';
-    if (groupBy) groupBy.value = 'none';
-    if (customDateRange) customDateRange.classList.add('d-none');
-    
-    selectedHistoryIds.clear();
-    updateHistoryFilterBadge();
-    applyHistoryFilters();
-}
-
-// 应用筛选条件
-function applyHistoryFilters() {
-    const timeFilterEl = document.getElementById('historyTimeFilter');
-    const startDateEl = document.getElementById('historyStartDate');
-    const endDateEl = document.getElementById('historyEndDate');
-    const minPriceEl = document.getElementById('historyMinPrice');
-    const maxPriceEl = document.getElementById('historyMaxPrice');
-    const sortByEl = document.getElementById('historySortBy');
-    const groupByEl = document.getElementById('historyGroupBy');
-    const searchInput = document.getElementById('historySearchInput');
-    
-    if (!timeFilterEl || !sortByEl || !groupByEl) {
-        const keyword = searchInput ? searchInput.value.trim() : '';
-        loadHistory(keyword);
-        return;
-    }
-    
-    const timeFilter = timeFilterEl.value;
-    const startDate = startDateEl ? startDateEl.value : '';
-    const endDate = endDateEl ? endDateEl.value : '';
-    const minPrice = minPriceEl ? minPriceEl.value : '';
-    const maxPrice = maxPriceEl ? maxPriceEl.value : '';
-    const sortBy = sortByEl.value;
-    const groupBy = groupByEl.value;
-    const searchKeyword = searchInput ? searchInput.value.trim() : '';
-    
-    // 显示/隐藏自定义时间选择器（在抽屉中）
-    const customDateRange = document.getElementById('historyCustomDateRange');
-    if (timeFilter === 'custom') {
-        if (customDateRange) customDateRange.classList.remove('d-none');
-    } else {
-        if (customDateRange) customDateRange.classList.add('d-none');
-    }
-    
-    const filters = {
-        timeRange: timeFilter,
-        startDate: startDate,
-        endDate: endDate,
-        minPrice: minPrice,
-        maxPrice: maxPrice,
-        sortBy: sortBy,
-        groupBy: groupBy
-    };
-    
-    loadHistory(searchKeyword, filters);
-    updateHistoryFilterBadge(); // 应用筛选后更新徽章
-}
-
-// 搜索历史记录
-function searchHistory() {
-    applyHistoryFilters();
-}
-
-// 清空搜索
-function clearHistorySearch() {
-    const searchInput = document.getElementById('historySearchInput');
-    if (searchInput) searchInput.value = '';
-    
-    // 重置所有筛选条件
-    const timeFilterEl = document.getElementById('historyTimeFilter');
-    const startDateEl = document.getElementById('historyStartDate');
-    const endDateEl = document.getElementById('historyEndDate');
-    const minPriceEl = document.getElementById('historyMinPrice');
-    const maxPriceEl = document.getElementById('historyMaxPrice');
-    const sortByEl = document.getElementById('historySortBy');
-    const groupByEl = document.getElementById('historyGroupBy');
-    
-    if (timeFilterEl) timeFilterEl.value = 'all';
-    if (startDateEl) {
-        startDateEl.value = '';
-        startDateEl.classList.add('d-none');
-    }
-    if (endDateEl) {
-        endDateEl.value = '';
-        endDateEl.classList.add('d-none');
-    }
-    if (minPriceEl) minPriceEl.value = '';
-    if (maxPriceEl) maxPriceEl.value = '';
-    if (sortByEl) sortByEl.value = 'time-desc';
-    if (groupByEl) groupByEl.value = 'none';
-    
-    selectedHistoryIds.clear();
-    updateHistoryFilterBadge();
-    applyHistoryFilters();
-}
-
 // 切换历史记录选中状态
 function toggleHistorySelection(id) {
     const checkbox = document.querySelector(`.history-item-checkbox[data-id="${id}"]`);
@@ -16789,43 +16284,8 @@ function toggleHistorySelection(id) {
     updateRecordBatchDeleteButton();
 }
 
-// 全选/取消全选
-function selectAllHistory() {
-    const checkboxes = document.querySelectorAll('.history-item-checkbox');
-    if (checkboxes.length === 0) return;
-    
-    const allSelected = Array.from(checkboxes).every(cb => cb.checked);
-    
-    checkboxes.forEach(cb => {
-        cb.checked = !allSelected;
-        const id = parseInt(cb.dataset.id);
-        if (!allSelected) {
-            selectedHistoryIds.add(id);
-        } else {
-            selectedHistoryIds.delete(id);
-        }
-    });
-    
-    // 更新选中样式
-    document.querySelectorAll('.history-item').forEach(item => {
-        const id = parseInt(item.dataset.id);
-        if (selectedHistoryIds.has(id)) {
-            item.classList.add('selected');
-        } else {
-            item.classList.remove('selected');
-        }
-    });
-    
-    updateBatchDeleteButton();
-}
-
 // 更新批量删除按钮状态
 function updateBatchDeleteButton() {
-    const btn = document.getElementById('batchDeleteBtn');
-    if (btn) {
-        btn.disabled = selectedHistoryIds.size === 0;
-        btn.textContent = selectedHistoryIds.size > 0 ? `批量删除(${selectedHistoryIds.size})` : '批量删除';
-    }
     const recordBtn = document.getElementById('recordBatchDeleteBtn');
     if (recordBtn) {
         recordBtn.disabled = selectedHistoryIds.size === 0;
@@ -16936,15 +16396,52 @@ function selectAllRecord() {
 // 批量删除记录
 function batchDeleteRecord() {
     if (selectedHistoryIds.size === 0) return;
-    
+
     if (confirm(`确定删除选中的 ${selectedHistoryIds.size} 条记录？`)) {
-        selectedHistoryIds.forEach(id => {
-            const index = history.findIndex(item => item.id === id);
-            if (index !== -1) {
-                history.splice(index, 1);
+        // 收集要删除的 item（用于回收站、追加单关联处理、云端墓碑）
+        const itemsToDelete = history.filter(item => selectedHistoryIds.has(item.id));
+
+        // 追加单关联处理：与 deleteHistoryItem 保持一致
+        itemsToDelete.forEach(function (item) {
+            if (!item) return;
+            if (item.parentOrderId) {
+                // 删除追加单：从原单的 appendOrderIds 中移除
+                var parentOrder = history.find(function (h) { return h.id === item.parentOrderId; });
+                if (parentOrder && parentOrder.appendOrderIds) {
+                    parentOrder.appendOrderIds = parentOrder.appendOrderIds.filter(function (aid) {
+                        return aid !== item.id;
+                    });
+                }
+            }
+            if (item.appendOrderIds && item.appendOrderIds.length > 0) {
+                // 删除原始订单：所有追加单的 parentOrderTitle 更新为「原单已删除」
+                item.appendOrderIds.forEach(function (appendId) {
+                    var appendOrder = history.find(function (h) { return h.id === appendId; });
+                    if (appendOrder) {
+                        appendOrder.parentOrderTitle = '原单已删除';
+                    }
+                });
             }
         });
-        
+
+        // 放入回收站 + 云端删除墓碑（必须在从 history 移除之前完成）
+        itemsToDelete.forEach(function (item) {
+            if (!item) return;
+            moveToTrash(item);
+            var extId = item.external_id || mgEnsureExternalId(item);
+            if (extId) {
+                markExternalIdDeleted(extId);
+                mgPushDeletedExternalIdToCloud(extId).catch(function (err) {
+                    console.warn('写入云端删除墓碑失败（批量删除）:', err);
+                });
+            }
+        });
+
+        // 从 history 移除
+        history = history.filter(item => !selectedHistoryIds.has(item.id));
+        const deletedCount = itemsToDelete.length;
+        selectedHistoryIds.clear();
+
         // 保存数据
         saveData();
         // 重新渲染
@@ -16952,7 +16449,7 @@ function batchDeleteRecord() {
         // 退出批量操作模式
         exitRecordBatchMode();
         // 显示提示
-        showGlobalToast(`已删除 ${selectedHistoryIds.size} 条记录`);
+        showGlobalToast(`已删除 ${deletedCount} 条记录`);
     }
 }
 
@@ -17013,88 +16510,12 @@ function confirmBatchChangeClient() {
     
     selectedHistoryIds.clear();
     saveData();
-    applyHistoryFilters();
     if (document.getElementById('recordContainer')) {
         applyRecordFilters();
     }
     exitRecordBatchMode();
     showGlobalToast('已修改 ' + modifiedCount + ' 条记录的单主 ID');
     closeBatchChangeClientModal();
-}
-
-// 批量删除历史记录
-function batchDeleteHistory() {
-    if (selectedHistoryIds.size === 0) {
-        alert('请先选择要删除的历史记录！');
-        return;
-    }
-    
-    if (!confirm(`确定要删除选中的 ${selectedHistoryIds.size} 条历史记录吗？`)) {
-        return;
-    }
-    
-    // 保存要删除的企划（用于云端同步）
-    const itemsToDelete = history.filter(item => selectedHistoryIds.has(Number(item && item.id)));
-
-    // 追加单关联处理：批量删除
-    itemsToDelete.forEach(function (item) {
-        if (!item) return;
-        if (item.parentOrderId) {
-            // 删除追加单：从原单的 appendOrderIds 中移除
-            var parentOrder = history.find(function (h) { return h.id === item.parentOrderId; });
-            if (parentOrder && parentOrder.appendOrderIds) {
-                parentOrder.appendOrderIds = parentOrder.appendOrderIds.filter(function (aid) {
-                    return aid !== item.id;
-                });
-            }
-        }
-        if (item.appendOrderIds && item.appendOrderIds.length > 0) {
-            // 删除原始订单：所有追加单的 parentOrderTitle 更新为「原单已删除」
-            item.appendOrderIds.forEach(function (appendId) {
-                var appendOrder = history.find(function (h) { return h.id === appendId; });
-                if (appendOrder) {
-                    appendOrder.parentOrderTitle = '原单已删除';
-                }
-            });
-        }
-    });
-
-    history = history.filter(item => !selectedHistoryIds.has(Number(item && item.id)));
-    selectedHistoryIds.clear();
-    saveData();
-    
-    // 重新应用当前筛选条件
-    applyHistoryFilters();
-    if (document.getElementById('recordContainer')) {
-        applyRecordFilters();
-    }
-    
-    // 先标记本地删除墓碑，防止云端旧数据回流
-    itemsToDelete.forEach(function (item) {
-        if (!item) return;
-        var extId = item.external_id || mgEnsureExternalId(item);
-        if (!extId) return;
-        markExternalIdDeleted(extId);
-        mgPushDeletedExternalIdToCloud(extId).catch(function (err) {
-            console.warn('写入云端删除墓碑失败（批量删除）:', err);
-        });
-    });
-
-    // 云端同步：如果已启用云端模式，同步删除云端企划
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
-        itemsToDelete.forEach(item => {
-            mgCloudDeleteOrder(item).then(function (ok) {
-                if (!ok) {
-                    alert('删除未同步到云端，请检查网络后重试同步。');
-                }
-            }).catch(err => {
-                console.error('云端删除企划失败:', err);
-                alert('删除未同步到云端，请检查网络后重试同步。');
-            });
-        });
-    }
-    
-    alert('已删除选中的历史记录！');
 }
 
 // 编辑历史记录（加载到计算页）
@@ -17906,7 +17327,6 @@ function deleteHistoryItem(id) {
     history = history.filter(item => item.id !== id);
     selectedHistoryIds.delete(id);
     saveData();
-    applyHistoryFilters();
     // 同步刷新记录页
     if (document.getElementById('recordContainer')) {
         applyRecordFilters();
@@ -17934,81 +17354,16 @@ function deleteHistoryItem(id) {
     }
 }
 
-// 导出历史记录为Excel
-function exportHistoryToExcel() {
+// 导出历史记录为Excel。可选传入 preFilteredData（已筛选好的数据），未传则导出全部。
+function exportHistoryToExcel(preFilteredData) {
     if (history.length === 0) {
         alert('暂无历史记录可导出！');
         return;
     }
-    
-    // 获取当前筛选后的历史记录
-    const searchInput = document.getElementById('historySearchInput');
-    const timeFilterEl = document.getElementById('historyTimeFilter');
-    const startDateEl = document.getElementById('historyStartDate');
-    const endDateEl = document.getElementById('historyEndDate');
-    const minPriceEl = document.getElementById('historyMinPrice');
-    const maxPriceEl = document.getElementById('historyMaxPrice');
-    
-    const searchKeyword = searchInput ? searchInput.value.trim() : '';
-    const timeFilter = timeFilterEl ? timeFilterEl.value : 'all';
-    const startDate = startDateEl ? startDateEl.value : '';
-    const endDate = endDateEl ? endDateEl.value : '';
-    const minPrice = minPriceEl ? minPriceEl.value : '';
-    const maxPrice = maxPriceEl ? maxPriceEl.value : '';
-    
+
     // 应用筛选获取要导出的数据
-    let exportData = history;
-    
-    // 应用搜索关键词
-    if (searchKeyword) {
-        const keywordLower = searchKeyword.toLowerCase();
-        exportData = exportData.filter(item => {
-            return (
-                (item.clientId && item.clientId.toLowerCase().includes(keywordLower)) ||
-                (item.contact && item.contact.toLowerCase().includes(keywordLower)) ||
-                (item.deadline && item.deadline.toLowerCase().includes(keywordLower)) ||
-                (item.agreedAmount != null && item.agreedAmount.toString().includes(keywordLower)) ||
-                (item.finalTotal && item.finalTotal.toString().includes(keywordLower))
-            );
-        });
-    }
-    
-    // 应用时间筛选
-    if (timeFilter && timeFilter !== 'all') {
-        const now = new Date();
-        exportData = exportData.filter(item => {
-            const itemDate = new Date(item.timestamp);
-            switch (timeFilter) {
-                case 'today':
-                    return itemDate.toDateString() === now.toDateString();
-                case 'week':
-                    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    return itemDate >= weekAgo;
-                case 'month':
-                    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    return itemDate >= monthAgo;
-                case 'custom':
-                    const start = startDate ? new Date(startDate) : null;
-                    const end = endDate ? new Date(endDate) : null;
-                    if (start) start.setHours(0, 0, 0, 0);
-                    if (end) end.setHours(23, 59, 59, 999);
-                    if (start && itemDate < start) return false;
-                    if (end && itemDate > end) return false;
-                    return true;
-                default:
-                    return true;
-            }
-        });
-    }
-    
-    // 应用价格筛选
-    if (minPrice) {
-        exportData = exportData.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) >= parseFloat(minPrice));
-    }
-    if (maxPrice) {
-        exportData = exportData.filter(item => ((item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0) <= parseFloat(maxPrice));
-    }
-    
+    let exportData = Array.isArray(preFilteredData) ? preFilteredData : history.slice();
+
     if (exportData.length === 0) {
         alert('当前筛选条件下没有可导出的历史记录！');
         return;
