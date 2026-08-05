@@ -7579,7 +7579,8 @@ function addProduct() {
         sameModel: true, // 默认同模为是
         crossOrderSameModel: false, // 跨订单同模默认为否
         extraFeeIds: [],
-        processes: {}
+        processes: {},
+        processFeeMode: 'perQty' // 工艺费计费方式：perQty=按数量 | once=只收一次
     };
 
     products.push(product);
@@ -7645,14 +7646,18 @@ function renderGift(gift) {
             </div>
         </div>
         <div id="giftFormOptions-${gift.id}"></div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>工艺类型</label>
-                <div id="giftProcessOptions-${gift.id}"></div>
+        <div class="form-group">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
+                <label style="margin:0;white-space:nowrap;">工艺类型</label>
+                <select id="giftProcessFeeMode-${gift.id}" onchange="updateGift(${gift.id}, 'processFeeMode', this.value)" style="width:120px;flex-shrink:0;">
+                    <option value="perQty" ${gift.processFeeMode !== 'once' ? 'selected' : ''}>按制品数</option>
+                    <option value="once" ${gift.processFeeMode === 'once' ? 'selected' : ''}>只收一次</option>
+                </select>
             </div>
+            <div id="giftProcessOptions-${gift.id}"></div>
         </div>
     `;
-    
+
     container.appendChild(giftElement);
     
     // 初始化制品类型搜索下拉组件
@@ -7696,7 +7701,8 @@ function addGift() {
         sameModel: true, // 默认同模为是
         crossOrderSameModel: false, // 跨订单同模默认为否
         extraFeeIds: [],
-        processes: {}
+        processes: {},
+        processFeeMode: 'perQty' // 工艺费计费方式：perQty=按数量 | once=只收一次
     };
     
     gifts.push(gift);
@@ -7764,14 +7770,18 @@ function renderProduct(product) {
             </div>
         </div>
         <div id="formOptions-${product.id}"></div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>工艺类型</label>
-                <div id="processOptions-${product.id}"></div>
+        <div class="form-group">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
+                <label style="margin:0;white-space:nowrap;">工艺类型</label>
+                <select id="productProcessFeeMode-${product.id}" onchange="updateProduct(${product.id}, 'processFeeMode', this.value)" style="width:120px;flex-shrink:0;">
+                    <option value="perQty" ${product.processFeeMode !== 'once' ? 'selected' : ''}>按制品数</option>
+                    <option value="once" ${product.processFeeMode === 'once' ? 'selected' : ''}>只收一次</option>
+                </select>
             </div>
+            <div id="processOptions-${product.id}"></div>
         </div>
     `;
-    
+
     container.appendChild(productElement);
     
     // 初始化制品类型搜索下拉组件
@@ -8172,9 +8182,10 @@ function convertProductToGift(productId) {
         extraFeeIds: product.extraFeeIds || [],
         processes: product.processes || {},
         dailyPlan: product.dailyPlan || [],
-        nodeDailyPlan: product.nodeDailyPlan || []
+        nodeDailyPlan: product.nodeDailyPlan || [],
+        processFeeMode: product.processFeeMode || 'perQty'
     };
-    
+
     gifts.push(gift);
     
     // 移除制品元素并渲染赠品
@@ -8205,9 +8216,10 @@ function convertGiftToProduct(giftId) {
         extraFeeIds: gift.extraFeeIds || [],
         processes: gift.processes || {},
         dailyPlan: gift.dailyPlan || [],
-        nodeDailyPlan: gift.nodeDailyPlan || []
+        nodeDailyPlan: gift.nodeDailyPlan || [],
+        processFeeMode: gift.processFeeMode || 'perQty'
     };
-    
+
     products.push(product);
     
     // 移除赠品元素并渲染制品
@@ -8558,14 +8570,16 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                     const processLayers = processChoice.layers || 1;
                     // 工艺单价 = 工艺价格（每层） * 层数
                     const processUnitPrice = processPricePerLayer * processLayers;
-                    // 工艺总价 = 工艺单价 * 制品数量
-                    const processFee = processUnitPrice * product.quantity;
+                    // 计费件数：只收一次时为 1，否则为制品数量
+                    const processChargeQty = product.processFeeMode === 'once' ? 1 : (product.quantity || 1);
+                    // 工艺总价 = 工艺单价 * 计费件数
+                    const processFee = processUnitPrice * processChargeQty;
                     totalProcessFee += processFee;
                     processDetails.push({
                         name: processSetting.name,
                         unitPrice: processUnitPrice,
                         layers: processLayers,
-                        quantity: product.quantity,
+                        quantity: processChargeQty,
                         fee: processFee
                     });
                 }
@@ -8619,6 +8633,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             productTotal: productTotal,
             processDetails: processDetails,
             totalProcessFee: totalProcessFee,
+            // 工艺费计费方式：perQty=按数量 | once=只收一次
+            processFeeMode: product.processFeeMode || 'perQty',
             extraFees: extraFeeList.map(function (x) { return { id: x.id, name: x.name, amount: Number(x.amount) || 0 }; }),
             totalExtraFee: totalExtraFee,
             // 跨订单同模标记
@@ -8753,14 +8769,16 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                     const processLayers = processChoice.layers || 1;
                     // 工艺单价 = 工艺价格（每层） * 层数
                     const processUnitPrice = processPricePerLayer * processLayers;
-                    // 工艺总价 = 工艺单价 * 赠品数量
-                    const processFee = processUnitPrice * gift.quantity;
+                    // 计费件数：只收一次时为 1，否则为赠品数量
+                    const processChargeQty = gift.processFeeMode === 'once' ? 1 : (gift.quantity || 1);
+                    // 工艺总价 = 工艺单价 * 计费件数
+                    const processFee = processUnitPrice * processChargeQty;
                     totalProcessFee += processFee;
                     processDetails.push({
                         name: processSetting.name,
                         unitPrice: processUnitPrice,
                         layers: processLayers,
-                        quantity: gift.quantity,
+                        quantity: processChargeQty,
                         fee: processFee
                     });
                 }
@@ -8828,7 +8846,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             productId: giftTypeId,
             // 跨订单同模信息
             crossOrderSameModel: !!gift.crossOrderSameModel,
-            crossOrderSameModelCount: crossOrderSameModelCount
+            crossOrderSameModelCount: crossOrderSameModelCount,
+            // 工艺费计费方式：perQty=按数量 | once=只收一次
+            processFeeMode: gift.processFeeMode || 'perQty'
         };
         // 赠品日计划（排单用，可选）
         if (Array.isArray(gift.dailyPlan) && gift.dailyPlan.length > 0) {
@@ -9311,8 +9331,9 @@ function generateQuote() {
                         const processesInRow = processes.slice(i, i + 2);
                         // 累计层数（仅当前行的工艺）
                         const totalLayers = processesInRow.reduce((sum, p) => sum + p.layers, 0);
-                        // 计费数量 = 总层数 × 件数
-                        const chargeQuantity = totalLayers * item.quantity;
+                        // 计费数量 = 总层数 × 计费件数（只收一次时件数为1）
+                        const chargeQty = processesInRow[0].quantity || 1;
+                        const chargeQuantity = totalLayers * chargeQty;
                         // 总费用（仅当前行的工艺）
                         const totalFee = processesInRow.reduce((sum, p) => sum + p.fee, 0);
                         // 工艺名称（格式：工艺名×层数、工艺名×层数，最多2个）
@@ -9474,8 +9495,9 @@ function generateQuote() {
                             const processesInRow = processes.slice(i, i + 2);
                             // 累计层数（仅当前行的工艺）
                             const totalLayersGift = processesInRow.reduce((sum, p) => sum + p.layers, 0);
-                            // 计费数量 = 总层数 × 件数
-                            const chargeQuantityGift = totalLayersGift * item.quantity;
+                            // 计费数量 = 总层数 × 计费件数（只收一次时件数为1）
+                            const chargeQtyGift = processesInRow[0].quantity || 1;
+                            const chargeQuantityGift = totalLayersGift * chargeQtyGift;
                             // 总费用（赠品显示原价）
                             const totalFeeGift = processesInRow.reduce((sum, p) => sum + p.fee, 0);
                             // 工艺名称（格式：工艺名×层数、工艺名×层数，最多2个）
@@ -12688,7 +12710,8 @@ async function mgLoadIncomingProjectToCalculator(projectId) {
             quantity: it.quantity || 1,
             sameModel: true,
             extraFeeIds: [],
-            processes: {}
+            processes: {},
+            processFeeMode: 'perQty'
         };
         products.push(product);
         renderProduct(product);
@@ -16725,7 +16748,8 @@ function editHistoryItem(id) {
                     sameModel: productPrice.sameModelCount > 0,
                     crossOrderSameModel: !!productPrice.crossOrderSameModel, // 恢复跨订单同模状态
                     extraFeeIds: Array.isArray(productPrice.extraFees) ? productPrice.extraFees.map(function (x) { return x.id; }) : [],
-                    processes: {}
+                    processes: {},
+                    processFeeMode: productPrice.processFeeMode || 'perQty' // 恢复工艺费计费方式
                 };
                 
                 // 恢复工艺信息（processes 以工艺设置 id 为 key，值为 { id, layers, price }）
@@ -16794,7 +16818,8 @@ function editHistoryItem(id) {
                     quantity: giftPrice.quantity || 1,
                     sameModel: giftPrice.sameModelCount > 0,
                     extraFeeIds: Array.isArray(giftPrice.extraFees) ? giftPrice.extraFees.map(function (x) { return x.id; }) : [],
-                    processes: {}
+                    processes: {},
+                    processFeeMode: giftPrice.processFeeMode || 'perQty' // 恢复工艺费计费方式
                 };
                 
                 // 恢复工艺信息（processes 以工艺设置 id 为 key，值为 { id, layers, price }）
@@ -19268,7 +19293,7 @@ function smartParseOrderRemark() {
                 if (parsed) {
                     if (isGiftSection) {
                         giftIdCounter++;
-                        var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity };
+                        var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity, processFeeMode: 'perQty' };
                         gifts.push(gift);
                         renderGift(gift);
                         parsedGiftCount++;
@@ -19281,7 +19306,8 @@ function smartParseOrderRemark() {
                             quantity: parsed.quantity,
                             sameModel: true,
                             hasBackground: parsed.hasBackground,
-                            processes: {}
+                            processes: {},
+                            processFeeMode: 'perQty'
                         };
                         // 添加工艺
                         if (parsed.processes.length > 0) {
@@ -19311,7 +19337,7 @@ function smartParseOrderRemark() {
         if (parsed) {
             if (isGiftSection) {
                 giftIdCounter++;
-                var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity };
+                var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity, processFeeMode: 'perQty' };
                 gifts.push(gift);
                 renderGift(gift);
                 parsedGiftCount++;
@@ -19324,7 +19350,8 @@ function smartParseOrderRemark() {
                     quantity: parsed.quantity,
                     sameModel: true,
                     hasBackground: parsed.hasBackground,
-                    processes: {}
+                    processes: {},
+                    processFeeMode: 'perQty'
                 };
                 if (parsed.processes.length > 0) {
                     parsed.processes.forEach(function(pid) {
