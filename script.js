@@ -18758,34 +18758,28 @@ function mgBuildProjectSummary(item) {
 
     if (mainParts.length === 0 && extraParts.length === 0) return '';
 
-    // 拼接主字段：企划名 » 原作 - 角色
-    // 注意：» 仅在企划名后跟原作/角色时才显示，避免「企划名 » · 附加字段」的尴尬格式
-    var mainSummary = '';
-    if (mainParts.length > 0) {
-        var titlePart = '';
-        var ipPart = '';
-        var rolePart = '';
-        mainParts.forEach(function (p) {
-            if (p.name === '企划名') titlePart = p.value;
-            else if (p.name === '原作（IP）') ipPart = p.value;
-            else if (p.name === '角色') rolePart = p.value;
-        });
-        var titleText = titlePart ? escapeText(titlePart) : '';
-        var rightPart = [ipPart, rolePart].filter(Boolean).map(escapeText).join(' - ');
-        if (titleText && rightPart) {
-            mainSummary = titleText + ' » ' + rightPart;
-        } else if (titleText) {
-            mainSummary = titleText;
-        } else if (rightPart) {
-            mainSummary = rightPart;
-        }
-    }
-
-    // 拼接附加字段：只显示值，用 ` · ` 分隔
+    // 拼接主字段与附加字段：企划名后面总是用 » 连接后续内容
+    var titlePart = '';
+    var ipPart = '';
+    var rolePart = '';
+    mainParts.forEach(function (p) {
+        if (p.name === '企划名') titlePart = p.value;
+        else if (p.name === '原作（IP）') ipPart = p.value;
+        else if (p.name === '角色') rolePart = p.value;
+    });
+    var titleText = titlePart ? escapeText(titlePart) : '';
+    var rightPart = [ipPart, rolePart].filter(Boolean).map(escapeText).join(' - ');
     var extraSummary = extraParts.map(function (p) { return escapeText(p.value); }).join(' · ');
 
-    // 主字段和附加字段之间用 ` · ` 连接
-    return [mainSummary, extraSummary].filter(Boolean).join(' · ');
+    // 后续内容 = [原作 - 角色, 附加字段].filter(Boolean).join(' · ')
+    var afterArrow = [rightPart, extraSummary].filter(Boolean).join(' · ');
+    if (titleText && afterArrow) {
+        return titleText + ' » ' + afterArrow;
+    } else if (titleText) {
+        return titleText + ' »';
+    } else {
+        return afterArrow;
+    }
 }
 
 // 身份默认预置（身份管理弹窗 fallback 时用到）
