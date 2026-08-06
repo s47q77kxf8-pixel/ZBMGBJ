@@ -4002,6 +4002,28 @@ html.theme-dark .setting-hint strong {
     user-select: none;
 }
 
+/* 平台手续费：取整开关 */
+.coefficient-settings .platform-fee-round-label {
+    flex: 0 0 auto !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    line-height: 1;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.coefficient-settings .platform-fee-round-label input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--accent-color, #4f46e5);
+}
+
 /* 系数设置删除按钮 */
 .coefficient-settings .mb-2.d-flex.items-center.gap-2 .btn.danger.small {
     flex: 0 0 auto !important;

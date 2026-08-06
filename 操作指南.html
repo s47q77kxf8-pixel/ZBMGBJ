@@ -150,6 +150,99 @@
         html.theme-dark .toc a:hover, html.theme-dark .toc a:active { background: rgba(255,255,255,.06); }
         .toc li ul a { font-size: 0.9em; color: var(--text-muted); padding: 0.3rem 0; }
         html.theme-dark .toc li ul a { color: #a1a1aa; }
+        /* 搜索框样式 */
+        .search-bar {
+            position: relative;
+            margin: 0.5rem 0 0;
+        }
+        .search-input-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .search-input {
+            width: 100%;
+            min-height: var(--tap-min);
+            padding: 0.5rem 2.5rem 0.5rem 0.9rem;
+            border: 1px solid rgba(0,0,0,.12);
+            border-radius: 8px;
+            background: var(--card);
+            color: var(--text);
+            font-size: 0.95em;
+            font-family: inherit;
+            outline: none;
+            -webkit-appearance: none;
+            transition: border-color .15s;
+        }
+        .search-input:focus { border-color: rgba(0,0,0,.35); }
+        html.theme-dark .search-input { border-color: rgba(255,255,255,.18); }
+        html.theme-dark .search-input:focus { border-color: rgba(255,255,255,.5); }
+        .search-clear {
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 28px; height: 28px;
+            display: none;
+            align-items: center; justify-content: center;
+            border: none; background: transparent;
+            color: var(--text-muted);
+            font-size: 1.1rem; line-height: 1;
+            cursor: pointer;
+            border-radius: 6px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .search-clear:hover, .search-clear:active { background: rgba(0,0,0,.06); color: var(--text); }
+        html.theme-dark .search-clear:hover, html.theme-dark .search-clear:active { background: rgba(255,255,255,.1); color: var(--text); }
+        .search-clear.visible { display: flex; }
+        .search-status {
+            margin: 0.4rem 0 0;
+            font-size: 0.85em;
+            color: var(--text-muted);
+            min-height: 1.2em;
+        }
+        /* 搜索高亮 */
+        mark.search-hit {
+            background: rgba(255, 213, 79, .55);
+            color: inherit;
+            padding: 0 1px;
+            border-radius: 2px;
+        }
+        html.theme-dark mark.search-hit { background: rgba(255, 180, 0, .45); color: inherit; }
+        /* 搜索过滤：不匹配的章节隐藏 */
+        .search-hidden { display: none !important; }
+        /* 代码块/示例 */
+        pre {
+            background: rgba(0,0,0,.04);
+            border: 1px solid rgba(0,0,0,.08);
+            border-radius: 6px;
+            padding: 0.6rem 0.8rem;
+            margin: 0.5rem 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.88em;
+            color: var(--text);
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        html.theme-dark pre {
+            background: rgba(255,255,255,.06);
+            border-color: rgba(255,255,255,.12);
+        }
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.9em;
+            background: rgba(0,0,0,.05);
+            padding: 0.1em 0.3em;
+            border-radius: 3px;
+        }
+        html.theme-dark code { background: rgba(255,255,255,.1); }
+        /* 章节高亮跳转目标 */
+        .search-target { animation: searchFlash 1.2s ease-out; }
+        @keyframes searchFlash {
+            0% { background: rgba(255, 213, 79, .35); }
+            100% { background: transparent; }
+        }
     </style>
 </head>
 <body>
@@ -158,6 +251,13 @@
         <div class="page-header">
             <h1>Metton · 接单助手 · 操作指南</h1>
             <button type="button" class="toc-trigger" id="tocTrigger" aria-label="打开目录">目录</button>
+        </div>
+        <div class="search-bar">
+            <div class="search-input-wrap">
+                <input type="search" class="search-input" id="guideSearch" placeholder="搜索本指南（如：定金、撤单、工艺费…）" autocomplete="off" enterkeyhint="search" />
+                <button type="button" class="search-clear" id="searchClear" aria-label="清空搜索">×</button>
+            </div>
+            <div class="search-status" id="searchStatus" aria-live="polite"></div>
         </div>
     </header>
 
@@ -195,6 +295,12 @@
                         <li><a href="#s21">二十一、追加单关联功能</a></li>
                         <li><a href="#s22">二十二、制品顺序调整</a></li>
                         <li><a href="#s23">二十三、回收站优化</a></li>
+                        <li><a href="#s24">二十四、工艺费计费方式</a></li>
+                        <li><a href="#s25">二十五、多货币支持</a></li>
+                        <li><a href="#s26">二十六、数据快照与恢复</a></li>
+                        <li><a href="#s27">二十七、文件夹名生成规则</a></li>
+                        <li><a href="#s28">二十八、平台手续费取整开关</a></li>
+                        <li><a href="#s29">二十九、按字数收费</a></li>
                     </ul>
                 </li>
             </ul>
@@ -223,6 +329,188 @@
         drawer.querySelectorAll('.toc a').forEach(function(a) {
             a.addEventListener('click', function() { setTimeout(closeToc, 150); });
         });
+    })();
+
+    // 操作指南搜索功能
+    (function(){
+      function initSearch(){
+        var input = document.getElementById('guideSearch');
+        var clearBtn = document.getElementById('searchClear');
+        var status = document.getElementById('searchStatus');
+        if (!input || !status) return;
+
+        // 找到正文区域所有顶级节点（header 之后到 </body> 之前的 h2/h3/p/ul/ol/div/table 等）
+        // 章节定义：每个 h2 开启一个新章节，章节包含从该 h2 到下一个 h2（或 foot-note）之前的所有兄弟节点
+        var header = document.querySelector('.guide-header');
+        var sections = []; // 每项: { h2: element, nodes: [元素列表], text: '章节内全部文本' }
+        var part1Anchor = null;
+
+        // 收集 body 直接子节点中的内容节点
+        var bodyChildren = Array.prototype.slice.call(document.body.children);
+        bodyChildren.forEach(function(node, idx){
+            if (node === header) return;
+            if (node.tagName === 'SCRIPT') return;
+            if (node.tagName === 'H2') {
+                sections.push({ h2: node, nodes: [node], text: '', title: node.textContent.trim() });
+            } else if (sections.length > 0) {
+                sections[sections.length - 1].nodes.push(node);
+            } else if (node.classList && node.classList.contains('toc-overlay')) {
+                // 跳过
+            } else if (node.tagName === 'ASIDE') {
+                // 跳过目录抽屉
+            }
+        });
+
+        // 也把"第一部分：简易上手"作为 section 起点，前面无 h2 的内容（如 h3 1.打开应用）归入
+        // 上面的逻辑已处理：遇到第一个 h2 前的内容会被忽略，但 part1 是 h2 所以正常
+
+        // 为每个 section 提取纯文本
+        sections.forEach(function(s){
+            s.text = s.nodes.map(function(n){ return n.textContent || ''; }).join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        });
+
+        var totalSections = sections.length;
+
+        // 高亮关键词：在指定元素内递归遍历文本节点，包裹匹配的文本
+        function highlightInElement(el, keyword) {
+            var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+            var textNodes = [];
+            var node;
+            while ((node = walker.nextNode())) {
+                // 跳过 script/style
+                var parent = node.parentNode;
+                if (!parent) continue;
+                var ptag = parent.tagName;
+                if (ptag === 'SCRIPT' || ptag === 'STYLE') continue;
+                // 跳过已高亮的
+                if (parent.tagName === 'MARK' && parent.classList.contains('search-hit')) continue;
+                textNodes.push(node);
+            }
+            var kw = keyword.toLowerCase();
+            textNodes.forEach(function(tn){
+                var text = tn.nodeValue;
+                var lower = text.toLowerCase();
+                var idx = lower.indexOf(kw);
+                if (idx === -1) return;
+                // 拆分并替换
+                var frag = document.createDocumentFragment();
+                var remaining = text;
+                var remainingLower = lower;
+                var pos = 0;
+                while (true) {
+                    var hitIdx = remaining.toLowerCase().indexOf(kw);
+                    if (hitIdx === -1) {
+                        if (remaining) frag.appendChild(document.createTextNode(remaining));
+                        break;
+                    }
+                    if (hitIdx > 0) frag.appendChild(document.createTextNode(remaining.slice(0, hitIdx)));
+                    var mark = document.createElement('mark');
+                    mark.className = 'search-hit';
+                    mark.textContent = remaining.slice(hitIdx, hitIdx + keyword.length);
+                    frag.appendChild(mark);
+                    remaining = remaining.slice(hitIdx + keyword.length);
+                }
+                tn.parentNode.replaceChild(frag, tn);
+            });
+        }
+
+        function clearHighlights() {
+            var marks = document.querySelectorAll('mark.search-hit');
+            marks.forEach(function(m){
+                var parent = m.parentNode;
+                if (!parent) return;
+                // 合并相邻文本节点
+                var text = m.textContent;
+                var tn = document.createTextNode(text);
+                parent.replaceChild(tn, m);
+            });
+            // 清理后规范化（合并相邻文本节点）
+            sections.forEach(function(s){
+                s.nodes.forEach(function(n){ if (n.normalize) n.normalize(); });
+            });
+        }
+
+        function doSearch(rawKeyword) {
+            var keyword = (rawKeyword || '').trim();
+            clearBtn.classList.toggle('visible', keyword.length > 0);
+
+            // 清理高亮
+            clearHighlights();
+
+            if (!keyword) {
+                // 恢复显示所有
+                sections.forEach(function(s){
+                    s.nodes.forEach(function(n){ n.classList.remove('search-hidden'); });
+                });
+                status.textContent = '';
+                return;
+            }
+
+            var kw = keyword.toLowerCase();
+            var matched = 0;
+            var firstMatchH2 = null;
+            sections.forEach(function(s){
+                var hit = s.text.indexOf(kw) !== -1 || s.title.toLowerCase().indexOf(kw) !== -1;
+                s.nodes.forEach(function(n){
+                    if (hit) n.classList.remove('search-hidden');
+                    else n.classList.add('search-hidden');
+                });
+                if (hit) {
+                    matched++;
+                    if (!firstMatchH2) firstMatchH2 = s.h2;
+                    // 在匹配章节内高亮
+                    s.nodes.forEach(function(n){ highlightInElement(n, keyword); });
+                }
+            });
+
+            if (matched > 0) {
+                status.textContent = '找到 ' + matched + ' / ' + totalSections + ' 个匹配章节';
+            } else {
+                status.textContent = '未找到匹配内容';
+            }
+        }
+
+        var debounceTimer = null;
+        input.addEventListener('input', function(e){
+            var val = e.target.value;
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(function(){ doSearch(val); }, 120);
+        });
+
+        input.addEventListener('keydown', function(e){
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(debounceTimer);
+                doSearch(input.value);
+                // 滚动到第一个匹配章节
+                var firstVisible = document.querySelector('h2:not(.search-hidden)');
+                if (firstVisible) {
+                    firstVisible.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    firstVisible.classList.add('search-target');
+                    setTimeout(function(){ firstVisible.classList.remove('search-target'); }, 1200);
+                }
+            } else if (e.key === 'Escape') {
+                if (input.value) {
+                    input.value = '';
+                    doSearch('');
+                } else {
+                    input.blur();
+                }
+            }
+        });
+
+        clearBtn.addEventListener('click', function(){
+            input.value = '';
+            doSearch('');
+            input.focus();
+        });
+      } // end initSearch
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSearch);
+      } else {
+        initSearch();
+      }
     })();
     </script>
 
@@ -317,19 +605,29 @@
     <h3>4.3 填写内容</h3>
     <div class="table-wrap"><table>
         <tr><th>区块</th><th>内容</th></tr>
-        <tr><td>单主信息</td><td>单主 ID、联系方式、下单/开始/截稿时间；「备注（智能提取）」打开备注弹窗，粘贴单主备注后点「智能提取」可自动识别制品与赠品</td></tr>
+        <tr><td>单主信息</td><td>单主 ID、联系方式、下单/开始/截稿时间；「备注（智能提取）」打开备注弹窗，粘贴单主备注后点「智能提取」可自动识别制品与赠品；填开始时间+工期可自动算截稿</td></tr>
+        <tr><td>档期占位</td><td>可设置预计制品数，方便预留时间</td></tr>
         <tr><td>设置选项</td><td>用途、加急、同模、折扣、平台费；右侧「模版填表」加载模板</td></tr>
+        <tr><td>每制品增加</td><td>其他费用，可多选，为每个制品添加额外费用</td></tr>
+        <tr><td>平台费与定金</td><td>选择平台后自动匹配手续费；可设置是否需要定金及定金比例</td></tr>
         <tr><td>其他费用</td><td>抠图费等，预设或自定义</td></tr>
-        <tr><td>制品/赠品</td><td>类型、单双面、数量、同模、工艺</td></tr>
+        <tr><td>制品/赠品</td><td>类型、单双面、数量、同模、工艺；赠品在小票标为「赠品」可显示划线价</td></tr>
     </table></div>
     <h3>4.4 底部按钮</h3>
     <p><strong>报价</strong>：生成并加入（编辑模式下覆盖原单）。<strong>另存为新单</strong>：仅编辑模式显示。<strong>保存为模板</strong>：输入名称保存当前组合。</p>
+    <p><strong>编辑模式保存选择弹窗</strong>：在编辑模式下点击「报价」或从小票页点「排单」时，会弹出选择框：<strong>「覆盖原企划」</strong> 直接覆盖原单 / <strong>「另存为新排单」</strong> 保留原单另存新单。该弹窗用于防止误覆盖，配合数据快照功能（见 <a href="#s26">二十六</a>）双重保障数据安全。</p>
 
     <h2 id="s5">五、小票抽屉</h2>
     <h3>5.1 如何打开</h3>
     <p>计算抽屉点「报价」后自动打开；或排单卡片「小票」。</p>
     <h3>5.2 顶部操作</h3>
-    <p><strong>排单</strong>：保存到排单列表。<strong>主题</strong>：下拉选主题。<strong>小票设置</strong>：打开设置面板。<strong>存图</strong>：导出图片。</p>
+    <p><strong>排单</strong>：保存到排单列表。<strong>主题</strong>：下拉选主题。<strong>小票设置</strong>：打开设置面板。<strong>复制</strong>：将小票复制为图片。<strong>存图</strong>：导出图片。<strong>返回计算页</strong>：关闭小票抽屉并打开计算抽屉，保留当前数据用于修改报价；编辑历史单时可用此按钮回到计算页调整后再保存。</p>
+    <h3>5.3 报价金额 / 需付定金（顶部预览）</h3>
+    <p>顶部展示 <strong>报价金额（不含平台费）</strong>。若在计算页选择「需要定金」，顶部会在报价金额下方展示 <strong>需付定金</strong>（按定金比例实时计算，样式与报价金额一致）。</p>
+    <h3>5.4 约定实收</h3>
+    <p>可填写与单主约定的金额；提供快速取整按钮：<strong>四舍五入</strong> / <strong>向上取整</strong> / <strong>向下取整</strong> / <strong>取整到十</strong> / <strong>取整到百</strong>。修改约定实收后，需付定金会同步更新。</p>
+    <h3>5.5 已收定金</h3>
+    <p>点击 <strong>「确认已收定金」</strong> 按钮后，可输入已收定金金额，支持快速取整操作。可点击「取消」按钮取消已收定金的确认。</p>
 
     <h2 id="s6">六、小票设置面板（底部弹出）</h2>
     <p>小票抽屉内点「小票设置」打开。三个标签：<strong>设置</strong>（头图/尾图/标题等）、<strong>主题</strong>（边框/底纹）、<strong>字体</strong>。底部：清除设置、保存设置。</p>
@@ -392,7 +690,24 @@
         <li><strong>移动端</strong>：筛选采用抽屉式，点击「筛选」按钮打开。</li>
     </ol>
 
-    <h2 id="s16">十六、统计页隐私保护</h2>
+    <h2 id="s16">十六、云端同步功能</h2>
+    <p><strong>登录与注册</strong>：打开 <strong>login.html</strong> 页面进行账户管理，支持新用户注册和现有用户登录，登录后可使用云端同步功能。</p>
+    <p><strong>密码重置</strong>：打开 <strong>reset-password.html</strong> 页面，按照提示步骤重置密码。</p>
+    <p><strong>数据同步</strong>：</p>
+    <ul>
+        <li><strong>上传设置</strong>：将本地设置上传到云端，实现跨设备同步</li>
+        <li><strong>从云端恢复</strong>：将云端设置恢复到本地，覆盖本地数据</li>
+        <li><strong>企划同步</strong>：支持企划数据的云端存储与恢复</li>
+        <li><strong>批量删除同步</strong>：记录页批量删除时，云端数据也会同步删除</li>
+    </ul>
+    <p><strong>注意事项</strong>：云端同步需要联网，同步过程中请保持网络连接稳定，首次同步可能需要较长时间，取决于数据量大小。</p>
+
+    <h2 id="s17">十七、客户端页面</h2>
+    <p><strong>如何打开</strong>：直接打开 <strong>client.html</strong> 页面。</p>
+    <p><strong>功能说明</strong>：提供给客户填写需求的表单页面，客户可直接填写详细需求，包括制品类型、数量、特殊要求等，简化沟通流程，减少信息传递误差。</p>
+    <p><strong>使用方法</strong>：客户打开页面后按照表单提示填写需求信息，填写完成后可复制或截图发给美工，美工可根据客户填写的需求进行报价和排单。</p>
+
+    <h2 id="s18">十八、统计页隐私保护</h2>
     <p><strong>功能说明</strong>：统计页提供隐私保护功能，可隐藏敏感信息，方便在公共场合展示数据。</p>
     <p><strong>隐私按钮</strong>：统计页顶部有两个按钮——<strong>隐藏金额</strong>（开启后所有金额显示为 ¥***）和 <strong>隐藏单主</strong>（开启后单主名保留第一个字）。</p>
     <p><strong>隐藏范围</strong>：开启「隐藏金额」后，核心指标、进度与结算、费用区域、趋势图、数据分布（所有 tab）、制品项汇总、Top 单主等所有区域的金额都会被隐藏。</p>
@@ -400,14 +715,14 @@
     <p><strong>数据分布排序</strong>：支持按名称、单数、金额排序，点击切换升序/降序。</p>
     <p><strong>接单平台统计</strong>：数据分布新增「接单平台」Tab，用于统计不同平台（QQ、微信、小红书等）的接单单数和金额，支持排序。</p>
 
-    <h2 id="s17">十七、智能提取功能增强</h2>
+    <h2 id="s19">十九、智能提取功能增强</h2>
     <p><strong>功能说明</strong>：企划备注弹窗的「智能提取」功能可自动识别单主备注中的信息，并填入计算页对应字段。</p>
     <p><strong>支持提取的字段</strong>：单主ID（主催、客户、甲方等）、联系方式（QQ、微信、电话等）、用途、原作、角色、生日、英文名、企划主题名、制品工艺及尺寸、是否需要抠图。</p>
     <p><strong>支持的输入格式</strong>：带符号写法（◆●•）、无符号写法（主催：张三）、无冒号写法（主催 张三）、制品编号写法（①②③、1. 2. 3.、- 等）。</p>
     <p><strong>智能匹配</strong>：自动匹配用途系数、从制品描述中识别工艺、检测「是否需要抠图：是」时自动添加抠图费用、无单位数字视为尺寸（数量默认1）。</p>
     <p><strong>使用方法</strong>：在计算页点击「备注（智能提取）」打开弹窗，粘贴单主备注后点击「智能提取」即可。</p>
 
-    <h2 id="s18">十八、系数计算模式</h2>
+    <h2 id="s20">二十、系数计算模式</h2>
     <p><strong>功能说明</strong>：系统支持加价类和折扣类系数分别选择计算模式（乘法模式或加法模式）。计算逻辑为先算加价类，再算折扣类。</p>
     <p><strong>配置位置</strong>：在 script.js 的 defaultSettings.pricingCalculationMode 中配置。</p>
     <p><strong>加价类系数</strong>：</p>
@@ -448,6 +763,139 @@
     <p><strong>订单ID显示</strong>：每个回收站条目显示排单自动生成的ID，格式为「ID:XXX」。</p>
     <p><strong>恢复订单</strong>：点击回收站条目的「恢复」按钮，可将订单恢复到排单列表，关联关系自动恢复。</p>
     <p><strong>永久删除</strong>：点击回收站条目的「永久删除」按钮，订单将被彻底删除，无法恢复，请谨慎操作。</p>
+
+    <h2 id="s24">二十四、工艺费计费方式</h2>
+    <p><strong>功能说明</strong>：针对制品/赠品条目，可灵活选择工艺费的计费方式，解决「拍立得做2个但工艺层只做一次不应收2份工艺费」的实际场景。</p>
+    <p><strong>计费方式</strong>：每个制品/赠品条目的「工艺类型」行右侧有计费方式下拉框，两个选项：</p>
+    <ul>
+        <li><strong>按制品数</strong>（默认）：工艺费 = 工艺单价 × 制品/赠品数量</li>
+        <li><strong>只收一次</strong>：工艺费 = 工艺单价 × 1（不论数量多少，该条目下所有工艺费只计一次）</li>
+    </ul>
+    <p><strong>条目级独立</strong>：计费方式是条目级别的，制品和赠品各自独立配置互不影响；同一条目下所有工艺统一按同一种方式计费。</p>
+    <p><strong>向后兼容</strong>：旧订单数据无该字段，默认为「按制品数」，行为完全不变。</p>
+    <p><strong>小票展示</strong>：小票工艺行显示计费数量，「只收一次」时计费数量为1，自然体现一次性收费，不额外加文字标注。</p>
+
+    <h2 id="s25">二十五、多货币支持</h2>
+    <p><strong>功能说明</strong>：支持 26 种货币，所有金额展示（报价、手续费、定金、统计等）会根据所选货币显示对应符号，替代原本硬编码的「¥」。</p>
+    <p><strong>入口</strong>：<strong>我的</strong>页面 → <strong>基础设置</strong> → <strong>默认货币</strong>。</p>
+    <p><strong>支持的货币</strong>：人民币(CNY ¥)、美元(USD $)、欧元(EUR €)、英镑(GBP £)、日元(JPY ¥)、韩元(KRW ₩)、港币(HKD $)、台币(TWD NT$)、澳元(AUD $)、加元(CAD $)、新加坡元(SGD $)、瑞士法郎(CHF Fr)、瑞典克朗(SEK kr)、挪威克朗(NOK kr)、丹麦克朗(DKK kr)、波兰兹罗提(PLN zł)、捷克克朗(CZK Kč)、匈牙利福林(HUF Ft)、泰铢(THB ฿)、印度卢比(INR ₹)、印尼卢比(IDR Rp)、马来西亚林吉特(MYR RM)、越南盾(VND ₫)、巴西雷亚尔(BRL R$)、墨西哥比索(MXN $)、南非兰特(ZAR R)。</p>
+    <p><strong>搜索筛选</strong>：货币下拉框支持输入搜索，可通过 <strong>货币代码</strong>（如 USD）、<strong>货币名称</strong>（如 美元）、<strong>货币符号</strong>（如 $）快速筛选定位。</p>
+    <p><strong>影响范围</strong>：小票所有金额显示、计算抽屉报价预览、记录页金额、统计页金额、设置页各项系数金额。</p>
+    <p><em>注：货币切换只影响显示符号，不进行汇率换算，金额数值不变。</em></p>
+
+    <h2 id="s26">二十六、数据快照与恢复</h2>
+    <p><strong>功能说明</strong>：为防止误操作导致数据丢失，系统在关键操作前自动创建数据快照，可随时从快照恢复。</p>
+    <p><strong>自动快照触发时机</strong>：</p>
+    <ul>
+        <li><strong>保存到历史记录前</strong>：每次点击「保存」「排单」「覆盖」「新单」时，先创建当前数据快照</li>
+        <li>编辑模式覆盖原企划前同样会创建快照</li>
+    </ul>
+    <p><strong>恢复入口</strong>：<strong>我的</strong>页面 → <strong>恢复数据</strong>（黄色按钮）→ 弹出快照列表对话框。</p>
+    <p><strong>恢复操作</strong>：</p>
+    <ol>
+        <li>对话框展示所有可用快照（按时间倒序）</li>
+        <li>点击某条快照的「恢复」按钮</li>
+        <li>系统会先将当前数据保存为新快照（防止恢复后反悔）</li>
+        <li>再将选中快照的数据覆盖到当前</li>
+    </ol>
+    <p><strong>配合编辑模式保存选择弹窗</strong>：编辑模式下点「报价」或小票页点「排单」时，会弹出选择框：<strong>覆盖原企划</strong> 直接覆盖原单 / <strong>另存为新排单</strong> 保留原单另存新单。该弹窗 + 数据快照双重保障，避免误覆盖丢失数据。</p>
+    <p><em>注：快照存储在浏览器本地 localStorage，不会上传云端，清理浏览器数据会丢失快照。</em></p>
+
+    <h2 id="s27">二十七、文件夹名生成规则</h2>
+    <p><strong>功能说明</strong>：排单卡片操作弹窗中点击「复制文件夹名」会按统一规则生成文件夹名，方便归档整理。</p>
+    <p><strong>命名格式</strong>：</p>
+    <pre>时间【平台 单主ID】[加急-]企划名-原作-制品数（制品详情）</pre>
+    <div class="table-wrap"><table>
+        <tr><th>字段</th><th>说明</th><th>示例</th></tr>
+        <tr><td><strong>时间</strong></td><td>根据所选时间类型（下单/开始/截稿）</td><td><code>20260805</code></td></tr>
+        <tr><td><strong>平台 + 单主ID</strong></td><td>方括号包裹</td><td><code>【米画师 ABC123】</code></td></tr>
+        <tr><td><strong>加急前缀</strong></td><td>加急订单在企划名前加 <code>加急-</code></td><td><code>加急-</code></td></tr>
+        <tr><td><strong>企划名</strong></td><td>企划信息中的企划名</td><td><code>夏日企划</code></td></tr>
+        <tr><td><strong>原作</strong></td><td>企划信息中的原作（IP）</td><td><code>原神</code></td></tr>
+        <tr><td><strong>制品数</strong></td><td>所有制品总数</td><td><code>制品3</code></td></tr>
+        <tr><td><strong>制品详情</strong></td><td>各制品类型+数量，<code>+</code> 连接</td><td><code>（拍立得2+亚克力1）</code></td></tr>
+    </table></div>
+    <p><strong>追加单合并</strong>：生成原单文件夹名时，会 <strong>合并原单和所有追加单的制品信息</strong>。制品数 = 原单制品数 + 所有追加单制品数；制品详情按顺序拼接所有制品。</p>
+    <p><strong>示例</strong>：</p>
+    <pre>20260805【米画师 ABC123】夏日企划-原神-制品3（拍立得2+亚克力1）
+20260805【QQ DEF456】加急-约稿-原创-制品1（立牌1）</pre>
+    <p><strong>特殊处理</strong>：自动移除 Windows 不允许的字符（<code>&lt; &gt; " / \ | ? *</code>）；多个空格合并为单个；文件夹名超过 200 字符时截断并加 <code>...</code>。</p>
+
+    <h2 id="s28">二十八、平台手续费取整开关</h2>
+    <p><strong>功能说明</strong>：每个平台手续费可独立配置「是否四舍五入取整」，解决不同平台手续费精度需求不同的场景。</p>
+    <p><strong>入口</strong>：<strong>我的</strong>页面 → <strong>系数设置</strong> → <strong>其他类</strong> → <strong>平台手续费</strong> → 每行右侧「取整」复选框。</p>
+    <div class="table-wrap"><table>
+        <tr><th>平台</th><th>默认取整</th></tr>
+        <tr><td>无</td><td>否</td></tr>
+        <tr><td><strong>米画师</strong></td><td><strong>是</strong></td></tr>
+        <tr><td><strong>画加</strong></td><td><strong>否</strong></td></tr>
+        <tr><td>新增平台</td><td>否</td></tr>
+    </table></div>
+    <p><strong>取整规则</strong>：</p>
+    <ul>
+        <li><strong>取整（开）</strong>：<code>Math.round(基数 × 费率)</code> 取整到元。例：9.444 → <strong>9</strong></li>
+        <li><strong>不取整（关）</strong>：保留两位小数。例：9.444 → <strong>9.44</strong></li>
+    </ul>
+    <p><strong>历史数据兼容</strong>：旧数据无 <code>round</code> 字段时，米画师默认取整、其他默认不取整，与上述默认值一致，无需迁移。</p>
+    <p><strong>与约定实收的联动</strong>：修改「约定实收」会重算平台手续费，重算时同样遵循该平台的取整开关设置。</p>
+
+    <h2 id="s29">二十九、按字数收费</h2>
+    <p><strong>功能说明</strong>：为文字类制品（如文章、小说、文案等）新增第 5 种计价方式 <strong>「按字数收费」</strong>，支持自定义「每 X 字 Y 元」的灵活单位配置。计算页填写字数后，系统按 <code>单价 × 字数 ÷ 单位</code> 自动计算基础价，并参与同模系数和工艺费计算，与固定价/单双面价/基础+递增价等计价方式行为一致。</p>
+
+    <p><strong>计价方式对比</strong>：</p>
+    <div class="table-wrap"><table>
+        <tr><th>priceType</th><th>说明</th><th>basePrice 计算</th><th>同模/工艺费</th></tr>
+        <tr><td><code>fixed</code> 固定价</td><td>按固定单价</td><td><code>price</code></td><td>参与</td></tr>
+        <tr><td><code>double</code> 单双面价</td><td>按单/双面</td><td><code>priceSingle</code> 或 <code>priceDouble</code></td><td>参与</td></tr>
+        <tr><td><code>config</code> 基础+递增价</td><td>按配置项</td><td><code>basePrice × baseConfigCount + 额外配置</code></td><td>参与</td></tr>
+        <tr><td><code>nodes</code> 按节点收费</td><td>用户填总价</td><td><code>nodeTotalPrice</code></td><td><strong>不参与</strong></td></tr>
+        <tr><td><strong><code>byChar</code> 按字数收费</strong></td><td><strong>按字数</strong></td><td><strong><code>charPrice × charCount ÷ charUnit</code></strong></td><td><strong>参与</strong></td></tr>
+    </table></div>
+
+    <p><strong>制品类型配置</strong>：<strong>我的</strong>页面 → <strong>制品设置</strong> → 新增/编辑制品类型时，「计价方式」下拉框选择 <strong>「按字数收费」</strong>，配置以下两项：</p>
+    <div class="table-wrap"><table>
+        <tr><th>配置项</th><th>说明</th><th>示例</th></tr>
+        <tr><td>每单位价格（元）</td><td>每个「字数单位」对应的单价</td><td><code>5</code>（即 5 元/千字）</td></tr>
+        <tr><td>字数单位</td><td>计费字数单位</td><td>每字 / 每百字 / 每500字 / 每千字（默认）/ 每万字</td></tr>
+    </table></div>
+    <p>字数单位提供 5 个预设选项，覆盖从短文到长篇小说的常见计费场景。字数本身是每次订单不同的值，由用户在计算页填写，不是制品类型的固定属性。</p>
+
+    <p><strong>计算页使用</strong>：</p>
+    <ol>
+        <li>选择「按字数收费」类型的制品，卡片显示「单价：¥X/单位」和「字数」输入框</li>
+        <li>在字数输入框填入本次订单的字数（如 <code>3000</code>）</li>
+        <li>基础价实时计算：<code>5 × 3000 ÷ 1000 = ¥15.00</code></li>
+        <li>同模、工艺费、系数等照常参与计算</li>
+    </ol>
+
+    <p><strong>小票展示</strong>：小票按「名称 | 单价 | 数量 | 小计」4 列布局展示，字数智能格式化，避免几十万字撑爆列宽：</p>
+    <div class="table-wrap"><table>
+        <tr><th>字数</th><th>单价</th><th>单价列</th><th>数量列</th><th>小计列</th></tr>
+        <tr><td>3000</td><td>5元/千字</td><td><code>¥5/千字</code></td><td><code>3000字</code></td><td><code>¥15.00</code></td></tr>
+        <tr><td>35000</td><td>5元/千字</td><td><code>¥5/千字</code></td><td><code>3.5万字</code></td><td><code>¥175.00</code></td></tr>
+        <tr><td>350000</td><td>5元/千字</td><td><code>¥5/千字</code></td><td><code>35万字</code></td><td><code>¥1750.00</code></td></tr>
+        <tr><td>500000</td><td>50元/万字</td><td><code>¥50/万字</code></td><td><code>50万字</code></td><td><code>¥2500.00</code></td></tr>
+    </table></div>
+    <p><strong>显示规则</strong>：</p>
+    <ul>
+        <li>字数 &lt; 1万：显示原值（如 <code>3500字</code>）</li>
+        <li>字数 ≥ 1万：显示「X万字」，整数不显示小数，非整数保留 1 位（如 <code>1万字</code>、<code>3.5万字</code>、<code>35万字</code>）</li>
+        <li>鼠标悬停数量列，<code>title</code> 属性显示完整字数（如 <code>字数：350000字 × 1件</code>），保证精度可查</li>
+        <li>单价列含货币符号（如 <code>¥5/千字</code>），与其他类型单价显示一致</li>
+        <li>同模时追加子行，分别展示首件价与同模价</li>
+    </ul>
+
+    <p><strong>智能提取</strong>：备注智能提取支持识别字数信息，仅对「按字数收费」类型的制品生效。识别模式为 <code>数字 + 字/千字/百字/万字</code>。例：「文章3000字」→ 自动填充 <code>charCount = 3000</code>；「3万字」→ <code>charCount = 30000</code>。</p>
+
+    <p><strong>赠品支持</strong>：赠品与制品对称实现「按字数收费」，配置方式、计算逻辑、小票展示均一致。赠品行以 <code>[赠品]</code> 前缀标识，划线价显示原价，实付显示 <code>¥0.00</code>。</p>
+
+    <p><strong>互转与历史恢复</strong>：</p>
+    <ul>
+        <li><strong>制品 ↔ 赠品互转</strong>：<code>charCount</code> 字段保留，转换后无需重新填写字数</li>
+        <li><strong>历史恢复</strong>：保存含按字数收费制品的订单到历史记录，重新编辑时字数正确恢复</li>
+    </ul>
+
+    <p><strong>向后兼容</strong>：旧订单数据无 <code>charCount</code>、<code>charPrice</code>、<code>charUnit</code> 字段，默认按 <code>charCount = 0</code>、<code>charUnit = 1000</code>、<code>charPrice = 0</code> 处理，不影响现有功能。</p>
 
     <div class="foot-note">
         <p style="margin: 0.5rem 0;">更多技术说明与项目结构见 <strong>README.md</strong>。</p>

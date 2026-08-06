@@ -688,10 +688,11 @@ const defaultSettings = {
         sample: { value: 0.95, name: '上次合作寄样' }
     },
     // 平台手续费（%，约稿平台比例固定）
+    // round: 手续费是否四舍五入取整（true=取整到元，false=保留两位小数）
     platformFees: {
-        none: { value: 0, name: '无' },
-        mihua: { value: 5, name: '米画师' },
-        painter: { value: 5, name: '画加' }
+        none: { value: 0, name: '无', round: false },
+        mihua: { value: 5, name: '米画师', round: true },
+        painter: { value: 5, name: '画加', round: false }
     },
     // 其他费用
     otherFees: {
@@ -3648,6 +3649,61 @@ function getCurrencySymbol(code) {
     const currencyCode = code || defaultSettings.currency || 'CNY';
     const currency = defaultSettings.currencyOptions[currencyCode] || defaultSettings.currencyOptions.CNY;
     return currency.symbol;
+}
+
+// 字数智能格式化：
+// - < 1万：显示原值（3500字）
+// - 整万：显示「N万字」（100万字）
+// - 其余 >=1万：如果后四位能被 1000 整除（即千位整数），保留 1 位小数（3.5万字）
+//               否则显示「M万+X字」避免尾数被截断（100万+500字）
+function formatCharCount(count) {
+    const n = parseInt(count, 10) || 0;
+    if (n < 10000) return n + '字';
+    const wan = Math.floor(n / 10000);
+    const ge = n % 10000;
+    if (ge === 0) return wan + '万字';
+    if (ge % 1000 === 0) {
+        // 千位整数，用小数（例：35000 → 3.5万字）
+        return wan + '.' + (ge / 1000) + '万字';
+    }
+    // 有非整千尾数，显式展示（例：1000500 → 100万+500字）
+    return wan + '万+' + ge + '字';
+}
+
+// 字数单位显示文案
+function getCharUnitText(unit) {
+    const map = { 1: '字', 100: '百字', 500: '500字', 1000: '千字', 10000: '万字' };
+    return map[unit] || '千字';
+}
+
+// 字数分段输入：把 charCount（整数）拆分为「万位」和「字位」两部分
+// 例：350000 → {wan: 35, ge: 0}；30500 → {wan: 3, ge: 500}
+function splitCharCount(count) {
+    const n = Math.max(0, parseInt(count, 10) || 0);
+    return { wan: Math.floor(n / 10000), ge: n % 10000 };
+}
+
+// 字数分段输入：把「万位」和「字位」合成为 charCount（整数）
+function joinCharCount(wan, ge) {
+    const w = Math.max(0, parseInt(wan, 10) || 0);
+    const g = Math.max(0, parseInt(ge, 10) || 0);
+    return w * 10000 + Math.min(9999, g);
+}
+
+// 字数分段输入：当万位/字位任一输入框变化时，合成后更新制品的 charCount
+// kind: 'product' | 'gift'
+function onSplitCharCountChange(kind, id) {
+    const prefix = kind === 'gift' ? 'giftCharCount' : 'productCharCount';
+    const wanEl = document.getElementById(`${prefix}-${id}-wan`);
+    const geEl = document.getElementById(`${prefix}-${id}-ge`);
+    const total = joinCharCount(wanEl ? wanEl.value : 0, geEl ? geEl.value : 0);
+    if (kind === 'gift') {
+        updateGift(id, 'charCount', total);
+        if (typeof updateGiftForm === 'function') updateGiftForm(id);
+    } else {
+        updateProduct(id, 'charCount', total);
+        if (typeof updateProductForm === 'function') updateProductForm(id);
+    }
 }
 
 function updateCurrencySetting(value) {
@@ -7938,8 +7994,41 @@ function updateProductForm(productId) {
                 </div>
             `;
             break;
+
+        case 'byChar':
+            const charUnit = productSetting.charUnit || 1000;
+            const charPrice = productSetting.charPrice || 0;
+            const currentCharCount = product.charCount || 0;
+            const unitText = charUnit === 1 ? '字' : (charUnit === 100 ? '百字' : (charUnit === 500 ? '500字' : (charUnit === 1000 ? '千字' : (charUnit === 10000 ? '万字' : charUnit + '字'))));
+            // 拆分万位/字位输入
+            const splitCount = splitCharCount(currentCharCount);
+            html = `
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>单价：${getCurrencySymbol()}${charPrice}/${unitText}</label>
+                    </div>
+                    <div class="form-group" style="max-width:320px;flex-shrink:0;">
+                        <label>字数（万 / 字 分段输入）</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" id="productCharCount-${productId}-wan" value="${splitCount.wan}" min="0" step="1"
+                                   style="width:100px;flex-shrink:0;"
+                                   onchange="onSplitCharCountChange('product', ${productId})"
+                                   oninput="onSplitCharCountChange('product', ${productId})"
+                                   placeholder="万">
+                            <span style="color:var(--text-muted);font-size:0.9em;white-space:nowrap;">万</span>
+                            <input type="number" id="productCharCount-${productId}-ge" value="${splitCount.ge}" min="0" max="9999" step="1"
+                                   style="width:100px;flex-shrink:0;"
+                                   onchange="onSplitCharCountChange('product', ${productId})"
+                                   oninput="onSplitCharCountChange('product', ${productId})"
+                                   placeholder="0-9999">
+                            <span style="color:var(--text-muted);font-size:0.9em;white-space:nowrap;">字</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            break;
     }
-    
+
     container.innerHTML = html;
     
     // 恢复之前展开的分类状态
@@ -8183,7 +8272,8 @@ function convertProductToGift(productId) {
         processes: product.processes || {},
         dailyPlan: product.dailyPlan || [],
         nodeDailyPlan: product.nodeDailyPlan || [],
-        processFeeMode: product.processFeeMode || 'perQty'
+        processFeeMode: product.processFeeMode || 'perQty',
+        charCount: product.charCount // 按字数收费：保留字数
     };
 
     gifts.push(gift);
@@ -8217,7 +8307,8 @@ function convertGiftToProduct(giftId) {
         processes: gift.processes || {},
         dailyPlan: gift.dailyPlan || [],
         nodeDailyPlan: gift.nodeDailyPlan || [],
-        processFeeMode: gift.processFeeMode || 'perQty'
+        processFeeMode: gift.processFeeMode || 'perQty',
+        charCount: gift.charCount // 按字数收费：保留字数
     };
 
     products.push(product);
@@ -8355,7 +8446,12 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const sameModelMode = defaultSettings.sameModelMode || 'coefficient';
     const sameModelMinusAmount = Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0;
     const discount = getCoefficientValue(defaultSettings.discountCoefficients[discountType]) || 1;
-    const platformFee = getCoefficientValue(defaultSettings.platformFees[platformType]) || 0;
+    const platformFeeObj = defaultSettings.platformFees[platformType] || {};
+    const platformFee = getCoefficientValue(platformFeeObj) || 0;
+    // 手续费是否四舍五入取整：历史数据无 round 字段时，米画师默认 true，其他默认 false
+    const platformFeeRound = platformFeeObj.round !== undefined
+        ? !!platformFeeObj.round
+        : (platformType === 'mihua');
     // 扩展加价类、折扣类的选中值
     let extraUpProduct = 1;
     const extraUpSelections = [];
@@ -8488,8 +8584,14 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                     return;
                 }
                 break;
+            case 'byChar':
+                const charCount = parseFloat(product.charCount) || 0;
+                const charUnit = productSetting.charUnit || 1000;
+                const charPrice = productSetting.charPrice || 0;
+                basePrice = charUnit > 0 ? (charPrice * charCount / charUnit) : 0;
+                break;
         }
-        
+
         // 计算额外配置（如果是基础+递增价类型）
         let additionalConfigDetails = [];
         if (productSetting.priceType === 'config') {
@@ -8674,6 +8776,12 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             productPriceInfo.nodeTotalPrice = basePrice;
             productPriceInfo.nodeDetails = nodeDetails;
         }
+        // 按字数收费：保存字数、单价和单位
+        if (productSetting.priceType === 'byChar') {
+            productPriceInfo.charCount = parseFloat(product.charCount) || 0;
+            productPriceInfo.charPrice = productSetting.charPrice || 0;
+            productPriceInfo.charUnit = productSetting.charUnit || 1000;
+        }
         // 制品日计划（排单用，可选）
         if (Array.isArray(product.dailyPlan) && product.dailyPlan.length > 0) {
             productPriceInfo.dailyPlan = product.dailyPlan.map(function (p) { return { date: p.date, targetQty: p.targetQty }; });
@@ -8743,8 +8851,14 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
                     });
                 }
                 break;
+            case 'byChar':
+                const giftCharCount = parseFloat(gift.charCount) || 0;
+                const giftCharUnit = productSetting.charUnit || 1000;
+                const giftCharPrice = productSetting.charPrice || 0;
+                basePrice = giftCharUnit > 0 ? (giftCharPrice * giftCharCount / giftCharUnit) : 0;
+                break;
         }
-        
+
         // 计算同模相关数据（跨订单同模时，所有件都按同模价计算）
         const sameModelCount = gift.sameModel ? gift.quantity - 1 : 0;
         const crossOrderSameModelCount = gift.crossOrderSameModel ? gift.quantity : 0;
@@ -8848,7 +8962,11 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             crossOrderSameModel: !!gift.crossOrderSameModel,
             crossOrderSameModelCount: crossOrderSameModelCount,
             // 工艺费计费方式：perQty=按数量 | once=只收一次
-            processFeeMode: gift.processFeeMode || 'perQty'
+            processFeeMode: gift.processFeeMode || 'perQty',
+            // 按字数收费：保存字数、单价和单位
+            charCount: productSetting.priceType === 'byChar' ? (parseFloat(gift.charCount) || 0) : undefined,
+            charPrice: productSetting.priceType === 'byChar' ? (productSetting.charPrice || 0) : undefined,
+            charUnit: productSetting.priceType === 'byChar' ? (productSetting.charUnit || 1000) : undefined
         };
         // 赠品日计划（排单用，可选）
         if (Array.isArray(gift.dailyPlan) && gift.dailyPlan.length > 0) {
@@ -8875,7 +8993,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const sameManualBase = prevManualBase != null && Math.abs(prevManualBase - totalBeforePlatformFee) < 0.005;
     const keepManualAgreed = hasManualAgreed && prevAgreed != null && (sameManualBase || sameBase);
     const agreedAmount = keepManualAgreed ? prevAgreed : null;
-    const platformFeeAmount = Math.round((agreedAmount != null ? agreedAmount : totalBeforePlatformFee) * (platformFee / 100));
+    const platformFeeBase = (agreedAmount != null ? agreedAmount : totalBeforePlatformFee) * (platformFee / 100);
+    // 根据「是否四舍五入」开关决定取整方式：取整到元 或 保留两位小数
+    const platformFeeAmount = platformFeeRound ? Math.round(platformFeeBase) : Math.round(platformFeeBase * 100) / 100;
     // 5. 客户实付 = 约定实收 + 平台费
     const finalTotal = (agreedAmount != null ? agreedAmount : totalBeforePlatformFee) + platformFeeAmount;
     
@@ -8936,6 +9056,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         otherFees: dynamicOtherFees,
         totalOtherFees: totalOtherFees,
         platformFee: platformFee,
+        platformFeeRound: platformFeeRound,
         platformFeeAmount: platformFeeAmount,
         productPrices: productPrices,
         giftPrices: giftPrices,
@@ -9197,8 +9318,54 @@ function generateQuote() {
             productName = `${productName}[跨单同模]`;
         }
         
-        // 按节点收费：总览行 + 节点明细
-        if (isNodes) {
+        // 按字数收费：总览行（单价列显示「¥X/千字」，数量列显示格式化字数）+ 同模/工艺明细
+        if (item.productType === 'byChar') {
+            const charCount = item.charCount || 0;
+            const charPrice = item.charPrice || 0;
+            const charUnit = item.charUnit || 1000;
+            const unitText = getCharUnitText(charUnit);
+            // 数量列显示总字数（单件字数 × 件数），便于用户验算小计
+            const totalCharCount = charCount * (item.quantity || 1);
+            const countText = formatCharCount(totalCharCount);
+            const priceText = `${getCurrencySymbol()}${charPrice}/${unitText}`;
+            html += `<div class="receipt-row" title="字数：${charCount}字 × ${item.quantity || 1}件"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${countText}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
+
+            // 同模明细（首件字数 / 同模后续字数）
+            if (hasSameModel) {
+                const _sameMode = quoteData.sameModelMode || defaultSettings.sameModelMode;
+                const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
+                const sameModelHint = (_sameMode === 'minus') ? `−${getCurrencySymbol()}${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
+                const sameModelDisplayCount = item.crossOrderSameModel ? item.quantity : item.sameModelCount;
+                const firstCharCount = charCount;
+                const sameModelCharTotal = charCount * sameModelDisplayCount;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 首件</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${formatCharCount(firstCharCount)}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.basePrice.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHint})</div><div class="receipt-col-1">${getCurrencySymbol()}${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${formatCharCount(sameModelCharTotal)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal).toFixed(2)}</div></div>`;
+            }
+
+            // 工艺明细（与其它类型一致）
+            if (hasProcess) {
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 工艺</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                const processGroupsByLayerPrice = {};
+                item.processDetails.forEach(process => {
+                    const pricePerLayer = process.unitPrice / process.layers;
+                    const key = pricePerLayer.toFixed(4);
+                    if (!processGroupsByLayerPrice[key]) processGroupsByLayerPrice[key] = [];
+                    processGroupsByLayerPrice[key].push(process);
+                });
+                for (const [layerPriceKey, processes] of Object.entries(processGroupsByLayerPrice)) {
+                    const pricePerLayer = parseFloat(layerPriceKey);
+                    for (let i = 0; i < processes.length; i += 2) {
+                        const processesInRow = processes.slice(i, i + 2);
+                        const totalLayers = processesInRow.reduce((sum, p) => sum + p.layers, 0);
+                        const chargeQty = processesInRow[0].quantity || 1;
+                        const chargeQuantity = totalLayers * chargeQty;
+                        const totalFee = processesInRow.reduce((sum, p) => sum + p.fee, 0);
+                        const processNamesWithLayers = processesInRow.map(p => `${p.name}×${p.layers}`).join('、');
+                        html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">${processNamesWithLayers}</div><div class="receipt-col-1">${getCurrencySymbol()}${pricePerLayer.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantity}</div><div class="receipt-col-1">${getCurrencySymbol()}${totalFee.toFixed(2)}</div></div>`;
+                    }
+                }
+            }
+        } else if (isNodes) {
             const nodeTotal = item.nodeTotalPrice != null ? item.nodeTotalPrice : item.basePrice;
             html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${nodeTotal.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
             if (item.nodeDetails && item.nodeDetails.length > 0) {
@@ -9397,8 +9564,51 @@ function generateQuote() {
             // 使用完整的赠品原价（包含工艺和额外费用）
             const productTotalGift = item.giftOriginalPrice;
             
-            // 总览行（赠品特殊：显示¥0.00 + 划线原价）
-            if (canMergeGift) {
+            // 按字数收费：总览行 + 同模/工艺明细（赠品显示 ¥0.00 + 划线原价）
+            if (item.productType === 'byChar') {
+                const charCountGift = item.charCount || 0;
+                const charPriceGift = item.charPrice || 0;
+                const charUnitGift = item.charUnit || 1000;
+                const unitTextGift = getCharUnitText(charUnitGift);
+                const totalCharCountGift = charCountGift * (item.quantity || 1);
+                const countTextGift = formatCharCount(totalCharCountGift);
+                const priceTextGift = `${getCurrencySymbol()}${charPriceGift}/${unitTextGift}`;
+                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;" title="字数：${charCountGift}字 × ${item.quantity || 1}件"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${priceTextGift}</div><div class="receipt-col-1">${countTextGift}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
+                // 同模明细
+                if (hasSameModelGift) {
+                    const _sameModeGift = quoteData.sameModelMode || defaultSettings.sameModelMode;
+                    const _sameMinusGift = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
+                    const sameModelHintGift = (_sameModeGift === 'minus') ? `−${getCurrencySymbol()}${_sameMinusGift.toFixed(2)}` : `${sameModelRateGift}x`;
+                    const sameModelDisplayCountGift = item.crossOrderSameModel ? item.quantity : item.sameModelCount;
+                    const firstCharCountGift = charCountGift;
+                    const sameModelCharTotalGift = charCountGift * sameModelDisplayCountGift;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 首件</div><div class="receipt-col-1">${priceTextGift}</div><div class="receipt-col-1">${formatCharCount(firstCharCountGift)}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.basePrice.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">${getCurrencySymbol()}${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${formatCharCount(sameModelCharTotalGift)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal).toFixed(2)}</div></div>`;
+                }
+                // 工艺明细
+                if (hasProcessGift) {
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 工艺</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1"></div></div>`;
+                    const processGroupsByLayerPriceGift = {};
+                    item.processDetails.forEach(process => {
+                        const pricePerLayerGift = process.unitPrice / process.layers;
+                        const key = pricePerLayerGift.toFixed(4);
+                        if (!processGroupsByLayerPriceGift[key]) processGroupsByLayerPriceGift[key] = [];
+                        processGroupsByLayerPriceGift[key].push(process);
+                    });
+                    for (const [layerPriceKey, processes] of Object.entries(processGroupsByLayerPriceGift)) {
+                        const pricePerLayerGift = parseFloat(layerPriceKey);
+                        for (let i = 0; i < processes.length; i += 2) {
+                            const processesInRow = processes.slice(i, i + 2);
+                            const totalLayersGift = processesInRow.reduce((sum, p) => sum + p.layers, 0);
+                            const chargeQtyGift = processesInRow[0].quantity || 1;
+                            const chargeQuantityGift = totalLayersGift * chargeQtyGift;
+                            const totalFeeGift = processesInRow.reduce((sum, p) => sum + p.fee, 0);
+                            const processNamesWithLayersGift = processesInRow.map(p => `${p.name}×${p.layers}`).join('、');
+                            html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent-align-craft"></div><div class="receipt-col-2">${processNamesWithLayersGift}</div><div class="receipt-col-1">${getCurrencySymbol()}${pricePerLayerGift.toFixed(2)}</div><div class="receipt-col-1">${chargeQuantityGift}</div><div class="receipt-col-1">${getCurrencySymbol()}${totalFeeGift.toFixed(2)}</div></div>`;
+                        }
+                    }
+                }
+            } else if (canMergeGift) {
                 // fixed/double 无同模无工艺：合并到总览行
                 html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${getCurrencySymbol()}${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
             } else {
@@ -10184,7 +10394,8 @@ function roundAgreedAmount(mode) {
     quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
     // 平台费 = 约定实收×费率，客户实付 = 约定实收+平台费
     var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
-    quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
+    var _pfBase = quoteData.agreedAmount * rate;
+    quoteData.platformFeeAmount = quoteData.platformFeeRound ? Math.round(_pfBase) : Math.round(_pfBase * 100) / 100;
     quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
     updateAgreedAmountBar();
     generateQuote();
@@ -10301,7 +10512,8 @@ function updateAgreedAmountBar() {
             quoteData.hasManualAgreed = true;
             quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
             var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
-            quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
+            var _pfBase = quoteData.agreedAmount * rate;
+            quoteData.platformFeeAmount = quoteData.platformFeeRound ? Math.round(_pfBase) : Math.round(_pfBase * 100) / 100;
             quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
             generateQuote();
             syncReceiptDrawerContent();
@@ -11130,7 +11342,8 @@ function saveToHistory() {
             quoteData.hasManualAgreed = true;
             quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
             var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
-            quoteData.platformFeeAmount = Math.round(quoteData.agreedAmount * rate);
+            var _pfBase = quoteData.agreedAmount * rate;
+            quoteData.platformFeeAmount = quoteData.platformFeeRound ? Math.round(_pfBase) : Math.round(_pfBase * 100) / 100;
             quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
         }
     }
@@ -16749,7 +16962,8 @@ function editHistoryItem(id) {
                     crossOrderSameModel: !!productPrice.crossOrderSameModel, // 恢复跨订单同模状态
                     extraFeeIds: Array.isArray(productPrice.extraFees) ? productPrice.extraFees.map(function (x) { return x.id; }) : [],
                     processes: {},
-                    processFeeMode: productPrice.processFeeMode || 'perQty' // 恢复工艺费计费方式
+                    processFeeMode: productPrice.processFeeMode || 'perQty', // 恢复工艺费计费方式
+                    charCount: productPrice.charCount // 按字数收费：恢复字数
                 };
                 
                 // 恢复工艺信息（processes 以工艺设置 id 为 key，值为 { id, layers, price }）
@@ -16819,7 +17033,8 @@ function editHistoryItem(id) {
                     sameModel: giftPrice.sameModelCount > 0,
                     extraFeeIds: Array.isArray(giftPrice.extraFees) ? giftPrice.extraFees.map(function (x) { return x.id; }) : [],
                     processes: {},
-                    processFeeMode: giftPrice.processFeeMode || 'perQty' // 恢复工艺费计费方式
+                    processFeeMode: giftPrice.processFeeMode || 'perQty', // 恢复工艺费计费方式
+                    charCount: giftPrice.charCount // 按字数收费：恢复字数
                 };
                 
                 // 恢复工艺信息（processes 以工艺设置 id 为 key，值为 { id, layers, price }）
@@ -17225,6 +17440,7 @@ function loadQuoteFromHistory(id) {
             otherFees: quote.otherFees || [],
             totalOtherFees: quote.totalOtherFees || 0,
             platformFee: quote.platformFee || 0,
+            platformFeeRound: quote.platformFeeRound !== undefined ? !!quote.platformFeeRound : (quote.platformType === 'mihua'),
             giftPrices: quote.giftPrices || [],
             // 兼容旧数据：已收定金默认为 0
             depositReceived: quote.depositReceived != null ? quote.depositReceived : 0,
@@ -17733,7 +17949,7 @@ function updateDiscountCoefficientName(type, name) {
 // 更新平台手续费
 function updatePlatformFee(type, value) {
     if (!defaultSettings.platformFees[type] || typeof defaultSettings.platformFees[type] !== 'object') {
-        defaultSettings.platformFees[type] = { value: parseFloat(value) || 0, name: type };
+        defaultSettings.platformFees[type] = { value: parseFloat(value) || 0, name: type, round: false };
     } else {
         defaultSettings.platformFees[type].value = parseFloat(value) || 0;
     }
@@ -17743,9 +17959,18 @@ function updatePlatformFee(type, value) {
 function updatePlatformFeeName(type, name) {
     if (!defaultSettings.platformFees[type] || typeof defaultSettings.platformFees[type] !== 'object') {
         // 如果系数不存在，创建一个默认对象
-        defaultSettings.platformFees[type] = { value: 0, name: name };
+        defaultSettings.platformFees[type] = { value: 0, name: name, round: false };
     } else {
         defaultSettings.platformFees[type].name = name;
+    }
+}
+
+// 更新平台手续费是否四舍五入取整
+function updatePlatformFeeRound(type, roundOn) {
+    if (!defaultSettings.platformFees[type] || typeof defaultSettings.platformFees[type] !== 'object') {
+        defaultSettings.platformFees[type] = { value: 0, name: type, round: !!roundOn };
+    } else {
+        defaultSettings.platformFees[type].round = !!roundOn;
     }
 }
 
@@ -19165,7 +19390,19 @@ function smartParseOrderRemark() {
             });
         }
         if (!matchedSetting) return null;
-        return { typeId: matchedSetting.id.toString(), sides: sides, quantity: quantity, hasBackground: hasBackground, processes: processes, size: size };
+        // 提取字数（仅对 byChar 类型制品有效）
+        var charCount = null;
+        if (matchedSetting.priceType === 'byChar') {
+            var _wanM = ln.match(/(\d+(?:\.\d+)?)\s*万字/);
+            var _qianM = ln.match(/(\d+(?:\.\d+)?)\s*千字/);
+            var _baiM = ln.match(/(\d+(?:\.\d+)?)\s*百字/);
+            var _ziM = ln.match(/(\d+)\s*字/);
+            if (_wanM) charCount = Math.round(parseFloat(_wanM[1]) * 10000);
+            else if (_qianM) charCount = Math.round(parseFloat(_qianM[1]) * 1000);
+            else if (_baiM) charCount = Math.round(parseFloat(_baiM[1]) * 100);
+            else if (_ziM) charCount = parseInt(_ziM[1], 10);
+        }
+        return { typeId: matchedSetting.id.toString(), sides: sides, quantity: quantity, hasBackground: hasBackground, processes: processes, size: size, charCount: charCount };
     }
     
     // 正则转义函数
@@ -19293,7 +19530,7 @@ function smartParseOrderRemark() {
                 if (parsed) {
                     if (isGiftSection) {
                         giftIdCounter++;
-                        var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity, processFeeMode: 'perQty' };
+                        var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity, processFeeMode: 'perQty', charCount: parsed.charCount };
                         gifts.push(gift);
                         renderGift(gift);
                         parsedGiftCount++;
@@ -19307,7 +19544,8 @@ function smartParseOrderRemark() {
                             sameModel: true,
                             hasBackground: parsed.hasBackground,
                             processes: {},
-                            processFeeMode: 'perQty'
+                            processFeeMode: 'perQty',
+                            charCount: parsed.charCount
                         };
                         // 添加工艺
                         if (parsed.processes.length > 0) {
@@ -19337,7 +19575,7 @@ function smartParseOrderRemark() {
         if (parsed) {
             if (isGiftSection) {
                 giftIdCounter++;
-                var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity, processFeeMode: 'perQty' };
+                var gift = { id: giftIdCounter, type: parsed.typeId, quantity: parsed.quantity, processFeeMode: 'perQty', charCount: parsed.charCount };
                 gifts.push(gift);
                 renderGift(gift);
                 parsedGiftCount++;
@@ -19351,7 +19589,8 @@ function smartParseOrderRemark() {
                     sameModel: true,
                     hasBackground: parsed.hasBackground,
                     processes: {},
-                    processFeeMode: 'perQty'
+                    processFeeMode: 'perQty',
+                    charCount: parsed.charCount
                 };
                 if (parsed.processes.length > 0) {
                     parsed.processes.forEach(function(pid) {
@@ -19752,7 +19991,9 @@ function showPriceSettings(priceType) {
     document.getElementById('configPriceSettings').classList.add('d-none');
     const nodePriceEl = document.getElementById('nodePriceSettings');
     if (nodePriceEl) nodePriceEl.classList.add('d-none');
-    
+    const byCharEl = document.getElementById('byCharPriceSettings');
+    if (byCharEl) byCharEl.classList.add('d-none');
+
     // 显示选中的价格设置
     switch(priceType) {
         case 'fixed':
@@ -19766,6 +20007,9 @@ function showPriceSettings(priceType) {
             break;
         case 'nodes':
             if (nodePriceEl) nodePriceEl.classList.remove('d-none');
+            break;
+        case 'byChar':
+            if (byCharEl) byCharEl.classList.remove('d-none');
             break;
     }
 }
@@ -19843,6 +20087,10 @@ function saveNewProduct() {
                 return;
             }
             newProduct.nodes = nodesList.map(n => ({ name: String(n.name || '').trim() || '节点', percent: parseFloat(n.percent) || 0 }));
+            break;
+        case 'byChar':
+            newProduct.charPrice = parseFloat(document.getElementById('newProductCharPrice').value) || 0;
+            newProduct.charUnit = parseInt(document.getElementById('newProductCharUnit').value) || 1000;
             break;
     }
     
@@ -19991,6 +20239,7 @@ function renderProductSettings() {
                                 <option value="double" ${setting.priceType === 'double' ? 'selected' : ''}>单双面价</option>
                                 <option value="config" ${setting.priceType === 'config' ? 'selected' : ''}>基础+递增价</option>
                                 <option value="nodes" ${setting.priceType === 'nodes' ? 'selected' : ''}>按节点收费</option>
+                                <option value="byChar" ${setting.priceType === 'byChar' ? 'selected' : ''}>按字数收费</option>
                             </select>
                         </div>
                     </div>
@@ -20087,6 +20336,25 @@ function renderProductSettings() {
                                     ${setting.nodes && setting.nodes.length > 0 ? '' : '<p class="text-gray text-sm">暂无节点，点击下方按钮添加</p>'}
                                 </div>
                                 <button type="button" class="btn secondary small mt-2" onclick="addProductNodeSetting(${setting.id})">添加节点</button>
+                            </div>
+                        </div>
+                    ` : ''}
+                    <!-- 按字数收费设置 -->
+                    ${setting.priceType === 'byChar' ? `
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>每单位价格（元）</label>
+                                <input type="number" value="${setting.charPrice || 0}" onchange="updateProductSetting(${setting.id}, 'charPrice', parseFloat(this.value))" placeholder="如 5" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label>字数单位</label>
+                                <select onchange="updateProductSetting(${setting.id}, 'charUnit', parseInt(this.value))">
+                                    <option value="1" ${setting.charUnit === 1 ? 'selected' : ''}>每字</option>
+                                    <option value="100" ${setting.charUnit === 100 ? 'selected' : ''}>每百字</option>
+                                    <option value="500" ${setting.charUnit === 500 ? 'selected' : ''}>每500字</option>
+                                    <option value="1000" ${(setting.charUnit === 1000 || !setting.charUnit) ? 'selected' : ''}>每千字（默认）</option>
+                                    <option value="10000" ${setting.charUnit === 10000 ? 'selected' : ''}>每万字</option>
+                                </select>
                             </div>
                         </div>
                     ` : ''}
@@ -20639,7 +20907,7 @@ function addSameModelOption() {
 // 添加平台手续费选项
 function addPlatformFeeOption() {
     const key = 'opt_' + Date.now();
-    defaultSettings.platformFees[key] = { value: 0, name: '新选项' };
+    defaultSettings.platformFees[key] = { value: 0, name: '新选项', round: false };
     saveData();
     renderCoefficientSettings();
     updateCalculatorBuiltinSelects();
@@ -20898,6 +21166,10 @@ function renderPlatformFees() {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
         const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        // 取整开关：历史数据无 round 字段时，米画师默认 true，其他默认 false
+        const roundOn = item && typeof item === 'object' && item.round !== undefined
+            ? !!item.round
+            : (key === 'mihua');
         
         html += `
             <div class="mb-2 d-flex items-center gap-2">
@@ -20906,6 +21178,11 @@ function renderPlatformFees() {
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updatePlatformFee('${key}', this.value)" aria-label="手续费比例">
                 <span class="coefficient-percent-suffix" aria-hidden="true">%</span>
+                <label class="platform-fee-round-label" title="开启后手续费四舍五入取整到元，关闭则保留两位小数">
+                    <input type="checkbox" ${roundOn ? 'checked' : ''} 
+                           onchange="updatePlatformFeeRound('${key}', this.checked)">
+                    <span>取整</span>
+                </label>
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('platform', '${key}')" aria-label="删除" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>
@@ -21777,6 +22054,38 @@ function updateGiftForm(giftId) {
                                 </div>
                             `;
                         }).join('')}
+                    </div>
+                </div>
+            `;
+            break;
+
+        case 'byChar':
+            const giftCharUnit = productSetting.charUnit || 1000;
+            const giftCharPrice = productSetting.charPrice || 0;
+            const giftCurrentCharCount = gift.charCount || 0;
+            const giftUnitText = giftCharUnit === 1 ? '字' : (giftCharUnit === 100 ? '百字' : (giftCharUnit === 500 ? '500字' : (giftCharUnit === 1000 ? '千字' : (giftCharUnit === 10000 ? '万字' : giftCharUnit + '字'))));
+            const giftSplitCount = splitCharCount(giftCurrentCharCount);
+            html = `
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>单价：${getCurrencySymbol()}${giftCharPrice}/${giftUnitText}</label>
+                    </div>
+                    <div class="form-group" style="max-width:320px;flex-shrink:0;">
+                        <label>字数（万 / 字 分段输入）</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" id="giftCharCount-${giftId}-wan" value="${giftSplitCount.wan}" min="0" step="1"
+                                   style="width:100px;flex-shrink:0;"
+                                   onchange="onSplitCharCountChange('gift', ${giftId})"
+                                   oninput="onSplitCharCountChange('gift', ${giftId})"
+                                   placeholder="万">
+                            <span style="color:var(--text-muted);font-size:0.9em;white-space:nowrap;">万</span>
+                            <input type="number" id="giftCharCount-${giftId}-ge" value="${giftSplitCount.ge}" min="0" max="9999" step="1"
+                                   style="width:100px;flex-shrink:0;"
+                                   onchange="onSplitCharCountChange('gift', ${giftId})"
+                                   oninput="onSplitCharCountChange('gift', ${giftId})"
+                                   placeholder="0-9999">
+                            <span style="color:var(--text-muted);font-size:0.9em;white-space:nowrap;">字</span>
+                        </div>
                     </div>
                 </div>
             `;
