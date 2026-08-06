@@ -582,24 +582,12 @@
                 </div>
                 <div class="section project-info-section">
                     <h2>企划信息</h2>
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="projectName">企划名</label>
-                            <input type="text" id="projectName" placeholder="请输入企划名（可填中/外文）">
-                        </div>
-                        <div class="form-group flex-1 project-origin-input-wrap">
-                            <label for="projectOrigin">原作（IP）</label>
-                            <input type="text" id="projectOrigin" placeholder="请输入原作（IP）" oninput="debouncedShowProjectOriginMatches()" onblur="scheduleHideProjectOriginMatchList()">
-                            <div id="projectOriginMatchWrap" class="project-origin-match-dropdown d-none">
-                                <ul id="projectOriginMatchList"></ul>
-                            </div>
-                        </div>
+                    <div id="projectInfoFields" class="form-row">
+                        <!-- 由 renderProjectInfoFields() 动态渲染企划信息字段 -->
                     </div>
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="characterName">角色</label>
-                            <input type="text" id="characterName" placeholder="请输入角色名（可填中/外文）">
-                        </div>
+                    <!-- 原作IP历史匹配下拉（全局节点，动态插入到原作输入框所在 form-group 后面） -->
+                    <div id="projectOriginMatchWrap" class="project-origin-match-dropdown d-none" style="display:none;">
+                        <ul id="projectOriginMatchList"></ul>
                     </div>
                 </div>
                 <div class="section settings-section">
@@ -1851,10 +1839,10 @@
                             </div>
                             <div class="form-group">
                                 <label for="artistRole">身份</label>
-                                <select id="artistRole" onchange="updateArtistInfo('role', this.value)">
-                                    <option value="美工">美工</option>
-                                    <option value="画师">画师</option>
-                                </select>
+                                <div style="display:flex;gap:6px;">
+                                    <select id="artistRole" onchange="updateArtistInfo('role', this.value)" style="flex:1;"></select>
+                                    <button type="button" class="btn small secondary" onclick="openRoleManageModal()" title="管理身份和企划字段">⚙</button>
+                                </div>
                             </div>
                         </div>
                         <div class="form-row artist-info-row-2">
@@ -3070,6 +3058,28 @@
             window.addEventListener('load', applyDesktopNavHeight, { passive: true });
         })();
     </script>
+
+    <!-- 身份管理弹窗 -->
+    <div id="roleManageModal" class="modal d-none">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>身份与企划字段管理</h3>
+                <span class="close" onclick="closeRoleManageModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="roleManageBody" style="margin:12px 16px;max-height:calc(100vh - 260px);">
+                <!-- 由 JS 动态渲染身份列表与字段编辑区 -->
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-top:1px solid var(--border-color);gap:12px;">
+                <div style="font-size:0.72em;line-height:1.4;color:var(--text-muted);flex:1;">
+                    说明：即使字段设置为「不显示在计算页」，已保存的字段值仍会出现在小票和文件夹名中。
+                </div>
+                <div style="display:flex;gap:8px;flex-shrink:0;">
+                    <button class="btn small secondary" onclick="closeRoleManageModal()" style="min-width:64px;text-align:center;">取消</button>
+                    <button class="btn small primary" onclick="saveRoles()" style="min-width:64px;text-align:center;">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 </html>

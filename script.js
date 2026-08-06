@@ -655,10 +655,49 @@ const defaultSettings = {
     // 基础详细信息
     artistInfo: {
         id: '',           // 用户ID
-        role: '美工',     // 身份：美工/画师
+        role: '美工',     // 身份：美工/画师/题字/作者/自定义
         contact: '',      // 联系方式
         defaultDuration: 7                // 默认工期（天）
     },
+    // 身份配置（可增删，预置 4 种）
+    //  每个身份的 fields: [{ name: '字段名', showOnCalculation: 是否显示在计算页 }]
+    //  showOnCalculation=false: 计算页完全隐藏该字段，但其值仍参与小票/文件夹名/历史卡片
+    roles: [
+        {
+            name: '美工',
+            fields: [
+                { name: '企划名',     showOnCalculation: true },
+                { name: '原作（IP）', showOnCalculation: true },
+                { name: '角色',       showOnCalculation: true }
+            ]
+        },
+        {
+            name: '画师',
+            fields: [
+                { name: '企划名',     showOnCalculation: true },
+                { name: '原作（IP）', showOnCalculation: true },
+                { name: '角色',       showOnCalculation: true }
+            ]
+        },
+        {
+            name: '题字',
+            fields: [
+                { name: '企划名',     showOnCalculation: false },
+                { name: '原作（IP）', showOnCalculation: false },
+                { name: '角色',       showOnCalculation: false },
+                { name: '题字内容',   showOnCalculation: true  },
+                { name: '字体',       showOnCalculation: true  }
+            ]
+        },
+        {
+            name: '作者',
+            fields: [
+                { name: '企划名',     showOnCalculation: true },
+                { name: '原作（IP）', showOnCalculation: true },
+                { name: '作品类型',   showOnCalculation: true }
+            ]
+        }
+    ],
     orderRemark: '',      // 企划备注（设置页增加备注弹窗内容）
     // 用途系数：自用/无盈利 1，同人商用 2，买断 3，企业/书店 5
     usageCoefficients: {
@@ -1113,7 +1152,12 @@ function init() {
         
         // 初始化小票设置功能
         initReceiptCustomization();
-        
+
+        // 渲染企划信息字段（按当前身份动态渲染）
+        if (typeof renderProjectInfoFields === 'function') {
+            try { renderProjectInfoFields(); } catch (e) { /* ignore */ }
+        }
+
         // 标题区日期选择器绑定事件
         const scheduleTitleDateInput = document.getElementById('scheduleTitleDateInput');
         if (scheduleTitleDateInput) {
@@ -1335,6 +1379,52 @@ function loadData() {
                 if (typeof defaultSettings.receiptCustomization.footerImageWidth !== 'number') {
                     defaultSettings.receiptCustomization.footerImageWidth = 300;
                 }
+            }
+
+            // 确保 roles 结构完整（向后兼容：旧设置无 roles 时初始化为预置 4 种身份）
+            if (!defaultSettings.roles || !Array.isArray(defaultSettings.roles) || defaultSettings.roles.length === 0) {
+                defaultSettings.roles = [
+                    { name: '美工', fields: [
+                        { name: '企划名',     showOnCalculation: true },
+                        { name: '原作（IP）', showOnCalculation: true },
+                        { name: '角色',       showOnCalculation: true }
+                    ]},
+                    { name: '画师', fields: [
+                        { name: '企划名',     showOnCalculation: true },
+                        { name: '原作（IP）', showOnCalculation: true },
+                        { name: '角色',       showOnCalculation: true }
+                    ]},
+                    { name: '题字', fields: [
+                        { name: '企划名',     showOnCalculation: false },
+                        { name: '原作（IP）', showOnCalculation: false },
+                        { name: '角色',       showOnCalculation: false },
+                        { name: '题字内容',   showOnCalculation: true  },
+                        { name: '字体',       showOnCalculation: true  }
+                    ]},
+                    { name: '作者', fields: [
+                        { name: '企划名',     showOnCalculation: true },
+                        { name: '原作（IP）', showOnCalculation: true },
+                        { name: '作品类型',   showOnCalculation: true }
+                    ]}
+                ];
+            } else {
+                // 对已有 roles 中每个身份的 fields 做格式兼容：旧格式是字符串，新格式是对象
+                defaultSettings.roles.forEach(roleItem => {
+                    if (roleItem && Array.isArray(roleItem.fields)) {
+                        roleItem.fields = roleItem.fields.map(f => {
+                            if (typeof f === 'string') {
+                                // 旧格式：字符串字段名 → 默认显示在计算页
+                                return { name: f, showOnCalculation: true };
+                            }
+                            if (f && typeof f === 'object' && f.name) {
+                                // 新格式：确保 showOnCalculation 有值
+                                if (f.showOnCalculation === undefined) f.showOnCalculation = true;
+                                return f;
+                            }
+                            return f;
+                        }).filter(Boolean);
+                    }
+                });
             }
         }
         
@@ -3968,14 +4058,8 @@ function renderTrashDrawer() {
         const clientId = data.clientId || '';
         const contact = data.contact || '';
         const clientDisplay = contact ? (contact + ' ' + clientId) : clientId;
-        const projectName = data.projectName || '';
-        const projectOrigin = data.projectOrigin || '';
-        const characterName = data.characterName || '';
-        const projectSummary = [];
-        if (projectName) projectSummary.push(projectName);
-        if (projectOrigin) projectSummary.push(projectOrigin);
-        if (characterName) projectSummary.push(characterName);
-        const projectDisplay = projectSummary.join(' · ') || '无企划信息';
+        // 企划信息摘要：按当前身份动态显示（与 todo/记录页统一逻辑）
+        const projectDisplay = mgBuildProjectSummary(data) || '无企划信息';
         const timestamp = data.timestamp;
         let shortDate = '—';
         if (timestamp) {
@@ -4410,18 +4494,8 @@ function applyRecordFilters() {
         const clientDisplay = platformLabel ? (platformLabel + ' ' + clientId) : clientId;
         const shortDate = formatRecordDotDate(item && item.timestamp);
         const scheduleRange = formatRecordScheduleRange(item);
-        const projectName = item && item.projectName ? escapeHtml(String(item.projectName).trim()) : '';
-        const projectOrigin = item && item.projectOrigin ? escapeHtml(String(item.projectOrigin).trim()) : '';
-        const characterName = item && item.characterName ? escapeHtml(String(item.characterName).trim()) : '';
-        const projectSummary = (function () {
-            if (!projectName && !projectOrigin && !characterName) return '';
-            const titlePart = projectName ? projectName : '';
-            const ipPart = projectOrigin ? projectOrigin : '';
-            const rolePart = characterName ? characterName : '';
-            const leftWrapped = titlePart ? ('<span class="project-title-strong">' + titlePart + '</span> »') : '';
-            const rightPart = [ipPart, rolePart].filter(Boolean).join(' - ');
-            return [leftWrapped, rightPart].filter(Boolean).join(' ');
-        })();
+        // 企划信息摘要：按当前身份动态显示（与 todo 卡片/小票页统一逻辑）
+        const projectSummary = mgBuildProjectSummary(item);
         // 记录页金额：主显示“净收入”（不含平台手续费），副显示“含手续费”（客户支付）
         const receivableAmount = getRecordReceivableAmount(item); // net
         const platformFeeAmt = (item && item.platformFeeAmount != null && isFinite(item.platformFeeAmount)) ? Number(item.platformFeeAmount) : 0;
@@ -7565,6 +7639,11 @@ function openCalculatorDrawer(skipOrderTimeReset) {
         if (projectOriginInput) projectOriginInput.value = '';
         var characterNameInput = document.getElementById('characterName');
         if (characterNameInput) characterNameInput.value = '';
+        // 清空自定义企划字段
+        try {
+            if (window._tempCustomFields) window._tempCustomFields = {};
+            document.querySelectorAll('[id^="customField_"]').forEach(function(el) { if (el) el.value = ''; });
+        } catch (e) { /* ignore */ }
         var placeholderToggle = document.getElementById('schedulePlaceholderToggle');
         if (placeholderToggle) placeholderToggle.checked = false;
         schedulePlaceholderAutoSync = true;
@@ -8421,7 +8500,30 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const projectNameValue = projectNameEl ? String(projectNameEl.value || '').trim() : '';
     const projectOriginValue = projectOriginEl ? String(projectOriginEl.value || '').trim() : '';
     const characterNameValue = characterNameEl ? String(characterNameEl.value || '').trim() : '';
-    
+
+    // 收集自定义企划信息字段（无论 showOnCalculation 与否，只要有值就收集）
+    var customProjectFields = {};
+    try {
+        var _role = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.role) ? String(defaultSettings.artistInfo.role) : '美工';
+        var _roleCfg = (defaultSettings.roles || []).find(function(r) { return r && r.name === _role; });
+        var _allFlds = _roleCfg ? (_roleCfg.fields || []) : [];
+        _allFlds.forEach(function(fobj) {
+            if (!fobj || !fobj.name) return;
+            var fname = fobj.name;
+            if (BUILTIN_PROJECT_FIELD_NAMES.indexOf(fname) >= 0) return; // 内置字段已经单独处理
+            var el = document.getElementById('customField_' + encodeURIComponent(fname));
+            var val;
+            if (el) {
+                val = String(el.value || '').trim();
+            } else if (window._tempCustomFields && window._tempCustomFields[fname] != null) {
+                val = String(window._tempCustomFields[fname] || '').trim();
+            } else {
+                val = '';
+            }
+            if (val) customProjectFields[fname] = val;
+        });
+    } catch (e) { /* ignore */ }
+
     // 计算其他费用总和（单价 × 数量）
     const otherFeesTotal = Array.isArray(dynamicOtherFees) ? dynamicOtherFees.reduce((sum, fee) => {
         const unitPrice = fee.unitPrice || fee.amount;
@@ -9079,6 +9181,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         projectName: projectNameValue,
         projectOrigin: projectOriginValue,
         characterName: characterNameValue,
+        customProjectFields: JSON.parse(JSON.stringify(customProjectFields || {})),
         customTag: (quoteData && quoteData.customTag) ? String(quoteData.customTag).trim() : '',
         tags: (quoteData && Array.isArray(quoteData.tags)) ? JSON.parse(JSON.stringify(quoteData.tags)) : [],
         parentOrderId: (quoteData && quoteData.parentOrderId) ? quoteData.parentOrderId : null,
@@ -9227,9 +9330,11 @@ function generateQuote() {
         receiptInfoHtml += `<p class="receipt-text-sm">DEADLINE: ${quoteData.deadline}</p>`;
     }
         
-    // 身份（美工/画师）
+    // 身份（美工/画师/题字/作者/自定义）
     if (receiptInfo.showDesigner !== false && defaultSettings.artistInfo.id) {  // 默认为true
-        const roleLabel = (defaultSettings.artistInfo.role === '画师') ? 'ARTIST' : 'DESIGNER';
+        var roleName = defaultSettings.artistInfo.role || '美工';
+        var roleLabelMap = { '美工': 'DESIGNER', '画师': 'ARTIST', '题字': 'CALLIGRAPHER', '作者': 'AUTHOR' };
+        var roleLabel = roleLabelMap[roleName] || roleName.toUpperCase();
         receiptInfoHtml += `<p class="receipt-text-sm">${roleLabel}: ${defaultSettings.artistInfo.id}</p>`;
     }
         
@@ -9244,19 +9349,41 @@ function generateQuote() {
     }
 
     // 企划信息（有任意字段时显示，且开关开启）
-    if (receiptInfo.showProjectInfo !== false && (quoteData.projectName || quoteData.projectOrigin || quoteData.characterName)) {
-        receiptInfoHtml += `<div class="receipt-project-section">`;
-        if (quoteData.projectName) {
-            receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">企划名</span><span class="receipt-project-value">${String(quoteData.projectName).replace(/</g, '&lt;')}</span></div>`;
+    (function () {
+        var hasBuiltin = quoteData.projectName || quoteData.projectOrigin || quoteData.characterName;
+        var hasCustom = false;
+        var cpf = quoteData.customProjectFields || {};
+        var customKeys = [];
+        try { customKeys = Object.keys(cpf).filter(function(k) { return cpf[k] && String(cpf[k]).trim(); }); } catch (e) {}
+        hasCustom = customKeys.length > 0;
+        if (receiptInfo.showProjectInfo !== false && (hasBuiltin || hasCustom)) {
+            receiptInfoHtml += `<div class="receipt-project-section">`;
+            // 优先按当前身份的字段顺序输出内置字段
+            var roleCfg = (defaultSettings.roles || []).find(function(r) { return r && r.name === (defaultSettings.artistInfo.role || '美工'); });
+            var flds = roleCfg ? (roleCfg.fields || []) : [{name:'企划名'},{name:'原作（IP）'},{name:'角色'}];
+            var emittedCustom = {};
+            flds.forEach(function(fobj) {
+                var fname = fobj && fobj.name ? fobj.name : '';
+                if (!fname) return;
+                if (fname === '企划名' && quoteData.projectName) {
+                    receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">企划名</span><span class="receipt-project-value">${String(quoteData.projectName).replace(/</g, '&lt;')}</span></div>`;
+                } else if (fname === '原作（IP）' && quoteData.projectOrigin) {
+                    receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">原作（IP）</span><span class="receipt-project-value">${String(quoteData.projectOrigin).replace(/</g, '&lt;')}</span></div>`;
+                } else if (fname === '角色' && quoteData.characterName) {
+                    receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">角色</span><span class="receipt-project-value">${String(quoteData.characterName).replace(/</g, '&lt;')}</span></div>`;
+                } else if (cpf[fname] && String(cpf[fname]).trim()) {
+                    emittedCustom[fname] = true;
+                    receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">${String(fname).replace(/</g, '&lt;')}</span><span class="receipt-project-value">${String(cpf[fname]).replace(/</g, '&lt;')}</span></div>`;
+                }
+            });
+            // 补充未在身份中定义但存在于 customProjectFields 的字段（兼容历史）
+            customKeys.forEach(function(k) {
+                if (emittedCustom[k]) return;
+                receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">${String(k).replace(/</g, '&lt;')}</span><span class="receipt-project-value">${String(cpf[k]).replace(/</g, '&lt;')}</span></div>`;
+            });
+            receiptInfoHtml += `</div>`;
         }
-        if (quoteData.projectOrigin) {
-            receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">原作（IP）</span><span class="receipt-project-value">${String(quoteData.projectOrigin).replace(/</g, '&lt;')}</span></div>`;
-        }
-        if (quoteData.characterName) {
-            receiptInfoHtml += `<div class="receipt-project-row"><span class="receipt-project-label">角色</span><span class="receipt-project-value">${String(quoteData.characterName).replace(/</g, '&lt;')}</span></div>`;
-        }
-        receiptInfoHtml += `</div>`;
-    }
+    })();
         
     // 可选显示原有的信息（可根据需要启用）
     // receiptInfoHtml += `<p class="receipt-text-sm">单主ID: ${quoteData.clientId}</p>`;
@@ -11422,10 +11549,16 @@ function saveToHistory() {
         if (projectOriginInput) projectOriginInput.value = '';
         var characterNameInput = document.getElementById('characterName');
         if (characterNameInput) characterNameInput.value = '';
+        // 清空自定义企划字段
+        try {
+            if (window._tempCustomFields) window._tempCustomFields = {};
+            document.querySelectorAll('[id^="customField_"]').forEach(function(el) { if (el) el.value = ''; });
+        } catch (e) { /* ignore */ }
         if (quoteData) {
             quoteData.agreedAmount = null;
             quoteData.hasManualAgreed = false;
             quoteData.manualAgreedBase = null;
+            quoteData.customProjectFields = {};
         }
         var agreedInputEl = document.getElementById('agreedAmountInput');
         if (agreedInputEl) agreedInputEl.value = '';
@@ -13125,18 +13258,8 @@ async function renderScheduleTodoSection() {
         }).map(function (t) {
             return '<span class="record-tag record-tag-custom schedule-todo-card-tag" style="' + mgTagInlineStyle(t.color || '#f59e0b') + '">' + escapeHtml(String(t.name || '')) + '</span>';
         }).join('');
-        const projectName = item && item.projectName ? escapeHtml(String(item.projectName).trim()) : '';
-        const projectOrigin = item && item.projectOrigin ? escapeHtml(String(item.projectOrigin).trim()) : '';
-        const characterName = item && item.characterName ? escapeHtml(String(item.characterName).trim()) : '';
-        const projectSummary = (function () {
-            if (!projectName && !projectOrigin && !characterName) return '';
-            const titlePart = projectName ? projectName : '';
-            const ipPart = projectOrigin ? projectOrigin : '';
-            const rolePart = characterName ? characterName : '';
-            const leftWrapped = titlePart ? (titlePart + ' »') : '';
-            const rightPart = [ipPart, rolePart].filter(Boolean).join(' - ');
-            return [leftWrapped, rightPart].filter(Boolean).join(' ');
-        })();
+        // 企划信息摘要：按当前身份动态显示（内置主字段 + 附加字段值）
+        const projectSummary = mgBuildProjectSummary(item);
         // 获取正确的圆点颜色
         let dotColor = '#999';
         try {
@@ -16807,7 +16930,27 @@ function editHistoryItem(id) {
     if (projectOriginInput) projectOriginInput.value = quote.projectOrigin || '';
     var characterNameInput = document.getElementById('characterName');
     if (characterNameInput) characterNameInput.value = quote.characterName || '';
+    // 恢复自定义企划字段到临时存储（renderProjectInfoFields 会从中读取）
+    if (!window._tempCustomFields) window._tempCustomFields = {};
+    var _cpf = quote.customProjectFields || {};
+    try {
+        Object.keys(_cpf).forEach(function(k) {
+            if (_cpf[k] != null) window._tempCustomFields[k] = String(_cpf[k]);
+        });
+    } catch (e) { /* ignore */ }
+    // 按当前身份重新渲染企划信息字段，保证字段正确显示，且值被填入
+    if (typeof renderProjectInfoFields === 'function') {
+        try { renderProjectInfoFields(); } catch (e) { /* ignore */ }
+        // 再填一次自定义字段值（应对 DOM 刚被重建的情况）
+        try {
+            Object.keys(_cpf).forEach(function(k) {
+                var el = document.getElementById('customField_' + encodeURIComponent(k));
+                if (el) el.value = String(_cpf[k] || '');
+            });
+        } catch (e2) { /* ignore */ }
+    }
     if (quoteData) {
+        quoteData.customProjectFields = JSON.parse(JSON.stringify(_cpf || {}));
         quoteData.customTag = quote.customTag || '';
         quoteData.tags = Array.isArray(quote.tags) ? JSON.parse(JSON.stringify(quote.tags)) : [];
         // 追加单关联信息
@@ -18179,6 +18322,11 @@ function updateArtistInfo(field, value, options = {}) {
             }, 500);
         }
     }
+
+    // 如果修改的是身份（role）：重新渲染企划信息字段
+    if (field === 'role' && typeof renderProjectInfoFields === 'function') {
+        try { renderProjectInfoFields(); } catch (e) { /* ignore */ }
+    }
 }
 
 function mgInitArtistInfoBindings() {
@@ -18536,10 +18684,535 @@ async function mgHydrateArtistIdFromCloud() {
     }
 }
 
+// ========== 身份管理 JS ==========
+
+// 内置字段判断
+const BUILTIN_PROJECT_FIELDS = { '企划名': 'projectName', '原作（IP）': 'projectOrigin', '角色': 'characterName' };
+const BUILTIN_PROJECT_FIELD_NAMES = Object.keys(BUILTIN_PROJECT_FIELDS);
+
+/**
+ * 按当前身份配置生成企划信息摘要（单行紧凑，不显示字段名）
+ * 内置主字段保持 `企划名 » 原作 - 角色` 格式，附加字段只显示值，用 ` · ` 分隔追加。
+ * @param {Object} item - 订单数据（含 projectName/projectOrigin/characterName/customProjectFields）
+ * @returns {string} 摘要字符串；无企划信息时返回空字符串
+ */
+function mgBuildProjectSummary(item) {
+    if (!item) return '';
+    // 取值工具：内置字段从 item 顶层取，自定义字段从 customProjectFields 取
+    function getFieldValue(fname) {
+        if (!fname) return '';
+        var builtinKey = BUILTIN_PROJECT_FIELDS[fname];
+        var val = '';
+        if (builtinKey) {
+            val = item[builtinKey];
+        } else if (item.customProjectFields) {
+            val = item.customProjectFields[fname];
+        }
+        if (val == null) return '';
+        val = String(val).trim();
+        return val;
+    }
+    function escapeText(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // 找到当前身份配置；找不到时 fallback 到「美工」或第一个身份
+    var roleName = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.role) || '美工';
+    var roles = (defaultSettings && Array.isArray(defaultSettings.roles)) ? defaultSettings.roles : [];
+    var roleCfg = roles.find(function (r) { return r && r.name === roleName; });
+    if (!roleCfg) roleCfg = roles.find(function (r) { return r && r.name === '美工'; }) || roles[0];
+    var fields = roleCfg && Array.isArray(roleCfg.fields) ? roleCfg.fields : [];
+
+    var mainParts = [];      // 主字段：企划名/原作/角色
+    var extraParts = [];     // 附加字段：题字内容/字体/作品类型/自定义...
+    var emittedCustom = {};  // 已处理的自定义字段名（用于兼容历史补充）
+
+    fields.forEach(function (fobj) {
+        var fname = fobj && fobj.name ? fobj.name : '';
+        if (!fname) return;
+        var val = getFieldValue(fname);
+        if (!val) return;
+        if (BUILTIN_PROJECT_FIELDS[fname]) {
+            mainParts.push({ name: fname, value: val });
+        } else {
+            extraParts.push({ name: fname, value: val });
+            emittedCustom[fname] = true;
+        }
+    });
+
+    // 兼容历史：补充未在身份中定义但存在于 customProjectFields 的字段
+    if (item.customProjectFields) {
+        try {
+            Object.keys(item.customProjectFields).forEach(function (k) {
+                if (emittedCustom[k]) return;
+                if (BUILTIN_PROJECT_FIELDS[k]) return;  // 内置字段已在主字段处理
+                var v = item.customProjectFields[k];
+                if (v == null) return;
+                v = String(v).trim();
+                if (!v) return;
+                extraParts.push({ name: k, value: v });
+                emittedCustom[k] = true;
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    if (mainParts.length === 0 && extraParts.length === 0) return '';
+
+    // 拼接主字段：企划名 » 原作 - 角色
+    // 注意：» 仅在企划名后跟原作/角色时才显示，避免「企划名 » · 附加字段」的尴尬格式
+    var mainSummary = '';
+    if (mainParts.length > 0) {
+        var titlePart = '';
+        var ipPart = '';
+        var rolePart = '';
+        mainParts.forEach(function (p) {
+            if (p.name === '企划名') titlePart = p.value;
+            else if (p.name === '原作（IP）') ipPart = p.value;
+            else if (p.name === '角色') rolePart = p.value;
+        });
+        var titleText = titlePart ? escapeText(titlePart) : '';
+        var rightPart = [ipPart, rolePart].filter(Boolean).map(escapeText).join(' - ');
+        if (titleText && rightPart) {
+            mainSummary = titleText + ' » ' + rightPart;
+        } else if (titleText) {
+            mainSummary = titleText;
+        } else if (rightPart) {
+            mainSummary = rightPart;
+        }
+    }
+
+    // 拼接附加字段：只显示值，用 ` · ` 分隔
+    var extraSummary = extraParts.map(function (p) { return escapeText(p.value); }).join(' · ');
+
+    // 主字段和附加字段之间用 ` · ` 连接
+    return [mainSummary, extraSummary].filter(Boolean).join(' · ');
+}
+
+// 身份默认预置（身份管理弹窗 fallback 时用到）
+const DEFAULT_ROLES_PRESET = [
+    { name: '美工', fields: [
+        { name: '企划名',     showOnCalculation: true },
+        { name: '原作（IP）', showOnCalculation: true },
+        { name: '角色',       showOnCalculation: true }
+    ]},
+    { name: '画师', fields: [
+        { name: '企划名',     showOnCalculation: true },
+        { name: '原作（IP）', showOnCalculation: true },
+        { name: '角色',       showOnCalculation: true }
+    ]},
+    { name: '题字', fields: [
+        { name: '企划名',     showOnCalculation: false },
+        { name: '题字内容',   showOnCalculation: true },
+        { name: '字体',       showOnCalculation: true }
+    ]},
+    { name: '作者', fields: [
+        { name: '企划名',     showOnCalculation: true },
+        { name: '原作（IP）', showOnCalculation: true },
+        { name: '作品类型',   showOnCalculation: true }
+    ]}
+];
+
+// 渲染身份下拉框选项（设置页）
+function renderArtistRoleOptions() {
+    const roleEl = document.getElementById('artistRole');
+    if (!roleEl) return;
+    const roles = defaultSettings.roles || [];
+    const currentRole = defaultSettings.artistInfo.role || '美工';
+    roleEl.innerHTML = roles.map(r =>
+        `<option value="${escapeHtml(String(r.name).replace(/"/g, '&quot;'))}" ${r.name === currentRole ? 'selected' : ''}>${escapeHtml(r.name)}</option>`
+    ).join('');
+}
+
+// 身份管理弹窗编辑中的临时状态
+let _roleManageTmpRoles = null;
+let _roleManageActiveIdx = 0;
+
+function openRoleManageModal() {
+    _roleManageTmpRoles = JSON.parse(JSON.stringify(defaultSettings.roles || []));
+    if (!_roleManageTmpRoles || _roleManageTmpRoles.length === 0) {
+        _roleManageTmpRoles = JSON.parse(JSON.stringify(DEFAULT_ROLES_PRESET || []));
+    }
+    // 默认选中当前 artistInfo.role 对应的身份
+    var cur = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.role) ? String(defaultSettings.artistInfo.role) : '';
+    var idx = _roleManageTmpRoles.findIndex(function(r) { return r && r.name === cur; });
+    _roleManageActiveIdx = idx >= 0 ? idx : 0;
+    renderRoleManageBody();
+    var modal = document.getElementById('roleManageModal');
+    if (modal) modal.classList.remove('d-none');
+}
+
+function closeRoleManageModal() {
+    _roleManageTmpRoles = null;
+    _roleManageActiveIdx = 0;
+    var modal = document.getElementById('roleManageModal');
+    if (modal) modal.classList.add('d-none');
+}
+
+// 切换当前编辑的身份 Tab
+function switchRoleTab(rIdx) {
+    if (!_roleManageTmpRoles) return;
+    if (rIdx < 0 || rIdx >= _roleManageTmpRoles.length) return;
+    // 在切走之前先把当前身份的字段名和身份名从 DOM 里同步回临时状态
+    syncRoleTabInputsFromDom(_roleManageActiveIdx);
+    _roleManageActiveIdx = rIdx;
+    renderRoleManageBody();
+}
+
+// 把当前 Tab 的 input 同步回 _roleManageTmpRoles（防止切 Tab 丢编辑中的值）
+function syncRoleTabInputsFromDom(rIdx) {
+    if (!_roleManageTmpRoles || !_roleManageTmpRoles[rIdx]) return;
+    var nameInput = document.getElementById('roleTabName_' + rIdx);
+    if (nameInput) {
+        _roleManageTmpRoles[rIdx].name = String(nameInput.value || '').trim() || ('身份' + (rIdx + 1));
+    }
+    var fields = _roleManageTmpRoles[rIdx].fields || [];
+    for (var fIdx = 0; fIdx < fields.length; fIdx++) {
+        var fin = document.getElementById('roleFieldName_' + rIdx + '_' + fIdx);
+        if (fin && !BUILTIN_PROJECT_FIELD_NAMES.includes(_roleManageTmpRoles[rIdx].fields[fIdx].name)) {
+            _roleManageTmpRoles[rIdx].fields[fIdx].name = String(fin.value || '').trim() || _roleManageTmpRoles[rIdx].fields[fIdx].name;
+        }
+        var cbox = document.getElementById('roleFieldShow_' + rIdx + '_' + fIdx);
+        if (cbox) {
+            _roleManageTmpRoles[rIdx].fields[fIdx].showOnCalculation = !!cbox.checked;
+        }
+    }
+}
+
+// 渲染身份管理弹窗主体（顶部 Tab + 当前身份的字段表）
+function renderRoleManageBody() {
+    var body = document.getElementById('roleManageBody');
+    if (!body) return;
+    var roles = _roleManageTmpRoles || [];
+    if (_roleManageActiveIdx < 0) _roleManageActiveIdx = 0;
+    if (_roleManageActiveIdx >= roles.length) _roleManageActiveIdx = Math.max(0, roles.length - 1);
+    var rIdx = _roleManageActiveIdx;
+    var activeRole = roles[rIdx] || { name: '', fields: [] };
+
+    var html = '';
+    // 顶部身份 Tab + 新增/删除操作行（sticky，不随内容滚动）
+    html += '<div style="position:sticky;top:-12px;z-index:2;background:var(--card-bg,#ffffff);display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--border-color);padding:10px 4px;">';
+    roles.forEach(function(r, i) {
+        var isActive = i === rIdx;
+        var label = escapeHtml(r && r.name ? r.name : ('身份' + (i + 1)));
+        html += '<button class="btn small ' + (isActive ? 'primary' : 'secondary') + '"'
+            + ' onclick="switchRoleTab(' + i + ')"'
+            + ' style="' + (isActive ? 'font-weight:600;' : '') + '"'
+            + ' title="切换到「' + label + '」">' + label + '</button>';
+    });
+    html += '<span style="flex:1;"></span>';
+    html += '<button class="btn small secondary" onclick="addNewRole()">+ 新增身份</button>';
+    html += '<button class="btn small danger" onclick="deleteRole(' + rIdx + ')"'
+        + (roles.length <= 1 ? ' disabled title="至少保留 1 个身份"' : '')
+        + '>删除当前身份</button>';
+    html += '</div>';
+
+    // 当前身份的编辑区
+    html += '<div style="border:1px solid var(--border-color);border-radius:6px;padding:12px 14px;background:var(--card-bg,#ffffff);">';
+    // 身份名 + 一行头部操作
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">';
+    html += '<label style="font-size:0.9em;color:var(--text-light);width:78px;flex-shrink:0;">身份名称：</label>';
+    html += '<input type="text" id="roleTabName_' + rIdx + '" value="' + escapeHtml(activeRole.name || '') + '"'
+        + ' placeholder="请输入身份名称"'
+        + ' oninput="updateRoleName(' + rIdx + ', this.value)"'
+        + ' style="flex:1;padding:6px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color,#ffffff);color:var(--text-color,#000);">';
+    html += '</div>';
+
+    // 字段表
+    html += '<div style="margin-top:8px;">'
+        + '<table style="width:100%;border-collapse:collapse;">'
+        + '<thead><tr style="font-size:0.9em;color:var(--text-light);">'
+        + '<th style="text-align:left;padding:6px 8px;width:60%;">字段名</th>'
+        + '<th style="text-align:center;padding:6px 8px;width:32%;white-space:nowrap;">显示在计算页</th>'
+        + '<th style="text-align:right;padding:6px 8px;width:8%;"></th>'
+        + '</tr></thead><tbody>';
+    (activeRole.fields || []).forEach(function(fieldObj, fIdx) {
+        var fname = fieldObj && fieldObj.name ? String(fieldObj.name) : '';
+        var isBuiltin = BUILTIN_PROJECT_FIELD_NAMES.indexOf(fname) >= 0;
+        var checked = fieldObj.showOnCalculation !== false ? 'checked' : '';
+        html += '<tr>';
+        html += '<td style="padding:6px 8px;">';
+        if (isBuiltin) {
+            html += '<input type="text" id="roleFieldName_' + rIdx + '_' + fIdx + '" value="' + escapeHtml(fname) + '" readonly'
+                + ' style="padding:5px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--primary-light,#f5f5f5);color:var(--text-light);width:100%;">';
+        } else {
+            html += '<input type="text" id="roleFieldName_' + rIdx + '_' + fIdx + '" value="' + escapeHtml(fname) + '"'
+                + ' oninput="updateRoleFieldName(' + rIdx + ',' + fIdx + ',this.value)"'
+                + ' style="padding:5px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color,#ffffff);color:var(--text-color,#000);width:100%;">';
+        }
+        html += '</td>';
+        html += '<td style="padding:6px 8px;text-align:center;">'
+            + '<label class="mg-toggle-switch" style="cursor:pointer;">'
+            + '<input type="checkbox" id="roleFieldShow_' + rIdx + '_' + fIdx + '" ' + checked
+            + ' onchange="updateRoleFieldShow(' + rIdx + ',' + fIdx + ',this.checked)">'
+            + '<span class="mg-toggle-slider"></span></label></td>';
+        html += '<td style="padding:6px 8px;text-align:right;">'
+            + '<button class="btn xsmall danger" onclick="removeFieldFromRole(' + rIdx + ',' + fIdx + ')"'
+            + (isBuiltin ? ' disabled title="内置字段不可删除，可取消「显示」在计算页"' : '') + '>删除</button></td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    // 添加字段按钮
+    html += '<div style="margin-top:10px;">'
+        + '<button class="btn small secondary" onclick="addFieldToRole(' + rIdx + ')">+ 新增企划字段</button>'
+        + '</div>';
+    html += '</div>';
+
+    body.innerHTML = html;
+}
+
+// 更新身份名称（立即写回临时变量，同时保持 input 值不受影响）
+function updateRoleName(rIdx, value) {
+    if (!_roleManageTmpRoles || !_roleManageTmpRoles[rIdx]) return;
+    _roleManageTmpRoles[rIdx].name = String(value || '').trim() || ('身份' + (rIdx + 1));
+}
+
+// 删除身份（只能删除当前身份）
+function deleteRole(rIdx) {
+    if (!_roleManageTmpRoles || _roleManageTmpRoles.length <= 1) return;
+    var rName = _roleManageTmpRoles[rIdx] ? _roleManageTmpRoles[rIdx].name : '';
+    if (rName && !confirm('确定删除身份「' + rName + '」？\n已保存的订单数据不会丢失，但该身份将不再出现在下拉列表中。')) return;
+    // 如果删的是当前选中的身份，默认切到第一个（若第一个被删则 idx 不变）
+    if (defaultSettings.artistInfo.role === rName) {
+        var another = _roleManageTmpRoles.find(function(r, i) { return i !== rIdx; });
+        if (another) defaultSettings.artistInfo.role = another.name;
+    }
+    _roleManageTmpRoles.splice(rIdx, 1);
+    if (_roleManageActiveIdx >= _roleManageTmpRoles.length) _roleManageActiveIdx = Math.max(0, _roleManageTmpRoles.length - 1);
+    if (_roleManageActiveIdx < 0) _roleManageActiveIdx = 0;
+    renderRoleManageBody();
+}
+
+// 添加新身份（默认继承美工的字段集）
+function addNewRole() {
+    if (!_roleManageTmpRoles) return;
+    var baseRole = _roleManageTmpRoles.find(function(r) { return r && r.name === '美工'; }) || _roleManageTmpRoles[0];
+    var baseFields = baseRole && baseRole.fields ? JSON.parse(JSON.stringify(baseRole.fields)) : [];
+    var cnt = 1, newName = '新身份';
+    while (_roleManageTmpRoles.some(function(r) { return r && r.name === newName; })) newName = '新身份' + (++cnt);
+    // 切走前同步当前 Tab 输入
+    syncRoleTabInputsFromDom(_roleManageActiveIdx);
+    _roleManageTmpRoles.push({ name: newName, fields: baseFields });
+    _roleManageActiveIdx = _roleManageTmpRoles.length - 1;
+    renderRoleManageBody();
+}
+
+// 添加字段到当前身份
+function addFieldToRole(rIdx) {
+    if (!_roleManageTmpRoles || !_roleManageTmpRoles[rIdx]) return;
+    // 切走前同步当前 Tab 输入（避免用户刚改了其他字段名还没落盘）
+    syncRoleTabInputsFromDom(rIdx);
+    var cnt = 1, name = '新字段';
+    while (_roleManageTmpRoles[rIdx].fields.some(function(f) { return f && f.name === name; })) name = '新字段' + (++cnt);
+    _roleManageTmpRoles[rIdx].fields.push({ name: name, showOnCalculation: true });
+    renderRoleManageBody();
+    // 滚动到新增字段附近
+    try {
+        var newFieldInput = document.getElementById('roleFieldName_' + rIdx + '_' + (_roleManageTmpRoles[rIdx].fields.length - 1));
+        if (newFieldInput) newFieldInput.focus();
+    } catch (e) { /* ignore */ }
+}
+
+// 更新字段名（输入时实时）
+function updateRoleFieldName(rIdx, fIdx, value) {
+    if (!_roleManageTmpRoles || !_roleManageTmpRoles[rIdx]) return;
+    var f = _roleManageTmpRoles[rIdx].fields[fIdx];
+    if (!f) return;
+    // 若字段原本是内置字段（非常少见：这里仅做防御）
+    if (BUILTIN_PROJECT_FIELD_NAMES.indexOf(f.name) >= 0) return;
+    f.name = String(value || '').trim() || f.name;
+}
+
+// 更新字段显示开关
+function updateRoleFieldShow(rIdx, fIdx, checked) {
+    if (!_roleManageTmpRoles || !_roleManageTmpRoles[rIdx]) return;
+    var f = _roleManageTmpRoles[rIdx].fields[fIdx];
+    if (f) f.showOnCalculation = !!checked;
+}
+
+// 删除身份字段
+function removeFieldFromRole(rIdx, fIdx) {
+    if (!_roleManageTmpRoles || !_roleManageTmpRoles[rIdx]) return;
+    var f = _roleManageTmpRoles[rIdx].fields[fIdx];
+    if (!f || BUILTIN_PROJECT_FIELD_NAMES.indexOf(f.name) >= 0) return; // 内置字段不可删除
+    syncRoleTabInputsFromDom(rIdx);
+    _roleManageTmpRoles[rIdx].fields.splice(fIdx, 1);
+    renderRoleManageBody();
+}
+
+// 保存身份配置
+function saveRoles() {
+    if (!_roleManageTmpRoles) return;
+    // 保存前先把当前 Tab 里还在编辑中的值同步回临时状态
+    try { syncRoleTabInputsFromDom(_roleManageActiveIdx); } catch (e) { /* ignore */ }
+    // 校验：身份名不重复、字段名在同一身份内不重复
+    const roleNames = new Set();
+    for (let i = 0; i < _roleManageTmpRoles.length; i++) {
+        const r = _roleManageTmpRoles[i];
+        r.name = String(r.name || '').trim();
+        if (!r.name) { alert(`第 ${i + 1} 个身份名称不能为空`); return; }
+        if (roleNames.has(r.name)) { alert(`身份名「${r.name}」重复`); return; }
+        roleNames.add(r.name);
+        const fieldNames = new Set();
+        for (const f of r.fields) {
+            f.name = String(f.name || '').trim();
+            if (!f.name) { alert(`身份「${r.name}」存在空字段名`); return; }
+            if (fieldNames.has(f.name)) { alert(`身份「${r.name}」中字段「${f.name}」重复`); return; }
+            fieldNames.add(f.name);
+        }
+    }
+    defaultSettings.roles = _roleManageTmpRoles;
+    // 如果当前 artistInfo.role 不在新 roles 列表，切到第一个
+    if (!defaultSettings.roles.some(r => r.name === defaultSettings.artistInfo.role)) {
+        defaultSettings.artistInfo.role = defaultSettings.roles[0].name;
+    }
+    saveData();
+    // 重新渲染下拉框 + 计算页企划信息字段
+    renderArtistRoleOptions();
+    const roleEl = document.getElementById('artistRole');
+    if (roleEl) roleEl.value = defaultSettings.artistInfo.role;
+    if (typeof renderProjectInfoFields === 'function') renderProjectInfoFields();
+    closeRoleManageModal();
+    showGlobalToast('身份配置已保存');
+}
+
+// ========== 企划信息字段动态渲染 ==========
+
+// 内置字段名 → DOM id 映射
+function getBuiltinFieldId(fieldName) {
+    return BUILTIN_PROJECT_FIELDS[fieldName] || null;
+}
+
+// 读取当前字段值（内置字段从 DOM input.value，自定义字段从 window._tempCustomFields）
+function getCurrentFieldValue(fieldName) {
+    const builtinId = getBuiltinFieldId(fieldName);
+    if (builtinId) {
+        const el = document.getElementById(builtinId);
+        if (el) return el.value || '';
+        return '';
+    }
+    if (window._tempCustomFields && window._tempCustomFields[fieldName] != null) {
+        return String(window._tempCustomFields[fieldName] || '');
+    }
+    return '';
+}
+
+// 自定义字段输入
+function onProjectFieldInput(fieldName, value) {
+    if (BUILTIN_PROJECT_FIELDS[fieldName]) return; // 内置字段由原有逻辑走
+    if (!window._tempCustomFields) window._tempCustomFields = {};
+    window._tempCustomFields[fieldName] = value;
+}
+
+// 渲染当前身份的企划信息字段
+function renderProjectInfoFields() {
+    var role = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.role) ? String(defaultSettings.artistInfo.role) : '美工';
+    var roleConfig = (defaultSettings.roles || []).find(function(r) { return r && r.name === role; });
+    var FALLBACK = [
+        { name: '企划名',     showOnCalculation: true },
+        { name: '原作（IP）', showOnCalculation: true },
+        { name: '角色',       showOnCalculation: true }
+    ];
+    var allFields = roleConfig ? (roleConfig.fields || []) : FALLBACK;
+
+    var visibleFields = allFields.filter(function(f) { return f && f.showOnCalculation !== false; });
+    var hiddenBuiltinFields = allFields.filter(function(f) {
+        return f && f.showOnCalculation === false && BUILTIN_PROJECT_FIELD_NAMES.indexOf(f.name) >= 0;
+    });
+
+    var container = document.getElementById('projectInfoFields');
+    if (!container) return;
+
+    // 先把 projectOriginMatchWrap 从当前 DOM 中取出来（如果存在），避免重复插入
+    var matchWrap = document.getElementById('projectOriginMatchWrap');
+    if (matchWrap && matchWrap.parentNode) matchWrap.parentNode.removeChild(matchWrap);
+
+    // 保存已有的内置字段值，防止重渲染时丢值
+    var savedBuiltin = {};
+    BUILTIN_PROJECT_FIELD_NAMES.forEach(function(name) {
+        var builtinId = BUILTIN_PROJECT_FIELDS[name];
+        var el = document.getElementById(builtinId);
+        if (el) savedBuiltin[name] = el.value || '';
+    });
+
+    // 渲染可见字段（按一行 3 列分多行，保持现有布局一致）
+    var visibleHtml = '';
+    var colsPerRow = 3;
+    var hasOriginVisible = false;
+    for (var start = 0; start < visibleFields.length; start += colsPerRow) {
+        var row = visibleFields.slice(start, start + colsPerRow);
+        visibleHtml += '<div class="form-row" style="width:100%;">';
+        row.forEach(function(fieldObj) {
+            var field = fieldObj.name;
+            var isBuiltin = !!BUILTIN_PROJECT_FIELDS[field];
+            var inputId;
+            if (isBuiltin) {
+                inputId = BUILTIN_PROJECT_FIELDS[field];
+            } else {
+                inputId = 'customField_' + encodeURIComponent(field);
+            }
+            var currentValue;
+            if (isBuiltin) {
+                currentValue = savedBuiltin[field] != null ? savedBuiltin[field] : '';
+            } else {
+                currentValue = getCurrentFieldValue(field);
+            }
+            var extraHandlers;
+            if (field === '原作（IP）') {
+                extraHandlers = 'oninput="debouncedShowProjectOriginMatches(); onProjectFieldInput(&quot;原作（IP）&quot;, this.value)" onblur="scheduleHideProjectOriginMatchList()"';
+            } else {
+                extraHandlers = 'oninput="onProjectFieldInput(&quot;' + field.replace(/"/g, '&quot;') + '&quot;, this.value)"';
+            }
+            var escField = escapeHtml(field);
+            var escValue = (escapeHtml(currentValue) || '').replace(/"/g, '&quot;');
+            var fieldHtml = '<div class="form-group flex-1">'
+                + '<label for="' + inputId + '">' + escField + '</label>'
+                + '<input type="text" id="' + inputId + '" value="' + escValue + '" placeholder="请输入' + escField + '" ' + extraHandlers + '>'
+                + '</div>';
+            if (field === '原作（IP）') {
+                hasOriginVisible = true;
+                visibleHtml += '<div class="project-origin-input-wrap" style="position:relative;display:block;flex:1;">';
+                visibleHtml += fieldHtml;
+                if (matchWrap) {
+                    // 还原下拉 div，去掉之前的 style="display:none;"，保留 d-none 类
+                    var wrapHtml = matchWrap.outerHTML
+                        .replace(/\sstyle="display:\s*none;?"/gi, '')
+                        .replace(/\sstyle="[^"]*d-none[^"]*"/gi, '');
+                    // 确保带 d-none
+                    if (wrapHtml.indexOf('d-none') < 0) wrapHtml = wrapHtml.replace('class="', 'class="d-none ');
+                    visibleHtml += wrapHtml;
+                }
+                visibleHtml += '</div>';
+            } else {
+                visibleHtml += fieldHtml;
+            }
+        });
+        visibleHtml += '</div>';
+    }
+
+    // 为隐藏的内置字段保留 input[type=hidden]，保证 108 处 getElementById 不返回 null
+    hiddenBuiltinFields.forEach(function(fieldObj) {
+        var name = fieldObj.name;
+        var builtinId = BUILTIN_PROJECT_FIELDS[name];
+        var val = savedBuiltin[name];
+        if (val == null) val = '';
+        var escVal = String(val).replace(/"/g, '&quot;');
+        visibleHtml += '<input type="hidden" id="' + builtinId + '" value="' + escVal + '">';
+    });
+
+    container.innerHTML = visibleHtml;
+
+    // 如果原作匹配下拉 wrap 没被嵌入（当前身份无可见「原作（IP）」），就放回外层 section 末尾，保持 id 全局存在
+    if (!document.getElementById('projectOriginMatchWrap') && matchWrap) {
+        var secWrap = container.parentNode;
+        if (secWrap) secWrap.appendChild(matchWrap);
+    }
+}
+
 // 加载设置（基础信息 + 其他费用；系数由 renderCoefficientSettings 从 defaultSettings 渲染，无需在此回填）
 function loadSettings() {
     document.getElementById('artistId').value = defaultSettings.artistInfo.id;
     document.getElementById('artistContact').value = defaultSettings.artistInfo.contact;
+    renderArtistRoleOptions();  // 先渲染身份选项
     const roleEl = document.getElementById('artistRole');
     if (roleEl) roleEl.value = defaultSettings.artistInfo.role || '美工';
     document.getElementById('defaultDuration').value = defaultSettings.artistInfo.defaultDuration;
