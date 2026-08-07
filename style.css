@@ -2244,6 +2244,27 @@ input:focus, select:focus {
     font-size: 0.75rem;
 }
 
+/* 图标按钮：iOS 线性平面样式 */
+.mg-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4em;
+    min-width: 32px;
+    min-height: 32px;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.mg-icon-btn svg {
+    display: block;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 .btn.xsmall {
     padding: 0.25em 0.5em;
     font-size: 0.65rem;
@@ -2956,8 +2977,15 @@ html.theme-dark .mg-toggle-switch input:checked + .mg-toggle-slider {
         min-width: 0;
     }
     
-    /* 美工信息页、平台+定金行：超小屏也保持水平排列 */
-    .artist-info-row-1,
+    /* 美工信息页、平台+定金行：超小屏换行，身份一行 */
+    .artist-info-row-1 {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 0.4rem;
+    }
+    .artist-info-row-1 .form-group:nth-child(3) {
+        flex: 1 1 100% !important;
+    }
     .artist-info-row-2,
     .platform-deposit-row {
         flex-direction: row !important;

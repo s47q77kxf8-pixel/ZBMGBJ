@@ -1115,31 +1115,33 @@ function init() {
     // 更新计算页中的系数选择器
     updateCalculatorCoefficientSelects();
     
-    // 添加开始时间事件监听器，实现自动计算截稿时间
-    document.addEventListener('DOMContentLoaded', function() {
+    // 以下初始化原本包在 DOMContentLoaded 监听器内，但 init() 本身已在
+    // DOMContentLoaded 之后执行，导致该监听器永远不会触发（企划信息字段不渲染等 bug）。
+    // 这里改为直接执行，确保初始化代码生效。
+    {
         const startTime = document.getElementById('startTime');
         if (startTime) {
             startTime.value = toYmd(new Date());
-            
+
             startTime.addEventListener('change', calculateDeadline);
         }
-        
+
         // 设置默认选中自定义选项并触发更新
         const otherFeeTypeSelect = document.getElementById('otherFeeType');
         if (otherFeeTypeSelect) {
             otherFeeTypeSelect.value = 'custom';
             updateOtherFeeAmount();
         }
-        
+
         // 初始化每制品新增费用设置
         renderPerItemExtraFees();
-        
+
         // 初始化主题选择器
         const themeSelector = document.getElementById('themeSelector');
         if (themeSelector) {
             const currentTheme = defaultSettings.receiptCustomization?.theme || 'classic';
             themeSelector.value = currentTheme;
-            
+
             // 初始化移动端分段控件
             const segmentBtns = document.querySelectorAll('.theme-segment-btn');
             segmentBtns.forEach(btn => {
@@ -1149,7 +1151,7 @@ function init() {
                 }
             });
         }
-        
+
         // 初始化小票设置功能
         initReceiptCustomization();
 
@@ -1168,7 +1170,7 @@ function init() {
             clearTimeout(_saveDataTimer);
             if (typeof doSaveData === 'function') doSaveData();
         });
-    });
+    }
 
     // 默认进入上次页面；若无记录则进入排单页
     if (typeof showPage === 'function') {
@@ -7720,6 +7722,8 @@ function addProduct() {
 
     products.push(product);
     renderProduct(product);
+    // 有制品时自动取消“档期占位”勾选（占位单仅用于无制品时占据排期）
+    uncheckSchedulePlaceholder('已添加制品，自动取消档期占位');
     syncExpectedProductCountFromProducts();
 }
 
@@ -8434,9 +8438,25 @@ function setSchedulePlaceholderEnabled(isEnabled) {
     }
 }
 
+// 取消“档期占位”勾选（占位单仅用于无制品时占据排期，有制品时不应保留）
+function uncheckSchedulePlaceholder(reasonToast) {
+    var toggle = document.getElementById('schedulePlaceholderToggle');
+    if (!toggle || !toggle.checked) return;
+    toggle.checked = false;
+    setSchedulePlaceholderEnabled(false);
+    if (reasonToast && typeof showGlobalToast === 'function') {
+        showGlobalToast(reasonToast);
+    }
+}
+
 function handleSchedulePlaceholderToggle() {
     var toggle = document.getElementById('schedulePlaceholderToggle');
     if (!toggle) return;
+    // 已有制品时不允许勾选档期占位（占位单仅用于无制品时占据排期）
+    if (toggle.checked && products.length > 0) {
+        uncheckSchedulePlaceholder('已有制品，无需档期占位');
+        return;
+    }
     schedulePlaceholderAutoSync = true;
     setSchedulePlaceholderEnabled(toggle.checked);
     if (toggle.checked) {
