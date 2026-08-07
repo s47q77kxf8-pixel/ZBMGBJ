@@ -10970,13 +10970,24 @@ async function saveQuoteAsImage() {
         if (!canvas) return;
 
         const filename = `报价单_${quoteData.clientId}_${Date.now()}.png`;
+        const dataUrl = canvas.toDataURL('image/png');
+
+        // 设备判断：触摸设备包含手机和平板（innerWidth <= 1024 视为移动/平板端）
+        // 夸克、UC 等 WebView 内 innerWidth 可能偏大，同时用 UA 辅助判断
         const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
-        const isMobile = isTouchDevice && window.innerWidth <= 768;
+        const isMobileUA = /Mobi|Android|iPhone|iPod|Windows Phone/i.test(navigator.userAgent);
+        const isTabletUA = /iPad|Tablet|PlayBook|Silk/i.test(navigator.userAgent) ||
+                           (/Android/i.test(navigator.userAgent) && !/Mobi/i.test(navigator.userAgent));
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        // 触摸设备 + 窄/中屏，或 UA 明确是手机/平板，都按移动端处理
+        const isMobile = isTouchDevice && (window.innerWidth <= 1024 || isMobileUA || isTabletUA || isIOS);
 
         if (isMobile) {
+            // 移动端：优先 Web Share API（能直接存到相册/文件）
             canvas.toBlob(async function (blob) {
                 if (!blob) {
-                    alert('生成图片失败，请重试');
+                    // blob 失败，直接弹预览兜底
+                    showReceiptImagePreview(dataUrl, filename);
                     return;
                 }
                 const file = new File([blob], filename, { type: 'image/png' });
@@ -10985,19 +10996,32 @@ async function saveQuoteAsImage() {
                         await navigator.share({ files: [file], title: '报价单' });
                         showGlobalToast('小票图片保存成功');
                     } catch (err) {
+                        // 用户取消分享（AbortError）时不做兜底，避免打扰
                         if (err.name !== 'AbortError') {
-                            triggerDownload(canvas.toDataURL('image/png'), filename);
-                            showGlobalToast('小票图片保存成功');
+                            // 分享失败，尝试下载；iOS 不支持 download，走预览兜底
+                            if (isIOS || !triggerDownload(dataUrl, filename)) {
+                                showReceiptImagePreview(dataUrl, filename);
+                            } else {
+                                showGlobalToast('小票图片保存成功');
+                            }
                         }
                     }
                 } else {
-                    triggerDownload(canvas.toDataURL('image/png'), filename);
-                    showGlobalToast('小票图片保存成功');
+                    // 不支持分享：iOS 走预览长按保存；其他尝试下载，失败再走预览
+                    if (isIOS || !triggerDownload(dataUrl, filename)) {
+                        showReceiptImagePreview(dataUrl, filename);
+                    } else {
+                        showGlobalToast('小票图片保存成功');
+                    }
                 }
             }, 'image/png');
         } else {
-            triggerDownload(canvas.toDataURL('image/png'), filename);
-            showGlobalToast('小票图片保存成功');
+            // 桌面端：直接下载，失败走预览兜底
+            if (!triggerDownload(dataUrl, filename)) {
+                showReceiptImagePreview(dataUrl, filename);
+            } else {
+                showGlobalToast('小票图片保存成功');
+            }
         }
     } catch (error) {
         console.error('保存图片失败:', error);
@@ -11033,30 +11057,62 @@ async function copyQuoteAsImage() {
     }
 }
 
-// 触发下载
+// 触发下载。返回 true 表示已尝试触发，false 表示不可用（调用方应走兜底）。
+// 注意：必须在用户手势同步上下文中调用，不要用 setTimeout 包裹，否则 iOS Safari / 夸克会静默拦截。
 function triggerDownload(dataUrl, filename) {
-    const link = document.createElement('a');
-    link.download = filename;
-    link.href = dataUrl;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    
-    // 确保在用户交互上下文中执行点击
     try {
-        // 对于某些浏览器，需要使用 setTimeout 来确保在事件循环中执行
-        setTimeout(() => {
-            link.click();
-            // 延迟移除链接，确保下载操作完成
-            setTimeout(() => {
-                document.body.removeChild(link);
-            }, 100);
-        }, 0);
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = dataUrl;
+        link.style.display = 'none';
+        link.target = '_blank'; // iOS Safari 不支持 download 时在新标签打开
+        document.body.appendChild(link);
+
+        // 同步点击，保留用户交互上下文
+        link.click();
+
+        // 延迟清理 DOM 节点（不影响下载本身）
+        setTimeout(function () {
+            try { document.body.removeChild(link); } catch (_) {}
+        }, 200);
+        return true;
     } catch (error) {
         console.error('下载失败:', error);
-        // 失败时尝试直接点击
-        link.click();
-        document.body.removeChild(link);
+        return false;
     }
+}
+
+// 小票图片预览兜底：当 Web Share 和直接下载都不可用时（夸克/iOS Safari/部分平板），
+// 弹出图片让用户长按保存。这是移动端最稳的兜底方案。
+function showReceiptImagePreview(dataUrl, filename) {
+    const modal = document.getElementById('receiptImagePreviewModal');
+    const img = document.getElementById('receiptImagePreviewImg');
+    if (!modal || !img) {
+        // DOM 缺失，最终兜底：新窗口打开
+        try {
+            const w = window.open();
+            if (w) { w.document.write('<img src="' + dataUrl + '" style="max-width:100%;">'); return; }
+        } catch (_) {}
+        alert('当前浏览器无法直接保存图片，请截图或更换浏览器（推荐 Chrome / 系统自带浏览器）。');
+        return;
+    }
+    img.src = dataUrl;
+    img.dataset.filename = filename || '报价单.png';
+    modal.classList.remove('d-none');
+    modal.setAttribute('aria-hidden', 'false');
+    // 锁定背景滚动
+    document.body.style.overflow = 'hidden';
+}
+
+function closeReceiptImagePreview() {
+    const modal = document.getElementById('receiptImagePreviewModal');
+    if (!modal) return;
+    modal.classList.add('d-none');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    // 释放图片内存
+    const img = document.getElementById('receiptImagePreviewImg');
+    if (img) { img.src = ''; }
 }
 
 // 轻量提示：在底部显示一条不打断操作的消息

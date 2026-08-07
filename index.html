@@ -2922,6 +2922,25 @@
             </div>
         </div>
     </div>
+    <!-- 小票图片预览兜底弹窗（移动端分享/下载均不可用时，长按图片保存） -->
+    <div id="receiptImagePreviewModal" class="history-record-modal d-none" aria-hidden="true">
+        <div class="history-record-overlay" onclick="closeReceiptImagePreview()"></div>
+        <div class="history-record-content" style="max-width:440px;width:92%;">
+            <div class="history-record-header">
+                <h2>长按图片保存</h2>
+                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeReceiptImagePreview()" aria-label="关闭" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+            </div>
+            <div class="history-record-body" style="text-align:center;">
+                <p class="text-gray" style="font-size:0.85rem;margin-bottom:10px;">当前浏览器不支持直接下载，请<strong>长按下方图片</strong>，在弹出菜单中选择"保存图片"。</p>
+                <div style="display:flex;justify-content:center;">
+                    <img id="receiptImagePreviewImg" alt="报价单预览" style="max-width:100%;border:1px solid var(--border-color);border-radius:6px;touch-action:manipulation;-webkit-touch-callout:default;user-select:none;" />
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="globalToast" class="global-toast d-none"></div>
 
     <!-- 匿名留言板 -->
@@ -3039,7 +3058,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260807-fix-project-fields"></script>
+    <script src="script.js?v=20260807-fix-save-image"></script>
     <script>
         (function setupDesktopNavHeightVar() {
             function applyDesktopNavHeight() {
