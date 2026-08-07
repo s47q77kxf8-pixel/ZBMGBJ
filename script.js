@@ -1176,6 +1176,9 @@ function init() {
         if (scheduleTitleDateInput) {
             scheduleTitleDateInput.addEventListener('change', onScheduleTitleDateChange);
         }
+        // 应用同模优惠 / 工艺 的计算页显示总开关（默认 true，关闭时首次加载即隐藏）
+        try { if (typeof applySameModelVisibilityOnCalc === 'function') applySameModelVisibilityOnCalc(); } catch (_) {}
+        try { if (typeof applyProcessVisibilityOnCalc === 'function') applyProcessVisibilityOnCalc(); } catch (_) {}
         // 离开页面前立即落盘，避免防抖导致未保存
         window.addEventListener('beforeunload', function () {
             clearTimeout(_saveDataTimer);
@@ -21753,7 +21756,7 @@ function renderSameModelCoefficients() {
             <div class="d-flex items-center justify-between">
                 <label for="showSameModelOnCalcSwitch" style="margin:0;font-size:0.9rem;cursor:pointer;">
                     <strong style="white-space:nowrap;">在计算页显示</strong>
-                    <span class="text-gray" style="font-size:0.8rem;margin-left:6px;">（是否同模 / 跨订单同模）</span>
+                    <span class="text-gray" style="font-size:0.8rem;margin-left:6px;">（同模优惠档位 / 是否同模 / 跨订单同模）</span>
                 </label>
                 <label class="mg-toggle-switch" style="width:36px;height:20px;flex-shrink:0;">
                     <input type="checkbox" id="showSameModelOnCalcSwitch" ${showSame} onchange="updateShowSameModelOnCalculation(this.checked)">
@@ -21840,11 +21843,12 @@ function updateShowProcessOnCalculation(checked) {
 }
 
 // 把同模优惠相关行按当前开关显/隐到计算页
+// 包括：设置选项模块的全局同模优惠档位下拉、制品内的是否同模/跨订单同模、赠品内相同两行
 function applySameModelVisibilityOnCalc() {
     const show = defaultSettings.showSameModelOnCalculation !== false;
     const display = show ? '' : 'none';
     try {
-        document.querySelectorAll('.product-same-model-row, .gift-same-model-row').forEach(function (el) {
+        document.querySelectorAll('.global-same-model-coefficient-row, .product-same-model-row, .gift-same-model-row').forEach(function (el) {
             el.style.display = display;
         });
     } catch (_) {}

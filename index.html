@@ -633,8 +633,8 @@
                     <div id="extraPricingDownSelectsRow" class="form-row d-none">
                         <!-- 动态添加的其他折扣类选择器 -->
                     </div>
-                    <!-- 同模优惠 -->
-                    <div class="form-row">
+                    <!-- 同模优惠（由 showSameModelOnCalculation 开关控制显示，与制品里的「是否同模」同步显隐） -->
+                    <div class="form-row global-same-model-coefficient-row">
                         <div class="form-group">
                             <label for="sameModel">同模优惠</label>
                             <select id="sameModel"><option value="">--</option></select>
@@ -3058,7 +3058,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260808-show-calc-switches"></script>
+    <script src="script.js?v=20260808-show-calc-switches-v2"></script>
     <script>
         (function setupDesktopNavHeightVar() {
             function applyDesktopNavHeight() {
