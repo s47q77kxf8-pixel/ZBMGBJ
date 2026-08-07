@@ -721,6 +721,9 @@ const defaultSettings = {
         basic: { value: 0.4, name: '改字、色、柄图' },
         advanced: { value: 0.6, name: '改字、色、柄图、元素' }
     },
+    // 计算页显示总开关（同模优惠、工艺）
+    showSameModelOnCalculation: true,  // 控制「是否同模 + 跨订单同模」是否显示在计算页
+    showProcessOnCalculation: true,    // 控制「工艺类型 + 工艺复选框」是否显示在计算页
     // 折扣系数
     discountCoefficients: {
         none: { value: 1, name: '无' },
@@ -1073,6 +1076,14 @@ function init() {
     
     // 应用字体设置
     applyFontSettings();
+
+    // 计算页显示总开关兼容兜底（旧数据可能无该字段，默认显示）
+    if (defaultSettings.showSameModelOnCalculation !== false && defaultSettings.showSameModelOnCalculation !== true) {
+        defaultSettings.showSameModelOnCalculation = true;
+    }
+    if (defaultSettings.showProcessOnCalculation !== false && defaultSettings.showProcessOnCalculation !== true) {
+        defaultSettings.showProcessOnCalculation = true;
+    }
 
     // 保险：初始化后做一次去重清理（防止 UI 展示双份）
     mgSanitizeSettingsDuplicates();
@@ -7768,7 +7779,7 @@ function renderGift(gift) {
                 </div>
             </div>
         </div>
-        <div class="form-row">
+        <div class="form-row gift-same-model-row" data-gift-id="${gift.id}" style="${defaultSettings.showSameModelOnCalculation === false ? 'display:none;' : ''}">
             <div class="form-group">
                 <label for="giftSameModel-${gift.id}">是否同模</label>
                 <select id="giftSameModel-${gift.id}" onchange="updateGift(${gift.id}, 'sameModel', this.value === 'true')">
@@ -7785,7 +7796,7 @@ function renderGift(gift) {
             </div>
         </div>
         <div id="giftFormOptions-${gift.id}"></div>
-        <div class="form-group">
+        <div class="form-group gift-process-row" data-gift-id="${gift.id}" style="${defaultSettings.showProcessOnCalculation === false ? 'display:none;' : ''}">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
                 <label style="margin:0;white-space:nowrap;">工艺类型</label>
                 <select id="giftProcessFeeMode-${gift.id}" onchange="updateGift(${gift.id}, 'processFeeMode', this.value)" style="width:120px;flex-shrink:0;">
@@ -7892,7 +7903,7 @@ function renderProduct(product) {
                 </div>
             </div>
         </div>
-        <div class="form-row">
+        <div class="form-row product-same-model-row" data-product-id="${product.id}" style="${defaultSettings.showSameModelOnCalculation === false ? 'display:none;' : ''}">
             <div class="form-group">
                 <label for="productSameModel-${product.id}">是否同模</label>
                 <select id="productSameModel-${product.id}" onchange="updateProduct(${product.id}, 'sameModel', this.value === 'true')">
@@ -7909,7 +7920,7 @@ function renderProduct(product) {
             </div>
         </div>
         <div id="formOptions-${product.id}"></div>
-        <div class="form-group">
+        <div class="form-group product-process-row" data-product-id="${product.id}" style="${defaultSettings.showProcessOnCalculation === false ? 'display:none;' : ''}">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.4rem;">
                 <label style="margin:0;white-space:nowrap;">工艺类型</label>
                 <select id="productProcessFeeMode-${product.id}" onchange="updateProduct(${product.id}, 'processFeeMode', this.value)" style="width:120px;flex-shrink:0;">
@@ -21734,7 +21745,22 @@ function renderSameModelCoefficients() {
     const container = document.querySelector('#sameModelCoefficient-content .coefficient-settings');
     if (!container) return;
 
+    const showSame = defaultSettings.showSameModelOnCalculation !== false ? 'checked' : '';
+
     let html = `
+        <!-- 计算页显示总开关 -->
+        <div style="background:var(--bg-secondary);padding:10px 14px;border-radius:var(--radius-md);margin-bottom:14px;">
+            <div class="d-flex items-center justify-between">
+                <label for="showSameModelOnCalcSwitch" style="margin:0;font-size:0.9rem;cursor:pointer;">
+                    <strong style="white-space:nowrap;">在计算页显示</strong>
+                    <span class="text-gray" style="font-size:0.8rem;margin-left:6px;">（是否同模 / 跨订单同模）</span>
+                </label>
+                <label class="mg-toggle-switch" style="width:36px;height:20px;flex-shrink:0;">
+                    <input type="checkbox" id="showSameModelOnCalcSwitch" ${showSame} onchange="updateShowSameModelOnCalculation(this.checked)">
+                    <span class="mg-toggle-slider"></span>
+                </label>
+            </div>
+        </div>
         <div class="mb-3">
             <div class="d-flex items-center gap-3 mt-1 flex-wrap">
                 <label class="d-flex items-center gap-1" style="cursor:pointer; display: inline-flex; align-items: center; white-space: nowrap; margin-right: 10px;">
@@ -21795,6 +21821,44 @@ function updateSameModelMinusAmount(value) {
     const v = value === '' ? 0 : parseFloat(value);
     defaultSettings.sameModelMinusAmount = Number.isFinite(v) ? Math.max(0, v) : 0;
     saveData();
+}
+
+// 更新同模优惠在计算页的显示开关
+function updateShowSameModelOnCalculation(checked) {
+    defaultSettings.showSameModelOnCalculation = !!checked;
+    saveData();
+    // 同步更新计算页可见性
+    applySameModelVisibilityOnCalc();
+}
+
+// 更新工艺设置在计算页的显示开关
+function updateShowProcessOnCalculation(checked) {
+    defaultSettings.showProcessOnCalculation = !!checked;
+    saveData();
+    // 同步更新计算页可见性
+    applyProcessVisibilityOnCalc();
+}
+
+// 把同模优惠相关行按当前开关显/隐到计算页
+function applySameModelVisibilityOnCalc() {
+    const show = defaultSettings.showSameModelOnCalculation !== false;
+    const display = show ? '' : 'none';
+    try {
+        document.querySelectorAll('.product-same-model-row, .gift-same-model-row').forEach(function (el) {
+            el.style.display = display;
+        });
+    } catch (_) {}
+}
+
+// 把工艺相关行按当前开关显/隐到计算页
+function applyProcessVisibilityOnCalc() {
+    const show = defaultSettings.showProcessOnCalculation !== false;
+    const display = show ? '' : 'none';
+    try {
+        document.querySelectorAll('.product-process-row, .gift-process-row').forEach(function (el) {
+            el.style.display = display;
+        });
+    } catch (_) {}
 }
 
 // 渲染折扣系数（当加价类、折扣类均为单数时，第一项移到并排行，此处不渲染）
@@ -22165,8 +22229,25 @@ function addProcessSetting() {
 // 渲染工艺设置
 function renderProcessSettings() {
     const container = document.getElementById('processSettingsContainer');
-    
-    let html = '';
+    if (!container) return;
+
+    const showProc = defaultSettings.showProcessOnCalculation !== false ? 'checked' : '';
+
+    let html = `
+        <!-- 计算页显示总开关 -->
+        <div style="background:var(--bg-secondary);padding:10px 14px;border-radius:var(--radius-md);margin-bottom:14px;">
+            <div class="d-flex items-center justify-between">
+                <label for="showProcessOnCalcSwitch" style="margin:0;font-size:0.9rem;cursor:pointer;">
+                    <strong style="white-space:nowrap;">在计算页显示工艺</strong>
+                    <span class="text-gray" style="font-size:0.8rem;margin-left:6px;">（工艺类型 + 烫色/白墨/UV/逆向等）</span>
+                </label>
+                <label class="mg-toggle-switch" style="width:36px;height:20px;flex-shrink:0;">
+                    <input type="checkbox" id="showProcessOnCalcSwitch" ${showProc} onchange="updateShowProcessOnCalculation(this.checked)">
+                    <span class="mg-toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+    `;
     processSettings.forEach(setting => {
         // 兼容旧数据：如果有layers字段但没有price字段，使用默认价格
         if (setting.layers && !setting.price) {
