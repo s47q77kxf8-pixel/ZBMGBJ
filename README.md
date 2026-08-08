@@ -63,7 +63,7 @@ python -m http.server 8080
 ## 项目结构
 
 ```
-MGbaojia/
+Metton/
 ├── index.html              # 主页面（排单 / 记录 / 统计 / 我的）
 ├── script.js               # 业务逻辑、计价、排单、统计、小票、历史与设置
 ├── style.css               # 全局与小票样式

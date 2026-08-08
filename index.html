@@ -571,11 +571,11 @@
                             </label>
                         </div>
                         <div class="form-group schedule-placeholder-count">
-                            <label for="expectedProductCount">预计制品数</label>
+                            <label for="expectedProductCount" data-mg-term="预计{制品s}数">预计制品数</label>
                             <div class="process-layers-stepper-wrap" id="expectedProductCountWrap">
-                                <button type="button" class="process-layers-stepper-btn" onclick="changeExpectedProductCount(-1)" aria-label="减少预计制品数">−</button>
+                                <button type="button" class="process-layers-stepper-btn" onclick="changeExpectedProductCount(-1)" aria-label="减少预计{制品s}数" data-mg-term-aria>−</button>
                                 <input type="number" id="expectedProductCount" class="process-layers-stepper-input" min="1" step="1" value="1" oninput="handleExpectedProductCountInput(this.value)">
-                                <button type="button" class="process-layers-stepper-btn" onclick="changeExpectedProductCount(1)" aria-label="增加预计制品数">+</button>
+                                <button type="button" class="process-layers-stepper-btn" onclick="changeExpectedProductCount(1)" aria-label="增加预计{制品s}数" data-mg-term-aria>+</button>
                             </div>
                         </div>
                     </div>
@@ -643,7 +643,7 @@
                     <!-- 每制品增加（可多选） -->
                     <div class="form-row" id="perItemExtraSelectsRow">
                         <div class="form-group">
-                            <label>每制品增加</label>
+                            <label data-mg-term="每{制品}增加">每制品增加</label>
                             <div id="calculatorPerItemExtraSelects" class="d-flex gap-2 flex-wrap"></div>
                         </div>
                     </div>
@@ -681,11 +681,11 @@
                     </div>
                 </div>
                 <div class="section section-products">
-                    <h2>制品信息</h2>
+                    <h2 id="calc-products-title" data-mg-term="{制品s}信息">制品信息</h2>
                     <div id="productsContainer">
                         <!-- 制品信息将通过JavaScript动态添加 -->
                     </div>
-                    <button class="btn add-product" onclick="addProduct()">+ 制品</button>
+                    <button class="btn add-product" onclick="addProduct()" id="calc-add-product-btn" data-mg-term="+ {制品}">+ 制品</button>
                 </div>
                 <div class="section">
                     <h2>赠品信息</h2>
@@ -968,8 +968,8 @@
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label for="receiptCustomText">制品前文本</label>
-                                            <input type="text" id="receiptCustomText" placeholder="输入制品前文本" onchange="updateReceiptInfo('customText', this.value)">
+                                            <label for="receiptCustomText" data-mg-term="{制品s}前文本">制品前文本</label>
+                                            <input type="text" id="receiptCustomText" placeholder="输入{制品s}前文本" data-mg-term-placeholder onchange="updateReceiptInfo('customText', this.value)">
                                         </div>
                                     </div>
                                 </div>
@@ -1716,7 +1716,7 @@
 
                             <div class="section" style="margin-top:16px;">
                                 <div class="d-flex justify-between items-center mb-4 flex-wrap gap-2">
-                                    <h2>制品设置</h2>
+                                    <h2 id="template-product-settings-title" data-mg-term="{制品设置}">制品设置</h2>
                                     <div class="d-flex items-center gap-2">
                                         <button class="btn add-product-setting btn-compact" onclick="openAddProductModal()">添加</button>
                                         <button class="btn secondary btn-compact" onclick="document.getElementById('excelImportInputTemplate').click()">导入</button>
@@ -1793,7 +1793,7 @@
                         </button>
                         <button class="quick-entry-btn" onclick="showSettingsSubPage('productSettings')">
                             <svg class="icon" aria-hidden="true"><use href="#i-product-box"></use></svg>
-                            <span class="quick-entry-label">制品<br>设置</span>
+                            <span class="quick-entry-label" id="quick-entry-product-settings-label" data-mg-term-brtag="{制品设置}">制品<br>设置</span>
                         </button>
                         <button class="quick-entry-btn" onclick="showSettingsSubPage('coefficientSettings')">
                             <svg class="icon" aria-hidden="true"><use href="#i-coefficient-slider"></use></svg>
@@ -1911,7 +1911,7 @@
                     <div class="section">
                         <div class="settings-subpage-header mb-4">
                             <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
-                            <h2>制品设置</h2>
+                            <h2 id="subpage-product-settings-title" data-mg-term="{制品设置}">制品设置</h2>
                             <div class="settings-subpage-actions d-flex items-center gap-2">
                                 <button class="btn add-product-setting btn-compact" onclick="openAddProductModal()">添加</button>
                                 <button class="btn secondary btn-compact" onclick="document.getElementById('excelImportInput').click()">导入</button>
@@ -1928,7 +1928,7 @@
                         <div id="addProductModal" class="modal d-none">
                         <div class="modal-content">
                             <div class="modal-header">
-                                <h3>添加制品设置</h3>
+                                <h3 id="add-product-modal-title" data-mg-term="添加{制品设置}">添加制品设置</h3>
                                 <span class="close" onclick="closeAddProductModal()">&times;</span>
                             </div>
                             <div class="modal-body">
@@ -1938,8 +1938,8 @@
                                         <div id="newProductCategorySelect"></div>
                                     </div>
                                     <div class="form-group">
-                                        <label>制品名称</label>
-                                        <input type="text" id="newProductName" placeholder="请输入制品名称">
+                                        <label data-mg-term="{制品}名称">制品名称</label>
+                                        <input type="text" id="newProductName" placeholder="请输入{制品}名称" data-mg-term-placeholder>
                                     </div>
                                 </div>
                                 <div class="form-row">
@@ -2184,13 +2184,15 @@
                     <!-- 每制品增加设置 -->
                     <div class="category-container">
                         <div class="category-header" onclick="toggleCategory('backgroundFee')">
-                            <div class="category-title">每制品增加</div>
+                            <div class="category-title" data-mg-term="每{制品}增加">每制品增加</div>
                             <div class="category-toggle">▼</div>
                         </div>
                         <div class="category-content d-none" id="backgroundFee-content">
                             <div class="setting-hint mb-3">
-                                <strong>功能说明：</strong>按制品数量计费的附加费用，如背景费、描边费等。计算时，选中项的金额 × 制品数量（含赠品）计入总价。<br>
-                                <strong>适用场景：</strong>每件制品都需要额外工作的项目，与工艺费（可选）不同，此费用会应用到所有制品。
+                                <strong data-mg-term>功能说明：</strong>
+                                <span data-mg-term="按{制品s}数量计费的附加费用，如背景费、描边费等。计算时，选中项的金额 × {制品s}数量（含赠品）计入总价。">按制品数量计费的附加费用，如背景费、描边费等。计算时，选中项的金额 × 制品数量（含赠品）计入总价。</span><br>
+                                <strong data-mg-term>适用场景：</strong>
+                                <span data-mg-term="每件{制品}都需要额外工作的项目，与工艺费（可选）不同，此费用会应用到所有{制品s}。">每件制品都需要额外工作的项目，与工艺费（可选）不同，此费用会应用到所有制品。</span>
                             </div>
                             <div class="form-row">
                                 <div class="form-group">

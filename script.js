@@ -1,4 +1,20 @@
 
+// ========== 身份默认术语与产品术语工具函数（前移：ensureRolesComplete 加载数据时会用到） ==========
+const DEFAULT_ROLES_PRESET_TERMS = {
+    '美工': { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' },
+    '画师': { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' },
+    '题字': { productSingular: '作品', productPlural: '作品', productSettings: '作品设置' },
+    '作者': { productSingular: '稿件', productPlural: '稿件', productSettings: '稿件设置' }
+};
+const DEFAULT_TERMS_FALLBACK = { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' };
+
+function getDefaultTermsByRoleName(roleName) {
+    if (!roleName) return JSON.parse(JSON.stringify(DEFAULT_TERMS_FALLBACK));
+    var preset = DEFAULT_ROLES_PRESET_TERMS[roleName];
+    if (preset) return JSON.parse(JSON.stringify(preset));
+    return JSON.parse(JSON.stringify(DEFAULT_TERMS_FALLBACK));
+}
+
 // 全局变量
 let products = [];
 let gifts = [];
@@ -1404,24 +1420,24 @@ function loadData() {
                         { name: '企划名',     showOnCalculation: true },
                         { name: '原作（IP）', showOnCalculation: true },
                         { name: '角色',       showOnCalculation: true }
-                    ]},
+                    ], terms: { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' }},
                     { name: '画师', fields: [
                         { name: '企划名',     showOnCalculation: true },
                         { name: '原作（IP）', showOnCalculation: true },
                         { name: '角色',       showOnCalculation: true }
-                    ]},
+                    ], terms: { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' }},
                     { name: '题字', fields: [
                         { name: '企划名',     showOnCalculation: false },
                         { name: '原作（IP）', showOnCalculation: false },
                         { name: '角色',       showOnCalculation: false },
                         { name: '题字内容',   showOnCalculation: true  },
                         { name: '字体',       showOnCalculation: true  }
-                    ]},
+                    ], terms: { productSingular: '作品', productPlural: '作品', productSettings: '作品设置' }},
                     { name: '作者', fields: [
                         { name: '企划名',     showOnCalculation: true },
                         { name: '原作（IP）', showOnCalculation: true },
                         { name: '作品类型',   showOnCalculation: true }
-                    ]}
+                    ], terms: { productSingular: '稿件', productPlural: '稿件', productSettings: '稿件设置' }}
                 ];
             } else {
                 // 对已有 roles 中每个身份的 fields 做格式兼容：旧格式是字符串，新格式是对象
@@ -1439,6 +1455,19 @@ function loadData() {
                             }
                             return f;
                         }).filter(Boolean);
+                    }
+                    // 补齐 terms（老数据无 terms 时，按身份名查内置默认表，缺省用「制品」）
+                    if (roleItem && (!roleItem.terms || typeof roleItem.terms !== 'object')) {
+                        roleItem.terms = {};
+                    }
+                    if (roleItem && roleItem.terms) {
+                        var d = { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' };
+                        try {
+                            if (typeof getDefaultTermsByRoleName === 'function') d = getDefaultTermsByRoleName(roleItem.name);
+                        } catch (e) {}
+                        if (!roleItem.terms.productSingular) roleItem.terms.productSingular = d.productSingular;
+                        if (!roleItem.terms.productPlural)   roleItem.terms.productPlural   = d.productPlural;
+                        if (!roleItem.terms.productSettings) roleItem.terms.productSettings = d.productSettings;
                     }
                 });
             }
@@ -6185,15 +6214,15 @@ function renderStatsKpis(totals) {
         <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('总收入')}" role="button" tabindex="0"><div class="kpi-label">总收入</div><div class="kpi-value" id="kpiRevenueTotal">${fmt(totals.revenueTotal, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-card kpi-card-primary kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.allOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('客单价')}" role="button" tabindex="0"><div class="kpi-label">客单价</div><div class="kpi-value" id="kpiAov">${fmt(totals.aov, true)}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-card kpi-card-primary">
-            <div class="kpi-label">制品项<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
+            <div class="kpi-label">${mgL('{制品s}项')}<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
             <div class="kpi-value kpi-value-compare" id="kpiItemTotalCompare">${totals.productItemCountWithSameModel || 0} / ${totals.productItemCountWithoutSameModel || 0}</div>
         </div>
         <div class="kpi-card kpi-card-primary">
-            <div class="kpi-label">制品单价<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
+            <div class="kpi-label">${mgL('{制品}单价')}<br><span class="kpi-label-note-line">含同模 / 不含同模</span></div>
             <div class="kpi-value kpi-value-compare" id="kpiProductUnitPriceCompare">${fmt(totals.productUnitPriceWithSameModel, true)} / ${fmt(totals.productUnitPriceWithoutSameModel, true)}</div>
         </div>
         <div class="kpi-section-title">进度与结算</div>
-        <div class="kpi-card"><div class="kpi-label">制品项完成率</div><div class="kpi-value" id="kpiItemDoneRate">${totals.itemDone}/${fmt(totals.itemDoneRate)}%</div></div>
+        <div class="kpi-card"><div class="kpi-label">${mgL('{制品s}项完成率')}</div><div class="kpi-value" id="kpiItemDoneRate">${totals.itemDone}/${fmt(totals.itemDoneRate)}%</div></div>
         <div class="kpi-card"><div class="kpi-label">企划完结率</div><div class="kpi-value" id="kpiOrderSettledRate">${totals.orderSettledCount || 0}/${fmt(totals.orderSettledRate || 0)}%</div></div>
         <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.overdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('逾期')}" role="button" tabindex="0"><div class="kpi-label">逾期</div><div class="kpi-value" id="kpiOverdueOrders">${totals.overdueOrderCount}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
         <div class="kpi-card kpi-card-clickable" data-stats-order-ids="${encodeURIComponent(JSON.stringify(totals.everOverdueOrderIds || []))}" data-stats-focus-label="${encodeURIComponent('曾经逾期')}" role="button" tabindex="0"><div class="kpi-label">曾经逾期</div><div class="kpi-value" id="kpiEverOverdueOrders">${totals.everOverdueOrderCount ?? 0}</div><span class="kpi-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-filter"></use></svg></span><span class="kpi-card-tip">查看企划</span></div>
@@ -6214,7 +6243,7 @@ function renderStatsKpis(totals) {
         orderRateEl.id = 'kpiOrderDoneRate';
         grid.parentNode.insertBefore(orderRateEl, grid.nextSibling);
     }
-    orderRateEl.textContent = '制品全完成率：' + fmt(totals.orderDoneRate) + '%（制品全完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）；企划完结率：' + fmt(totals.orderSettledRate || 0) + '%（已结算 ' + (totals.orderSettledCount || 0) + ' / ' + totals.orderCount + '）';
+    orderRateEl.textContent = mgL('{制品}') + '全完成率：' + fmt(totals.orderDoneRate) + '%（' + mgL('{制品}') + '全完成 ' + totals.orderDoneCount + ' / ' + totals.orderCount + '）；企划完结率：' + fmt(totals.orderSettledRate || 0) + '%（已结算 ' + (totals.orderSettledCount || 0) + ' / ' + totals.orderCount + '）';
 
     bindStatsCardOrderLinks(grid);
 }
@@ -6390,7 +6419,7 @@ function renderStatsTrends(dailyAgg, weeklyAgg, monthlyAgg) {
     html += '<span class="stats-bar-head-label">日期</span>';
     html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-rev"></i>收入</span>';
     html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-ord"></i>企划</span>';
-    html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-item"></i>制品</span>';
+    html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-item"></i>' + mgL('{制品}') + '</span>';
     html += '<span class="stats-bar-head-metric"><i class="stats-bar-dot stats-bar-dot-rate"></i>完成率</span>';
     html += '</div>';
     displayAgg.forEach(function (d) {
@@ -6603,7 +6632,7 @@ function renderStatsCategorySummary(summary) {
     };
 
     if (!rows.length || !totals) {
-        container.innerHTML = '<div class="stats-category-summary-card"><div class="stats-category-summary-header"><div class="stats-category-summary-title">制品项汇总</div><div class="stats-category-summary-total">暂无数据</div></div></div>';
+        container.innerHTML = '<div class="stats-category-summary-card"><div class="stats-category-summary-header"><div class="stats-category-summary-title">' + mgL('{制品s}项汇总') + '</div><div class="stats-category-summary-total">暂无数据</div></div></div>';
         return;
     }
 
@@ -6627,12 +6656,12 @@ function renderStatsCategorySummary(summary) {
 
     let html = '<div class="stats-category-summary-card">';
     html += '<div class="stats-category-summary-header">';
-    html += '<div class="stats-category-summary-title">制品项汇总</div>';
+    html += '<div class="stats-category-summary-title">' + mgL('{制品s}项汇总') + '</div>';
     html += '</div>';
     html += '<div class="stats-category-summary-table-wrap">';
     html += '<table class="stats-category-summary-table">';
     html += '<thead><tr>';
-    html += sortLabel('制品项', 'category');
+    html += sortLabel(mgL('{制品s}项'), 'category');
     html += sortLabel('主设数', 'itemCount');
     html += sortLabel('主设金额', 'mainAmount');
     html += sortLabel('同模数', 'sameModelCount');
@@ -7245,7 +7274,7 @@ function renderStatsReportPreview() {
     // 随机文案
     const subheadings = [
         '这不是一张报表，是你这段时间被信任的证明。',
-        '你交付的不只是制品，也是被看见的专业。',
+        '你交付的不只是' + mgL('{制品}') + '，也是被看见的专业。',
         '把热爱变成作品的每一天，都值得被记录。',
         '每一份作品，都是你对专业的坚持与热爱。',
         '这段时光里，你的每一份努力都在被看见。',
@@ -7400,26 +7429,26 @@ function renderStatsReportPreview() {
         html += '<p>' + randomSubheading + '</p>';
     }
     if (st.modules.kpi) {
-        html += '<p>这段时间，你接受了<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderCount || 0) + '</span>单委托，已完成<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderSettledCount || 0) + '</span>单委托，累计交付<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.itemDone || 0) + '</span>个制品。</p>';
+        html += '<p>这段时间，你接受了<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderCount || 0) + '</span>单委托，已完成<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.orderSettledCount || 0) + '</span>单委托，累计交付<span style="font-size:1.1em;font-weight:700;">' + (dataset.totals.itemDone || 0) + '</span>个' + mgL('{制品}') + '。</p>';
     }
     if (st.modules.busy) {
-        html += '<p>你最忙的' + busyUnitLabel + '是<span style="font-weight:700;">' + escapeHtml(busyPeriodLabel) + '</span>，当' + busyUnitPrefix + '处理了<span style="font-weight:700;">' + busyOrderCount + '</span>单，完成了<span style="font-weight:700;">' + busyItemDone + '</span>个制品。</p>';
+        html += '<p>你最忙的' + busyUnitLabel + '是<span style="font-weight:700;">' + escapeHtml(busyPeriodLabel) + '</span>，当' + busyUnitPrefix + '处理了<span style="font-weight:700;">' + busyOrderCount + '</span>单，完成了<span style="font-weight:700;">' + busyItemDone + '</span>个' + mgL('{制品}') + '。</p>';
     }
     if (st.modules.topProduct) {
         let topProductText = '';
         if (topProductCount > 0) {
             // 根据数量生成不同的文案
             if (topProductCount === 1) {
-                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件。';
+                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力' + mgL('{制品}') + '，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件。';
             } else if (topProductCount < 5) {
-                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件。';
+                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力' + mgL('{制品}') + '，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件。';
             } else if (topProductCount < 10) {
-                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期的爆款制品，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件，深受单主喜爱。';
+                topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期的爆款' + mgL('{制品}') + '，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件，深受单主喜爱。';
             } else {
                 topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期的超级爆款，共完成了<span style="font-weight:700;">' + topProductCount + '</span>件，展现了你的专业实力。';
             }
         } else {
-            topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力制品。';
+            topProductText = '<span style="font-weight:700;">' + escapeHtml(topProduct) + '</span>，是你这期最受欢迎的主力' + mgL('{制品}') + '。';
         }
         html += '<p>' + topProductText + '</p>';
     }
@@ -7555,10 +7584,10 @@ function exportStatsToExcel() {
             ['企划数', dataset.totals.orderCount],
             ['总收入', dataset.totals.revenueTotal],
             ['客单价', dataset.totals.aov],
-            ['制品项总数', dataset.totals.itemTotal],
-            ['制品项完成率(%)', dataset.totals.itemDoneRate],
-            ['制品全完成企划数', dataset.totals.orderDoneCount],
-            ['制品全完成率(%)', dataset.totals.orderDoneRate],
+            [getTerm('productPlural') + '项总数', dataset.totals.itemTotal],
+            [getTerm('productPlural') + '项完成率(%)', dataset.totals.itemDoneRate],
+            [getTerm('productPlural') + '全完成企划数', dataset.totals.orderDoneCount],
+            [getTerm('productPlural') + '全完成率(%)', dataset.totals.orderDoneRate],
             ['逾期企划数', dataset.totals.overdueOrderCount],
             ['曾经逾期企划数', dataset.totals.everOverdueOrderCount ?? 0],
             ['已结算企划数', dataset.totals.orderSettledCount || 0],
@@ -7594,9 +7623,9 @@ function exportStatsToExcel() {
         const clientData = [['单主ID', '企划数', '总金额']];
         dataset.byClient.forEach(c => { clientData.push([c.clientId, c.orderCount, c.revenueTotal]); });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clientData), 'Top单主');
-        const productData = [['制品名', '次数', '金额贡献']];
+        const productData = [[getTerm('productSingular') + '名', '次数', '金额贡献']];
         dataset.byProduct.forEach(p => { productData.push([p.productName, p.count, p.revenueTotal]); });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(productData), 'Top制品');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(productData), 'Top' + getTerm('productSingular'));
         var discountByReason = dataset.totals && dataset.totals.discountByReason && typeof dataset.totals.discountByReason === 'object' ? dataset.totals.discountByReason : {};
         var discountRows = Object.values(discountByReason).filter(function (r) { return r && (r.orderCount > 0 || r.amountTotal > 0); });
         if (discountRows.length > 0) {
@@ -7730,7 +7759,7 @@ function addProduct() {
     products.push(product);
     renderProduct(product);
     // 有制品时自动取消“档期占位”勾选（占位单仅用于无制品时占据排期）
-    uncheckSchedulePlaceholder('已添加制品，自动取消档期占位');
+    uncheckSchedulePlaceholder('已添加' + getTerm('productSingular') + '，自动取消档期占位');
     syncExpectedProductCountFromProducts();
 }
 
@@ -7879,7 +7908,7 @@ function renderProduct(product) {
                     <span class="sr-only">下移</span>
                 </button>
                 <button class="btn small secondary" onclick="convertProductToGift(${product.id})" title="转为赠品">转赠品</button>
-                <button class="icon-action-btn delete" onclick="removeProduct(${product.id})" aria-label="删除制品" title="删除">
+                <button class="icon-action-btn delete" onclick="removeProduct(${product.id})" aria-label="删除${getTerm('productSingular')}" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                     <span class="sr-only">删除</span>
                 </button>
@@ -9420,7 +9449,7 @@ function generateQuote() {
     
     html += `<div class="receipt-details">
                 <div class="receipt-header receipt-row">
-                    <div class="receipt-col-2">制品</div>
+                    <div class="receipt-col-2">${mgL('{制品}')}</div>
                     <div class="receipt-col-1">单价</div>
                     <div class="receipt-col-1">数量</div>
                     <div class="receipt-col-1">小计</div>
@@ -9490,7 +9519,7 @@ function generateQuote() {
                 const firstCharCount = charCount;
                 const sameModelCharTotal = charCount * sameModelDisplayCount;
                 html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 首件</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${formatCharCount(firstCharCount)}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.basePrice.toFixed(2)}</div></div>`;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHint})</div><div class="receipt-col-1">${getCurrencySymbol()}${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${formatCharCount(sameModelCharTotal)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal).toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模${mgL('{制品}')}(${sameModelHint})</div><div class="receipt-col-1">${getCurrencySymbol()}${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${formatCharCount(sameModelCharTotal)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal).toFixed(2)}</div></div>`;
             }
 
             // 工艺明细（与其它类型一致）
@@ -9562,7 +9591,7 @@ function generateQuote() {
                     ? (fullPriceUnitPrice + (fullPriceExtraTotal / fullPriceQuantity))
                     : fullPriceUnitPrice;
                 var fullSubtotalWithExtra = (fullPriceUnitPrice * fullPriceQuantity) + fullPriceExtraTotal;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">${getCurrencySymbol()}${fullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">${getCurrencySymbol()}${fullSubtotalWithExtra.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价${mgL('{制品}')}</div><div class="receipt-col-1">${getCurrencySymbol()}${fullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantity}</div><div class="receipt-col-1">${getCurrencySymbol()}${fullSubtotalWithExtra.toFixed(2)}</div></div>`;
             }
             
             // config：树形明细（仅单价，不显示数量和小计）
@@ -9619,7 +9648,7 @@ function generateQuote() {
                 var sameUnitWithExtra = sameModelDisplayCount > 0
                     ? (item.sameModelUnitPrice + (sameExtraTotal / sameModelDisplayCount))
                     : item.sameModelUnitPrice;
-                var sameModelLabel = `同模制品(${sameModelHint})`;
+                var sameModelLabel = `同模${mgL('{制品}')}(${sameModelHint})`;
                 html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${sameModelLabel}</div><div class="receipt-col-1">${getCurrencySymbol()}${sameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${sameModelDisplayCount}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal + sameExtraTotal).toFixed(2)}</div></div>`;
             }
 
@@ -9734,7 +9763,7 @@ function generateQuote() {
                     const firstCharCountGift = charCountGift;
                     const sameModelCharTotalGift = charCountGift * sameModelDisplayCountGift;
                     html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 首件</div><div class="receipt-col-1">${priceTextGift}</div><div class="receipt-col-1">${formatCharCount(firstCharCountGift)}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.basePrice.toFixed(2)}</div></div>`;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">${getCurrencySymbol()}${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${formatCharCount(sameModelCharTotalGift)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal).toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模${mgL('{制品}')}(${sameModelHintGift})</div><div class="receipt-col-1">${getCurrencySymbol()}${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${formatCharCount(sameModelCharTotalGift)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal).toFixed(2)}</div></div>`;
                 }
                 // 工艺明细
                 if (hasProcessGift) {
@@ -9779,7 +9808,7 @@ function generateQuote() {
                     ? (fullPriceUnitPriceGift + (giftFullExtraTotal / fullPriceQuantityGift))
                     : fullPriceUnitPriceGift;
                 var giftFullSubtotalWithExtra = (fullPriceUnitPriceGift * fullPriceQuantityGift) + giftFullExtraTotal;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价制品</div><div class="receipt-col-1">${getCurrencySymbol()}${giftFullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1">${getCurrencySymbol()}${giftFullSubtotalWithExtra.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 全价${mgL('{制品}')}</div><div class="receipt-col-1">${getCurrencySymbol()}${giftFullUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${fullPriceQuantityGift}</div><div class="receipt-col-1">${getCurrencySymbol()}${giftFullSubtotalWithExtra.toFixed(2)}</div></div>`;
                 
                 // config：树形明细（仅单价，不显示数量和小计）
                 if (item.productType === 'config' && item.baseConfig) {
@@ -9828,7 +9857,7 @@ function generateQuote() {
                     var giftSameUnitWithExtra = item.sameModelCount > 0
                         ? (item.sameModelUnitPrice + (giftSameExtraTotal / item.sameModelCount))
                         : item.sameModelUnitPrice;
-                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模制品(${sameModelHintGift})</div><div class="receipt-col-1">${getCurrencySymbol()}${giftSameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal + giftSameExtraTotal).toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模${mgL('{制品}')}(${sameModelHintGift})</div><div class="receipt-col-1">${getCurrencySymbol()}${giftSameUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.sameModelCount}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal + giftSameExtraTotal).toFixed(2)}</div></div>`;
                 }
 
                 // 工艺行（按每层单价分组，同单价的工艺合并为一行）
@@ -9889,7 +9918,7 @@ function generateQuote() {
     
     html += `<div class="receipt-summary">`;
     if (showBase) {
-        html += `<div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">制品小计</div><div class="receipt-summary-value">${getCurrencySymbol()}${base.toFixed(2)}</div></div>`;
+        html += `<div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">${mgL('{制品}')}小计</div><div class="receipt-summary-value">${getCurrencySymbol()}${base.toFixed(2)}</div></div>`;
     }
     
     // 区块1：加价类系数
@@ -13357,7 +13386,8 @@ async function renderScheduleTodoSection() {
         let allChipsHtml = '';
         var expectedCount = item && item.expectedProductCount ? Number(item.expectedProductCount) : 0;
         if (item && item.isSchedulePlaceholder) {
-            var expectedLabel = expectedCount > 0 ? ('预计制品 ' + expectedCount + ' 件') : '预计制品';
+            var sing = getTerm('productSingular');
+            var expectedLabel = expectedCount > 0 ? ('预计' + sing + ' ' + expectedCount + ' 件') : ('预计' + sing);
             allChipsHtml = '<div class="schedule-todo-chip schedule-todo-placeholder"><span class="schedule-todo-label">' + expectedLabel + '</span></div>';
         }
         
@@ -18403,9 +18433,20 @@ function updateArtistInfo(field, value, options = {}) {
         }
     }
 
-    // 如果修改的是身份（role）：重新渲染企划信息字段
-    if (field === 'role' && typeof renderProjectInfoFields === 'function') {
-        try { renderProjectInfoFields(); } catch (e) { /* ignore */ }
+    // 如果修改的是身份（role）：重新渲染企划信息字段 + 术语标签
+    if (field === 'role') {
+        if (typeof renderProjectInfoFields === 'function') {
+            try { renderProjectInfoFields(); } catch (e) { /* ignore */ }
+        }
+        if (typeof applyMgTermLabels === 'function') {
+            try { applyMgTermLabels(normalizedValue); } catch (e) { /* ignore */ }
+        }
+        if (typeof renderProductSettings === 'function') {
+            try { renderProductSettings(); } catch (e) { /* ignore */ }
+        }
+        if (typeof renderSchedule === 'function') {
+            try { renderSchedule(); } catch (e) { /* ignore */ }
+        }
     }
 }
 
@@ -18868,23 +18909,76 @@ const DEFAULT_ROLES_PRESET = [
         { name: '企划名',     showOnCalculation: true },
         { name: '原作（IP）', showOnCalculation: true },
         { name: '角色',       showOnCalculation: true }
-    ]},
+    ], terms: { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' }},
     { name: '画师', fields: [
         { name: '企划名',     showOnCalculation: true },
         { name: '原作（IP）', showOnCalculation: true },
         { name: '角色',       showOnCalculation: true }
-    ]},
+    ], terms: { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' }},
     { name: '题字', fields: [
         { name: '企划名',     showOnCalculation: false },
         { name: '题字内容',   showOnCalculation: true },
         { name: '字体',       showOnCalculation: true }
-    ]},
+    ], terms: { productSingular: '作品', productPlural: '作品', productSettings: '作品设置' }},
     { name: '作者', fields: [
         { name: '企划名',     showOnCalculation: true },
         { name: '原作（IP）', showOnCalculation: true },
         { name: '作品类型',   showOnCalculation: true }
-    ]}
+    ], terms: { productSingular: '稿件', productPlural: '稿件', productSettings: '稿件设置' }}
 ];
+
+// 按身份名查找内置默认术语表（找不到时返回美工默认值）
+function getDefaultTermsByRoleName(roleName) {
+    var FALLBACK = { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' };
+    if (!roleName) return FALLBACK;
+    var preset = (DEFAULT_ROLES_PRESET || []).find(function(r) { return r && r.name === roleName; });
+    if (preset && preset.terms) return JSON.parse(JSON.stringify(preset.terms));
+    return JSON.parse(JSON.stringify(FALLBACK));
+}
+
+/**
+ * 读取产品术语；缺省时按身份名回查内置默认值；再缺省 fallback 到「制品」。
+ * @param {'productSingular'|'productPlural'|'productSettings'} key  - 术语键
+ * @param {string} [roleName] - 身份名；不传时用 defaultSettings.artistInfo.role
+ * @returns {string}
+ */
+function getTerm(key, roleName) {
+    var role = roleName || ((defaultSettings && defaultSettings.artistInfo) ? defaultSettings.artistInfo.role : '') || '美工';
+    var rolesArr = (defaultSettings && Array.isArray(defaultSettings.roles)) ? defaultSettings.roles : [];
+    var roleCfg = rolesArr.find(function(r) { return r && r.name === role; });
+    var terms = (roleCfg && roleCfg.terms) || null;
+    if (!terms) terms = getDefaultTermsByRoleName(role);
+    var v = terms ? terms[key] : '';
+    if (v == null || String(v).trim() === '') {
+        var defs = getDefaultTermsByRoleName(role);
+        v = defs[key] || '';
+    }
+    return String(v == null ? '' : v);
+}
+
+/**
+ * 产品术语本地化：替换文本中的占位符。支持：
+ *   {制品}   → productSingular
+ *   {制品s}  → productPlural
+ *   {制品设置} → productSettings
+ * （赠品保持通用称呼，不替换）
+ * @param {string} textOrHtml
+ * @param {string} [roleName]
+ * @returns {string}
+ */
+function mgL(textOrHtml, roleName) {
+    if (textOrHtml == null) return '';
+    var s = String(textOrHtml);
+    if (s.indexOf('{') < 0) return s;
+    var sing = getTerm('productSingular', roleName);
+    var plur = getTerm('productPlural',   roleName);
+    var set  = getTerm('productSettings', roleName);
+    // 先替换长占位符，避免 {制品} 截断 {制品s} / {制品设置}
+    return s
+        .replace(/\{制品设置\}/g, set)
+        .replace(/\{制品s\}/g,    plur)
+        .replace(/\{制品\}/g,     sing);
+}
 
 // 渲染身份下拉框选项（设置页）
 function renderArtistRoleOptions() {
@@ -18939,6 +19033,15 @@ function syncRoleTabInputsFromDom(rIdx) {
     if (nameInput) {
         _roleManageTmpRoles[rIdx].name = String(nameInput.value || '').trim() || ('身份' + (rIdx + 1));
     }
+    // 产品术语：3 个 input
+    if (!_roleManageTmpRoles[rIdx].terms || typeof _roleManageTmpRoles[rIdx].terms !== 'object') {
+        _roleManageTmpRoles[rIdx].terms = {};
+    }
+    var tm = _roleManageTmpRoles[rIdx].terms;
+    ['productSingular','productPlural','productSettings'].forEach(function(key) {
+        var el = document.getElementById('roleTerm_' + rIdx + '_' + key);
+        if (el) tm[key] = String(el.value || '').trim();
+    });
     var fields = _roleManageTmpRoles[rIdx].fields || [];
     for (var fIdx = 0; fIdx < fields.length; fIdx++) {
         var fin = document.getElementById('roleFieldName_' + rIdx + '_' + fIdx);
@@ -18950,6 +19053,23 @@ function syncRoleTabInputsFromDom(rIdx) {
             _roleManageTmpRoles[rIdx].fields[fIdx].showOnCalculation = !!cbox.checked;
         }
     }
+}
+
+// 更新产品术语（oninput 立即写回临时状态）
+function updateRoleTerm(rIdx, key, value) {
+    if (!_roleManageTmpRoles || !_roleManageTmpRoles[rIdx]) return;
+    if (!_roleManageTmpRoles[rIdx].terms || typeof _roleManageTmpRoles[rIdx].terms !== 'object') {
+        _roleManageTmpRoles[rIdx].terms = getDefaultTermsByRoleName(_roleManageTmpRoles[rIdx].name);
+    }
+    _roleManageTmpRoles[rIdx].terms[key] = String(value || '').trim();
+}
+
+// 恢复当前身份的默认产品术语
+function resetRoleTermsToDefault(rIdx) {
+    if (!_roleManageTmpRoles || !_roleManageTmpRoles[rIdx]) return;
+    var rName = _roleManageTmpRoles[rIdx].name;
+    _roleManageTmpRoles[rIdx].terms = getDefaultTermsByRoleName(rName);
+    renderRoleManageBody();
 }
 
 // 渲染身份管理弹窗主体（顶部 Tab + 当前身份的字段表）
@@ -18990,6 +19110,34 @@ function renderRoleManageBody() {
         + ' oninput="updateRoleName(' + rIdx + ', this.value)"'
         + ' style="flex:1;padding:6px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color,#ffffff);color:var(--text-color,#000);">';
     html += '</div>';
+
+    // 产品术语自定义分组（身份名 → 字段表之间）
+    if (!activeRole.terms || typeof activeRole.terms !== 'object') activeRole.terms = getDefaultTermsByRoleName(activeRole.name);
+    var tms = activeRole.terms;
+    html += '<div style="border:1px dashed var(--border-color);border-radius:6px;padding:10px 12px;margin:8px 0 14px 0;background:var(--bg-color,#fafafa);">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
+    html += '<div style="font-weight:600;font-size:0.95em;">📝 产品术语自定义</div>';
+    html += '<button class="btn xsmall secondary" type="button" onclick="resetRoleTermsToDefault(' + rIdx + ')" title="按当前身份名恢复内置默认">恢复默认术语</button>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;">';
+    var termDefs = [
+        { key: 'productSingular', label: '单数名称',   placeholder: '如「制品」「稿件」「作品」', hint: '用于按钮：+ 单数' },
+        { key: 'productPlural',   label: '集合名称',   placeholder: '如「制品」「稿件」「作品」', hint: '用于标题：XX 信息' },
+        { key: 'productSettings', label: '设置页标题', placeholder: '如「制品设置」「稿件设置」', hint: '用于「我的」页分组名' }
+    ];
+    termDefs.forEach(function(td) {
+        html += '<div style="display:flex;flex-direction:column;gap:2px;">';
+        html += '<label style="font-size:0.85em;color:var(--text-light);">' + td.label
+            + '<span style="opacity:0.7;"> · ' + td.hint + '</span>'
+            + '</label>';
+        html += '<input type="text" id="roleTerm_' + rIdx + '_' + td.key + '"'
+            + ' value="' + escapeHtml(tms[td.key] || '') + '"'
+            + ' placeholder="' + td.placeholder + '"'
+            + ' oninput="updateRoleTerm(' + rIdx + ',' + "'" + td.key + "'" + ',this.value)"'
+            + ' style="padding:5px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color,#ffffff);color:var(--text-color,#000);">';
+        html += '</div>';
+    });
+    html += '</div></div>';
 
     // 字段表
     html += '<div style="margin-top:8px;">'
@@ -19056,7 +19204,7 @@ function deleteRole(rIdx) {
     renderRoleManageBody();
 }
 
-// 添加新身份（默认继承美工的字段集）
+// 添加新身份（默认继承美工的字段集 + 默认术语）
 function addNewRole() {
     if (!_roleManageTmpRoles) return;
     var baseRole = _roleManageTmpRoles.find(function(r) { return r && r.name === '美工'; }) || _roleManageTmpRoles[0];
@@ -19065,7 +19213,11 @@ function addNewRole() {
     while (_roleManageTmpRoles.some(function(r) { return r && r.name === newName; })) newName = '新身份' + (++cnt);
     // 切走前同步当前 Tab 输入
     syncRoleTabInputsFromDom(_roleManageActiveIdx);
-    _roleManageTmpRoles.push({ name: newName, fields: baseFields });
+    _roleManageTmpRoles.push({
+        name: newName,
+        fields: baseFields,
+        terms: JSON.parse(JSON.stringify(DEFAULT_TERMS_FALLBACK))
+    });
     _roleManageActiveIdx = _roleManageTmpRoles.length - 1;
     renderRoleManageBody();
 }
@@ -19118,7 +19270,7 @@ function saveRoles() {
     if (!_roleManageTmpRoles) return;
     // 保存前先把当前 Tab 里还在编辑中的值同步回临时状态
     try { syncRoleTabInputsFromDom(_roleManageActiveIdx); } catch (e) { /* ignore */ }
-    // 校验：身份名不重复、字段名在同一身份内不重复
+    // 校验：身份名不重复、字段名在同一身份内不重复；同时补齐空术语
     const roleNames = new Set();
     for (let i = 0; i < _roleManageTmpRoles.length; i++) {
         const r = _roleManageTmpRoles[i];
@@ -19133,6 +19285,12 @@ function saveRoles() {
             if (fieldNames.has(f.name)) { alert(`身份「${r.name}」中字段「${f.name}」重复`); return; }
             fieldNames.add(f.name);
         }
+        // 补齐该身份的 terms（空值填默认）
+        if (!r.terms || typeof r.terms !== 'object') r.terms = {};
+        var def = getDefaultTermsByRoleName(r.name);
+        if (!r.terms.productSingular) r.terms.productSingular = def.productSingular;
+        if (!r.terms.productPlural)   r.terms.productPlural   = def.productPlural;
+        if (!r.terms.productSettings) r.terms.productSettings = def.productSettings;
     }
     defaultSettings.roles = _roleManageTmpRoles;
     // 如果当前 artistInfo.role 不在新 roles 列表，切到第一个
@@ -19145,6 +19303,12 @@ function saveRoles() {
     const roleEl = document.getElementById('artistRole');
     if (roleEl) roleEl.value = defaultSettings.artistInfo.role;
     if (typeof renderProjectInfoFields === 'function') renderProjectInfoFields();
+    // 术语变更 → 重新渲染依赖术语的区域
+    if (typeof applyCalculationTermLabels === 'function') applyCalculationTermLabels();
+    if (typeof renderProductSettings === 'function') renderProductSettings();
+    if (typeof applyReceiptTermLabels === 'function') applyReceiptTermLabels();
+    if (typeof renderSchedule === 'function') renderSchedule();
+    if (typeof refreshPage === 'function') refreshPage();
     closeRoleManageModal();
     showGlobalToast('身份配置已保存');
 }
@@ -19837,9 +20001,61 @@ function initFolderDateInputs() {
     }
 }
 
+/**
+ * 应用产品术语替换：遍历当前页面中带 data-mg-term 相关属性的元素，把占位符替换成实际术语。
+ * 支持：
+ *   data-mg-term="文本含{制品}/{制品s}/{制品设置}"       → 替换 textContent
+ *   data-mg-term-placeholder                           → 替换 placeholder 为该属性值（不存在时用原来的 placeholder 作为模板）
+ *   data-mg-term-aria                                  → 把 aria-label 作为模板替换
+ *   data-mg-term-brtag="Xxx设置"                       → 特殊：4 个字中间插 <br>，例如「稿件设置」→ 「稿件<br>设置」
+ * （赠品保持通用称呼，不替换）
+ */
+function applyMgTermLabels(roleName) {
+    try {
+        var root = document.body;
+        if (!root) return;
+        var nodes = root.querySelectorAll('[data-mg-term]');
+        nodes.forEach(function (el) {
+            var tmpl = el.getAttribute('data-mg-term') || '';
+            if (!tmpl) return;
+            var txt = mgL(tmpl, roleName);
+            el.textContent = txt;
+        });
+        var brNodes = root.querySelectorAll('[data-mg-term-brtag]');
+        brNodes.forEach(function (el) {
+            var tmpl = el.getAttribute('data-mg-term-brtag') || '';
+            if (!tmpl) return;
+            var txt = mgL(tmpl, roleName);
+            if (txt.length >= 4) {
+                el.innerHTML = txt.slice(0, 2) + '<br>' + txt.slice(2);
+            } else if (txt.length === 3) {
+                el.innerHTML = txt.slice(0, 1) + '<br>' + txt.slice(1);
+            } else {
+                el.textContent = txt;
+            }
+        });
+        var phNodes = root.querySelectorAll('[data-mg-term-placeholder]');
+        phNodes.forEach(function (el) {
+            var tmpl = el.getAttribute('placeholder') || '';
+            if (tmpl) el.setAttribute('placeholder', mgL(tmpl, roleName));
+        });
+        var ariaNodes = root.querySelectorAll('[data-mg-term-aria]');
+        ariaNodes.forEach(function (el) {
+            var tmpl = el.getAttribute('aria-label') || '';
+            if (tmpl) el.setAttribute('aria-label', mgL(tmpl, roleName));
+        });
+    } catch (e) { console.error('applyMgTermLabels failed:', e); }
+}
+
+/** 计算页术语标签 */
+function applyCalculationTermLabels() { applyMgTermLabels(); }
+/** 小票设置区术语标签 */
+function applyReceiptTermLabels() { applyMgTermLabels(); }
+
 // 初始化日期输入框事件监听
 document.addEventListener('DOMContentLoaded', function() {
     initFolderDateInputs();
+    try { applyMgTermLabels(); } catch (e) {}
 });
 
 // 复制文件夹名到剪贴板
@@ -20851,7 +21067,7 @@ function saveNewProduct() {
     closeAddProductModal();
     
     // 提示成功
-    alert('制品设置已添加！');
+    alert(getTerm('productSettings') + '已添加！');
 }
 
 // 渲染制品设置
@@ -20953,7 +21169,7 @@ function renderProductSettings() {
                     <div class="product-item-header">
                         <div class="product-item-title">${setting.name}</div>
                         <div class="product-item-actions">
-                            <button class="icon-action-btn delete" onclick="deleteProductSetting(${setting.id})" aria-label="删除制品设置" title="删除">
+                            <button class="icon-action-btn delete" onclick="deleteProductSetting(${setting.id})" aria-label="删除${getTerm('productSettings')}" title="删除">
                                 <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>
                             </button>
