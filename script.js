@@ -3759,21 +3759,13 @@ function getCurrencySymbol(code) {
 
 // 字数智能格式化：
 // - < 1万：显示原值（3500字）
-// - 整万：显示「N万字」（100万字）
-// - 其余 >=1万：如果后四位能被 1000 整除（即千位整数），保留 1 位小数（3.5万字）
-//               否则显示「M万+X字」避免尾数被截断（100万+500字）
+// - >= 1万：统一用「万」为单位的小数表示（36.5万、100万）
 function formatCharCount(count) {
     const n = parseInt(count, 10) || 0;
     if (n < 10000) return n + '字';
-    const wan = Math.floor(n / 10000);
-    const ge = n % 10000;
-    if (ge === 0) return wan + '万字';
-    if (ge % 1000 === 0) {
-        // 千位整数，用小数（例：35000 → 3.5万字）
-        return wan + '.' + (ge / 1000) + '万字';
-    }
-    // 有非整千尾数，显式展示（例：1000500 → 100万+500字）
-    return wan + '万+' + ge + '字';
+    const wan = n / 10000;
+    const formatted = parseFloat(wan.toFixed(4));
+    return formatted + '万';
 }
 
 // 字数单位显示文案
@@ -3798,17 +3790,18 @@ function joinCharCount(wan, ge) {
 
 // 字数分段输入：当万位/字位任一输入框变化时，合成后更新制品的 charCount
 // kind: 'product' | 'gift'
-function onSplitCharCountChange(kind, id) {
+// isChangeEvent: true 表示来自 onchange（失焦/回车），会触发表单重渲染；false 表示来自 oninput，只更新数据模型
+function onSplitCharCountChange(kind, id, isChangeEvent) {
     const prefix = kind === 'gift' ? 'giftCharCount' : 'productCharCount';
     const wanEl = document.getElementById(`${prefix}-${id}-wan`);
     const geEl = document.getElementById(`${prefix}-${id}-ge`);
     const total = joinCharCount(wanEl ? wanEl.value : 0, geEl ? geEl.value : 0);
     if (kind === 'gift') {
         updateGift(id, 'charCount', total);
-        if (typeof updateGiftForm === 'function') updateGiftForm(id);
+        if (isChangeEvent && typeof updateGiftForm === 'function') updateGiftForm(id);
     } else {
         updateProduct(id, 'charCount', total);
-        if (typeof updateProductForm === 'function') updateProductForm(id);
+        if (isChangeEvent && typeof updateProductForm === 'function') updateProductForm(id);
     }
 }
 
@@ -8101,22 +8094,19 @@ function updateProductForm(productId) {
             const splitCount = splitCharCount(currentCharCount);
             html = `
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>单价：${getCurrencySymbol()}${charPrice}/${unitText}</label>
-                    </div>
-                    <div class="form-group" style="max-width:320px;flex-shrink:0;">
-                        <label>字数（万 / 字 分段输入）</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>单价：${getCurrencySymbol()}${charPrice}/${unitText} · 字数（万 / 字 分段输入）</label>
+                        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
                             <input type="number" id="productCharCount-${productId}-wan" value="${splitCount.wan}" min="0" step="1"
                                    style="width:100px;flex-shrink:0;"
-                                   onchange="onSplitCharCountChange('product', ${productId})"
-                                   oninput="onSplitCharCountChange('product', ${productId})"
+                                   onchange="onSplitCharCountChange('product', ${productId}, true)"
+                                   oninput="onSplitCharCountChange('product', ${productId}, false)"
                                    placeholder="万">
                             <span style="color:var(--text-muted);font-size:0.9em;white-space:nowrap;">万</span>
                             <input type="number" id="productCharCount-${productId}-ge" value="${splitCount.ge}" min="0" max="9999" step="1"
                                    style="width:100px;flex-shrink:0;"
-                                   onchange="onSplitCharCountChange('product', ${productId})"
-                                   oninput="onSplitCharCountChange('product', ${productId})"
+                                   onchange="onSplitCharCountChange('product', ${productId}, true)"
+                                   oninput="onSplitCharCountChange('product', ${productId}, false)"
                                    placeholder="0-9999">
                             <span style="color:var(--text-muted);font-size:0.9em;white-space:nowrap;">字</span>
                         </div>
@@ -22895,22 +22885,19 @@ function updateGiftForm(giftId) {
             const giftSplitCount = splitCharCount(giftCurrentCharCount);
             html = `
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>单价：${getCurrencySymbol()}${giftCharPrice}/${giftUnitText}</label>
-                    </div>
-                    <div class="form-group" style="max-width:320px;flex-shrink:0;">
-                        <label>字数（万 / 字 分段输入）</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>单价：${getCurrencySymbol()}${giftCharPrice}/${giftUnitText} · 字数（万 / 字 分段输入）</label>
+                        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
                             <input type="number" id="giftCharCount-${giftId}-wan" value="${giftSplitCount.wan}" min="0" step="1"
                                    style="width:100px;flex-shrink:0;"
-                                   onchange="onSplitCharCountChange('gift', ${giftId})"
-                                   oninput="onSplitCharCountChange('gift', ${giftId})"
+                                   onchange="onSplitCharCountChange('gift', ${giftId}, true)"
+                                   oninput="onSplitCharCountChange('gift', ${giftId}, false)"
                                    placeholder="万">
                             <span style="color:var(--text-muted);font-size:0.9em;white-space:nowrap;">万</span>
                             <input type="number" id="giftCharCount-${giftId}-ge" value="${giftSplitCount.ge}" min="0" max="9999" step="1"
                                    style="width:100px;flex-shrink:0;"
-                                   onchange="onSplitCharCountChange('gift', ${giftId})"
-                                   oninput="onSplitCharCountChange('gift', ${giftId})"
+                                   onchange="onSplitCharCountChange('gift', ${giftId}, true)"
+                                   oninput="onSplitCharCountChange('gift', ${giftId}, false)"
                                    placeholder="0-9999">
                             <span style="color:var(--text-muted);font-size:0.9em;white-space:nowrap;">字</span>
                         </div>
