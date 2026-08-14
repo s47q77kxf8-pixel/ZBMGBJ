@@ -4224,9 +4224,8 @@ function updateRecordFilterTagOptions() {
     const tagSet = new Set();
     history.forEach(item => {
         // 添加固定标签（这些标签由系统自动生成，不在自定义标签列表中显示）
-        if (item.depositReceived != null && Number(item.depositReceived) > 0) {
-            tagSet.add('已收定');
-        }
+        var depInfo = getDepositTagInfo(item);
+        if (depInfo) tagSet.add(depInfo.text);
         if (item.isSchedulePlaceholder) {
             tagSet.add('占位单');
         }
@@ -4350,6 +4349,42 @@ function getRecordReceivableAmount(item) {
     return Number(item.finalTotal) || 0;
 }
 
+// 客户应付总金额（含手续费），对应建议定金计算里的 finalPays：
+// 建议定金 = 客户应付总金额 × 定金比例（defaultSettings.depositRate）
+function getRecordGrossReceivableAmount(item) {
+    if (!item) return 0;
+    if (item.finalTotal != null) {
+        var ft = Number(item.finalTotal);
+        if (isFinite(ft) && ft > 0) return ft;
+    }
+    var agreed = (item.agreedAmount != null) ? (Number(item.agreedAmount) || 0) : 0;
+    if (!agreed && item.totalBeforePlatformFee != null) agreed = Number(item.totalBeforePlatformFee) || 0;
+    var platFee = (item.platformFeeAmount != null) ? (Number(item.platformFeeAmount) || 0) : 0;
+    return platFee > 0 ? (agreed + platFee) : agreed;
+}
+
+// 定金标签：收齐全款显示「已全款」（绿色），仅收部分显示「已收定」（默认绿色系tag）
+// 返回 null 表示没有已收定金，否则返回 { text: '已全款' | '已收定', cssClass: string }
+function getDepositTagInfo(item) {
+    if (!item || item.depositReceived == null) return null;
+    var dep = Number(item.depositReceived);
+    if (!isFinite(dep) || dep <= 0) return null;
+    var gross = getRecordGrossReceivableAmount(item);
+    // 浮点容差：定金 ≥ 应收总金额 - 0.005（1 分钱以内就算全款）
+    if (gross > 0 && dep - gross >= -0.005) {
+        return { text: '已全款', cssClass: 'record-tag-paid' };
+    }
+    return { text: '已收定', cssClass: 'record-tag-deposit' };
+}
+
+// 匹配「已收定/已全款」筛选标签：返回 item 是否命中该固定标签 filterValue
+function matchDepositFilter(item, filterValue) {
+    var info = getDepositTagInfo(item);
+    if (filterValue === '已收定') return !!(info && info.text === '已收定');
+    if (filterValue === '已全款') return !!(info && info.text === '已全款');
+    return false;
+}
+
 function getFilteredHistoryForRecord() {
     const searchInput = document.getElementById('recordSearchInput');
     const timeFilterEl = document.getElementById('recordTimeFilter');
@@ -4439,8 +4474,9 @@ function getFilteredHistoryForRecord() {
         if (tagFilters.length > 0) {
             filteredHistory = filteredHistory.filter(item => {
                 for (const tag of tagFilters) {
-                    if (tag === '已收定' && item.depositReceived != null && Number(item.depositReceived) > 0) {
-                        return true;
+                    if (tag === '已收定' || tag === '已全款') {
+                        if (matchDepositFilter(item, tag)) return true;
+                        else continue;
                     }
                     if (tag === '占位单' && item.isSchedulePlaceholder) {
                         return true;
@@ -4561,8 +4597,10 @@ function applyRecordFilters() {
                     ? `<div class="record-item-amount-wrap"><span class="record-item-amount record-item-amount-actual">${formatMoney(receivableAmount)}</span>${grossLineHtml}</div>`
                     : `<span class="record-item-amount">${formatMoney(receivableAmount)}</span>`));
         const status = getRecordProgressStatus(item);
-        const hasDeposit = item && item.depositReceived != null && Number(item.depositReceived) > 0;
-        const depositTagHtml = hasDeposit ? '<span class="record-tag record-tag-deposit">已收定</span>' : '';
+        const depositTagInfo = getDepositTagInfo(item);
+        const depositTagHtml = depositTagInfo
+            ? ('<span class="record-tag ' + depositTagInfo.cssClass + '">' + depositTagInfo.text + '</span>')
+            : '';
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent">加急单</span>' : '';
         const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order">追加单</span>' : '';
@@ -5099,12 +5137,16 @@ function isCancelSettlementType(settlement) {
 
 function getStatsOrderStatus(item) {
     if (!item) return '未开始';
-    if (item.settlement && isCancelSettlementType(item.settlement)) return '已撤单';
+    // 终态最高优先级：只要有 settlement，就按 settlement 判定（已撤单/有废稿/已结单是不可逆的归档状态）
+    if (item.settlement) {
+        if (isCancelSettlementType(item.settlement)) return '已撤单';
+        if (item.settlement.type === 'waste_fee') return '有废稿';
+        if (item.settlement.type === 'normal') return '已结单';
+    }
     if (item && item.isSchedulePlaceholder) return '占位单';
+    if (item.status === 'closed') return '已结单';   // 向后兼容旧数据的 status 字段
+    // 中间态：收定但未结算，此时仍可被修改/逾期
     if (item && item.depositReceived != null && Number(item.depositReceived) > 0) return '已收定';
-    if (item.settlement && item.settlement.type === 'waste_fee') return '有废稿';
-    if (item.settlement && item.settlement.type === 'normal') return '已结单';
-    if (item.status === 'closed') return '已结单';
     ensureProductDoneStates(item);
     const states = Array.isArray(item.productDoneStates) ? item.productDoneStates : [];
     const total = states.length;
@@ -5152,24 +5194,32 @@ function isStatsOrderOverdue(item) {
     return d < today;
 }
 
-// 曾经逾期过：当前逾期 或 已完成但截止日已过（说明逾期后才完成）
+// 曾经逾期过：当前逾期，或终态（已完成/已结单/有废稿）的实际完成/结算时间晚于 deadline
 function isStatsOrderEverOverdue(item, overdueMode) {
     if (!item || !item.deadline) return false;
     if (isStatsOrderOverdue(item)) return true;
     const status = getStatsOrderStatus(item);
-    if (status !== '已完成') return false;
-    
-    // 如果是严格模式（仅原始截稿日），但没有原始截稿日记录，则不计算
+
+    // 严格模式（仅原始截稿日），但没有原始截稿日记录，则不判定曾经逾期
     if (overdueMode === 'strict' && !item.originalDeadline) return false;
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // 严格模式使用原始截稿日，否则使用当前截稿日
+
     const deadlineToUse = overdueMode === 'strict' && item.originalDeadline ? item.originalDeadline : item.deadline;
-    const d = new Date(deadlineToUse);
-    d.setHours(0, 0, 0, 0);
-    return d < today;
+    const deadlineDate = new Date(deadlineToUse);
+    deadlineDate.setHours(23, 59, 59, 999); // 和主状态判断对齐：截止日当天 23:59:59 前完成都不算逾期
+    const deadlineTs = deadlineDate.getTime();
+
+    // 优先级 1：已结单/撤单/废稿 —— 有精确的 settlement.at 结单时间
+    if (item.settlement && item.settlement.at) {
+        const settleTs = new Date(item.settlement.at).getTime();
+        return settleTs > deadlineTs;
+    }
+
+    // 优先级 2：已完成（产品全部做完但还没正式结算）—— 历史数据无 doneAt 字段，保守处理不判曾经逾期
+    if (status === '已完成') {
+        return false;
+    }
+
+    return false;
 }
 
 var STATS_FILTER_STORAGE_KEY = 'mg_stats_filters_v1';
@@ -5313,10 +5363,31 @@ function getStatsDataset(historySource, filters) {
         list = historySource.filter(item => (item.deadline && String(item.deadline).trim()) || item.timestamp);
     }
     if (filters.statusFilters && filters.statusFilters.length && filters.statusFilters.indexOf('all') === -1) {
+        const statsStatusValues = ['待接单', '占位单', '未开始', '进行中', '已完成', '已逾期', '已收定', '已结单', '已撤单', '有废稿'];
+        const tagFilters = filters.statusFilters.filter(f => statsStatusValues.indexOf(f) === -1);
+        const actualStatusFilters = filters.statusFilters.filter(f => statsStatusValues.indexOf(f) !== -1);
         list = list.filter(item => {
             const status = getStatsOrderStatus(item);
-            if (filters.statusFilters.indexOf('已逾期') !== -1 && isStatsOrderOverdue(item)) return true;
-            return filters.statusFilters.indexOf(status) !== -1;
+            var hit = false;
+            if (actualStatusFilters.length > 0) {
+                if (actualStatusFilters.indexOf('已逾期') !== -1 && isStatsOrderOverdue(item)) hit = true;
+                if (!hit && actualStatusFilters.indexOf(status) !== -1) hit = true;
+                if (!hit && actualStatusFilters.indexOf('占位单') !== -1 && item.isSchedulePlaceholder) hit = true;
+                if (!hit && (actualStatusFilters.indexOf('已收定') !== -1 || actualStatusFilters.indexOf('已全款') !== -1)) {
+                    var depTxt = (getDepositTagInfo(item) || {}).text;
+                    if (depTxt && actualStatusFilters.indexOf(depTxt) !== -1) hit = true;
+                }
+            }
+            if (!hit && tagFilters.length > 0) {
+                for (const tg of tagFilters) {
+                    if (tg === '加急单' && (item.urgentType && item.urgentType !== 'normal' || item.urgent && item.urgent > 1)) { hit = true; break; }
+                    if (tg === '追加单' && hasCrossOrderSameModel(item)) { hit = true; break; }
+                    if (matchDepositFilter(item, tg)) { hit = true; break; }
+                    const tags = mgNormalizeTags(item);
+                    if (tags.some(t => t && t.name === tg)) { hit = true; break; }
+                }
+            }
+            return hit;
         });
     }
     const getAmount = (item) => getStatsAmount(item, filters.amountBasis, filters.giftMode);
@@ -6765,9 +6836,8 @@ function updateStatsFilterTagOptions() {
     const tagSet = new Set();
     history.forEach(item => {
         // 添加固定标签（这些标签由系统自动生成，不在自定义标签列表中显示）
-        if (item.depositReceived != null && Number(item.depositReceived) > 0) {
-            tagSet.add('已收定');
-        }
+        var depInfo = getDepositTagInfo(item);
+        if (depInfo) tagSet.add(depInfo.text);
         if (item.isSchedulePlaceholder) {
             tagSet.add('占位单');
         }
@@ -10699,6 +10769,20 @@ function updateAgreedAmountBar() {
             syncReceiptDrawerContent();
         }
     };
+
+    // 定金：输入时实时写回 quoteData 并刷新小票预览（已收定金/尾款/应收同步变化）
+    if (depositInputEl) {
+        depositInputEl.oninput = depositInputEl.onchange = function () {
+            if (!quoteData) return;
+            var v = parseFloat(depositInputEl.value);
+            if (!isNaN(v) && v >= 0) {
+                quoteData.depositReceived = v;
+                // 定金本身不影响应收总金额，只影响「已收定」「尾款」行显示；无需重算约定实收/平台费
+                generateQuote();
+                syncReceiptDrawerContent();
+            }
+        };
+    }
 }
 
 // 打开小票抽屉
@@ -13339,7 +13423,10 @@ async function renderScheduleTodoSection() {
         const progress = doneCount + '/' + total;
         const status = getRecordProgressStatus(item);
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder schedule-todo-card-tag">占位单</span>' : '';
-        const depositTagHtml = item && item.depositReceived != null && Number(item.depositReceived) > 0 ? '<span class="record-tag record-tag-deposit schedule-todo-card-tag">已收定</span>' : '';
+        const depositTagInfo = getDepositTagInfo(item);
+        const depositTagHtml = depositTagInfo
+            ? ('<span class="record-tag ' + depositTagInfo.cssClass + ' schedule-todo-card-tag">' + depositTagInfo.text + '</span>')
+            : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent schedule-todo-card-tag">加急单</span>' : '';
         const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order schedule-todo-card-tag">追加单</span>' : '';
         // 追加单关联信息行

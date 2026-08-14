@@ -46,7 +46,20 @@ venv/
 # IDE本地历史
 .history/
 
-# 本仓库仅需部署 index.html / style.css / script.js / README.md，以下保留本地
+# ============================================================
+# 本地个人工作区统一目录：所有非部署产物一律放这里，全程不进 git
+#   • 需求文档 / 修改清单 / 优化方案 / 代码分析报告
+#   • 临时生成的预览、选项、原型页面
+#   • Supabase 运维 SQL 脚本（安全修复、性能修复等）
+#   • 一次性迁移脚本、个人 PowerShell 工具
+#   • 本项目 IDE 工作区记忆（Trae / Cursor）
+# ============================================================
+.trae/
+.cursor/
+
+# ============================================================
+# 根目录兜底忽略（防误提交 —— 新生成的同类文件请优先存 .trae/）
+# ============================================================
 部署到GitHub.md
 需求.txt
 小票制品展示规范.md
@@ -55,13 +68,17 @@ venv/
 方案A优化情况.md
 方案A优化详情.md
 方案A优化详情-灰色版.md
-.cursor/
-.trae/
+代码分析与优化报告.md
+网页功能分析与优化报告.md
+receipt_display_rules.md
 MGbaojia.zip
 git-backup.bat
 git-backup.ps1
-代码分析与优化报告.md
-网页功能分析与优化报告.md
+
+# 本地一次性脚本 / 工具（存 .trae/，此处仅防根目录误生成）
+migrate_old_append_orders.js
+replace_currency.ps1
+supabase_*.sql
 
 # 预览和选项文件（保留本地，不提交到git）
 delete-icons-preview.html

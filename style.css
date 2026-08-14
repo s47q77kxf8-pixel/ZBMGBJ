@@ -9392,7 +9392,15 @@ html.theme-dark .settlement-preview {
 }
 
 .record-tag-deposit {
-    /* 预留：暗色模式可在此调整颜色 */
+    /* 已收定：保留默认 .record-tag 的浅绿色（outline 风），不做覆盖 */
+}
+
+.record-tag-paid {
+    /* 已全款：同一绿色系，用「实底填充 + 白字」和已收定的「描边浅底」形成对比；字重与其他标签保持一致 */
+    border-color: #047857 !important;
+    color: #ffffff !important;
+    background-color: #059669 !important;
+    box-shadow: 0 1px 2px rgba(5, 150, 105, 0.25);
 }
 
 .record-tag-placeholder {
