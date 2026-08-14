@@ -17254,6 +17254,13 @@ function editHistoryItem(id) {
             }
             // 接单平台输入框已从 quote.contact 恢复，此处不覆盖
         }
+
+        // 恢复「是否付定金」：以历史记录里保存的用户选择为准，避免平台恢复时的默认值覆盖
+        // （有手续费默认否/无手续费默认是 仅对新建生效；编辑时必须还原用户此前的手动选择）
+        var needDepEl = document.getElementById('needDeposit');
+        if (needDepEl && quote.needDeposit != null) {
+            needDepEl.value = quote.needDeposit ? 'yes' : 'no';
+        }
         
         // 恢复其他加价类
         if (quote.extraUpSelections && Array.isArray(quote.extraUpSelections)) {
