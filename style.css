@@ -2195,6 +2195,18 @@ input:focus, select:focus {
 .icon-action-btn.delete:hover { opacity: 0.85; }
 .icon-action-btn.delete:active { opacity: 0.75; }
 
+/* 制品排序图标按钮（置顶/上移/下移）：跟随主题文字色，避免夜间模式回退成黑色不可见 */
+.icon-action-btn.move-to-top,
+.icon-action-btn.move-up,
+.icon-action-btn.move-down {
+    color: var(--text-color);
+}
+html.theme-dark .icon-action-btn.move-to-top,
+html.theme-dark .icon-action-btn.move-up,
+html.theme-dark .icon-action-btn.move-down {
+    color: #e5e7eb;
+}
+
 /* 按钮样式 - 高度、宽度由字体决定 */
 .btn {
     padding: 0.5em 1em;
