@@ -1752,6 +1752,22 @@ body {
     margin-bottom: 0.75rem;
 }
 
+/* 计算页：企划信息字段行。大屏 3 列一排，手机小屏改为 2 列一排，避免超出容器 */
+.project-info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+}
+.project-info-grid .form-group,
+.project-info-grid .project-origin-input-wrap {
+    min-width: 0;
+}
+@media (max-width: 520px) {
+    .project-info-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 .form-group {
     flex: 1;
 }
@@ -11449,4 +11465,150 @@ html.theme-dark .custom-select-search {
 html.theme-dark .custom-select-dropdown {
     background: var(--card-bg);
     border-color: var(--border-color);
+}
+
+/* ===== 制品/赠品「模块」分组 ===== */
+.module-item {
+    margin: 0.9rem 0 0.4rem;
+}
+.module-item-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0.1rem;
+    cursor: pointer;
+    user-select: none;
+}
+.module-symbol {
+    font-size: 0.82rem;
+    line-height: 1.2;
+    font-weight: bold;
+    color: #333;
+    flex-shrink: 0;
+}
+html.theme-dark .module-symbol {
+    color: #e5e7eb;
+}
+.module-item-title {
+    flex: 1;
+    min-width: 0;
+}
+.module-expansion-tag {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--brand, #3b82f6);
+    white-space: nowrap;
+}
+.module-collapse-btn {
+    flex-shrink: 0;
+}
+.module-delete-btn {
+    flex-shrink: 0;
+    margin-left: 0.1rem;
+    color: var(--danger, #e11d48);
+}
+.module-item-body {
+    padding: 0.5rem 0.1rem;
+}
+/* 模块系数下拉：两个一行 */
+.module-item-body .module-expansion-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 0.75rem;
+}
+.module-item-body .module-expansion-controls .form-group {
+    min-width: 0;
+}
+.module-item-body .module-expansion-controls .form-group select {
+    width: 100%;
+    min-width: 0;
+}
+.module-item.module-collapsed .module-item-body {
+    display: none;
+}
+.module-product-list {
+    margin: 0.4rem 0;
+}
+
+/* 「转」弹出菜单 */
+.convert-menu {
+    min-width: 8rem;
+    background: #fff;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+    padding: 0.3rem;
+}
+html.theme-dark .convert-menu {
+    background: var(--card-bg, #1f2937);
+    border-color: var(--border-color, #374151);
+}
+.convert-menu-title {
+    font-size: 11px;
+    color: var(--text-muted, #888);
+    padding: 0.2rem 0.4rem 0.3rem;
+}
+.convert-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+}
+.convert-menu-item:hover {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--brand, #3b82f6);
+}
+.convert-menu-add {
+    color: var(--brand, #3b82f6);
+    font-weight: 500;
+}
+.convert-menu-add:hover {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+/* 小票：模块原因行 / 模块小计 */
+.receipt-module-close {
+    border-top: 1px dashed var(--receipt-divider-color, #ccc);
+    border-bottom: 1px dashed var(--receipt-divider-color, #ccc);
+    margin: 0.3rem 0 0.5rem;
+    padding: 0.25rem 0;
+}
+.receipt-module-reason-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--receipt-muted, #777);
+    padding-right: 0.25rem;
+    margin: 0.05rem 0;
+}
+.receipt-module-reason-label {
+    padding-left: 0.4rem;
+}
+.receipt-module-reason-value {
+    text-align: right;
+    min-width: 4.2em;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--receipt-number-font, inherit);
+}
+.receipt-module-subtotal {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    text-align: right;
+    font-weight: bold;
+    font-size: 12px;
+    margin: 0.15rem 0 0;
+    padding-top: 0.1rem;
+}
+.receipt-module-sym {
+    margin-right: 0.4rem;
+    font-weight: bold;
+    color: #333;
 }

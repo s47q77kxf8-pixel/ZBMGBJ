@@ -609,30 +609,6 @@
                             </div>
                         </div>
                     </div>
-                    <!-- 加价类：用途、加急、其他加价类 -->
-                    <div class="form-row" id="pricingUpRow">
-                        <div class="form-group">
-                            <label for="usage">用途</label>
-                            <select id="usage"><option value="">--</option></select>
-                        </div>
-                        <div class="form-group">
-                            <label for="urgent">加急</label>
-                            <select id="urgent"><option value="">--</option></select>
-                        </div>
-                    </div>
-                    <div id="extraPricingUpSelectsRow" class="form-row d-none">
-                        <!-- 动态添加的其他加价类选择器 -->
-                    </div>
-                    <!-- 折扣类：折扣系数、其他折扣类 -->
-                    <div class="form-row" id="pricingDownRow">
-                        <div class="form-group">
-                            <label for="discount">折扣系数</label>
-                            <select id="discount"><option value="">--</option></select>
-                        </div>
-                    </div>
-                    <div id="extraPricingDownSelectsRow" class="form-row d-none">
-                        <!-- 动态添加的其他折扣类选择器 -->
-                    </div>
                     <!-- 同模优惠（由 showSameModelOnCalculation 开关控制显示，与制品里的「是否同模」同步显隐） -->
                     <div class="form-row global-same-model-coefficient-row">
                         <div class="form-group">
@@ -640,8 +616,8 @@
                             <select id="sameModel"><option value="">--</option></select>
                         </div>
                     </div>
-                    <!-- 每制品增加（可多选） -->
-                    <div class="form-row" id="perItemExtraSelectsRow">
+                    <!-- 每制品增加（可多选）：默认隐藏，设置页配置费用后由 JS 显示 -->
+                    <div class="form-row d-none" id="perItemExtraSelectsRow">
                         <div class="form-group">
                             <label data-mg-term="每{制品}增加">每制品增加</label>
                             <div id="calculatorPerItemExtraSelects" class="d-flex gap-2 flex-wrap"></div>
@@ -681,18 +657,18 @@
                     </div>
                 </div>
                 <div class="section section-products">
-                    <h2 id="calc-products-title" data-mg-term="{制品s}信息">制品信息</h2>
+                    <h2 id="calc-products-title" data-mg-term="{制品s}信息">{制品s}信息</h2>
                     <div id="productsContainer">
-                        <!-- 制品信息将通过JavaScript动态添加 -->
+                        <!-- 制品信息模块将通过JavaScript动态添加 -->
                     </div>
-                    <button class="btn add-product" onclick="addProduct()" id="calc-add-product-btn" data-mg-term="+ {制品}">+ 制品</button>
+                    <button class="btn add-product" onclick="addProductModule()" id="calc-add-module-btn">+ 制品组</button>
                 </div>
                 <div class="section">
                     <h2>赠品信息</h2>
                     <div id="giftsContainer">
-                        <!-- 赠品信息将通过JavaScript动态添加 -->
+                        <!-- 赠品信息模块将通过JavaScript动态添加 -->
                     </div>
-                    <button class="btn add-product" onclick="addGift()">+ 赠品</button>
+                    <button class="btn add-product" onclick="addGiftModule()">+ 赠品组</button>
                 </div>
                         <div class="save-template-row d-flex gap-2 items-center">
                             <!-- 保存按钮放在左侧 -->
@@ -1873,6 +1849,13 @@
                                 <input type="hidden" id="currencySelector" value="CNY">
                             </div>
                         </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="unifiedProductTerm">统一制品称呼</label>
+                                <input type="text" id="unifiedProductTerm" placeholder="如：制品 / 作品 / 稿件" onchange="updateUnifiedProductTerm(this.value)">
+                                <small class="text-gray">留空则跟随身份（美工/画师→制品，题字→作品，作者→稿件）；有值时计算页/统计页/小票统一显示该称呼</small>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <!-- 单主自助填写链接 + 全部直填委托入口（管理） -->
@@ -2876,6 +2859,27 @@
                     <button type="button" class="btn secondary w-full" onclick="calculatorSaveChoiceOverwrite()">覆盖原企划</button>
                     <button type="button" class="btn w-full" onclick="calculatorSaveChoiceSaveAsNew()">另存为新排单</button>
                     <button type="button" class="btn secondary w-full" onclick="closeCalculatorSaveChoiceModal()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- 制品组/赠品组删除方式选择弹窗 -->
+    <div id="deleteModuleChoiceModal" class="history-record-modal d-none" aria-hidden="true">
+        <div class="history-record-overlay" onclick="closeDeleteModuleChoice()"></div>
+        <div class="history-record-content">
+            <div class="history-record-header">
+                <h2>删除分组</h2>
+                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeDeleteModuleChoice()" aria-label="关闭" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+            </div>
+            <div class="history-record-body">
+                <p class="mb-2">如何处置「<span id="deleteModuleChosenName" class="font-weight-bold"></span>」下的<span id="deleteModuleChosenCount"></span>？</p>
+                <div class="d-flex flex-col gap-2">
+                    <button type="button" class="btn secondary w-full" onclick="deleteModuleChoiceMerge()">并入其他组</button>
+                    <button type="button" class="btn danger w-full" onclick="deleteModuleChoiceDelete()">连同其下的制品/赠品一并删除</button>
+                    <button type="button" class="btn secondary w-full" onclick="closeDeleteModuleChoice()">取消</button>
                 </div>
             </div>
         </div>
