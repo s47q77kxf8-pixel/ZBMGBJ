@@ -2198,12 +2198,14 @@ input:focus, select:focus {
 /* 制品排序图标按钮（置顶/上移/下移）：跟随主题文字色，避免夜间模式回退成黑色不可见 */
 .icon-action-btn.move-to-top,
 .icon-action-btn.move-up,
-.icon-action-btn.move-down {
+.icon-action-btn.move-down,
+.icon-action-btn.module-collapse-btn {
     color: var(--text-color);
 }
 html.theme-dark .icon-action-btn.move-to-top,
 html.theme-dark .icon-action-btn.move-up,
-html.theme-dark .icon-action-btn.move-down {
+html.theme-dark .icon-action-btn.move-down,
+html.theme-dark .icon-action-btn.module-collapse-btn {
     color: #e5e7eb;
 }
 
@@ -5085,6 +5087,17 @@ input:checked + .toggle-slider:before {
 /* 经典主题保留绿色优惠色，符合“0 元优惠”直觉 */
 .receipt-theme-classic .receipt-gift-free-amount {
     color: #16a34a;
+}
+.gift-free-cell {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 0.3em;
+}
+.receipt-gift-original-price {
+    text-decoration: line-through;
+    font-size: 0.85em;
+    color: var(--receipt-muted, #999);
 }
 /* 抹零优惠：与赠品优惠同风格，强调色 */
 /* 应收金额行：文字与原价下边缘对齐 */
@@ -11586,22 +11599,36 @@ html.theme-dark .convert-menu {
 
 /* 小票：模块原因行 / 模块小计 */
 .receipt-module-close {
+    /* 上虚线：把「制品明细」和「计算区」分开；多模块时最后一组的下缘也自然分隔组与组 */
     border-top: 1px dashed var(--receipt-divider-color, #ccc);
-    border-bottom: 1px dashed var(--receipt-divider-color, #ccc);
-    margin: 0.3rem 0 0.5rem;
-    padding: 0.25rem 0;
+    margin: 0.35rem 0 0.5rem;
+    padding: 0.3rem 0 0.1rem;
+}
+.receipt-module-close:not(:last-child) {
+    /* 组与组之间只靠下一组的顶部虚线分隔，不再额外画底边，避免双线 */
+    margin-bottom: 0.8rem;
+}
+.receipt-module-detail-rows {
+    margin: 0.02rem 0 0.15rem 0.9rem;
+    padding: 0;
+}
+.receipt-module-coeff {
+    font-weight: 500;
+    font-size: 0.85em;
 }
 .receipt-module-reason-row {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    font-size: 11px;
-    color: var(--receipt-muted, #777);
+    font-size: 10px;
     padding-right: 0.25rem;
-    margin: 0.05rem 0;
+    margin: 0.03rem 0;
 }
 .receipt-module-reason-label {
     padding-left: 0.4rem;
+}
+.receipt-module-reason-name + .receipt-module-coeff {
+    margin-left: 0.35rem;
 }
 .receipt-module-reason-value {
     text-align: right;
@@ -11614,13 +11641,13 @@ html.theme-dark .convert-menu {
     align-items: baseline;
     justify-content: space-between;
     text-align: right;
-    font-weight: bold;
-    font-size: 12px;
-    margin: 0.15rem 0 0;
-    padding-top: 0.1rem;
+    font-weight: 500;
+    font-size: 11px;
+    margin: 0.12rem 0 0;
+    padding-top: 0.08rem;
 }
 .receipt-module-sym {
-    margin-right: 0.4rem;
-    font-weight: bold;
-    color: #333;
+    margin-right: 0;
+    font-weight: inherit;
+    color: inherit;
 }

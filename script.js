@@ -300,6 +300,10 @@ function addProductModule() {
         downSelections: last ? JSON.parse(JSON.stringify(last.downSelections || [])) : []
     });
     renderModulePanels('product');
+    // renderModulePanels 用 innerHTML 重建了容器，之前已挂载的制品卡片会被替换掉，必须重挂载（含已有与新增模块）
+    try {
+        (products || []).forEach(function (p) { try { renderProduct(p); } catch (e) { /* ignore */ } });
+    } catch (_eRerender) { /* ignore */ }
     return newMod;
 }
 function addGiftModule() {
@@ -314,6 +318,10 @@ function addGiftModule() {
         downSelections: last ? JSON.parse(JSON.stringify(last.downSelections || [])) : []
     });
     renderModulePanels('gift');
+    // 同上：重建面板后重新挂载所有赠品卡片，避免其他组赠品“消失”
+    try {
+        (gifts || []).forEach(function (g) { try { renderGift(g); } catch (e) { /* ignore */ } });
+    } catch (_eRerenderG) { /* ignore */ }
     return newMod;
 }
 // —— 制品组/赠品组删除：弹窗二选一（并入其他组 / 连同其下制品一并删除）——
@@ -9414,7 +9422,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             sameModelCount: product.crossOrderSameModel ? crossOrderSameModelCount : sameModelCount,
             sameModelUnitPrice: sameModelUnitPrice,
             sameModelTotal: sameModelTotal,
-            productTotal: productTotal,
+            productTotal: productTotal, // 先存系数前基础行合计，下方再按下游口径覆盖
             processDetails: processDetails,
             totalProcessFee: totalProcessFee,
             // 工艺费计费方式：perQty=按数量 | once=只收一次
@@ -9433,7 +9441,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             selectedProcesses: [],
             totalProcessLayers: 0
         };
-        productPriceInfo.productTotal = effectiveProductTotal;
+        productPriceInfo.productTotalCoeff = effectiveProductTotal;
         // 模块级扩展信息（小票/导出/结算按制品读取）
         productPriceInfo.moduleId = (prodModule && prodModule.id) || 'P1';
         productPriceInfo.moduleName = (prodModule && moduleSymbol(prodModule.mtype, prodModule.seq)) || moduleSymbol('product', 1);
@@ -9441,6 +9449,10 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         productPriceInfo.moduleDown = prodCoeff.down;
         productPriceInfo.moduleUpReasons = prodCoeff.upReasons;
         productPriceInfo.moduleDownReasons = prodCoeff.downReasons;
+        // 下游合计口径：系数后总金额（用于 totalProductsPrice 累计等，保持结算与实付一致）
+        productPriceInfo.productTotal = effectiveProductTotal;
+        // 小票列“小计”口径：系数前基础行合计（便于用户验算，如 80+10=90）
+        productPriceInfo.baseLineTotal = productTotal;
         
         // 如果是基础+递增价类型，保存额外配置详情
         if (productSetting.priceType === 'config') {
@@ -9644,6 +9656,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             giftDiscountedPrice: 0, // 赠品优惠价为0
             processDetails: processDetails,
             totalProcessFee: totalProcessFee,
+            extraFees: giftExtraFeeList.map(function (x) { return { id: x.id, name: x.name, amount: Number(x.amount) || 0 }; }),
+            totalExtraFee: totalGiftExtraFee,
             // 添加基础配置信息（如果是基础+递增价类型）
             productType: productSetting.priceType,
             baseConfig: productSetting.baseConfig,
@@ -9671,14 +9685,13 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             giftPriceInfo.nodeDailyPlan = gift.nodeDailyPlan.map(function (p) { return { nodeIndex: p.nodeIndex, date: p.date, targetQty: p.targetQty }; });
         }
         giftPrices.push(giftPriceInfo);
-        // giftOriginalPrice 保留为「系数前」的真实原价（用于小票划线原价展示）
-        // 新增 giftTotal 为「系数后」的实际有效金额（用于模块小计、合计、统计/收入结算等场景）
-        giftPriceInfo.giftTotal = effectiveGiftTotal;
-        // 兼容：下游仍有多处直接读取 giftOriginalPrice 作为有效金额进行累计，
-        // 为避免改出统计偏差，在未全面替换到 giftTotal 前，保留其含义为「系数后」（与制品 productTotal 对齐）；
-        // 划线原价另取独立字段 giftStrikePrice（= 系数前原价）
-        giftPriceInfo.giftStrikePrice = giftOriginalPrice;
-        giftPriceInfo.giftOriginalPrice = effectiveGiftTotal;
+        // 赠品：小票行显示「赠送 0 元」，仍保留划线原价；模块系数原因/加价金额照常展示（显示原本价值多少）
+        giftPriceInfo.giftStrikePrice = giftOriginalPrice;             // 划线原价（系数前，如 ¥70）
+        giftPriceInfo.giftTotal = 0;                                   // 赠送：参与模块小计/合计/实付的有效金额=0
+        giftPriceInfo.giftOriginalPrice = 0;                           // 兼容：与 giftTotal 对齐，避免统计重复收费
+        giftPriceInfo.baseLineTotal = 0;                               // 小票列“小计”口径=赠送
+        giftPriceInfo.giftTotalCoeff = effectiveGiftTotal;             // 仅保留内部参考值（系数后原本价值，不参与合计）
+        giftPriceInfo.giftBaseBeforeCoeff = giftOriginalPrice;         // 系数前基础原价（供模块内“原因金额”验算使用）
         // 模块级扩展信息（小票/导出/结算按赠品读取）
         giftPriceInfo.moduleId = (giftModule && giftModule.id) || 'G1';
         giftPriceInfo.moduleName = (giftModule && moduleSymbol(giftModule.mtype, giftModule.seq)) || moduleSymbol('gift', 1);
@@ -9686,7 +9699,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         giftPriceInfo.moduleDown = giftEff.down;
         giftPriceInfo.moduleUpReasons = giftEff.upReasons;
         giftPriceInfo.moduleDownReasons = giftEff.downReasons;
-        totalGiftsOriginalPrice += effectiveGiftTotal;
+        totalGiftsOriginalPrice += 0;
     }
     
     // 计算总价：总价 = Σ（各制品/赠品模块折算后的金额）+ 其他费用合计 + 平台手续费
@@ -10050,22 +10063,58 @@ function generateQuote() {
     var prodModuleSet = new Set();
     (quoteData.productPrices || []).forEach(function (it) { if (it && it.moduleId) prodModuleSet.add(String(it.moduleId)); });
     var multiModuleP = prodModuleSet.size > 1;
-    var curProdMod = null, curProdModSym = '', prodModuleRunningSum = 0;
+    var curProdMod = null, curProdModSym = '';
+    // 小票“小计”列口径：系数前基础原价（如 80+工艺10=90）。
+    // 新数据直接读保存的 baseLineTotal；旧历史缺少该字段时，用与 calculatePrice 相同的
+    // baseProductTotal + totalProcessFee + totalExtraFee 明细公式重算，不做系数除法反推。
+    function receiptProductBaseTotal(item) {
+        if (!item) return 0;
+        if (item.baseLineTotal != null) return Number(item.baseLineTotal) || 0;
+        var bp = Number(item.basePrice) || 0;
+        var qty = Number(item.quantity) || 0;
+        var smCount = Number(item.sameModelCount) || 0;
+        var smUnit = Number(item.sameModelUnitPrice) || 0;
+        var smTotal = Number(item.sameModelTotal) || 0;
+        var procFee = Number(item.totalProcessFee) || 0;
+        var extraFee = Number(item.totalExtraFee) || 0;
+        var resolvedSmTotal = smCount > 0 && smTotal <= 0 ? smCount * smUnit : smTotal;
+        var base;
+        if (item.crossOrderSameModel) {
+            base = smCount > 0 ? resolvedSmTotal : bp * qty;
+        } else if (smCount > 0) {
+            base = bp + resolvedSmTotal;
+        } else {
+            base = bp * qty;
+        }
+        var total = base + procFee + extraFee;
+        if (total === 0 && !bp && !smCount && !procFee && !extraFee && item.productTotal != null) {
+            total = Number(item.productTotal) || 0;
+        }
+        return total;
+    }
     // —— 计算每模块的「系数前基础合计」与制品/赠品各自的代表性系数原因
     // 核心原则：小票展示的 reason 必须与对应行的金额口径一致，因此优先使用 item 内自带的 moduleUpReasons / moduleDownReasons
     // （这些是 calculatePrice 时与 item.productTotal 一起合成并持久化到历史的，保证口径一致）；
     // 仅当旧订单 item 内缺少原因数组时，才回退到外部 orderModules.upSelections/downSelections（可能与已保存金额不一致，属兼容兜底）
-    var moduleBaseTotals = {};   // moduleId → 系数前基础合计（有效金额反推）
+    var moduleBaseTotals = {};   // moduleId → 系数前基础合计（明细公式重算）
+    var moduleFinalTotals = {};  // moduleId → 系数后模块合计（小票“小计”列展示）
     var moduleRepReasons = {};   // moduleId → { up: [...], down: [...] }  代表项的原因
+    var moduleTotalCoeffs = {};  // moduleId → { up, down } 模块合计口径的总系数（供合计行展示）
     (quoteData.productPrices || []).forEach(function (it) {
         if (!it || !it.moduleId) return;
         var mid = String(it.moduleId);
-        var effective = Number(it.productTotal) || 0;
-        var up = Number(it.moduleUp) || 1;
-        var down = Number(it.moduleDown) || 1;
-        var denom = up * down;
-        var base = Math.abs(denom) > 1e-9 ? (effective / denom) : 0;
+        var base = receiptProductBaseTotal(it);
         moduleBaseTotals[mid] = (moduleBaseTotals[mid] || 0) + base;
+        var finVal = Number(it.productTotal);
+        if (!isFinite(finVal)) finVal = Number(it.productTotalCoeff);
+        if (!isFinite(finVal)) finVal = base;
+        moduleFinalTotals[mid] = (moduleFinalTotals[mid] || 0) + finVal;
+        if (!moduleTotalCoeffs[mid]) {
+            moduleTotalCoeffs[mid] = {
+                up: Number(it.moduleUp) || 1,
+                down: Number(it.moduleDown) || 1
+            };
+        }
         if (!moduleRepReasons[mid]) {
             moduleRepReasons[mid] = {
                 up: Array.isArray(it.moduleUpReasons) ? it.moduleUpReasons.slice() : [],
@@ -10076,12 +10125,26 @@ function generateQuote() {
     (quoteData.giftPrices || []).forEach(function (it) {
         if (!it || !it.moduleId) return;
         var mid = String(it.moduleId);
-        var effective = Number(it.giftTotal != null ? it.giftTotal : it.giftOriginalPrice) || 0;
-        var up = Number(it.moduleUp) || 1;
-        var down = Number(it.moduleDown) || 1;
-        var denom = up * down;
-        var base = Math.abs(denom) > 1e-9 ? (effective / denom) : 0;
+        // 赠送：giftTotal=0。模块内"加价原因¥金额"参照的不是0（否则不显示），而是系数前的基础原价 giftBaseBeforeCoeff/giftStrikePrice，
+        // 这样既能显示「原本多少钱/加价了多少」又保证组块小计与实付为0
+        var strike = Number(it.giftBaseBeforeCoeff);
+        if (!strike) strike = Number(it.giftStrikePrice);
+        if (!strike) {
+            var _up = Number(it.moduleUp) || 1;
+            var _dn = Number(it.moduleDown) || 1;
+            var _denom = _up * _dn;
+            var _rawEff = Number(it.giftTotalCoeff != null ? it.giftTotalCoeff : (Number(it.giftOriginalPrice) || 0));
+            strike = Math.abs(_denom) > 1e-9 ? (_rawEff / _denom) : _rawEff;
+        }
+        // strike 已在上方统一为系数前基础价（历史数据也已在兜底里反推），直接作为模块基础合计，不再重复除以系数
+        var base = strike;
         moduleBaseTotals[mid] = (moduleBaseTotals[mid] || 0) + base;
+        if (!moduleTotalCoeffs[mid]) {
+            moduleTotalCoeffs[mid] = {
+                up: Number(it.moduleUp) || 1,
+                down: Number(it.moduleDown) || 1
+            };
+        }
         if (!moduleRepReasons[mid]) {
             moduleRepReasons[mid] = {
                 up: Array.isArray(it.moduleUpReasons) ? it.moduleUpReasons.slice() : [],
@@ -10097,6 +10160,12 @@ function generateQuote() {
     fallbackModArr.forEach(function (m) {
         if (!m) return;
         var mid = String(m.id);
+        if (!moduleTotalCoeffs[mid]) {
+            moduleTotalCoeffs[mid] = {
+                up: Number(m.moduleUp) || 1,
+                down: Number(m.moduleDown) || 1
+            };
+        }
         if (!moduleRepReasons[mid]) moduleRepReasons[mid] = { up: [], down: [] };
         var rep = moduleRepReasons[mid];
         if (!rep.up.length && Array.isArray(m.upSelections)) {
@@ -10238,33 +10307,83 @@ function generateQuote() {
         });
         moduleReasonLines[mid] = lines;
     });
+    function receiptPaidTotal() {
+        var _base = Number(quoteData.totalProductsPrice) || 0;
+        var _with = quoteData.totalWithCoefficients != null ? Number(quoteData.totalWithCoefficients) : _base;
+        var _before = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : (_with + (Number(quoteData.totalOtherFees) || 0));
+        var _agreed = quoteData.agreedAmount != null ? Number(quoteData.agreedAmount) : _before;
+        if (Number(quoteData.platformFeeAmount) > 0) {
+            return quoteData.finalTotal != null ? Number(quoteData.finalTotal) : (_agreed + Number(quoteData.platformFeeAmount));
+        }
+        return _agreed;
+    }
     function prodModuleCloseHtml() {
         if (curProdMod == null) return '';
         var h = '<div class="receipt-module-close">';
+        var baseTotal = Number(moduleBaseTotals[curProdMod]) || 0;
         var rl = moduleReasonLines[curProdMod] || [];
+        var upLines = [], downLines = [], upSum = 0, downSum = 0;
         rl.forEach(function (l) {
-            var _nm = l && l.name ? l.name : '';
-            var _dv = l && l.v != null ? l.v : 1;
-            var _amt = l && l.amt != null ? l.amt : 0;
-            var _sgn = l && l.sign ? l.sign : '+';
-            h += '<div class="receipt-module-reason-row"><div class="receipt-module-reason-label">' + _nm + '&nbsp;' + _dv + '×</div><div class="receipt-module-reason-value">' + _sgn + getCurrencySymbol() + _amt.toFixed(2) + '</div></div>';
+            var _amt = l && l.amt != null ? Number(l.amt) : 0;
+            if ((l && l.sign) === '+') {
+                upSum += _amt;
+                upLines.push(l);
+            } else {
+                downSum += _amt;
+                downLines.push(l);
+            }
         });
-        h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label"><span class="receipt-module-sym">' + curProdModSym + '</span>小计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + (prodModuleRunningSum.toFixed ? prodModuleRunningSum.toFixed(2) : prodModuleRunningSum) + '</div></div>';
+        function fmtCoeff(v) {
+            var n = Number(v);
+            if (!isFinite(n) || Math.abs(n - 1) < 1e-9) return '';
+            var s = (Math.round(n * 100) / 100).toString();
+            return s + '×';
+        }
+        function detailRowsHtml(arr) {
+            var s = '<div class="receipt-module-detail-rows">';
+            arr.forEach(function (l) {
+                var _nm = l && l.name ? l.name : '';
+                var _dv = l && l.v != null ? l.v : 1;
+                s += '<div class="receipt-module-reason-row"><div class="receipt-module-reason-label"><span class="receipt-module-reason-name">' + _nm + '</span><span class="receipt-module-coeff">' + fmtCoeff(_dv) + '</span></div></div>';
+            });
+            s += '</div>';
+            return s;
+        }
+        var tc = moduleTotalCoeffs[curProdMod] || {};
+        var upCoeff = fmtCoeff(tc.up);
+        var downCoeff = fmtCoeff(tc.down);
+        var prodModNum = String(curProdModSym || '').replace(/^(制品组|赠品组)/, '');
+        var symLabel = multiModuleP ? '<span class="receipt-module-sym">组' + prodModNum + '</span>' : '制品';
+        var finalTotal = Number(moduleFinalTotals[curProdMod]);
+        if (!isFinite(finalTotal)) finalTotal = baseTotal + upSum - downSum;
+        var showSubtotal = Math.abs(baseTotal - finalTotal) >= 0.005;
+        var showTotal = Math.abs(finalTotal - receiptPaidTotal()) >= 0.005;
+        if (showSubtotal) {
+            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '小计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + baseTotal.toFixed(2) + '</div></div>';
+        }
+        if (upSum > 0.005) {
+            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">加价合计' + (upCoeff ? ' <span class="receipt-module-coeff">' + upCoeff + '</span>' : '') + '</div><div class="receipt-module-reason-value">+' + getCurrencySymbol() + upSum.toFixed(2) + '</div></div>';
+            h += detailRowsHtml(upLines);
+        }
+        if (downSum > 0.005) {
+            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">折扣合计' + (downCoeff ? ' <span class="receipt-module-coeff">' + downCoeff + '</span>' : '') + '</div><div class="receipt-module-reason-value">−' + getCurrencySymbol() + downSum.toFixed(2) + '</div></div>';
+            h += detailRowsHtml(downLines);
+        }
+        if (showTotal) {
+            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + finalTotal.toFixed(2) + '</div></div>';
+        }
         h += '</div>';
         return h;
     }
     quoteData.productPrices.forEach((item) => {
         // 模块边界：跨模块时先闭合上一模块小计（不再输出组标题，靠组尾小计的编号辨识分组）
-        if (multiModuleP) {
-            if (String(item.moduleId) !== curProdMod) {
-                if (curProdMod != null) {
-                    html += prodModuleCloseHtml();
-                }
-                curProdMod = String(item.moduleId || '');
-                curProdModSym = item.moduleName || ' ';
-                prodModuleRunningSum = 0;
+        // 注意：单组也需要维护当前模块并在末尾闭合，以显示「小计/加价合计/折扣合计 + 合计」聚合块
+        if (String(item.moduleId) !== curProdMod) {
+            if (curProdMod != null) {
+                html += prodModuleCloseHtml();
             }
-            prodModuleRunningSum += Number(item.productTotal) || 0;
+            curProdMod = String(item.moduleId || '');
+            curProdModSym = item.moduleName || ' ';
         }
         // 判断是否满足乘法（无同模、无工艺、无配件时，fixed/double可合并；config永远不合并）
         const hasSameModel = item.sameModelCount > 0;
@@ -10316,7 +10435,7 @@ function generateQuote() {
             const totalCharCount = charCount * (item.quantity || 1);
             const countText = formatCharCount(totalCharCount);
             const priceText = `${getCurrencySymbol()}${charPrice}/${unitText}`;
-            html += `<div class="receipt-row" title="字数：${charCount}字 × ${item.quantity || 1}件"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${countText}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-row" title="字数：${charCount}字 × ${item.quantity || 1}件"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${countText}</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
 
             // 同模明细（首件字数 / 同模后续字数）
             if (hasSameModel) {
@@ -10355,7 +10474,7 @@ function generateQuote() {
             }
         } else if (isNodes) {
             const nodeTotal = item.nodeTotalPrice != null ? item.nodeTotalPrice : item.basePrice;
-            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${nodeTotal.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${nodeTotal.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
             if (item.nodeDetails && item.nodeDetails.length > 0) {
                 item.nodeDetails.forEach(node => {
                     html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${(node.name || '节点').replace(/</g, '&lt;')} ${node.percent}%</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1">${getCurrencySymbol()}${(node.amount || 0).toFixed(2)}</div></div>`;
@@ -10366,7 +10485,7 @@ function generateQuote() {
             // fixed/double 无同模无工艺：合并到总览行（方案A下单价应包含每制品增加）
             var mergedExtraPerPiece = (item.quantity > 0) ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
             var mergedUnitPrice = fullPriceUnitPrice + mergedExtraPerPiece;
-            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${mergedUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${mergedUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
         } else {
             // 需要拆明细
             if (item.productType === 'config') {
@@ -10374,18 +10493,18 @@ function generateQuote() {
                 if (!hasAdditionalConfig) {
                     var configExtraPerPiece = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
                     var configUnitWithExtra = finishedProductUnitPrice + configExtraPerPiece;
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
                 } else if (!hasSameModel && !hasProcess) {
                     // 有额外配件但无同模无工艺：显示成品单价（已包含配件）
                     var configExtraPerPiece2 = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
                     var configUnitWithExtra2 = finishedProductUnitPrice + configExtraPerPiece2;
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra2.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra2.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
                 } else {
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
                 }
             } else {
                 // fixed/double：总览行单价留空
-                html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${item.productTotal.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
             }
             
             // 明细：全价制品行（方案A：每制品增加并入全价/同模单价，不单列）
@@ -10500,10 +10619,10 @@ function generateQuote() {
             }
         }
     });
-    // 闭合最后一个制品模块小计（含原因行）
-    if (multiModuleP && curProdMod != null) {
+    // 闭合最后一个制品模块小计（含原因行）：单组/多组都显示（虚线+小计/加价合计/折扣合计/合计）
+    if (curProdMod != null) {
         html += prodModuleCloseHtml();
-        curProdMod = null; prodModuleRunningSum = 0;
+        curProdMod = null;
     }
     
     // 结束制品详情部分
@@ -10513,47 +10632,39 @@ function generateQuote() {
     if (quoteData.giftPrices && quoteData.giftPrices.length > 0) {
         html += `<div class="receipt-divider receipt-divider-full"></div><h3 class="receipt-text-sm" style="font-weight: bold; margin: 0.5rem 0;text-align:center;">赠品信息</h3>`;
         
-        // 按大类分组显示赠品
-        let giftCurrentCategory = '';
-        // 模块分组信息：仅当赠品模块数 > 1 时才显示分隔线 + 模块小计（单组保持现状）
+        // 模块分组信息：仅当赠品模块数 > 1 时才显示分隔线 + 模块合计（单组保持现状）
         var giftModuleSet = new Set();
         (quoteData.giftPrices || []).forEach(function (it) { if (it && it.moduleId) giftModuleSet.add(String(it.moduleId)); });
         var multiModuleG = giftModuleSet.size > 1;
-        var curGiftMod = null, curGiftModSym = '', giftModuleRunningSum = 0;
+        var curGiftMod = null, curGiftModSym = '';
         function giftModuleCloseHtml() {
             if (curGiftMod == null) return '';
             var h = '<div class="receipt-module-close">';
-            var rl = moduleReasonLines[curGiftMod] || [];
-            rl.forEach(function (l) {
-                var _nm = l && l.name ? l.name : '';
-                var _dv = l && l.v != null ? l.v : 1;
-                var _amt = l && l.amt != null ? l.amt : 0;
-                var _sgn = l && l.sign ? l.sign : '+';
-                h += '<div class="receipt-module-reason-row"><div class="receipt-module-reason-label">' + _nm + '&nbsp;' + _dv + '×</div><div class="receipt-module-reason-value">' + _sgn + getCurrencySymbol() + _amt.toFixed(2) + '</div></div>';
-            });
-            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label"><span class="receipt-module-sym">' + curGiftModSym + '</span>小计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + (giftModuleRunningSum.toFixed ? giftModuleRunningSum.toFixed(2) : giftModuleRunningSum) + '</div></div>';
+            var origSum = Number(moduleBaseTotals[curGiftMod]) || 0;
+            var giftModNum = String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '');
+            var symLabel = multiModuleG ? '<span class="receipt-module-sym">组' + giftModNum + '</span>' : '赠品';
+            if (origSum > 0.005) {
+            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '小计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + origSum.toFixed(2) + '</div></div>';
+            }
+            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span></div></div>';
             h += '</div>';
             return h;
         }
+        function giftFreeSubtotalHtml(original) {
+            // 赠品行保留原价金额但不再划线/显示 0 元，统一在模块合计行展示划线原价 + 金额 0
+            var o = Number(original) || 0;
+            return '<div class="receipt-col-1">' + getCurrencySymbol() + o.toFixed(2) + '</div>';
+        }
         quoteData.giftPrices.forEach((item) => {
             // 模块边界：跨模块时闭合上一模块小计（不再输出组标题，靠组尾小计的编号辨识分组）
-            if (multiModuleG) {
-                if (String(item.moduleId) !== curGiftMod) {
-                    if (curGiftMod != null) {
-                        html += giftModuleCloseHtml();
-                    }
-                    curGiftMod = String(item.moduleId || '');
-                    curGiftModSym = item.moduleName || ' ';
-                    giftModuleRunningSum = 0;
+            // 注意：单组也需要维护当前模块并在末尾闭合，以显示「小计 + 组合计」聚合块
+            if (String(item.moduleId) !== curGiftMod) {
+                if (curGiftMod != null) {
+                    html += giftModuleCloseHtml();
                 }
-                giftModuleRunningSum += Number(item.giftTotal != null ? item.giftTotal : item.giftOriginalPrice) || 0;
+                curGiftMod = String(item.moduleId || '');
+                curGiftModSym = item.moduleName || ' ';
             }
-            // 如果大类改变，添加空行
-            if (giftCurrentCategory && item.category !== giftCurrentCategory) {
-                html += `<div class="receipt-divider"></div>`;
-            }
-            giftCurrentCategory = item.category;
-            
             // 判断是否满足乘法（赠品规则与制品相同）
             const hasSameModelGift = item.sameModelCount > 0;
             const hasProcessGift = item.processDetails && item.processDetails.length > 0;
@@ -10650,7 +10761,7 @@ function generateQuote() {
                 const totalCharCountGift = charCountGift * (item.quantity || 1);
                 const countTextGift = formatCharCount(totalCharCountGift);
                 const priceTextGift = `${getCurrencySymbol()}${charPriceGift}/${unitTextGift}`;
-                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;" title="字数：${charCountGift}字 × ${item.quantity || 1}件"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${priceTextGift}</div><div class="receipt-col-1">${countTextGift}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
+                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;" title="字数：${charCountGift}字 × ${item.quantity || 1}件"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${priceTextGift}</div><div class="receipt-col-1">${countTextGift}</div>${giftFreeSubtotalHtml(productTotalGift)}</div>`;
                 // 同模明细
                 if (hasSameModelGift) {
                     const _sameModeGift = quoteData.sameModelMode || defaultSettings.sameModelMode;
@@ -10686,14 +10797,18 @@ function generateQuote() {
                     }
                 }
             } else if (canMergeGift) {
-                // fixed/double 无同模无工艺：合并到总览行
-                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${getCurrencySymbol()}${fullPriceUnitPriceGift.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
+                // fixed/double 无同模无工艺：合并到总览行（单价并入每制品增加，与小计划线原价口径一致）
+                var giftMergedExtraPerPiece = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
+                var giftMergedUnitPrice = fullPriceUnitPriceGift + giftMergedExtraPerPiece;
+                html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${getCurrencySymbol()}${giftMergedUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div>${giftFreeSubtotalHtml(productTotalGift)}</div>`;
             } else {
                 // 需要拆明细
                 if (item.productType === 'config') {
-                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.basePrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
+                    var giftConfigExtraPerPiece = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
+                    var giftConfigUnitWithExtra = item.basePrice + giftConfigExtraPerPiece;
+                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1">${getCurrencySymbol()}${giftConfigUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}</div>${giftFreeSubtotalHtml(productTotalGift)}</div>`;
                 } else {
-                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1" style="display: flex; flex-direction: column; align-items: flex-end;"><span class="receipt-gift-free-amount">${getCurrencySymbol()}0.00</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${productTotalGift.toFixed(2)}</span></div></div>`;
+                    html += `<div class="receipt-row" style="display: flex; align-items: flex-end;"><div class="receipt-col-2">[赠品] ${giftProductName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div>${giftFreeSubtotalHtml(productTotalGift)}</div>`;
                 }
                 
                 // 明细：全价制品行（赠品，方案A并入每制品增加）
@@ -10796,21 +10911,19 @@ function generateQuote() {
                 }
             }
         });
-        // 闭合最后一个赠品模块小计（含原因行）
-        if (multiModuleG && curGiftMod != null) {
+        // 闭合最后一个赠品模块小计：单组/多组都显示（虚线+小计+合计，合计划线原价并归零）
+        if (curGiftMod != null) {
             html += giftModuleCloseHtml();
-            curGiftMod = null; giftModuleRunningSum = 0;
+            curGiftMod = null;
         }
     }
     
-    // 加价、折扣金额（总价 = 制品和*加价乘积*折扣乘积+其他+平台）
-    const up = quoteData.pricingUpProduct != null ? quoteData.pricingUpProduct : (quoteData.usage * quoteData.urgent || 1);
-    const down = quoteData.pricingDownProduct != null ? quoteData.pricingDownProduct : (quoteData.discount || 1);
-    const addAmount = quoteData.totalProductsPrice * (up - 1);
-    const discountAmount = quoteData.totalProductsPrice * up * (down - 1);
-    const totalWithCoeff = quoteData.totalWithCoefficients != null ? quoteData.totalWithCoefficients : (quoteData.totalProductsPrice * up * down);
-    const totalBeforePlat = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (totalWithCoeff + (quoteData.totalOtherFees || 0));
+    // 加价、折扣金额：模块块已将每制品所属模块的系数逐一展开为¥金额，
+    // 因此 quoteData.totalProductsPrice = Σ（系数后的制品金额），汇总区不能再乘一遍 usage/urgent/discount。
+    // 汇总区若仍存在「模块块未展示过的全局系数项」，则按剩余项累乘生成明细，不影响实付金额（实付仍使用 quoteData.finalTotal 等保存字段）。
     const base = quoteData.totalProductsPrice;
+    const totalWithCoeff = quoteData.totalWithCoefficients != null ? quoteData.totalWithCoefficients : base;
+    const totalBeforePlat = quoteData.totalBeforePlatformFee != null ? quoteData.totalBeforePlatformFee : (totalWithCoeff + (quoteData.totalOtherFees || 0));
     var agreed = quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat;
     var finalPay = quoteData.platformFeeAmount > 0 ? (quoteData.finalTotal != null ? quoteData.finalTotal : (agreed + quoteData.platformFeeAmount)) : agreed;
     // 有相同的只显示后一个：制品小计与应收相同则不显示制品小计，应收与实付相同则不显示应收
@@ -10834,6 +10947,127 @@ function generateQuote() {
         (_rep.down || []).forEach(function (_s) { var _v = Number(_s && _s.value) || 1; if (Math.abs(_v - 1) > 0.000001) _shownDnKeys[_vk(_s && _s.name, _v)] = true; });
     });
     
+    // ===== 汇总区口径修正：模块块已把所有模块系数逐一展开为¥金额并累计到 totalProductsPrice / totalBeforePlatformFee，
+    //       因此此处"加价/折扣合计"不再用 up*usage×urgent、down*discount 重乘（否则就是重复乘，出现¥1012.5等虚假值）。
+    //       若仍存在"模块块未展示过的"全局加价/折扣项，才在汇总区附加渲染；否则跳过汇总区的系数行。
+    const _summaryUp = 1, _summaryDown = 1;
+    // 兼容：若以下旧变量（up/addAmount/down/discountAmount）在下方旧区块被引用，给安全 fallback = 1/0，
+    // 使原条件 `addAmount !== 0 && up !== 1` / `discountAmount !== 0 && down !== 1` 均为 false，旧区块不渲染
+    const up = _summaryUp;
+    const addAmount = 0;
+    const down = _summaryDown;
+    const discountAmount = 0;
+    // ---- 新的区块1（加价类剩余项）：只渲染模块块"未展示过"的同名同值 ----
+    (function renderSummaryUpBlock1 () {
+        var list = [];
+        if (quoteData.upCoefficients && quoteData.upCoefficients.length > 0) {
+            quoteData.upCoefficients.forEach(function (c) { list.push({ name: c && c.name, value: Number(c && c.value) || 1, adjustment: c && c.adjustment }); });
+        } else {
+            var uv = (quoteData.usage !== undefined && quoteData.usage !== null) ? Number(quoteData.usage) : 1;
+            var un = quoteData.usageName || '用途系数';
+            if (!isFinite(uv)) uv = 1;
+            if ((quoteData.usage === undefined || quoteData.usage === null) && quoteData.usageType && defaultSettings.usageCoefficients && defaultSettings.usageCoefficients[quoteData.usageType]) {
+                var uo = defaultSettings.usageCoefficients[quoteData.usageType];
+                uv = getCoefficientValue(uo) || 1;
+                if (!quoteData.usageName) un = (uo && uo.name) ? uo.name : '用途系数';
+            }
+            if (Math.abs(uv - 1) > 0.0001) list.push({ name: un, value: uv });
+            var rv = (quoteData.urgent !== undefined && quoteData.urgent !== null) ? Number(quoteData.urgent) : 1;
+            var rn = quoteData.urgentName || '加急系数';
+            if (!isFinite(rv)) rv = 1;
+            if ((quoteData.urgent === undefined || quoteData.urgent === null) && quoteData.urgentType && defaultSettings.urgentCoefficients && defaultSettings.urgentCoefficients[quoteData.urgentType]) {
+                var ro = defaultSettings.urgentCoefficients[quoteData.urgentType];
+                rv = getCoefficientValue(ro) || 1;
+                if (!quoteData.urgentName) rn = (ro && ro.name) ? ro.name : '加急系数';
+            }
+            if (Math.abs(rv - 1) > 0.0001) list.push({ name: rn, value: rv });
+            if (quoteData.extraUpSelections && quoteData.extraUpSelections.length > 0) {
+                quoteData.extraUpSelections.forEach(function (sel) {
+                    var v = (sel && sel.value != null) ? Number(sel.value) : 1;
+                    if (!isFinite(v)) v = 1;
+                    if ((sel == null || sel.value == null) && sel && sel.id != null) {
+                        var m = (defaultSettings.extraPricingUp || []).find(function (x) { return x && x.id == sel.id; });
+                        var k = sel.optionValue != null ? sel.optionValue : sel.selectedKey;
+                        if (m && m.options && k != null && m.options[k] != null) v = getCoefficientValue(m.options[k]) || 1;
+                    }
+                    if (Math.abs(v - 1) > 0.001) list.push({ name: sel.optionName || sel.moduleName || '扩展加价系数', value: v });
+                });
+            }
+        }
+        var remain = list.filter(function (c) {
+            var vv = Number(c && c.value) || 1;
+            if (Math.abs(vv - 1) < 0.0001) return false;
+            return !_shownUpKeys[String(c.name || '') + '|' + vv];
+        });
+        if (remain.length === 0) return;
+        html += `<div class="receipt-summary-section">`;
+        var prod = remain.reduce(function (m, c) { return m * (Number(c.value) || 1); }, 1);
+        var prodStr = parseFloat(prod.toFixed(4)).toString();
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">加价后小计：${prodStr}×</div><div class="receipt-summary-value">${getCurrencySymbol()}${(base * prod).toFixed(2)}</div></div>`;
+        var mode = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.up) || 'multiplicative';
+        remain.forEach(function (c) {
+            var ds = parseFloat((Number(c.value) || 1).toFixed(4)).toString();
+            var adj = '';
+            if (mode === 'additive' && c.adjustment !== undefined && c.adjustment !== null) {
+                var aa = base * Number(c.adjustment);
+                adj = '+' + getCurrencySymbol() + aa.toFixed(2);
+            }
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${c.name || ''}：${ds}×</div><div class="receipt-summary-value">${adj}</div></div>`;
+        });
+        html += `</div>`;
+    })();
+    // ---- 新的区块2（折扣类剩余项）：只渲染模块块"未展示过"的同名同值 ----
+    (function renderSummaryDownBlock2 () {
+        var list = [];
+        if (quoteData.downCoefficients && quoteData.downCoefficients.length > 0) {
+            quoteData.downCoefficients.forEach(function (c) { list.push({ name: c && c.name, value: Number(c && c.value) || 1, adjustment: c && c.adjustment }); });
+        } else {
+            var dv = (quoteData.discount !== undefined && quoteData.discount !== null) ? Number(quoteData.discount) : 1;
+            var dn = quoteData.discountName || '折扣系数';
+            if (!isFinite(dv)) dv = 1;
+            if ((quoteData.discount === undefined || quoteData.discount === null) && quoteData.discountType && defaultSettings.discountCoefficients && defaultSettings.discountCoefficients[quoteData.discountType]) {
+                var oo = defaultSettings.discountCoefficients[quoteData.discountType];
+                dv = getCoefficientValue(oo) || 1;
+                if (!quoteData.discountName) dn = (oo && oo.name) ? oo.name : '折扣系数';
+            }
+            if (Math.abs(dv - 1) > 0.0001) list.push({ name: dn, value: dv });
+            if (quoteData.extraDownSelections && quoteData.extraDownSelections.length > 0) {
+                quoteData.extraDownSelections.forEach(function (sel) {
+                    var v = (sel && sel.value != null) ? Number(sel.value) : 1;
+                    if (!isFinite(v)) v = 1;
+                    if ((sel == null || sel.value == null) && sel && sel.id != null) {
+                        var m = (defaultSettings.extraPricingDown || []).find(function (x) { return x && x.id == sel.id; });
+                        var k = sel.optionValue != null ? sel.optionValue : sel.selectedKey;
+                        if (m && m.options && k != null && m.options[k] != null) v = getCoefficientValue(m.options[k]) || 1;
+                    }
+                    if (Math.abs(v - 1) > 0.001) list.push({ name: sel.optionName || sel.moduleName || '扩展折扣系数', value: v });
+                });
+            }
+        }
+        var remain = list.filter(function (c) {
+            var vv = Number(c && c.value) || 1;
+            if (Math.abs(vv - 1) < 0.0001) return false;
+            return !_shownDnKeys[String(c.name || '') + '|' + vv];
+        });
+        if (remain.length === 0) return;
+        html += `<div class="receipt-summary-section">`;
+        var prod = remain.reduce(function (m, c) { return m * (Number(c.value) || 1); }, 1);
+        var prodStr = parseFloat(prod.toFixed(4)).toString();
+        var shown = base * (1 - prod);
+        html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">折扣合计：${prodStr}×</div><div class="receipt-summary-value">-${getCurrencySymbol()}${Math.abs(shown).toFixed(2)}</div></div>`;
+        var mode = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.down) || 'multiplicative';
+        remain.forEach(function (c) {
+            var ds = parseFloat((Number(c.value) || 1).toFixed(4)).toString();
+            var adj = '';
+            if (mode === 'additive' && c.adjustment !== undefined && c.adjustment !== null) {
+                var aa = base * Math.abs(Number(c.adjustment));
+                adj = '-' + getCurrencySymbol() + aa.toFixed(2);
+            }
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${c.name || ''}：${ds}×</div><div class="receipt-summary-value">${adj}</div></div>`;
+        });
+        html += `</div>`;
+    })();
+
     // 区块1：加价类系数
     if (addAmount !== 0 && up !== 1) {
         html += `<div class="receipt-summary-section">`;
@@ -11024,12 +11258,12 @@ function generateQuote() {
             var valueHtml = `<span class="receipt-rounding-amount">${getCurrencySymbol()}${agreed.toFixed(2)}</span><span style="text-decoration: line-through; font-size: 0.9em;">${getCurrencySymbol()}${totalBeforePlat.toFixed(2)}</span>`;
             if (roundingDiscount > 0) {
                 var leftLabel = `<span class="receipt-agreed-row-left"><span class="receipt-agreed-label-bold">应收金额</span><span class="receipt-rounding-discount">（-${getCurrencySymbol()}${roundingDiscount.toFixed(2)}）</span></span>`;
-                html += `<div class="receipt-summary-row receipt-agreed-row receipt-agreed-row-with-rounding" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">${leftLabel}</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+                html += `<div class="receipt-summary-row receipt-agreed-row receipt-agreed-row-with-rounding" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem;"><div class="receipt-summary-label">${leftLabel}</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
             } else {
-                html += `<div class="receipt-summary-row receipt-agreed-row" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
+                html += `<div class="receipt-summary-row receipt-agreed-row" style="font-weight: bold; align-items: flex-end; margin-top: 0.5rem; padding-top: 0.5rem;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap" style="flex-direction: column; align-items: flex-end;">${valueHtml}</div></div>`;
             }
         } else {
-            html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dotted #ccc;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap">${getCurrencySymbol()}${agreed.toFixed(2)}</div></div>`;
+            html += `<div class="receipt-summary-row" style="font-weight: bold; margin-top: 0.5rem; padding-top: 0.5rem;"><div class="receipt-summary-label">应收金额</div><div class="receipt-summary-value-wrap">${getCurrencySymbol()}${agreed.toFixed(2)}</div></div>`;
         }
     }
     
