@@ -2642,6 +2642,29 @@ html.theme-dark #roleManageBody::-webkit-scrollbar-thumb:hover {
     -webkit-overflow-scrolling: touch;
 }
 
+/* 同系数组合并确认弹窗 */
+.module-merge-list {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0;
+}
+.module-merge-item {
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    padding: 0.625rem 0.75rem;
+}
+.module-merge-item-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+.module-merge-item-desc {
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: var(--text-light, #6b7280);
+}
+
 /* Toggle switch for role manage modal */
 .mg-toggle-switch {
     position: relative;

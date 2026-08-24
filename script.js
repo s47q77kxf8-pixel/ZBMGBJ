@@ -220,6 +220,102 @@ function moduleCoefficientResult(mod, upMode, downMode) {
     }
     return { up: up, down: down, upReasons: upReasons, downReasons: downReasons };
 }
+// 同系数判定/合并：仅比较实际生效的“名称+系数”，默认 1× 不参与
+function moduleReasonSignature(upReasons, downReasons) {
+    function norm(arr) {
+        return (Array.isArray(arr) ? arr : []).filter(function (r) {
+            return r && Math.abs((Number(r.value) || 1) - 1) > 0.000001;
+        }).map(function (r) {
+            return [String(r && r.name || ''), Number(r && r.value) || 1];
+        }).sort(function (a, b) {
+            if (a[0] < b[0]) return -1;
+            if (a[0] > b[0]) return 1;
+            return a[1] - b[1];
+        });
+    }
+    return JSON.stringify({ up: norm(upReasons), down: norm(downReasons) });
+}
+function moduleReasonText(name, value) {
+    var v = Math.round((Number(value) || 1) * 100) / 100;
+    return String(name || '系数') + ' ' + v + '×';
+}
+// 收集当前计算页里系数完全相同的同类型模块组；仅包含确有制品/赠品的模块
+function collectDuplicateModuleCoeffGroups() {
+    normalizeOrderModules();
+    var cfg = (defaultSettings && defaultSettings.pricingCalculationMode) || {};
+    var upMode = cfg.up || 'multiplicative';
+    var downMode = cfg.down || 'multiplicative';
+    var buckets = {};
+    orderModules.forEach(function (mod) {
+        if (!mod) return;
+        var hasItem = (mod.mtype === 'product' ? products : gifts).some(function (x) { return x && String(x.moduleId) === String(mod.id); });
+        if (!hasItem) return;
+        var r = moduleCoefficientResult(mod, upMode, downMode);
+        var key = mod.mtype + '|' + moduleReasonSignature(r.upReasons, r.downReasons);
+        (buckets[key] = buckets[key] || []).push({ mod: mod, upReasons: r.upReasons, downReasons: r.downReasons });
+    });
+    var groups = [];
+    Object.keys(buckets).forEach(function (key) {
+        if (buckets[key].length > 1) groups.push(buckets[key]);
+    });
+    groups.sort(function (a, b) {
+        var am = a[0].mod, bm = b[0].mod;
+        if (am.mtype !== bm.mtype) return am.mtype === 'product' ? -1 : 1;
+        return am.seq - bm.seq;
+    });
+    return groups;
+}
+// 计算页点击「小票」：先同步模块下拉；有同系数组时弹窗确认，否则直接生成
+function handleCalculatorQuoteClick() {
+    normalizeOrderModules();
+    orderModules.forEach(function (mod) {
+        try { syncModuleExpansionFromDom(mod.id); } catch (e) { /* ignore */ }
+    });
+    var groups = collectDuplicateModuleCoeffGroups();
+    if (!groups.length) {
+        if (typeof calculatePrice === 'function') calculatePrice();
+        return;
+    }
+    var listEl = document.getElementById('moduleMergeConfirmList');
+    if (listEl) {
+        listEl.innerHTML = groups.map(function (arr) {
+            var names = arr.map(function (x) { return moduleSymbol(x.mod.mtype, x.mod.seq); }).join('、');
+            var descParts = [];
+            var _uniqReasonText = function (side) {
+                var seen = {};
+                var texts = [];
+                arr.forEach(function (x) {
+                    (x[side] || []).forEach(function (r) {
+                        if (!r) return;
+                        var v = Number(r.value) || 1;
+                        if (Math.abs(v - 1) < 0.000001) return;
+                        var key = String(r.name || '') + '|' + v;
+                        if (seen[key]) return;
+                        seen[key] = true;
+                        texts.push(moduleReasonText(r.name, v));
+                    });
+                });
+                return texts.join('、');
+            };
+            var upText = _uniqReasonText('upReasons');
+            var downText = _uniqReasonText('downReasons');
+            if (upText) descParts.push('加价：' + upText);
+            if (downText) descParts.push('折扣：' + downText);
+            var desc = descParts.length ? descParts.join('；') : '默认系数 1×、1×';
+            return '<div class="module-merge-item"><div class="module-merge-item-title">' + names + '</div><div class="module-merge-item-desc">' + desc + '</div></div>';
+        }).join('');
+    }
+    var modal = document.getElementById('moduleMergeConfirmModal');
+    if (modal) modal.classList.remove('d-none');
+}
+function closeModuleMergeConfirmModal() {
+    var modal = document.getElementById('moduleMergeConfirmModal');
+    if (modal) modal.classList.add('d-none');
+}
+function confirmModuleMergeAndGenerate() {
+    closeModuleMergeConfirmModal();
+    if (typeof calculatePrice === 'function') calculatePrice();
+}
 // 渲染某类型（product/gift）的全部模块面板容器；不重新渲染其内的制品/赠品卡片
 function renderModulePanels(mtype) {
     normalizeOrderModules();
@@ -10060,8 +10156,14 @@ function generateQuote() {
     
     // 按大类分组显示制品
     // 模块分组信息：仅当制品模块数 > 1 时，才显示「符号分隔线 + 模块小计」（单组保持现状，无分隔线/小计）
+    var LEGACY_PRODUCT_MODULEKEY = '__legacy_product__';
+    var LEGACY_GIFT_MODULEKEY = '__legacy_gift__';
+    function quoteItemModuleKey(item, isGift) {
+        if (item && item.moduleId) return String(item.moduleId);
+        return isGift ? LEGACY_GIFT_MODULEKEY : LEGACY_PRODUCT_MODULEKEY;
+    }
     var prodModuleSet = new Set();
-    (quoteData.productPrices || []).forEach(function (it) { if (it && it.moduleId) prodModuleSet.add(String(it.moduleId)); });
+    (quoteData.productPrices || []).forEach(function (it) { if (it) prodModuleSet.add(quoteItemModuleKey(it, false)); });
     var multiModuleP = prodModuleSet.size > 1;
     var curProdMod = null, curProdModSym = '';
     // 小票“小计”列口径：系数前基础原价（如 80+工艺10=90）。
@@ -10101,8 +10203,8 @@ function generateQuote() {
     var moduleRepReasons = {};   // moduleId → { up: [...], down: [...] }  代表项的原因
     var moduleTotalCoeffs = {};  // moduleId → { up, down } 模块合计口径的总系数（供合计行展示）
     (quoteData.productPrices || []).forEach(function (it) {
-        if (!it || !it.moduleId) return;
-        var mid = String(it.moduleId);
+        if (!it) return;
+        var mid = quoteItemModuleKey(it, false);
         var base = receiptProductBaseTotal(it);
         moduleBaseTotals[mid] = (moduleBaseTotals[mid] || 0) + base;
         var finVal = Number(it.productTotal);
@@ -10123,8 +10225,8 @@ function generateQuote() {
         }
     });
     (quoteData.giftPrices || []).forEach(function (it) {
-        if (!it || !it.moduleId) return;
-        var mid = String(it.moduleId);
+        if (!it) return;
+        var mid = quoteItemModuleKey(it, true);
         // 赠送：giftTotal=0。模块内"加价原因¥金额"参照的不是0（否则不显示），而是系数前的基础原价 giftBaseBeforeCoeff/giftStrikePrice，
         // 这样既能显示「原本多少钱/加价了多少」又保证组块小计与实付为0
         var strike = Number(it.giftBaseBeforeCoeff);
@@ -10177,17 +10279,31 @@ function generateQuote() {
     });
     // 对仍缺少原因数组的模块，直接用 item 上保存的 moduleUp / moduleDown（以及整体 legacy usage/urgent/discount）合成通用原因，保证「倍率 + 加减金额」一定能显示
     var legacyUp = [];
+    function _pushLegacy(list, fallbackName, name, value) {
+        var n = Number(value);
+        if (!isFinite(n) || Math.abs(n - 1) <= 1e-6) return;
+        var dup = list.some(function (x) {
+            return String(x.name || '') === String(name || '') && Math.abs((Number(x.value) || 1) - n) < 1e-9;
+        });
+        if (!dup) list.push({ name: name || fallbackName, value: n });
+    }
     try {
         var _groups = typeof moduleCoefficientGroups === 'function' ? moduleCoefficientGroups() : null;
-        if (_groups && quoteData.usageType) {
+        var _savedUsage = quoteData.usage != null ? Number(quoteData.usage) : NaN;
+        if (isFinite(_savedUsage)) {
+            _pushLegacy(legacyUp, '用途', quoteData.usageName || '用途', _savedUsage);
+        } else if (_groups && quoteData.usageType) {
             var _g = _groups.up && _groups.up.find(function (x) { return x && x.eid === 'usage'; });
             var _r = _g && typeof resolveModuleCoefficient === 'function' ? resolveModuleCoefficient(_g, quoteData.usageType) : null;
-            if (_r && Number(_r.value) && Math.abs(Number(_r.value) - 1) > 1e-6) legacyUp.push({ name: (_r.name || '用途'), value: Number(_r.value) });
+            if (_r) _pushLegacy(legacyUp, '用途', _r.name || '用途', _r.value);
         }
-        if (_groups && quoteData.urgentType) {
+        var _savedUrgent = quoteData.urgent != null ? Number(quoteData.urgent) : NaN;
+        if (isFinite(_savedUrgent)) {
+            _pushLegacy(legacyUp, '加急', quoteData.urgentName || '加急', _savedUrgent);
+        } else if (_groups && quoteData.urgentType) {
             var _g2 = _groups.up && _groups.up.find(function (x) { return x && x.eid === 'urgent'; });
             var _r2 = _g2 && typeof resolveModuleCoefficient === 'function' ? resolveModuleCoefficient(_g2, quoteData.urgentType) : null;
-            if (_r2 && Number(_r2.value) && Math.abs(Number(_r2.value) - 1) > 1e-6) legacyUp.push({ name: (_r2.name || '加急'), value: Number(_r2.value) });
+            if (_r2) _pushLegacy(legacyUp, '加急', _r2.name || '加急', _r2.value);
         }
         (quoteData.extraUpSelections || []).forEach(function (s) {
             if (!s) return;
@@ -10196,16 +10312,25 @@ function generateQuote() {
             var gg = _groups && _groups.up && _groups.up.find(function (x) { return x && x.eid === sid; });
             var rr = gg && typeof resolveModuleCoefficient === 'function' ? resolveModuleCoefficient(gg, key) : null;
             var vv = rr && Number(rr.value) ? Number(rr.value) : (Number(s.value) || 1);
-            if (Math.abs(vv - 1) > 1e-6) legacyUp.push({ name: (rr && rr.name) || s.name || '扩展加价', value: vv });
+            _pushLegacy(legacyUp, '扩展加价', (rr && rr.name) || s.name, vv);
         });
     } catch (_eLUp) { /* ignore */ }
+    if (!legacyUp.length && Array.isArray(quoteData.upCoefficients) && quoteData.upCoefficients.length) {
+        quoteData.upCoefficients.forEach(function (c) {
+            if (!c || Math.abs((Number(c.value) || 1) - 1) <= 1e-6) return;
+            legacyUp.push({ name: c.name || '加价', value: Number(c.value) || 1, adjustment: c && c.adjustment });
+        });
+    }
     var legacyDown = [];
     try {
         var _groups2 = typeof moduleCoefficientGroups === 'function' ? moduleCoefficientGroups() : null;
-        if (_groups2 && quoteData.discountType) {
+        var _savedDiscount = quoteData.discount != null ? Number(quoteData.discount) : NaN;
+        if (isFinite(_savedDiscount)) {
+            _pushLegacy(legacyDown, '折扣', quoteData.discountName || '折扣', _savedDiscount);
+        } else if (_groups2 && quoteData.discountType) {
             var _gd = _groups2.down && _groups2.down.find(function (x) { return x && x.eid === 'discount'; });
             var _rd = _gd && typeof resolveModuleCoefficient === 'function' ? resolveModuleCoefficient(_gd, quoteData.discountType) : null;
-            if (_rd && Number(_rd.value) && Math.abs(Number(_rd.value) - 1) > 1e-6) legacyDown.push({ name: (_rd.name || '折扣'), value: Number(_rd.value) });
+            if (_rd) _pushLegacy(legacyDown, '折扣', _rd.name || '折扣', _rd.value);
         }
         (quoteData.extraDownSelections || []).forEach(function (s) {
             if (!s) return;
@@ -10214,11 +10339,18 @@ function generateQuote() {
             var gg = _groups2 && _groups2.down && _groups2.down.find(function (x) { return x && x.eid === sid; });
             var rr = gg && typeof resolveModuleCoefficient === 'function' ? resolveModuleCoefficient(gg, key) : null;
             var vv = rr && Number(rr.value) ? Number(rr.value) : (Number(s.value) || 1);
-            if (Math.abs(vv - 1) > 1e-6) legacyDown.push({ name: (rr && rr.name) || s.name || '扩展折扣', value: vv });
+            _pushLegacy(legacyDown, '扩展折扣', (rr && rr.name) || s.name, vv);
         });
     } catch (_eLDn) { /* ignore */ }
+    if (!legacyDown.length && Array.isArray(quoteData.downCoefficients) && quoteData.downCoefficients.length) {
+        quoteData.downCoefficients.forEach(function (c) {
+            if (!c || Math.abs((Number(c.value) || 1) - 1) <= 1e-6) return;
+            legacyDown.push({ name: c.name || '折扣', value: Number(c.value) || 1, adjustment: c && c.adjustment });
+        });
+    }
     // 对每个模块兜底：若模块内代表原因仍为空，则用该模块首件的 moduleUp / moduleDown 生成通用原因；
     // 若连首件的系数也为 1，则回退到整个 quote 的 legacy 系数（仅当模块仍然空时使用，避免把 legacy 乱挂到所有模块）
+    var _legacyFirstProductMid = quoteItemModuleKey((quoteData.productPrices || [])[0], false);
     Object.keys(moduleRepReasons).forEach(function (mid) {
         var rep = moduleRepReasons[mid];
         if (!rep || ((!rep.up || rep.up.length === 0) && (!rep.down || rep.down.length === 0))) {
@@ -10227,12 +10359,12 @@ function generateQuote() {
             var foundFirst = null;
             for (var _i = 0; _i < (quoteData.productPrices || []).length; _i++) {
                 var _it = quoteData.productPrices[_i];
-                if (_it && String(_it.moduleId || '') === mid) { foundFirst = _it; break; }
+                if (_it && quoteItemModuleKey(_it, false) === mid) { foundFirst = _it; break; }
             }
             if (!foundFirst) {
                 for (var _j = 0; _j < (quoteData.giftPrices || []).length; _j++) {
                     var _jt = quoteData.giftPrices[_j];
-                    if (_jt && String(_jt.moduleId || '') === mid) { foundFirst = _jt; break; }
+                    if (_jt && quoteItemModuleKey(_jt, true) === mid) { foundFirst = _jt; break; }
                 }
             }
             if (foundFirst) {
@@ -10242,19 +10374,108 @@ function generateQuote() {
             if (!rep.up || rep.up.length === 0) {
                 if (Math.abs(firstUp - 1) > 1e-6) {
                     rep.up = [{ name: '加价', value: firstUp }];
-                } else if (legacyUp.length && mid === String((quoteData.productPrices && quoteData.productPrices[0] && quoteData.productPrices[0].moduleId) || 'P1')) {
+                } else if (legacyUp.length && (mid === LEGACY_PRODUCT_MODULEKEY || mid === LEGACY_GIFT_MODULEKEY || mid === _legacyFirstProductMid)) {
                     rep.up = legacyUp.slice();
                 }
             }
             if (!rep.down || rep.down.length === 0) {
                 if (Math.abs(firstDown - 1) > 1e-6) {
                     rep.down = [{ name: '减价', value: firstDown }];
-                } else if (legacyDown.length && mid === String((quoteData.productPrices && quoteData.productPrices[0] && quoteData.productPrices[0].moduleId) || 'P1')) {
+                } else if (legacyDown.length && (mid === LEGACY_PRODUCT_MODULEKEY || mid === LEGACY_GIFT_MODULEKEY || mid === _legacyFirstProductMid)) {
                     rep.down = legacyDown.slice();
                 }
             }
         }
     });
+    // 旧订单单组兜底：无 moduleId/无 item 系数时，用汇总后的原因数组补总系数；
+    // 注意初始 moduleTotalCoeffs 可能是占位的 1×/1×，只有确已保存的 moduleUp/moduleDown 才保留
+    Object.keys(moduleRepReasons).forEach(function (mid) {
+        var rep = moduleRepReasons[mid] || {};
+        var _up = 1, _down = 1;
+        (rep.up || []).forEach(function (s) { var v = Number(s && s.value) || 1; if (Math.abs(v - 1) > 1e-9) _up *= v; });
+        (rep.down || []).forEach(function (s) { var v = Number(s && s.value) || 1; if (Math.abs(v - 1) > 1e-9) _down *= v; });
+        var old = moduleTotalCoeffs[mid];
+        var hasExplicit = old && ((Number(old.up) || 1) !== 1 || (Number(old.down) || 1) !== 1);
+        if (hasExplicit) return;
+        moduleTotalCoeffs[mid] = { up: _up, down: _down };
+    });
+    // —— 同系数组合并：同类型模块若加价/折扣明细完全相同，小票上合为一组展示 ——
+    var moduleMergeKey = {}, moduleMergeLabels = {};
+    (function () {
+        function shortModNum(name) { return String(name || '').replace(/^(制品组|赠品组)/, ''); }
+        var midType = {}, midSym = {};
+        (quoteData.productPrices || []).forEach(function (it) {
+            if (!it) return;
+            var k = quoteItemModuleKey(it, false);
+            midType[k] = 'product';
+            if (!midSym[k]) midSym[k] = String(it.moduleName || '');
+        });
+        (quoteData.giftPrices || []).forEach(function (it) {
+            if (!it) return;
+            var k = quoteItemModuleKey(it, true);
+            midType[k] = 'gift';
+            if (!midSym[k]) midSym[k] = String(it.moduleName || '');
+        });
+        (quoteData.modules || []).forEach(function (m) {
+            if (m && m.id && !midSym[String(m.id)]) midSym[String(m.id)] = String(m.symbol || '');
+        });
+        var buckets = {};
+        Object.keys(moduleRepReasons).forEach(function (mid) {
+            var mtype = midType[mid];
+            if (!mtype) return;
+            var rep = moduleRepReasons[mid] || {};
+            var sig = moduleReasonSignature(rep.up, rep.down);
+            var key = mtype + '|' + sig;
+            (buckets[key] = buckets[key] || []).push(mid);
+        });
+        Object.keys(buckets).forEach(function (key) {
+            var ids = buckets[key];
+            ids.forEach(function (mid) { moduleMergeKey[mid] = ids[0]; });
+            if (ids.length < 2) return;
+            var nums = ids.map(function (mid) { return shortModNum(midSym[mid]); }).filter(Boolean);
+            moduleMergeLabels[ids[0]] = '组' + nums.join('、');
+        });
+        // 把同系数组的数据按代表模块合并，后续小计/原因行统一走代表模块
+        var _newBase = {}, _newFinal = {}, _newCoeff = {}, _newRep = {};
+        Object.keys(moduleBaseTotals).forEach(function (mid) {
+            var k = moduleMergeKey[mid] || mid;
+            _newBase[k] = (_newBase[k] || 0) + (Number(moduleBaseTotals[mid]) || 0);
+        });
+        Object.keys(moduleFinalTotals).forEach(function (mid) {
+            var k = moduleMergeKey[mid] || mid;
+            _newFinal[k] = (_newFinal[k] || 0) + (Number(moduleFinalTotals[mid]) || 0);
+        });
+        Object.keys(moduleTotalCoeffs).forEach(function (mid) {
+            var k = moduleMergeKey[mid] || mid;
+            if (_newCoeff[k] == null) _newCoeff[k] = moduleTotalCoeffs[mid];
+        });
+        Object.keys(moduleRepReasons).forEach(function (mid) {
+            var k = moduleMergeKey[mid] || mid;
+            if (!_newRep[k]) _newRep[k] = { up: [], down: [] };
+            var rep = moduleRepReasons[mid] || {};
+            var _pushUnique = function (side, item) {
+                if (!item) return;
+                var arr = _newRep[k][side];
+                var dup = arr.some(function (x) {
+                    return String(x.name || '') === String(item.name || '') && Math.abs((Number(x.value) || 1) - (Number(item.value) || 1)) < 1e-9;
+                });
+                if (!dup) arr.push({ name: item.name || (side === 'up' ? '加价' : '减价'), value: Number(item.value) || 1, adjustment: item.adjustment });
+            };
+            (rep.up || []).forEach(function (s) { _pushUnique('up', s); });
+            (rep.down || []).forEach(function (s) { _pushUnique('down', s); });
+        });
+        moduleBaseTotals = _newBase;
+        moduleFinalTotals = _newFinal;
+        moduleTotalCoeffs = _newCoeff;
+        moduleRepReasons = _newRep;
+    })();
+    var _prodMergeSet = new Set();
+    (quoteData.productPrices || []).forEach(function (it) {
+        if (!it) return;
+        var k = quoteItemModuleKey(it, false);
+        _prodMergeSet.add(moduleMergeKey[k] || k);
+    });
+    multiModuleP = _prodMergeSet.size > 1;
     // 模块 → 加价/减价原因行（仅显式设置的）；每条后附对应加减金额
     var moduleReasonLines = {};
     var _rcvUp = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.up) || 'multiplicative';
@@ -10353,7 +10574,7 @@ function generateQuote() {
         var upCoeff = fmtCoeff(tc.up);
         var downCoeff = fmtCoeff(tc.down);
         var prodModNum = String(curProdModSym || '').replace(/^(制品组|赠品组)/, '');
-        var symLabel = multiModuleP ? '<span class="receipt-module-sym">组' + prodModNum + '</span>' : '制品';
+        var symLabel = moduleMergeLabels[curProdMod] || (multiModuleP ? '<span class="receipt-module-sym">组' + prodModNum + '</span>' : '制品');
         var finalTotal = Number(moduleFinalTotals[curProdMod]);
         if (!isFinite(finalTotal)) finalTotal = baseTotal + upSum - downSum;
         var showSubtotal = Math.abs(baseTotal - finalTotal) >= 0.005;
@@ -10378,11 +10599,13 @@ function generateQuote() {
     quoteData.productPrices.forEach((item) => {
         // 模块边界：跨模块时先闭合上一模块小计（不再输出组标题，靠组尾小计的编号辨识分组）
         // 注意：单组也需要维护当前模块并在末尾闭合，以显示「小计/加价合计/折扣合计 + 合计」聚合块
-        if (String(item.moduleId) !== curProdMod) {
+        var _itemModKey = quoteItemModuleKey(item, false);
+        var _prodModKey = moduleMergeKey[_itemModKey] || _itemModKey;
+        if (_prodModKey !== curProdMod) {
             if (curProdMod != null) {
                 html += prodModuleCloseHtml();
             }
-            curProdMod = String(item.moduleId || '');
+            curProdMod = _prodModKey;
             curProdModSym = item.moduleName || ' ';
         }
         // 判断是否满足乘法（无同模、无工艺、无配件时，fixed/double可合并；config永远不合并）
@@ -10634,19 +10857,18 @@ function generateQuote() {
         
         // 模块分组信息：仅当赠品模块数 > 1 时才显示分隔线 + 模块合计（单组保持现状）
         var giftModuleSet = new Set();
-        (quoteData.giftPrices || []).forEach(function (it) { if (it && it.moduleId) giftModuleSet.add(String(it.moduleId)); });
+        (quoteData.giftPrices || []).forEach(function (it) { if (!it) return; var k = quoteItemModuleKey(it, true); giftModuleSet.add(moduleMergeKey[k] || k); });
         var multiModuleG = giftModuleSet.size > 1;
         var curGiftMod = null, curGiftModSym = '';
         function giftModuleCloseHtml() {
             if (curGiftMod == null) return '';
             var h = '<div class="receipt-module-close">';
             var origSum = Number(moduleBaseTotals[curGiftMod]) || 0;
-            var giftModNum = String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '');
-            var symLabel = multiModuleG ? '<span class="receipt-module-sym">组' + giftModNum + '</span>' : '赠品';
+            var symLabel = multiModuleG ? (moduleMergeLabels[curGiftMod] ? '<span class="receipt-module-sym">' + moduleMergeLabels[curGiftMod] + '</span>' : '<span class="receipt-module-sym">组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '') + '</span>') : '赠品';
             if (origSum > 0.005) {
             h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '小计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + origSum.toFixed(2) + '</div></div>';
             }
-            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span></div></div>';
+            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span></div></div>';
             h += '</div>';
             return h;
         }
@@ -10658,11 +10880,13 @@ function generateQuote() {
         quoteData.giftPrices.forEach((item) => {
             // 模块边界：跨模块时闭合上一模块小计（不再输出组标题，靠组尾小计的编号辨识分组）
             // 注意：单组也需要维护当前模块并在末尾闭合，以显示「小计 + 组合计」聚合块
-            if (String(item.moduleId) !== curGiftMod) {
+            var _giftItemModKey = quoteItemModuleKey(item, true);
+            var _giftModKey = moduleMergeKey[_giftItemModKey] || _giftItemModKey;
+            if (_giftModKey !== curGiftMod) {
                 if (curGiftMod != null) {
                     html += giftModuleCloseHtml();
                 }
-                curGiftMod = String(item.moduleId || '');
+                curGiftMod = _giftModKey;
                 curGiftModSym = item.moduleName || ' ';
             }
             // 判断是否满足乘法（赠品规则与制品相同）
@@ -10932,7 +11156,8 @@ function generateQuote() {
     var showAgreed = Math.abs(agreed - totalBeforePlat) >= 0.005 || (quoteData.platformFeeAmount > 0 && Math.abs(finalPay - agreed) >= 0.005);
     
     html += `<div class="receipt-summary">`;
-    if (showBase) {
+    // 只有一个有效制品组时，模块区已输出过制品小计，底部汇总不再重复
+    if (showBase && _prodMergeSet.size !== 1) {
         html += `<div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">${mgL('{制品}')}小计</div><div class="receipt-summary-value">${getCurrencySymbol()}${base.toFixed(2)}</div></div>`;
     }
     

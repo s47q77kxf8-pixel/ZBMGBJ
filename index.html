@@ -487,7 +487,7 @@
                         </button>
                         <h2 class="calculator-drawer-title">计算报价</h2>
                         <div class="calculator-actions icon-text-actions">
-                            <button type="button" class="icon-text-btn primary" id="calculatorQuoteBtn" onclick="calculatePrice()" title="生成小票并加入排单（编辑模式下覆盖原单）">
+                            <button type="button" class="icon-text-btn primary" id="calculatorQuoteBtn" onclick="handleCalculatorQuoteClick()" title="生成小票并加入排单（编辑模式下覆盖原单）">
                                 <svg class="icon sm"><use href="#i-save-clipboard"></use></svg>
                                 <span>小票</span>
                             </button>
@@ -2535,6 +2535,24 @@
                 </div>
             </div>
         </div>
+        <!-- 同系数组合并确认弹窗 -->
+        <div id="moduleMergeConfirmModal" class="modal d-none">
+            <div class="modal-content modal-content-compact">
+                <div class="modal-header">
+                    <h3>同系数组合并</h3>
+                    <span class="close" onclick="closeModuleMergeConfirmModal()" aria-label="关闭" title="返回修改">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p id="moduleMergeConfirmHint" style="margin-bottom:12px;line-height:1.65;">检测到以下组的加价、折扣系数完全相同，生成小票时会将它们合并为一组，系数明细只保留一份：</p>
+                    <div id="moduleMergeConfirmList"></div>
+                    <p style="margin:12px 0 0;font-size:13px;color:var(--text-light, #6b7280);">如需保留分组展示，可返回修改任意一组的系数。</p>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+                        <button type="button" class="btn secondary" onclick="closeModuleMergeConfirmModal()">返回修改</button>
+                        <button type="button" class="btn primary" onclick="confirmModuleMergeAndGenerate()">确认合并并生成小票</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div id="scheduleTodoTagModal" class="modal d-none">
             <div class="modal-content modal-content-compact">
                 <div class="modal-header">
@@ -3108,8 +3126,6 @@
 </body>
 </html>
 </html>
-
-
 
 
 
