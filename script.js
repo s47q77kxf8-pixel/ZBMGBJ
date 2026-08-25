@@ -305,7 +305,7 @@ function handleCalculatorQuoteClick() {
             return '<div class="module-merge-item"><div class="module-merge-item-title">' + names + '</div><div class="module-merge-item-desc">' + desc + '</div></div>';
         }).join('');
     }
-    var modal = document.getElementById('moduleMergeConfirmModal');
+    var modal = ensureOverlayOnBody('moduleMergeConfirmModal');
     if (modal) modal.classList.remove('d-none');
 }
 function closeModuleMergeConfirmModal() {
@@ -10485,6 +10485,7 @@ function generateQuote() {
         var rep = moduleRepReasons[mid];
         var lines = [];
         var cum = preBase; // 累乘模式下顺序叠加的滚动基础
+        var upAmtSum = 0;   // 加法模式下加价金额合计，供折扣行按加价后的滚动金额计算
         var _seenReason = {}; // 去重：同名且同值的系数来源只显示一次（防止历史脏数据重复出现）
         function reasonKey(nm, vv) { return String(nm || '') + '|' + Number(vv || 0); }
         (rep.up || []).forEach(function (s) {
@@ -10493,8 +10494,10 @@ function generateQuote() {
                 var amt;
                 if (_rcvUp === 'additive' && s.adjustment != null) {
                     amt = preBase * Number(s.adjustment);
+                    upAmtSum += amt;
                 } else if (_rcvUp === 'additive') {
                     amt = preBase * (v - 1);
+                    upAmtSum += amt;
                 } else {
                     amt = cum * (v - 1);
                     cum *= v;
@@ -10506,14 +10509,16 @@ function generateQuote() {
                 lines.push({ name: s.name || '加价', v: v, amt: Math.abs(amt), sign: sign });
             }
         });
+        // 加法模式的加价不是累乘，加价后的滚动金额 = 原价 + 各加价金额之和，折扣行必须基于这个金额
+        if (_rcvUp === 'additive') cum = preBase + upAmtSum;
         (rep.down || []).forEach(function (s) {
             var v = Number(s.value) || 1;
             if (Math.abs(v - 1) > 0.000001) {
                 var amtD;
                 if (_rcvDn === 'additive' && s.adjustment != null) {
-                    amtD = preBase * Number(s.adjustment);
+                    amtD = cum * Number(s.adjustment);
                 } else if (_rcvDn === 'additive') {
-                    amtD = preBase * (v - 1);
+                    amtD = cum * (v - 1);
                 } else {
                     amtD = cum * (v - 1);
                     cum *= v;
@@ -10538,9 +10543,8 @@ function generateQuote() {
         }
         return _agreed;
     }
-    function prodModuleCloseHtml() {
+    function prodModuleCloseHtml(isBoundary) {
         if (curProdMod == null) return '';
-        var h = '<div class="receipt-module-close">';
         var baseTotal = Number(moduleBaseTotals[curProdMod]) || 0;
         var rl = moduleReasonLines[curProdMod] || [];
         var upLines = [], downLines = [], upSum = 0, downSum = 0;
@@ -10579,6 +10583,11 @@ function generateQuote() {
         if (!isFinite(finalTotal)) finalTotal = baseTotal + upSum - downSum;
         var showSubtotal = Math.abs(baseTotal - finalTotal) >= 0.005;
         var showTotal = Math.abs(finalTotal - receiptPaidTotal()) >= 0.005;
+        var hasCalcRows = showSubtotal || upSum > 0.005 || downSum > 0.005 || showTotal;
+        var h = '<div class="receipt-module-close'
+            + (hasCalcRows ? '' : ' receipt-module-close-empty')
+            + (isBoundary ? ' receipt-module-close-boundary' : '')
+            + '">';
         if (showSubtotal) {
             h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '小计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + baseTotal.toFixed(2) + '</div></div>';
         }
@@ -10591,7 +10600,8 @@ function generateQuote() {
             h += detailRowsHtml(downLines);
         }
         if (showTotal) {
-            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + finalTotal.toFixed(2) + '</div></div>';
+            // 组X合计保持小计那组的位置，仅字号/字重对齐应收金额
+            h += '<div class="receipt-module-subtotal receipt-module-subtotal-total"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + finalTotal.toFixed(2) + '</div></div>';
         }
         h += '</div>';
         return h;
@@ -10603,7 +10613,7 @@ function generateQuote() {
         var _prodModKey = moduleMergeKey[_itemModKey] || _itemModKey;
         if (_prodModKey !== curProdMod) {
             if (curProdMod != null) {
-                html += prodModuleCloseHtml();
+                html += prodModuleCloseHtml(true);
             }
             curProdMod = _prodModKey;
             curProdModSym = item.moduleName || ' ';
@@ -10844,7 +10854,7 @@ function generateQuote() {
     });
     // 闭合最后一个制品模块小计（含原因行）：单组/多组都显示（虚线+小计/加价合计/折扣合计/合计）
     if (curProdMod != null) {
-        html += prodModuleCloseHtml();
+        html += prodModuleCloseHtml(false);
         curProdMod = null;
     }
     
@@ -10860,14 +10870,12 @@ function generateQuote() {
         (quoteData.giftPrices || []).forEach(function (it) { if (!it) return; var k = quoteItemModuleKey(it, true); giftModuleSet.add(moduleMergeKey[k] || k); });
         var multiModuleG = giftModuleSet.size > 1;
         var curGiftMod = null, curGiftModSym = '';
-        function giftModuleCloseHtml() {
+        function giftModuleCloseHtml(isBoundary) {
             if (curGiftMod == null) return '';
-            var h = '<div class="receipt-module-close">';
+            var h = '<div class="receipt-module-close' + (isBoundary ? ' receipt-module-close-boundary' : '') + '">';
             var origSum = Number(moduleBaseTotals[curGiftMod]) || 0;
             var symLabel = multiModuleG ? (moduleMergeLabels[curGiftMod] ? '<span class="receipt-module-sym">' + moduleMergeLabels[curGiftMod] + '</span>' : '<span class="receipt-module-sym">组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '') + '</span>') : '赠品';
-            if (origSum > 0.005) {
-            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '小计</div><div class="receipt-module-reason-value">' + getCurrencySymbol() + origSum.toFixed(2) + '</div></div>';
-            }
+            // 赠品小计与合计行的划线原价相同，只保留合计行（0 在前、原价在后），不再重复小计
             h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span></div></div>';
             h += '</div>';
             return h;
@@ -10884,7 +10892,7 @@ function generateQuote() {
             var _giftModKey = moduleMergeKey[_giftItemModKey] || _giftItemModKey;
             if (_giftModKey !== curGiftMod) {
                 if (curGiftMod != null) {
-                    html += giftModuleCloseHtml();
+                    html += giftModuleCloseHtml(true);
                 }
                 curGiftMod = _giftModKey;
                 curGiftModSym = item.moduleName || ' ';
@@ -11137,7 +11145,7 @@ function generateQuote() {
         });
         // 闭合最后一个赠品模块小计：单组/多组都显示（虚线+小计+合计，合计划线原价并归零）
         if (curGiftMod != null) {
-            html += giftModuleCloseHtml();
+            html += giftModuleCloseHtml(false);
             curGiftMod = null;
         }
     }
@@ -11154,10 +11162,12 @@ function generateQuote() {
     var showBase = Math.abs(base - agreed) >= 0.005;
     // 是否显示“应收金额（-¥xx.xx）+ 原价划线”：以约定实收与系统计算原价的差额为准（与是否有平台费无关）
     var showAgreed = Math.abs(agreed - totalBeforePlat) >= 0.005 || (quoteData.platformFeeAmount > 0 && Math.abs(finalPay - agreed) >= 0.005);
+    var summaryHasRows = false;
     
     html += `<div class="receipt-summary">`;
     // 只有一个有效制品组时，模块区已输出过制品小计，底部汇总不再重复
     if (showBase && _prodMergeSet.size !== 1) {
+        summaryHasRows = true;
         html += `<div class="receipt-summary-row" style="font-weight: bold;"><div class="receipt-summary-label">${mgL('{制品}')}小计</div><div class="receipt-summary-value">${getCurrencySymbol()}${base.toFixed(2)}</div></div>`;
     }
     
@@ -11225,6 +11235,7 @@ function generateQuote() {
             return !_shownUpKeys[String(c.name || '') + '|' + vv];
         });
         if (remain.length === 0) return;
+        summaryHasRows = true;
         html += `<div class="receipt-summary-section">`;
         var prod = remain.reduce(function (m, c) { return m * (Number(c.value) || 1); }, 1);
         var prodStr = parseFloat(prod.toFixed(4)).toString();
@@ -11275,6 +11286,7 @@ function generateQuote() {
             return !_shownDnKeys[String(c.name || '') + '|' + vv];
         });
         if (remain.length === 0) return;
+        summaryHasRows = true;
         html += `<div class="receipt-summary-section">`;
         var prod = remain.reduce(function (m, c) { return m * (Number(c.value) || 1); }, 1);
         var prodStr = parseFloat(prod.toFixed(4)).toString();
@@ -11460,6 +11472,7 @@ function generateQuote() {
     
     // 区块3：其他费用
     if (quoteData.totalOtherFees > 0 && quoteData.otherFees && quoteData.otherFees.length > 0) {
+        summaryHasRows = true;
         html += `<div class="receipt-summary-section">`;
         // 合计行
         html += `<div class="receipt-summary-section-total receipt-summary-row"><div class="receipt-summary-label">其他费用合计</div><div class="receipt-summary-value">${getCurrencySymbol()}${quoteData.totalOtherFees.toFixed(2)}</div></div>`;
@@ -11477,6 +11490,7 @@ function generateQuote() {
     // 应收金额 = 约定实收（抹零价）；有抹零时：抹零优惠行在上、用强调色，应收金额行上强调色+下划线原价（同赠品优惠）
     // 与实付金额相同时只显示实付金额（显示后一个），不同则按原有显示
     if (showAgreed) {
+        summaryHasRows = true;
         var showRounding = Math.abs((quoteData.agreedAmount != null ? quoteData.agreedAmount : totalBeforePlat) - totalBeforePlat) > 0.001;
         if (showRounding) {
             var roundingDiscount = totalBeforePlat - agreed;
@@ -11494,6 +11508,7 @@ function generateQuote() {
     
     // 平台费 = 约定实收×费率（平台收取，不经过我手）
     if (quoteData.platformFeeAmount > 0) {
+        summaryHasRows = true;
         const platformFeeRate = quoteData.platformFee || 0;
         html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%（平台收取）</div><div class="receipt-summary-value">+${getCurrencySymbol()}${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
         // 客户实付 = 约定实收 + 平台费
@@ -11668,7 +11683,7 @@ function generateQuote() {
     }
 
             // 添加底部内容
-            html += `<div class="receipt-footer">`;
+            html += `<div class="receipt-footer"><div class="receipt-double-line"><span></span><span></span></div>`;
                         
             // 添加自定义底部文本1（如果设置了）
             if (defaultSettings.receiptCustomization.footerText1) {
@@ -11688,6 +11703,11 @@ function generateQuote() {
                         
             html += `</div>`;
             html += `</div>`;
+
+    // 汇总区没有任何汇总行（只保留实付金额）时，不再画汇总区顶部分割线
+    if (!summaryHasRows) {
+        html = html.replace('<div class="receipt-summary">', '<div class="receipt-summary receipt-summary-empty">');
+    }
     
     container.innerHTML = html;
     
@@ -15349,7 +15369,7 @@ function openAppendOrderListModal(parentOrderId) {
     });
 
     body.innerHTML = html;
-    var modal = document.getElementById('appendOrderListModal');
+    var modal = ensureOverlayOnBody('appendOrderListModal');
     if (modal) modal.classList.remove('d-none');
 }
 
@@ -15489,7 +15509,7 @@ function checkCrossOrderSmartPrompt(productType) {
         msgEl.style.whiteSpace = 'pre-line';
     }
     _crossOrderSmartPromptCallback = productType;
-    var modal = document.getElementById('crossOrderSmartPromptModal');
+    var modal = ensureOverlayOnBody('crossOrderSmartPromptModal');
     if (modal) modal.classList.remove('d-none');
 }
 
