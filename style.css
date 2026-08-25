@@ -4332,6 +4332,38 @@ html.theme-dark .setting-hint strong {
     color: var(--receipt-text, #333);
 }
 
+/* 小票票根外壳：支撑底部锯齿票根 */
+.receipt-shell {
+    width: 400px;
+    min-width: 400px;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.receipt-shell .receipt {
+    margin: 0;
+}
+
+/* 底部锯齿票根：底边为票据撕边样式，缺口透出页面留白 */
+.receipt-zigzag {
+    display: block;
+    width: 400px;
+    height: 10px;
+}
+
+.receipt-zigzag svg {
+    display: block;
+    width: 400px;
+    height: 10px;
+}
+
+/* 底部锯齿条紧贴票体底边，不额外上叠 */
+.receipt-shell-zigzag .receipt-zigzag-bottom {
+    position: relative;
+    z-index: 1;
+    margin-top: 0;
+}
+
 /* 小票头图/尾图：左右满版，上下保留留白 */
 .receipt-header-image,
 .receipt-footer-image {

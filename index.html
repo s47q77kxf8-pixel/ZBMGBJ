@@ -854,6 +854,24 @@
                                 <button class="tab-btn" onclick="switchReceiptTab('font')">字体</button>
                             </div>
                             <div class="tab-content active" id="settings-tab">
+                                <!-- 小票版式设置 -->
+                                <div class="section">
+                                    <h3>小票版式</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <div class="checkbox-row">
+                                                <div class="checkbox-item">
+                                                    <span>底部锯齿票根</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="zigzagEdge" onchange="updateReceiptCustomization('zigzagEdge', this.checked)" checked>
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <small class="text-gray">底部边缘呈锯齿状，保存/复制图片时不含额外留白</small>
+                                        </div>
+                                    </div>
+                                </div>
                                 <!-- 小票头部设置 -->
                                 <div class="section">
                                     <h3>小票头部</h3>
@@ -870,6 +888,13 @@
                                                     <input type="number" id="headerImageWidth" min="1" max="400" step="1" value="300" style="width:80px;" oninput="document.getElementById('headerImageWidthRange').value=this.value;updateReceiptCustomization('headerImageWidth', this.value)">
                                                 </div>
                                                 <div class="checkbox-row">
+                                                    <div class="checkbox-item">
+                                                        <span>显示头部图片</span>
+                                                        <label class="custom-toggle">
+                                                            <input type="checkbox" id="showHeaderImage" onchange="updateReceiptCustomization('showHeaderImage', this.checked)" checked>
+                                                            <span class="toggle-slider"></span>
+                                                        </label>
+                                                    </div>
                                                     <div class="checkbox-item">
                                                         <span>跟随系统主题颜色</span>
                                                         <label class="custom-toggle">
@@ -975,6 +1000,15 @@
                                                     <input type="number" id="footerImageWidth" min="1" max="400" step="1" value="300" style="width:80px;" oninput="document.getElementById('footerImageWidthRange').value=this.value;updateReceiptCustomization('footerImageWidth', this.value)">
                                                 </div>
                                                 <small class="text-gray" style="display:block;margin-top:0.25rem">头尾图跟随系统主题颜色由上方「小票头部」中开关统一控制</small>
+                                                <div class="checkbox-row">
+                                                    <div class="checkbox-item">
+                                                        <span>显示尾部图片</span>
+                                                        <label class="custom-toggle">
+                                                            <input type="checkbox" id="showFooterImage" onchange="updateReceiptCustomization('showFooterImage', this.checked)" checked>
+                                                            <span class="toggle-slider"></span>
+                                                        </label>
+                                                    </div>
+                                                </div>
                                                 <div id="footerImagePreview" class="image-preview"></div>
                                             </div>
                                         </div>
@@ -3126,10 +3160,6 @@
 </body>
 </html>
 </html>
-
-
-
-
 
 
 

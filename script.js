@@ -1317,7 +1317,9 @@ const defaultSettings = {
         theme: 'classic',  // 主题名称：classic, modern, warm, dark, minimal
         // 小票配置更新时间戳（用于跨端合并时避免互相覆盖）
         updatedAt: 0,
+        zigzagEdge: true,  // 底部锯齿票根
         headerImage: null,  // 头部图片的base64数据
+        showHeaderImage: true,  // 小票是否显示头部图片
         headerImageWidth: 300,  // 头部图片显示宽度（最大400px）
         titleText: 'LIST',  // 标题文本
         receiptInfo: {  // 小票信息行
@@ -1334,6 +1336,7 @@ const defaultSettings = {
         footerText1: '温馨提示',  // 尾部文本1
         footerText2: '感谢惠顾',  // 尾部文本2
         footerImage: null,  // 尾部图片的base64数据
+        showFooterImage: true,  // 小票是否显示尾部图片
         footerImageWidth: 300,  // 尾部图片显示宽度（最大400px）
         fontSettings: {  // 字体设置
             fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
@@ -1819,7 +1822,9 @@ function loadData() {
                 defaultSettings.receiptCustomization = {
                     theme: 'classic',
                     headerImage: null,
+                    showHeaderImage: true,
                     headerImageWidth: 300,
+                    zigzagEdge: true,
                     titleText: 'LIST',
                     receiptInfo: {
                         orderNotification: '',
@@ -1834,6 +1839,7 @@ function loadData() {
                     footerText1: '温馨提示',
                     footerText2: '感谢惠顾',
                     footerImage: null,
+                    showFooterImage: true,
                     footerImageWidth: 300,
                     fontSettings: {
                         fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
@@ -1887,6 +1893,15 @@ function loadData() {
                 }
                 if (typeof defaultSettings.receiptCustomization.footerImageWidth !== 'number') {
                     defaultSettings.receiptCustomization.footerImageWidth = 300;
+                }
+                if (typeof defaultSettings.receiptCustomization.showHeaderImage !== 'boolean') {
+                    defaultSettings.receiptCustomization.showHeaderImage = true;
+                }
+                if (typeof defaultSettings.receiptCustomization.showFooterImage !== 'boolean') {
+                    defaultSettings.receiptCustomization.showFooterImage = true;
+                }
+                if (typeof defaultSettings.receiptCustomization.zigzagEdge !== 'boolean') {
+                    defaultSettings.receiptCustomization.zigzagEdge = true;
                 }
             }
 
@@ -3855,6 +3870,18 @@ function loadReceiptCustomizationToForm() {
         if (headerWidthRange) headerWidthRange.value = String(headerWidth);
         if (footerWidthInput) footerWidthInput.value = String(footerWidth);
         if (footerWidthRange) footerWidthRange.value = String(footerWidth);
+
+        // 设置头尾图片显示开关
+        if (document.getElementById('showHeaderImage')) {
+            document.getElementById('showHeaderImage').checked = settings.showHeaderImage !== false;
+        }
+        if (document.getElementById('showFooterImage')) {
+            document.getElementById('showFooterImage').checked = settings.showFooterImage !== false;
+        }
+        // 设置底部锯齿票根开关
+        if (document.getElementById('zigzagEdge')) {
+            document.getElementById('zigzagEdge').checked = settings.zigzagEdge !== false;
+        }
         
         // 设置小票信息字段
         if (settings.receiptInfo) {
@@ -3985,12 +4012,15 @@ function clearReceiptCustomization() {
             theme: 'classic',
             headerImage: null,
             headerImageOriginal: null,
+            showHeaderImage: true,
             headerImageWidth: 300,
+            zigzagEdge: true,
             titleText: 'LIST',
             footerText1: '温馨提示',
             footerText2: '感谢惠顾',
             footerImage: null,
             footerImageOriginal: null,
+            showFooterImage: true,
             footerImageWidth: 300,
             receiptInfo: {
                 orderNotification: '',
@@ -10012,6 +10042,40 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     }, 100);
 }
 
+// 获取小票主题的背景色（锯齿票根颜色跟随主题）
+function getReceiptZigzagColor(themeId) {
+    const builtinBg = {
+        classic: '#fdfdfd',
+        modern: '#ffffff',
+        warm: '#fff7ed',
+        dark: '#1a1a2e',
+        nature: '#f6fdf7',
+        vintage: '#f8f0e3',
+        sakura: '#fef7fb',
+        iceBlue: '#f0f9ff'
+    };
+    if (themeId && themeId.indexOf('custom_') === 0 && defaultSettings.customThemes && defaultSettings.customThemes[themeId] && defaultSettings.customThemes[themeId].bg) {
+        return toHex6(defaultSettings.customThemes[themeId].bg);
+    }
+    return builtinBg[themeId] || '#fdfdfd';
+}
+
+// 构建底部锯齿票根（撕边）
+function buildReceiptZigzagHtml(position, color) {
+    const width = 400;
+    const height = 10;
+    const tooth = 20;
+    const pts = [];
+    for (let x = 0; x < width; x += tooth) {
+        if (position === 'bottom') {
+            pts.push(`${x},0`, `${x + tooth / 2},${height}`, `${x + tooth},0`);
+        } else {
+            pts.push(`${x},${height}`, `${x + tooth / 2},0`, `${x + tooth},${height}`);
+        }
+    }
+    return `<svg class="receipt-zigzag receipt-zigzag-${position}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="${pts.join(' ')}" fill="${color}"/></svg>`;
+}
+
 // 生成报价单
 function generateQuote() {
     const container = document.getElementById('quoteContent');
@@ -10037,12 +10101,15 @@ function generateQuote() {
     const currentTheme = defaultSettings.receiptCustomization.theme || 'classic';
     const themeClass = `receipt-theme-${currentTheme}`;
     
+    // 底部锯齿票根：撕边，导出图不额外留白
+    const zigzagEnabled = defaultSettings.receiptCustomization.zigzagEdge !== false;
+
     // 生成HTML结构 - 使用购物小票样式
-    let html = `
-        <div class="receipt ${themeClass}">`;
+    let html = `<div class="receipt-shell${zigzagEnabled ? ' receipt-shell-zigzag' : ''}">`;
+    html += `<div class="receipt ${themeClass}">`;
     
     // 添加头部图片（如果设置了）
-    if (defaultSettings.receiptCustomization.headerImage) {
+    if (defaultSettings.receiptCustomization.headerImage && defaultSettings.receiptCustomization.showHeaderImage !== false) {
         const headerImageWidth = Math.max(1, Math.min(400, parseInt(defaultSettings.receiptCustomization.headerImageWidth, 10) || 300));
         html += `<div class="receipt-header-image"><img src="${defaultSettings.receiptCustomization.headerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="头部图片" style="width: ${headerImageWidth}px; max-width: 400px; height: auto;" /></div>`;
     }
@@ -11691,7 +11758,7 @@ function generateQuote() {
             }
                         
             // 添加底部图片（如果设置了）
-            if (defaultSettings.receiptCustomization.footerImage) {
+            if (defaultSettings.receiptCustomization.footerImage && defaultSettings.receiptCustomization.showFooterImage !== false) {
                 const footerImageWidth = Math.max(1, Math.min(400, parseInt(defaultSettings.receiptCustomization.footerImageWidth, 10) || 300));
                 html += `<div class="receipt-footer-image"><img src="${defaultSettings.receiptCustomization.footerImage}" class="receipt-img receipt-theme-${currentTheme}" alt="尾部图片" style="width: ${footerImageWidth}px; max-width: 400px; height: auto; margin-top: 0.5rem;" /></div>`;
             }
@@ -11703,6 +11770,12 @@ function generateQuote() {
                         
             html += `</div>`;
             html += `</div>`;
+            html += `</div>`; // 闭合小票本体
+            // 收尾：底部锯齿 + 票根外壳闭合
+            if (zigzagEnabled) {
+                html += buildReceiptZigzagHtml('bottom', getReceiptZigzagColor(currentTheme));
+            }
+            html += `</div>`; // 闭合票根外壳
 
     // 汇总区没有任何汇总行（只保留实付金额）时，不再画汇总区顶部分割线
     if (!summaryHasRows) {
@@ -12330,10 +12403,14 @@ function calculatorSaveChoiceSaveAsNew() {
 
 // 手机上自动缩放小票以适应屏幕宽度（保持 400px 内部排版不变）
 function adjustReceiptScale() {
-    const receipts = document.querySelectorAll('.receipt');
-    if (!receipts.length) return;
-    
-    receipts.forEach(receipt => {
+    // 优先缩放票根外壳（包含上下锯齿），没有外壳时再缩放小票本体
+    const targets = Array.from(document.querySelectorAll('.receipt-shell'));
+    document.querySelectorAll('.receipt').forEach(receipt => {
+        if (!receipt.closest('.receipt-shell')) targets.push(receipt);
+    });
+    if (!targets.length) return;
+
+    targets.forEach(target => {
         // 只在手机端（屏幕宽度 <= 768px）进行缩放
         if (window.innerWidth <= 768) {
             // 计算缩放比例：屏幕宽度 - 左右边距（约 3rem = 48px）后，除以 400px
@@ -12341,13 +12418,13 @@ function adjustReceiptScale() {
             const padding = 48; // 左右各 1.5rem，共约 48px
             const availableWidth = screenWidth - padding;
             const scale = Math.min(availableWidth / 400, 1); // 不超过 1（不放大）
-            
-            receipt.style.transform = 'scale(' + scale + ')';
-            receipt.style.transformOrigin = 'top center';
+
+            target.style.transform = 'scale(' + scale + ')';
+            target.style.transformOrigin = 'top center';
         } else {
             // 桌面端：移除缩放
-            receipt.style.transform = '';
-            receipt.style.transformOrigin = '';
+            target.style.transform = '';
+            target.style.transformOrigin = '';
         }
     });
 }
@@ -12415,25 +12492,40 @@ async function renderReceiptCanvasForExport() {
         return null;
     }
 
+    const shell = receipt.closest('.receipt-shell') || null;
+    const captureEl = shell || receipt;
+    const zigzagOn = !!shell && shell.classList.contains('receipt-shell-zigzag');
+    const exportPadding = 0; // 导出图不额外留白
+
     const oldWidth = receipt.style.width;
     const oldMinWidth = receipt.style.minWidth;
     const oldTransform = receipt.style.transform;
     const oldTransformOrigin = receipt.style.transformOrigin;
+    const shellOldWidth = shell ? shell.style.width : '';
+    const shellOldMinWidth = shell ? shell.style.minWidth : '';
+    const shellOldTransform = shell ? shell.style.transform : '';
+    const shellOldTransformOrigin = shell ? shell.style.transformOrigin : '';
 
     receipt.style.width = '400px';
     receipt.style.minWidth = '400px';
     receipt.style.transform = '';
     receipt.style.transformOrigin = '';
+    if (shell) {
+        shell.style.width = '400px';
+        shell.style.minWidth = '400px';
+        shell.style.transform = '';
+        shell.style.transformOrigin = '';
+    }
 
     try {
         await waitReceiptReadyForCapture(receipt);
 
-        const canvas = await html2canvas(receipt, {
+        const canvas = await html2canvas(captureEl, {
             scale: 3,
             useCORS: true,
             logging: false,
             width: 400,
-            height: receipt.scrollHeight,
+            height: captureEl.scrollHeight,
             backgroundColor: null
         });
 
@@ -12443,6 +12535,12 @@ async function renderReceiptCanvasForExport() {
         receipt.style.minWidth = oldMinWidth;
         receipt.style.transform = oldTransform;
         receipt.style.transformOrigin = oldTransformOrigin;
+        if (shell) {
+            shell.style.width = shellOldWidth;
+            shell.style.minWidth = shellOldMinWidth;
+            shell.style.transform = shellOldTransform;
+            shell.style.transformOrigin = shellOldTransformOrigin;
+        }
         if (window.innerWidth <= 768) adjustReceiptScale();
     }
 }
