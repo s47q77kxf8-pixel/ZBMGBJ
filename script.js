@@ -3040,6 +3040,34 @@ function applyFontSettings() {
             }
         `;
     }
+
+    // 字号按整张小票等比例缩放，保持原本标题/正文/金额/尾注的层级比例
+    const baseFontSize = Number(fontSettings.fontSize);
+    if (isFinite(baseFontSize) && baseFontSize > 0) {
+        const ratio = baseFontSize / 13;
+        const scaled = (pxValue) => `${Number((pxValue * ratio).toFixed(2))}px`;
+        styleContent += `
+            .receipt .receipt-title { font-size: ${scaled(18)} !important; }
+            .receipt .receipt-text-sm,
+            .receipt .receipt-sub-row { font-size: ${scaled(11)} !important; }
+            .receipt .receipt-row,
+            .receipt .receipt-summary-row,
+            .receipt .receipt-summary-section-total { font-size: ${scaled(12)} !important; }
+            .receipt .receipt-header { font-size: ${scaled(13)} !important; }
+            .receipt .receipt-total { font-size: ${scaled(14)} !important; }
+            .receipt .receipt-bullet { font-size: ${scaled(9)} !important; }
+            .receipt .receipt-sub-row div:first-child { font-size: ${scaled(10)} !important; }
+            .receipt .receipt-module-reason-row { font-size: ${scaled(10)} !important; }
+            .receipt .receipt-module-subtotal { font-size: ${scaled(11)} !important; }
+            .receipt .receipt-module-subtotal-total { font-size: ${scaled(12)} !important; }
+            .receipt .receipt-summary-coefficient-detail,
+            .receipt .receipt-summary-fee-detail,
+            .receipt .receipt-rounding-discount { font-size: ${scaled(11)} !important; }
+            .receipt .receipt-footer,
+            .receipt .receipt-footer-text1 { font-size: ${scaled(10)} !important; }
+            .receipt .receipt-footer-text2 { font-size: ${scaled(9)} !important; }
+        `;
+    }
     styleElement.textContent = styleContent;
 }
 
@@ -10943,7 +10971,7 @@ function generateQuote() {
             var origSum = Number(moduleBaseTotals[curGiftMod]) || 0;
             var symLabel = multiModuleG ? (moduleMergeLabels[curGiftMod] ? '<span class="receipt-module-sym">' + moduleMergeLabels[curGiftMod] + '</span>' : '<span class="receipt-module-sym">组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '') + '</span>') : '赠品';
             // 赠品小计与合计行的划线原价相同，只保留合计行（0 在前、原价在后），不再重复小计
-            h += '<div class="receipt-module-subtotal"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span></div></div>';
+            h += '<div class="receipt-module-subtotal receipt-module-subtotal-total"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span></div></div>';
             h += '</div>';
             return h;
         }
