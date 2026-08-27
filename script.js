@@ -15056,16 +15056,14 @@ async function renderScheduleTodoSection() {
             allChipsHtml += `<div class="schedule-todo-chip${isDone ? ' schedule-todo-done' : ''}" style="margin:0 .3rem .2rem 0;">
                                 <span class="schedule-todo-label" style="position:relative; top:1px; ${isDone ? 'text-decoration: line-through; opacity:.66;' : ''}">${productLabel}</span>
                                 <span class="schedule-todo-qty-stepper" onclick="event.stopPropagation()">
-                                    <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${i}" data-delta="-1"
-                                            style="border:none;background:#e5e7eb;color:#374151;border-radius:9999px;width:.82rem;height:.82rem;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0;font-size:.62rem;"
+                                    <button type="button" class="schedule-todo-qty-btn schedule-todo-qty-btn--circle" data-id="${item.id}" data-idx="${i}" data-delta="-1"
                                             onclick="handleScheduleTodoQtyBtnClick(event, this)"
                                             onpointerdown="startScheduleTodoQtyPress(event, this)"
                                             onpointerup="stopScheduleTodoQtyPress()"
                                             onpointercancel="stopScheduleTodoQtyPress()"
                                             onpointerleave="stopScheduleTodoQtyPress()">−</button>
-                                    <span class="schedule-todo-qty-value" style="position:relative; top:2px;">${doneQty}/${qty}</span>
-                                    <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${i}" data-delta="1"
-                                            style="border:none;background:#e5e7eb;color:#374151;border-radius:9999px;width:.82rem;height:.82rem;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0;font-size:.62rem;"
+                                    <span class="schedule-todo-qty-value">${doneQty}/${qty}</span>
+                                    <button type="button" class="schedule-todo-qty-btn schedule-todo-qty-btn--circle" data-id="${item.id}" data-idx="${i}" data-delta="1"
                                             onclick="handleScheduleTodoQtyBtnClick(event, this)"
                                             onpointerdown="startScheduleTodoQtyPress(event, this)"
                                             onpointerup="stopScheduleTodoQtyPress()"
@@ -15111,7 +15109,6 @@ async function renderScheduleTodoSection() {
                                 <span class="schedule-todo-label" style="${isDone ? 'text-decoration: line-through; opacity:.66;' : ''}">${giftLabel}</span>
                                 <span class="schedule-todo-qty-stepper" onclick="event.stopPropagation()">
                                     <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${giftIdx}" data-delta="-1"
-                                            style="border:none;background:transparent;padding:0 6px;line-height:1;"
                                             onclick="handleScheduleTodoQtyBtnClick(event, this)"
                                             onpointerdown="startScheduleTodoQtyPress(event, this)"
                                             onpointerup="stopScheduleTodoQtyPress()"
@@ -15119,7 +15116,6 @@ async function renderScheduleTodoSection() {
                                             onpointerleave="stopScheduleTodoQtyPress()">−</button>
                                     <span class="schedule-todo-qty-value">${doneQty}/${qty}</span>
                                     <button type="button" class="schedule-todo-qty-btn" data-id="${item.id}" data-idx="${giftIdx}" data-delta="1"
-                                            style="border:none;background:transparent;padding:0 6px;line-height:1;"
                                             onclick="handleScheduleTodoQtyBtnClick(event, this)"
                                             onpointerdown="startScheduleTodoQtyPress(event, this)"
                                             onpointerup="stopScheduleTodoQtyPress()"
