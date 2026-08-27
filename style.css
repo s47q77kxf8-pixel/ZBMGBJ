@@ -28,6 +28,8 @@
     --toggle-off-bg: #9ca3af;
     /* 桌面端顶部导航占位高度（用于抽屉/弹层避让） */
     --desktop-nav-height: 64px;
+    /* 桌面宽屏左侧导航占位宽度 */
+    --desktop-nav-width: 80px;
     /* 小票默认字体（作为后备，主题类会覆盖此值） */
     --receipt-font-family: 'Courier New', 'Monaco', 'Consolas', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Courier', monospace;
 }
@@ -873,6 +875,13 @@ body {
     top: -1px;
 }
 
+/* 桌面左侧导航专属元素：移动端/顶部导航下隐藏 */
+.nav-plus-label {
+    display: none;
+}
+.nav-divider {
+    display: none;
+}
 
 .nav-btn-plus:hover {
     background-color: var(--primary-hover);
@@ -924,7 +933,8 @@ body {
     transform: translateX(-100%);
     opacity: 0;
     transition: transform 0.3s ease-out, opacity 0.3s ease-out;
-    pointer-events: auto;
+    /* 关闭态：面板被平移到屏幕外，但不拦截点击，避免遮挡左侧导航 */
+    pointer-events: none;
     display: flex;
     flex-direction: column;
 }
@@ -1066,6 +1076,8 @@ body {
 .calculator-drawer.open .calculator-drawer-panel {
     transform: translateX(0);
     opacity: 1;
+    /* 打开态恢复交互，面板可见时可正常点击 */
+    pointer-events: auto;
 }
 
 #perItemExtraSelectsRow .form-group {
@@ -4418,6 +4430,21 @@ html.theme-dark .setting-hint strong {
 }
 .receipt-text-sm-center {
     text-align: center;
+}
+
+/* 小票信息行「两端对齐」：固定文案居左、内容居右 */
+.receipt-info-line-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+.receipt-info-line-label {
+    text-align: left;
+}
+.receipt-info-line-value {
+    text-align: right;
+    word-break: break-all;
 }
 
 /* Receipt checkbox layout */
@@ -11735,4 +11762,174 @@ html.theme-dark .convert-menu {
     margin-right: 0;
     font-weight: inherit;
     color: inherit;
+}
+
+/* ========== 桌面宽屏：左侧固定导航 ========== */
+@media (min-width: 1024px) {
+    body {
+        padding-bottom: 0 !important;
+    }
+
+    /* 内容区向右避让侧栏，保持原 800px 设计宽度 */
+    .app-container {
+        margin-left: calc(50% + var(--desktop-nav-width, 80px) / 2 - 400px) !important;
+        margin-right: auto !important;
+    }
+
+    /* 左侧栏模式下 --desktop-nav-height 会被测成侧栏全高（≈100dvh），
+       使 #settings 的 min-height 归零，打开「基础设置」等子页面时内容不可见。
+       这里改为按内容区实际可用高度计算（上下内边距 1rem+2px / 1rem）。 */
+    #settings {
+        min-height: calc(100dvh - 2rem - 2px);
+    }
+
+    .navbar {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: var(--desktop-nav-width, 80px);
+        max-width: var(--desktop-nav-width, 80px);
+        height: 100dvh;
+        min-height: 100dvh;
+        border-bottom: none;
+        border-right: 1px solid var(--border-color);
+        box-shadow: var(--shadow-sm);
+        padding: 0.75rem 0.5rem 1rem;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .nav-buttons {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: flex-start !important;
+        gap: 0.25rem !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+    }
+
+    .nav-btn-quote { order: 1; }
+    .nav-btn-record { order: 2; }
+    .nav-btn-stats { order: 3; }
+    .nav-btn-settings { order: 4; }
+    .nav-divider {
+        display: block;
+        order: 5;
+        align-self: stretch;
+        flex: 0 0 1px;
+        width: auto;
+        height: 1px;
+        margin: 0.5rem 0.75rem;
+        background: var(--border-color);
+    }
+    .nav-btn-plus { order: 6; }
+
+    .nav-btn-tab {
+        flex: 0 0 auto !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        flex-direction: row !important;
+        justify-content: center !important;
+        align-items: center !important;
+        gap: 0.375rem !important;
+        padding: 0.5rem 0.25rem !important;
+        border-radius: 10px !important;
+    }
+
+    .nav-tab-icon-wrap {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+    }
+
+    .nav-tab-label {
+        font-size: 0.75rem;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .nav-btn-tab:hover {
+        background: var(--primary-light);
+        color: var(--text-color);
+    }
+
+    .nav-btn-tab.active,
+    .nav-btn-tab.active:hover {
+        background: var(--primary-light);
+        color: var(--primary-color);
+    }
+
+    .nav-btn-plus {
+        width: 44px !important;
+        height: 44px !important;
+        margin: 0 !important;
+        align-self: center;
+        border-radius: 50% !important;
+        justify-content: center !important;
+        padding: 0 !important;
+    }
+
+    .nav-btn-plus .icon {
+        width: 20px;
+        height: 20px;
+        margin: 0;
+    }
+
+    .nav-plus-label {
+        display: none;
+    }
+
+    .nav-btn-plus:hover {
+        transform: none;
+    }
+
+    .nav-btn-plus:active {
+        transform: scale(0.98);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+    }
+
+    .nav-btn:focus,
+    .nav-btn:focus-visible {
+        box-shadow: 0 0 0 3px var(--primary-color);
+    }
+
+    /* 抽屉：从侧栏右侧开始，全高展示 */
+    .history-filter-drawer,
+    .calculator-drawer,
+    .receipt-drawer {
+        top: 0 !important;
+        left: var(--desktop-nav-width, 80px) !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        height: 100dvh !important;
+    }
+
+    .filter-drawer-content,
+    .calculator-drawer-panel,
+    .receipt-drawer-panel {
+        top: 0 !important;
+        bottom: 0 !important;
+        height: 100% !important;
+        max-height: 100% !important;
+    }
+
+    /* 弹窗：在右侧内容区域内居中 */
+    .modal,
+    .history-record-modal,
+    .schedule-todo-card-modal,
+    .settlement-modal,
+    .receipt-customization-modal,
+    .save-image-modal-overlay {
+        left: var(--desktop-nav-width, 80px) !important;
+        width: calc(100% - var(--desktop-nav-width, 80px)) !important;
+        padding-top: 0 !important;
+    }
+
+    .global-toast {
+        margin-left: var(--desktop-nav-width, 0px);
+    }
 }

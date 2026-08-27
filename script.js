@@ -1331,7 +1331,9 @@ const defaultSettings = {
             showContactInfo: true,  // 是否显示联系方式
             showProjectInfo: true,  // 是否显示企划信息
             customText: '',  // 自定义文本
-            followSystemTheme: false  // 是否跟随系统主题颜色
+            followSystemTheme: false,  // 是否跟随系统主题颜色
+            infoLanguage: 'en',  // 信息行文案语言：'en'（默认，保持旧版英文）或 'zh'
+            infoAlign: 'left'  // 信息行整体对齐：'left' | 'center' | 'right'
         },
         footerText1: '温馨提示',  // 尾部文本1
         footerText2: '感谢惠顾',  // 尾部文本2
@@ -3934,6 +3936,12 @@ function loadReceiptCustomizationToForm() {
             if (document.getElementById('showProjectInfo')) {
                 document.getElementById('showProjectInfo').checked = settings.receiptInfo.showProjectInfo !== false; // 默认为 true
             }
+            if (document.getElementById('receiptInfoLanguage')) {
+                document.getElementById('receiptInfoLanguage').value = settings.receiptInfo.infoLanguage === 'zh' ? 'zh' : 'en'; // 默认为 en
+            }
+            if (document.getElementById('receiptInfoAlign')) {
+                document.getElementById('receiptInfoAlign').value = ['left', 'center', 'right', 'justify'].indexOf(settings.receiptInfo.infoAlign) >= 0 ? settings.receiptInfo.infoAlign : 'left'; // 默认为 left
+            }
 
 
             if (document.getElementById('receiptCustomText')) {
@@ -4090,6 +4098,18 @@ window.pageBeforeStatsFilterDrawer = null;
 
 // 页面切换功能（底层：报价 / 设置）
 function showPage(pageId) {
+    // 桌面侧栏常驻可见：点击导航切换页面时先收起计算/小票抽屉，避免页面看似未切换
+    try {
+        const calculatorDrawerEl = document.getElementById('calculatorDrawer');
+        if (calculatorDrawerEl && calculatorDrawerEl.classList.contains('open') && typeof closeCalculatorDrawer === 'function') {
+            closeCalculatorDrawer();
+        }
+        const receiptDrawerEl = document.getElementById('receiptDrawer');
+        if (receiptDrawerEl && receiptDrawerEl.classList.contains('open') && typeof closeReceiptDrawer === 'function') {
+            closeReceiptDrawer();
+        }
+    } catch (e) { /* 页面切换不应被抽屉关闭逻辑中断 */ }
+
     // 记录当前活动页面（用于关闭抽屉/二级页返回）
     if (pageId !== 'clientTemplateEditor') {
         activeTab = pageId;
@@ -4114,28 +4134,44 @@ function showPage(pageId) {
     // 更新导航按钮状态（排单/记录/计算/统计/设置 对应高亮）
     document.querySelectorAll('.nav-btn-tab').forEach(btn => {
         btn.classList.remove('active');
+        btn.removeAttribute('aria-current');
     });
     if (pageId === 'quote') {
         activeTab = 'quote';
         const quoteBtn = document.querySelector('.nav-btn-quote');
-        if (quoteBtn) quoteBtn.classList.add('active');
+        if (quoteBtn) {
+            quoteBtn.classList.add('active');
+            quoteBtn.setAttribute('aria-current', 'page');
+        }
     } else if (pageId === 'record') {
         activeTab = 'record';
         const recordBtn = document.querySelector('.nav-btn-record');
-        if (recordBtn) recordBtn.classList.add('active');
+        if (recordBtn) {
+            recordBtn.classList.add('active');
+            recordBtn.setAttribute('aria-current', 'page');
+        }
     } else if (pageId === 'stats') {
         activeTab = 'stats';
         const statsBtn = document.querySelector('.nav-btn-stats');
-        if (statsBtn) statsBtn.classList.add('active');
+        if (statsBtn) {
+            statsBtn.classList.add('active');
+            statsBtn.setAttribute('aria-current', 'page');
+        }
     } else if (pageId === 'settings') {
         activeTab = 'settings';
         const settingsBtn = document.querySelector('.nav-btn-settings');
-        if (settingsBtn) settingsBtn.classList.add('active');
+        if (settingsBtn) {
+            settingsBtn.classList.add('active');
+            settingsBtn.setAttribute('aria-current', 'page');
+        }
     } else if (pageId === 'clientTemplateEditor') {
         // 编辑页归属于“我的”模块，保持“我的”导航高亮
         activeTab = 'settings';
         const settingsBtn = document.querySelector('.nav-btn-settings');
-        if (settingsBtn) settingsBtn.classList.add('active');
+        if (settingsBtn) {
+            settingsBtn.classList.add('active');
+            settingsBtn.setAttribute('aria-current', 'page');
+        }
     }
     // 计算：仅打开抽屉，不高亮
     
@@ -8272,6 +8308,24 @@ function openCalculatorDrawer(skipOrderTimeReset) {
         resetOrderModulesToDefault();
         renderModulePanels('product');
         renderModulePanels('gift');
+        // 新建订单默认补一张制品卡片，并预选第一个制品类型，保证可直接生成小票
+        const firstProductModule = firstOrderModule('product');
+        if (firstProductModule) {
+            const firstProduct = internalAddProductToModule(firstProductModule.id);
+            if (firstProduct && Array.isArray(productSettings) && productSettings.length) {
+                const firstSetting = productSettings[0];
+                firstProduct.type = String(firstSetting.id);
+                const selectWrap = document.querySelector('#productTypeSelect-' + firstProduct.id + ' .searchable-select');
+                if (selectWrap) {
+                    selectWrap._selectedValue = String(firstSetting.id);
+                    const selectInput = selectWrap.querySelector('.searchable-select-input');
+                    if (selectInput) selectInput.value = String(firstSetting.name || '');
+                    selectWrap.classList.add('has-value');
+                }
+                if (typeof updateProductForm === 'function') updateProductForm(firstProduct.id);
+                if (typeof updateProcessOptions === 'function') updateProcessOptions(firstProduct.id);
+            }
+        }
 
         selectedPerItemExtraFeeIds = [];
         renderCalculatorPerItemExtraSelects();
@@ -10158,6 +10212,21 @@ function generateQuote() {
         const orderNotification = receiptInfo.orderNotification.replace('XXX', quoteData.clientId);
         receiptInfoHtml += `<p class="receipt-text-sm receipt-text-sm-center">${orderNotification}</p>`;
     }
+    // 信息行文案语言与整体对齐（下单/开始/截稿时间、设计师、联系方式）
+    var infoLang = receiptInfo.infoLanguage === 'zh' ? 'zh' : 'en';
+    var infoAlign = ['left', 'center', 'right', 'justify'].indexOf(receiptInfo.infoAlign) >= 0 ? receiptInfo.infoAlign : 'left';
+    var infoStyleAttr = (infoAlign === 'left' || infoAlign === 'justify') ? '' : ' style="text-align:' + infoAlign + ';"';
+    var infoLabels = infoLang === 'zh'
+        ? { orderDate: '下单时间', startTime: '开始时间', deadline: '截稿时间', contact: '联系方式' }
+        : { orderDate: 'ORDER DATE', startTime: 'START TIME', deadline: 'DEADLINE', contact: 'CONTACT INFO' };
+    // 生成信息行：justify（两端对齐）= 文案居左、内容居右；其余 = 整体对齐
+    var buildInfoLine = function (label, value) {
+        if (infoAlign === 'justify') {
+            return `<p class="receipt-text-sm receipt-info-line-between"><span class="receipt-info-line-label">${label}</span><span class="receipt-info-line-value">${value}</span></p>`;
+        }
+        return `<p class="receipt-text-sm"${infoStyleAttr}>${label}: ${value}</p>`;
+    };
+
     // 下单时间（小票用英文、仅日期 YYYY-MM-DD，不显示时分；放在开始时间前面）
     if (receiptInfo.showOrderTime !== false && quoteData.timestamp) {
         const orderDate = new Date(quoteData.timestamp);
@@ -10165,28 +10234,28 @@ function generateQuote() {
         const m = String(orderDate.getMonth() + 1).padStart(2, '0');
         const d = String(orderDate.getDate()).padStart(2, '0');
         const orderDateStr = y + '-' + m + '-' + d;
-        receiptInfoHtml += `<p class="receipt-text-sm">ORDER DATE: ${orderDateStr}</p>`;
+        receiptInfoHtml += buildInfoLine(infoLabels.orderDate, orderDateStr);
     }
     // 开始时间
     if (receiptInfo.showStartTime !== false && quoteData.startTime) {  // 默认为true
-        receiptInfoHtml += `<p class="receipt-text-sm">START TIME: ${quoteData.startTime}</p>`;
+        receiptInfoHtml += buildInfoLine(infoLabels.startTime, quoteData.startTime);
     }
     // 截稿时间
     if (receiptInfo.showDeadline !== false && quoteData.deadline) {  // 默认为true
-        receiptInfoHtml += `<p class="receipt-text-sm">DEADLINE: ${quoteData.deadline}</p>`;
+        receiptInfoHtml += buildInfoLine(infoLabels.deadline, quoteData.deadline);
     }
-        
-    // 身份（美工/画师/题字/作者/自定义）
+
+    // 身份（美工/画师/题字/作者/自定义；文案随信息行语言设置切换）
     if (receiptInfo.showDesigner !== false && defaultSettings.artistInfo.id) {  // 默认为true
         var roleName = defaultSettings.artistInfo.role || '美工';
         var roleLabelMap = { '美工': 'DESIGNER', '画师': 'ARTIST', '题字': 'CALLIGRAPHER', '作者': 'AUTHOR' };
-        var roleLabel = roleLabelMap[roleName] || roleName.toUpperCase();
-        receiptInfoHtml += `<p class="receipt-text-sm">${roleLabel}: ${defaultSettings.artistInfo.id}</p>`;
+        var roleLabel = infoLang === 'zh' ? roleName : (roleLabelMap[roleName] || roleName.toUpperCase());
+        receiptInfoHtml += buildInfoLine(roleLabel, defaultSettings.artistInfo.id);
     }
-        
+
     // 联系方式
     if (receiptInfo.showContactInfo !== false && defaultSettings.artistInfo.contact) {  // 默认为true
-        receiptInfoHtml += `<p class="receipt-text-sm">CONTACT INFO: ${defaultSettings.artistInfo.contact}</p>`;
+        receiptInfoHtml += buildInfoLine(infoLabels.contact, defaultSettings.artistInfo.contact);
     }
         
     // 自定义文本
