@@ -1227,10 +1227,12 @@ const defaultSettings = {
     },
     // 平台手续费（%，约稿平台比例固定）
     // round: 手续费是否四舍五入取整（true=取整到元，false=保留两位小数）
+    // tiers: 分段费率（可选）。按计费基数（约定实收）分段：不超过 upTo 的部分按该段 rate 计费，upTo 为 null 表示无上限；
+    //        value 始终保持与第一段费率一致（用于排序与旧逻辑兼容）。不配置 tiers 时按 value 单一费率计算
     platformFees: {
         none: { value: 0, name: '无', round: false },
         mihua: { value: 5, name: '米画师', round: true },
-        painter: { value: 5, name: '画加', round: false }
+        painter: { value: 5, name: '画加', round: false, tiers: [ { upTo: 500, rate: 5 }, { upTo: null, rate: 1 } ] }
     },
     // 其他费用
     otherFees: {
@@ -1317,7 +1319,8 @@ const defaultSettings = {
         theme: 'classic',  // 主题名称：classic, modern, warm, dark, minimal
         // 小票配置更新时间戳（用于跨端合并时避免互相覆盖）
         updatedAt: 0,
-        zigzagEdge: true,  // 底部锯齿票根
+        zigzagTopEdge: null,  // 顶部锯齿：true/false=手动设置；null=跟随主题默认（默认无顶锯齿）
+        zigzagBottomEdge: null,  // 底部锯齿：true/false=手动设置；null=跟随主题默认（温馨主题无锯齿，其他主题有下锯齿）
         headerImage: null,  // 头部图片的base64数据
         showHeaderImage: true,  // 小票是否显示头部图片
         headerImageWidth: 300,  // 头部图片显示宽度（最大400px）
@@ -1739,6 +1742,84 @@ function getCoefficientValue(coefficientObj) {
     return coefficientObj || 0;
 }
 
+// 计算平台手续费金额（统一入口，所有场景必须调用此函数，避免多处公式不一致）：
+// - feeObj 支持 { value: 5 } 单一费率，或 { tiers: [{ upTo: 500, rate: 5 }, { upTo: null, rate: 1 }] } 分段费率
+//   分段规则：不超过 upTo 的部分按该段费率计费，upTo 为 null 表示该段无上限；分段按传入的计费基数（约定实收）判断
+// - round=true 四舍五入取整到元，否则保留两位小数
+function calcPlatformFeeAmount(base, feeObj, round) {
+    var b = Math.max(0, Number(base) || 0);
+    var fee = null;
+    var tiers = (feeObj && typeof feeObj === 'object' && Array.isArray(feeObj.tiers)) ? feeObj.tiers : null;
+    if (tiers) {
+        var sorted = tiers
+            .map(function (t) {
+                if (!t || typeof t !== 'object') return null;
+                var rate = Math.max(0, Number(t.rate) || 0);
+                if (!isFinite(rate)) return null;
+                var upTo = (t.upTo == null || t.upTo === '' || !isFinite(Number(t.upTo))) ? null : Math.max(0, Number(t.upTo));
+                return { upTo: upTo, rate: rate };
+            })
+            .filter(Boolean)
+            .sort(function (x, y) { return (x.upTo == null ? Infinity : x.upTo) - (y.upTo == null ? Infinity : y.upTo); });
+        if (sorted.length) {
+            fee = 0;
+            var prevCap = 0;
+            for (var i = 0; i < sorted.length; i++) {
+                var seg = sorted[i];
+                var cap = (seg.upTo == null) ? Infinity : seg.upTo;
+                if (cap <= prevCap) continue;
+                if (b > prevCap) {
+                    var upper = Math.min(b, cap);
+                    fee += (upper - prevCap) * seg.rate / 100;
+                }
+                prevCap = cap;
+                if (b <= cap) break;
+            }
+        }
+    }
+    if (fee == null) {
+        fee = b * (getCoefficientValue(feeObj) || 0) / 100;
+    }
+    return round ? Math.round(fee) : Math.round(fee * 100) / 100;
+}
+
+// 生成平台费率展示文本：单一费率返回 "5%"，分段返回 "≤500:5% / >500:1%"
+function formatPlatformFeeRateText(feeObj) {
+    var tiers = (feeObj && typeof feeObj === 'object' && Array.isArray(feeObj.tiers)) ? feeObj.tiers : null;
+    if (tiers && tiers.length) {
+        var sorted = tiers
+            .map(function (t) {
+                if (!t || typeof t !== 'object') return null;
+                var rate = Math.max(0, Number(t.rate) || 0);
+                if (!isFinite(rate)) return null;
+                var upTo = (t.upTo == null || t.upTo === '' || !isFinite(Number(t.upTo))) ? null : Math.max(0, Number(t.upTo));
+                return { upTo: upTo, rate: rate };
+            })
+            .filter(Boolean)
+            .sort(function (x, y) { return (x.upTo == null ? Infinity : x.upTo) - (y.upTo == null ? Infinity : y.upTo); });
+        var parts = [];
+        var prevCap = null;
+        for (var i = 0; i < sorted.length; i++) {
+            var t = sorted[i];
+            var capText = (t.upTo == null) ? '' : '≤' + t.upTo;
+            if (i > 0) capText = ((prevCap == null) ? '' : '>' + prevCap) + (t.upTo == null ? '' : '≤' + t.upTo);
+            parts.push(capText + ':' + t.rate + '%');
+            prevCap = t.upTo;
+        }
+        if (parts.length) return parts.join(' / ');
+    }
+    return (getCoefficientValue(feeObj) || 0) + '%';
+}
+
+// 取报价/订单数据对应的费率对象：优先用下单时快照的分段规则（platformFeeRule），旧数据回退到 platformFee 百分比
+function getPlatformFeeObjFromQuote(quoteLike) {
+    if (quoteLike && quoteLike.platformFeeRule && typeof quoteLike.platformFeeRule === 'object') {
+        if (Array.isArray(quoteLike.platformFeeRule.tiers)) return { tiers: quoteLike.platformFeeRule.tiers };
+        if (quoteLike.platformFeeRule.value !== undefined) return { value: quoteLike.platformFeeRule.value };
+    }
+    return { value: (quoteLike && quoteLike.platformFee != null) ? quoteLike.platformFee : 0 };
+}
+
 // 加载本地存储的数据
 function loadData() {
     // 先单独加载 templates，避免受其他键 parse 失败影响，确保刷新后模板不丢失
@@ -1826,7 +1907,8 @@ function loadData() {
                     headerImage: null,
                     showHeaderImage: true,
                     headerImageWidth: 300,
-                    zigzagEdge: true,
+                    zigzagTopEdge: null,
+                    zigzagBottomEdge: null,
                     titleText: 'LIST',
                     receiptInfo: {
                         orderNotification: '',
@@ -1902,8 +1984,13 @@ function loadData() {
                 if (typeof defaultSettings.receiptCustomization.showFooterImage !== 'boolean') {
                     defaultSettings.receiptCustomization.showFooterImage = true;
                 }
-                if (typeof defaultSettings.receiptCustomization.zigzagEdge !== 'boolean') {
-                    defaultSettings.receiptCustomization.zigzagEdge = true;
+                // 锯齿开关迁移：旧字段 zigzagEdge(布尔) -> 新字段 zigzagTopEdge/zigzagBottomEdge
+                // 新字段为 null 表示未手动设置、跟随主题默认（温馨主题无锯齿，其他主题有下锯齿）
+                if (typeof defaultSettings.receiptCustomization.zigzagTopEdge !== 'boolean' && defaultSettings.receiptCustomization.zigzagTopEdge !== null) {
+                    defaultSettings.receiptCustomization.zigzagTopEdge = (defaultSettings.receiptCustomization.zigzagEdge === false) ? false : null;
+                }
+                if (typeof defaultSettings.receiptCustomization.zigzagBottomEdge !== 'boolean' && defaultSettings.receiptCustomization.zigzagBottomEdge !== null) {
+                    defaultSettings.receiptCustomization.zigzagBottomEdge = (defaultSettings.receiptCustomization.zigzagEdge === false) ? false : null;
                 }
             }
 
@@ -3908,9 +3995,9 @@ function loadReceiptCustomizationToForm() {
         if (document.getElementById('showFooterImage')) {
             document.getElementById('showFooterImage').checked = settings.showFooterImage !== false;
         }
-        // 设置底部锯齿票根开关
-        if (document.getElementById('zigzagEdge')) {
-            document.getElementById('zigzagEdge').checked = settings.zigzagEdge !== false;
+        // 设置上/下锯齿开关（显示解析后的实际生效值）
+        if (document.getElementById('zigzagTopEdge') || document.getElementById('zigzagBottomEdge')) {
+            syncZigzagEdgeControls();
         }
         
         // 设置小票信息字段
@@ -4018,7 +4105,10 @@ function applyReceiptTheme(themeName) {
     if (isCustomTheme) {
         applyCustomThemeStyles(themeName);
     }
-    
+
+    // 锯齿开关跟随主题默认变化（未手动设置时），同步面板显示
+    syncZigzagEdgeControls();
+
     // 重新应用字体设置（确保主题字体生效）
     applyFontSettings();
     
@@ -4050,7 +4140,8 @@ function clearReceiptCustomization() {
             headerImageOriginal: null,
             showHeaderImage: true,
             headerImageWidth: 300,
-            zigzagEdge: true,
+            zigzagTopEdge: null,
+            zigzagBottomEdge: null,
             titleText: 'LIST',
             footerText1: '温馨提示',
             footerText2: '感谢惠顾',
@@ -9924,9 +10015,12 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const sameManualBase = prevManualBase != null && Math.abs(prevManualBase - totalBeforePlatformFee) < 0.005;
     const keepManualAgreed = hasManualAgreed && prevAgreed != null && (sameManualBase || sameBase);
     const agreedAmount = keepManualAgreed ? prevAgreed : null;
-    const platformFeeBase = (agreedAmount != null ? agreedAmount : totalBeforePlatformFee) * (platformFee / 100);
-    // 根据「是否四舍五入」开关决定取整方式：取整到元 或 保留两位小数
-    const platformFeeAmount = platformFeeRound ? Math.round(platformFeeBase) : Math.round(platformFeeBase * 100) / 100;
+    // 平台费按统一函数计算（支持分段费率），计费基数与旧逻辑一致：约定实收（无手动值时为报价金额）
+    const platformFeeAmount = calcPlatformFeeAmount(
+        (agreedAmount != null ? agreedAmount : totalBeforePlatformFee),
+        platformFeeObj,
+        platformFeeRound
+    );
     // 5. 客户实付 = 约定实收 + 平台费
     const finalTotal = (agreedAmount != null ? agreedAmount : totalBeforePlatformFee) + platformFeeAmount;
     
@@ -10021,6 +10115,10 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         totalOtherFees: totalOtherFees,
         platformFee: platformFee,
         platformFeeRound: platformFeeRound,
+        // 下单时快照分段费率规则，结算重算「新平台费」时按快照计算，不受后续设置修改影响
+        platformFeeRule: (platformFeeObj && Array.isArray(platformFeeObj.tiers))
+            ? { tiers: platformFeeObj.tiers.map(function (t) { return { upTo: (t && t.upTo != null) ? t.upTo : null, rate: (t && t.rate != null) ? t.rate : 0 }; }) }
+            : null,
         platformFeeAmount: platformFeeAmount,
         productPrices: productPrices,
         giftPrices: giftPrices,
@@ -10142,6 +10240,25 @@ function getReceiptZigzagColor(themeId) {
     return builtinBg[themeId] || '#fdfdfd';
 }
 
+// 解析上下锯齿开关：字段为 null/未设置时跟随主题默认
+// 主题默认规则：温馨主题（warm）无锯齿；其他主题（含自定义）仅下锯齿
+function resolveReceiptZigzagEdges(themeId) {
+    const c = defaultSettings.receiptCustomization || {};
+    const themeDefaultBottom = themeId === 'warm' ? false : true;
+    const top = typeof c.zigzagTopEdge === 'boolean' ? c.zigzagTopEdge : false;
+    const bottom = typeof c.zigzagBottomEdge === 'boolean' ? c.zigzagBottomEdge : themeDefaultBottom;
+    return { top, bottom };
+}
+
+// 同步设置面板中的锯齿开关显示状态（切主题时未手动设置的项跟随新主题默认）
+function syncZigzagEdgeControls() {
+    const edges = resolveReceiptZigzagEdges((defaultSettings.receiptCustomization || {}).theme || 'classic');
+    const topToggle = document.getElementById('zigzagTopEdge');
+    const bottomToggle = document.getElementById('zigzagBottomEdge');
+    if (topToggle) topToggle.checked = edges.top;
+    if (bottomToggle) bottomToggle.checked = edges.bottom;
+}
+
 // 构建底部锯齿票根（撕边）
 function buildReceiptZigzagHtml(position, color) {
     const width = 400;
@@ -10183,11 +10300,16 @@ function generateQuote() {
     const currentTheme = defaultSettings.receiptCustomization.theme || 'classic';
     const themeClass = `receipt-theme-${currentTheme}`;
     
-    // 底部锯齿票根：撕边，导出图不额外留白
-    const zigzagEnabled = defaultSettings.receiptCustomization.zigzagEdge !== false;
+    // 上下锯齿票根：null 时跟随主题默认（温馨主题无锯齿，其他主题仅下锯齿），导出图不额外留白
+    const resolvedZigzag = resolveReceiptZigzagEdges(currentTheme);
+    const zigzagTopEnabled = resolvedZigzag.top;
+    const zigzagEnabled = resolvedZigzag.bottom;
 
     // 生成HTML结构 - 使用购物小票样式
-    let html = `<div class="receipt-shell${zigzagEnabled ? ' receipt-shell-zigzag' : ''}">`;
+    let html = `<div class="receipt-shell${(zigzagTopEnabled || zigzagEnabled) ? ' receipt-shell-zigzag' : ''}${zigzagTopEnabled ? ' receipt-shell-top-zigzag' : ''}${zigzagEnabled ? ' receipt-shell-bottom-zigzag' : ''}">`;
+    if (zigzagTopEnabled) {
+        html += buildReceiptZigzagHtml('top', getReceiptZigzagColor(currentTheme));
+    }
     html += `<div class="receipt ${themeClass}">`;
     
     // 添加头部图片（如果设置了）
@@ -11673,8 +11795,8 @@ function generateQuote() {
     // 平台费 = 约定实收×费率（平台收取，不经过我手）
     if (quoteData.platformFeeAmount > 0) {
         summaryHasRows = true;
-        const platformFeeRate = quoteData.platformFee || 0;
-        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRate}%（平台收取）</div><div class="receipt-summary-value">+${getCurrencySymbol()}${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
+        const platformFeeRateText = formatPlatformFeeRateText(getPlatformFeeObjFromQuote(quoteData));
+        html += `<div class="receipt-summary-row"><div class="receipt-summary-label">平台费 ${platformFeeRateText}（平台收取）</div><div class="receipt-summary-value">+${getCurrencySymbol()}${quoteData.platformFeeAmount.toFixed(2)}</div></div>`;
         // 客户实付 = 约定实收 + 平台费
         var customerPays = quoteData.finalTotal != null ? quoteData.finalTotal : (agreed + quoteData.platformFeeAmount);
         html += `<div class="receipt-total"><div class="receipt-summary-label">实付金额</div><div class="receipt-summary-value">${getCurrencySymbol()}${customerPays.toFixed(2)}</div></div>`;
@@ -11868,7 +11990,7 @@ function generateQuote() {
             html += `</div>`;
             html += `</div>`;
             html += `</div>`; // 闭合小票本体
-            // 收尾：底部锯齿 + 票根外壳闭合
+            // 收尾：底部锯齿 + 票根外壳闭合（顶部锯齿已在外壳开头渲染）
             if (zigzagEnabled) {
                 html += buildReceiptZigzagHtml('bottom', getReceiptZigzagColor(currentTheme));
             }
@@ -12138,10 +12260,8 @@ function roundAgreedAmount(mode) {
     quoteData.agreedAmount = Math.max(0, val);
     quoteData.hasManualAgreed = true;
     quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
-    // 平台费 = 约定实收×费率，客户实付 = 约定实收+平台费
-    var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
-    var _pfBase = quoteData.agreedAmount * rate;
-    quoteData.platformFeeAmount = quoteData.platformFeeRound ? Math.round(_pfBase) : Math.round(_pfBase * 100) / 100;
+    // 平台费 = 统一函数按（分段）费率重算，客户实付 = 约定实收+平台费
+    quoteData.platformFeeAmount = calcPlatformFeeAmount(quoteData.agreedAmount, getPlatformFeeObjFromQuote(quoteData), quoteData.platformFeeRound);
     quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
     updateAgreedAmountBar();
     generateQuote();
@@ -12257,9 +12377,7 @@ function updateAgreedAmountBar() {
             quoteData.agreedAmount = v;
             quoteData.hasManualAgreed = true;
             quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
-            var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
-            var _pfBase = quoteData.agreedAmount * rate;
-            quoteData.platformFeeAmount = quoteData.platformFeeRound ? Math.round(_pfBase) : Math.round(_pfBase * 100) / 100;
+            quoteData.platformFeeAmount = calcPlatformFeeAmount(quoteData.agreedAmount, getPlatformFeeObjFromQuote(quoteData), quoteData.platformFeeRound);
             quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
             generateQuote();
             syncReceiptDrawerContent();
@@ -13223,9 +13341,7 @@ function saveToHistory() {
             quoteData.agreedAmount = av;
             quoteData.hasManualAgreed = true;
             quoteData.manualAgreedBase = quoteData.totalBeforePlatformFee != null ? Number(quoteData.totalBeforePlatformFee) : null;
-            var rate = (quoteData.platformFee != null ? quoteData.platformFee : 0) / 100;
-            var _pfBase = quoteData.agreedAmount * rate;
-            quoteData.platformFeeAmount = quoteData.platformFeeRound ? Math.round(_pfBase) : Math.round(_pfBase * 100) / 100;
+            quoteData.platformFeeAmount = calcPlatformFeeAmount(quoteData.agreedAmount, getPlatformFeeObjFromQuote(quoteData), quoteData.platformFeeRound);
             quoteData.finalTotal = quoteData.agreedAmount + quoteData.platformFeeAmount;
         }
     }
@@ -17913,7 +18029,7 @@ function settlementUpdateNormalPreview(skipAmountUpdate) {
         : (item.totalBeforePlatformFee != null
             ? Number(item.totalBeforePlatformFee)
             : (item.finalTotal != null && item.platformFeeAmount != null ? Number(item.finalTotal) - Number(item.platformFeeAmount) : Number(item.finalTotal || 0)));
-    var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
+    var platformFeeObjForCalc = getPlatformFeeObjFromQuote(item);
     var hasPlatformFee = (item.platformFeeAmount || 0) > 0;
     var deposit = Number(item.depositReceived || 0);
     if (!isFinite(deposit) || deposit < 0) deposit = 0;
@@ -17959,7 +18075,7 @@ function settlementUpdateNormalPreview(skipAmountUpdate) {
     var receivableThisTime = Math.max(0, receipt - deposit);
     if (amountEl && !skipAmountUpdate) amountEl.value = receivableThisTime.toFixed(2);
     var currentReceipt = amountEl ? (parseFloat(amountEl.value) || receivableThisTime) : receivableThisTime;
-    var newPlatformFee = hasPlatformFee ? Math.round(currentReceipt * platformFeePct * 100) / 100 : 0;
+    var newPlatformFee = hasPlatformFee ? calcPlatformFeeAmount(currentReceipt, platformFeeObjForCalc, item.platformFeeRound === true) : 0;
     if (newPlatformEl) {
         if (hasPlatformFee) {
             newPlatformEl.textContent = '新平台费：' + getCurrencySymbol() + newPlatformFee.toFixed(2);
@@ -18311,7 +18427,7 @@ function settlementConfirm() {
             discountReasons.push(otherEntry);
         }
         var receivable = item.totalBeforePlatformFee != null ? item.totalBeforePlatformFee : (item.finalTotal != null && item.platformFeeAmount != null ? item.finalTotal - item.platformFeeAmount : (item.finalTotal || 0));
-        var platformFeePct = (item.platformFee != null ? item.platformFee : 0) / 100;
+        var platformFeeObjForCalc = getPlatformFeeObjFromQuote(item);
         var totalSubtract = 0;
         var productRate = 1;
         discountReasons.forEach(function (e) {
@@ -18338,7 +18454,7 @@ function settlementConfirm() {
         if (!isFinite(deposit) || deposit < 0) deposit = 0;
         var receiptThisTime = amountEl ? (parseFloat(amountEl.value) || Math.max(0, receiptTotal - deposit)) : Math.max(0, receiptTotal - deposit);
         receiptThisTime = Math.max(0, receiptThisTime);
-        var newPlatformFee = (item.platformFeeAmount || 0) > 0 ? Math.round(receiptThisTime * platformFeePct * 100) / 100 : undefined;
+        var newPlatformFee = (item.platformFeeAmount || 0) > 0 ? calcPlatformFeeAmount(receiptThisTime, platformFeeObjForCalc, item.platformFeeRound === true) : undefined;
         item.settlement = {
             type: 'normal',
             amount: receiptThisTime,
@@ -19915,6 +20031,39 @@ function updatePlatformFee(type, value) {
         defaultSettings.platformFees[type] = { value: parseFloat(value) || 0, name: type, round: false };
     } else {
         defaultSettings.platformFees[type].value = parseFloat(value) || 0;
+    }
+    // 分段模式下，value 即第一段费率，需保持与 tiers[0].rate 同步
+    var obj = defaultSettings.platformFees[type];
+    if (Array.isArray(obj.tiers) && obj.tiers.length && obj.tiers[0]) {
+        obj.tiers[0].rate = obj.value;
+    }
+}
+
+// 开启/关闭分段费率：开启时默认「不超过 500 按当前费率，超出部分也按当前费率」，可在下方输入框调整
+function updatePlatformFeeTiered(type, on) {
+    var obj = defaultSettings.platformFees[type];
+    if (!obj || typeof obj !== 'object') return;
+    if (on) {
+        if (!Array.isArray(obj.tiers) || !obj.tiers.length) {
+            var firstRate = getCoefficientValue(obj) || 0;
+            obj.tiers = [ { upTo: 500, rate: firstRate }, { upTo: null, rate: firstRate } ];
+        }
+    } else {
+        delete obj.tiers;
+    }
+    renderPlatformFees();
+}
+
+// 更新分段参数：field='upTo' 为分段阈值，field='rate' 为超出部分费率
+function updatePlatformFeeTier(type, field, val) {
+    var obj = defaultSettings.platformFees[type];
+    if (!obj || typeof obj !== 'object' || !Array.isArray(obj.tiers) || !obj.tiers.length) return;
+    var v = parseFloat(val);
+    if (!isFinite(v) || v < 0) v = 0;
+    if (field === 'upTo') {
+        obj.tiers[0].upTo = v;
+    } else if (field === 'rate') {
+        obj.tiers[obj.tiers.length - 1].rate = v;
     }
 }
 
@@ -23446,11 +23595,11 @@ function updateCalculatorBuiltinSelects() {
                         keys.push(k);
                         const escapedName = (nm || k).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                         if (p.key === 'platformFees') {
-                            // 未配置手续费（v 为 0 或无效）时，不显示“*0”
+                            // 未配置手续费（v 为 0 或无效）时，不显示“*0”；分段费率显示如 *≤500:5% / >500:1%
                             if (!isFinite(v) || v === 0) {
                                 html += '<option value="' + k + '">' + escapedName + '</option>';
                             } else {
-                                html += '<option value="' + k + '">' + escapedName + '*' + v + '%</option>';
+                                html += '<option value="' + k + '">' + escapedName + '*' + formatPlatformFeeRateText(o) + '</option>';
                             }
                         } else {
                             html += '<option value="' + k + '">' + escapedName + '*' + (v || 1) + '</option>';
@@ -23875,25 +24024,54 @@ function renderPlatformFees() {
         const roundOn = item && typeof item === 'object' && item.round !== undefined
             ? !!item.round
             : (key === 'mihua');
-        
+        // 分段费率：tiers = [{ upTo: 阈值, rate: 第一段费率 }, { upTo: null, rate: 超出部分费率 }]
+        const tiered = !!(item && typeof item === 'object' && Array.isArray(item.tiers) && item.tiers.length);
+        let tierThreshold = 500;
+        let tierAboveRate = value;
+        if (tiered) {
+            const capped = item.tiers.find(t => t && t.upTo != null && isFinite(Number(t.upTo)));
+            const uncapped = item.tiers.find(t => t && t.upTo == null);
+            if (capped) tierThreshold = Number(capped.upTo);
+            if (uncapped && uncapped.rate != null) tierAboveRate = Number(uncapped.rate);
+        }
+        const safeKey = key.replace(/'/g, "\\'");
+
         html += `
             <div class="mb-2 d-flex items-center gap-2">
-                <input type="text" value="${escapedName}" class="flex-1" 
-                       onchange="updatePlatformFeeName('${key}', this.value)" placeholder="名称">
-                <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
-                       onchange="updatePlatformFee('${key}', this.value)" aria-label="手续费比例">
+                <input type="text" value="${escapedName}" class="flex-1"
+                       onchange="updatePlatformFeeName('${safeKey}', this.value)" placeholder="名称">
+                <input type="number" value="${value}" min="0" step="0.1" class="w-80"
+                       onchange="updatePlatformFee('${safeKey}', this.value)" aria-label="手续费比例" title="${tiered ? '第一段（不超过阈值部分）费率' : '手续费比例'}">
                 <span class="coefficient-percent-suffix" aria-hidden="true">%</span>
                 <label class="platform-fee-round-label" title="开启后手续费四舍五入取整到元，关闭则保留两位小数">
-                    <input type="checkbox" ${roundOn ? 'checked' : ''} 
-                           onchange="updatePlatformFeeRound('${key}', this.checked)">
+                    <input type="checkbox" ${roundOn ? 'checked' : ''}
+                           onchange="updatePlatformFeeRound('${safeKey}', this.checked)">
                     <span>取整</span>
                 </label>
-                <button class="icon-action-btn delete" onclick="deleteCoefficient('platform', '${key}')" aria-label="删除" title="删除">
+                <label class="platform-fee-round-label" title="开启后按分段计费：不超过阈值的部分按左侧费率，超出部分按第二段费率">
+                    <input type="checkbox" ${tiered ? 'checked' : ''}
+                           onchange="updatePlatformFeeTiered('${safeKey}', this.checked)">
+                    <span>分段</span>
+                </label>
+                <button class="icon-action-btn delete" onclick="deleteCoefficient('platform', '${safeKey}')" aria-label="删除" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
+        if (tiered) {
+            html += `
+            <div class="mb-2 d-flex items-center gap-2" style="padding-left:8px;">
+                <span style="font-size:12px;color:var(--color-text-tertiary,#888);white-space:nowrap;">分段：≤</span>
+                <input type="number" value="${tierThreshold}" min="0" step="1" class="w-80"
+                       onchange="updatePlatformFeeTier('${safeKey}', 'upTo', this.value)" aria-label="分段阈值" title="不超过该金额的部分按第一段费率">
+                <span style="font-size:12px;color:var(--color-text-tertiary,#888);white-space:nowrap;">元；超出</span>
+                <input type="number" value="${tierAboveRate}" min="0" step="0.1" class="w-80"
+                       onchange="updatePlatformFeeTier('${safeKey}', 'rate', this.value)" aria-label="超出部分费率">
+                <span class="coefficient-percent-suffix" aria-hidden="true">%</span>
+            </div>
+            `;
+        }
     }
     html += '<button type="button" class="btn secondary mt-2" onclick="addPlatformFeeOption()">+ 添加</button>';
     container.innerHTML = html;

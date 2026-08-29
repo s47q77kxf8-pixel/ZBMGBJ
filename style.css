@@ -4376,6 +4376,23 @@ html.theme-dark .setting-hint strong {
     margin-top: 0;
 }
 
+/* 顶部锯齿条紧贴票体顶边 */
+.receipt-shell-zigzag .receipt-zigzag-top {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 0;
+}
+
+/* 有锯齿的一侧票体圆角取直，避免圆角处透出缺口 */
+.receipt-shell-top-zigzag .receipt {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+.receipt-shell-bottom-zigzag .receipt {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
 /* 小票头图/尾图：左右满版，上下保留留白 */
 .receipt-header-image,
 .receipt-footer-image {

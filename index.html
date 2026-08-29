@@ -868,14 +868,21 @@
                                         <div class="form-group">
                                             <div class="checkbox-row">
                                                 <div class="checkbox-item">
-                                                    <span>底部锯齿票根</span>
+                                                    <span>上边缘锯齿</span>
                                                     <label class="custom-toggle">
-                                                        <input type="checkbox" id="zigzagEdge" onchange="updateReceiptCustomization('zigzagEdge', this.checked)" checked>
+                                                        <input type="checkbox" id="zigzagTopEdge" onchange="updateReceiptCustomization('zigzagTopEdge', this.checked)">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="checkbox-item">
+                                                    <span>下边缘锯齿</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="zigzagBottomEdge" onchange="updateReceiptCustomization('zigzagBottomEdge', this.checked)">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                             </div>
-                                            <small class="text-gray">底部边缘呈锯齿状，保存/复制图片时不含额外留白</small>
+                                            <small class="text-gray">上下边缘可分别设置锯齿撕边；温馨主题默认无锯齿，其他主题默认仅下边缘锯齿，手动开关后不再随主题变化</small>
                                         </div>
                                     </div>
                                 </div>
@@ -3143,7 +3150,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260827-qty-value-align-gift"></script>
+    <script src="script.js?v=20260827-zigzag-top-bottom-edges"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {
