@@ -1321,6 +1321,7 @@ const defaultSettings = {
         updatedAt: 0,
         zigzagTopEdge: null,  // 顶部锯齿：true/false=手动设置；null=跟随主题默认（默认无顶锯齿）
         zigzagBottomEdge: null,  // 底部锯齿：true/false=手动设置；null=跟随主题默认（温馨主题无锯齿，其他主题有下锯齿）
+        zigzagStyle: 'point',  // 锯齿形状：'point'=尖角撕边；'round'=圆角花边
         headerImage: null,  // 头部图片的base64数据
         showHeaderImage: true,  // 小票是否显示头部图片
         headerImageWidth: 300,  // 头部图片显示宽度（最大400px）
@@ -1928,6 +1929,7 @@ function loadData() {
                     fontSettings: {
                         fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
                         fontSize: 13,
+                        titleFontSize: 18,
                         fontWeight: 400,
                         lineHeight: 1.3,
                         categoryFonts: {
@@ -1959,6 +1961,7 @@ function loadData() {
                     defaultSettings.receiptCustomization.fontSettings = {
                         fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
                         fontSize: 13,
+                        titleFontSize: 18,
                         fontWeight: 400,
                         lineHeight: 1.3,
                         categoryFonts: {
@@ -1970,6 +1973,10 @@ function loadData() {
                             footer: ''
                         }
                     };
+                }
+                // 标题字号兼容：旧数据无 titleFontSize 时默认 18
+                if (!isFinite(Number(defaultSettings.receiptCustomization.fontSettings.titleFontSize))) {
+                    defaultSettings.receiptCustomization.fontSettings.titleFontSize = 18;
                 }
                 // 确保图片宽度设置存在
                 if (typeof defaultSettings.receiptCustomization.headerImageWidth !== 'number') {
@@ -1991,6 +1998,10 @@ function loadData() {
                 }
                 if (typeof defaultSettings.receiptCustomization.zigzagBottomEdge !== 'boolean' && defaultSettings.receiptCustomization.zigzagBottomEdge !== null) {
                     defaultSettings.receiptCustomization.zigzagBottomEdge = (defaultSettings.receiptCustomization.zigzagEdge === false) ? false : null;
+                }
+                // 锯齿形状兼容：旧数据无 zigzagStyle 时默认尖角
+                if (defaultSettings.receiptCustomization.zigzagStyle !== 'round') {
+                    defaultSettings.receiptCustomization.zigzagStyle = 'point';
                 }
             }
 
@@ -2905,6 +2916,13 @@ function updateReceiptFont(field, value) {
     } else {
         defaultSettings.receiptCustomization.fontSettings[field] = field === 'fontSize' || field === 'fontWeight' ? parseInt(value) : (field === 'lineHeight' ? parseFloat(value) : value);
     }
+    // 标题字号：整数并限制在 10~48px，非法输入回退默认 18
+    if (field === 'titleFontSize') {
+        let titleSize = parseInt(value, 10);
+        if (!isFinite(titleSize)) titleSize = 18;
+        titleSize = Math.max(10, Math.min(48, titleSize));
+        defaultSettings.receiptCustomization.fontSettings.titleFontSize = titleSize;
+    }
     
     saveData();
     
@@ -2920,6 +2938,7 @@ function loadFontSettings() {
     const fontSettings = defaultSettings.receiptCustomization.fontSettings || {
         fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
         fontSize: 13,
+        titleFontSize: 18,
         fontWeight: 400,
         lineHeight: 1.3,
         categoryFonts: {
@@ -2976,6 +2995,10 @@ function loadFontSettings() {
     
     if (document.getElementById('receiptFontSize')) {
         document.getElementById('receiptFontSize').value = fontSettings.fontSize;
+    }
+    if (document.getElementById('receiptTitleFontSize')) {
+        const tSize = Number(fontSettings.titleFontSize);
+        document.getElementById('receiptTitleFontSize').value = isFinite(tSize) && tSize > 0 ? tSize : 18;
     }
     if (document.getElementById('receiptFontWeight')) {
         document.getElementById('receiptFontWeight').value = fontSettings.fontWeight;
@@ -3065,6 +3088,7 @@ function applyFontSettings() {
     const fontSettings = defaultSettings.receiptCustomization.fontSettings || {
         fontFamily: 'Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace',
         fontSize: 13,
+        titleFontSize: 18,
         fontWeight: 400,
         lineHeight: 1.3,
         categoryFonts: {
@@ -3131,12 +3155,15 @@ function applyFontSettings() {
     }
 
     // 字号按整张小票等比例缩放，保持原本标题/正文/金额/尾注的层级比例
+    // 标题字号可独立设置（默认 18px），同样参与整票缩放
     const baseFontSize = Number(fontSettings.fontSize);
     if (isFinite(baseFontSize) && baseFontSize > 0) {
         const ratio = baseFontSize / 13;
         const scaled = (pxValue) => `${Number((pxValue * ratio).toFixed(2))}px`;
+        const titleSizeNum = Number(fontSettings.titleFontSize);
+        const titleBase = isFinite(titleSizeNum) && titleSizeNum > 0 ? titleSizeNum : 18;
         styleContent += `
-            .receipt .receipt-title { font-size: ${scaled(18)} !important; }
+            .receipt .receipt-title { font-size: ${scaled(titleBase)} !important; }
             .receipt .receipt-text-sm,
             .receipt .receipt-sub-row { font-size: ${scaled(11)} !important; }
             .receipt .receipt-row,
@@ -3999,6 +4026,11 @@ function loadReceiptCustomizationToForm() {
         if (document.getElementById('zigzagTopEdge') || document.getElementById('zigzagBottomEdge')) {
             syncZigzagEdgeControls();
         }
+        // 设置锯齿形状
+        const zigzagStyleSel = document.getElementById('zigzagStyle');
+        if (zigzagStyleSel) {
+            zigzagStyleSel.value = settings.zigzagStyle === 'round' ? 'round' : 'point';
+        }
         
         // 设置小票信息字段
         if (settings.receiptInfo) {
@@ -4142,6 +4174,7 @@ function clearReceiptCustomization() {
             headerImageWidth: 300,
             zigzagTopEdge: null,
             zigzagBottomEdge: null,
+            zigzagStyle: 'point',
             titleText: 'LIST',
             footerText1: '温馨提示',
             footerText2: '感谢惠顾',
@@ -10259,20 +10292,48 @@ function syncZigzagEdgeControls() {
     if (bottomToggle) bottomToggle.checked = edges.bottom;
 }
 
-// 构建底部锯齿票根（撕边）
+// 构建锯齿票根（撕边）
+// 形状：'point'=尖角（三角锯齿，polygon 实现）；'round'=圆角花边（半圆扇贝边，path 圆弧实现）
 function buildReceiptZigzagHtml(position, color) {
     const width = 400;
-    const height = 10;
+    const toothDepth = 10;
+    // 靠票体一侧多画 1px 纯色填充条：CSS 用 margin 上叠 1px 消除票体接缝时，
+    // 重叠部分只消耗填充条，齿形深度保持完整 10px 不被裁切。
+    // 填充条再向齿区多压 1px（重叠而非相接）：实时渲染（尤其非整数 DPR）下，
+    // 相接边缘的抗锯齿会露出细缝，同色重叠则混合后仍为纯色
+    const overlap = 1;
+    const stripDepth = overlap + 1;
+    const height = toothDepth + overlap;
     const tooth = 20;
-    const pts = [];
-    for (let x = 0; x < width; x += tooth) {
-        if (position === 'bottom') {
-            pts.push(`${x},0`, `${x + tooth / 2},${height}`, `${x + tooth},0`);
-        } else {
-            pts.push(`${x},${height}`, `${x + tooth / 2},0`, `${x + tooth},${height}`);
+    const style = (defaultSettings.receiptCustomization || {}).zigzagStyle === 'round' ? 'round' : 'point';
+    let svgContent = '';
+    if (style === 'round') {
+        // 圆角花边：相邻半圆弧组成扇贝边，弧深与尖角齿深一致（10px）
+        const r = tooth / 2;
+        // 底边：弧向 y 正方向（向下）凸出 → sweep=0；顶边：弧向 y 负方向（向上）凸出 → sweep=1
+        const sweep = position === 'bottom' ? 0 : 1;
+        const baseY = position === 'bottom' ? overlap : toothDepth;
+        let d = `M 0 ${baseY}`;
+        for (let x = 0; x < width; x += tooth) {
+            d += ` A ${r} ${r} 0 0 ${sweep} ${x + tooth} ${baseY}`;
         }
+        d += ' Z';
+        svgContent = `<path d="${d}" fill="${color}"/>`;
+    } else {
+        const pts = [];
+        for (let x = 0; x < width; x += tooth) {
+            if (position === 'bottom') {
+                pts.push(`${x},${overlap}`, `${x + tooth / 2},${height}`, `${x + tooth},${overlap}`);
+            } else {
+                pts.push(`${x},${toothDepth}`, `${x + tooth / 2},0`, `${x + tooth},${toothDepth}`);
+            }
+        }
+        svgContent = `<polygon points="${pts.join(' ')}" fill="${color}"/>`;
     }
-    return `<svg class="receipt-zigzag receipt-zigzag-${position}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false"><polygon points="${pts.join(' ')}" fill="${color}"/></svg>`;
+    // 填充条：底边在顶部（y 0..stripDepth），顶边在底部（y toothDepth-1..height）
+    const fillerY = position === 'bottom' ? 0 : toothDepth - 1;
+    svgContent += `<rect x="0" y="${fillerY}" width="${width}" height="${stripDepth}" fill="${color}"/>`;
+    return `<svg class="receipt-zigzag receipt-zigzag-${position}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${svgContent}</svg>`;
 }
 
 // 生成报价单

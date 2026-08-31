@@ -1,3 +1,8 @@
+/* 在线字体：Zfull-GB 打字机点阵字（CDN，免导入自动生效；离线时自动回退到本地字体栈） */
+@import url('https://db.onlinewebfonts.com/c/c84d1f384ae913840e1595930edc20d6?family=Zfull-GB');
+/* 在线字体：霞鹜文楷 Lite（CDN，兜底用） */
+@import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont/style.css');
+
 :root {
     /* 主色改为柔和黑色系 */
     --primary-color: #111111;
@@ -11,6 +16,7 @@
     /* 背景与卡片 */
     --bg-color: #ffffff;
     --card-bg: #ffffff;
+    --bg-secondary: #f5f5f5;
     --border-color: #e5e7eb;
 
     /* 阴影稍微柔和一点，提升高级感 */
@@ -45,6 +51,7 @@ html.theme-dark {
 
     --bg-color: #18181b;
     --card-bg: #27272a;
+    --bg-secondary: #27272a;
     --border-color: #3f3f46;
 
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
@@ -453,9 +460,11 @@ html.theme-dark .nav-btn-plus:hover {
     background: #60a5fa;
     color: #fff;
 }
-html.theme-dark .nav-btn:focus,
+html.theme-dark .nav-btn:focus {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
 html.theme-dark .nav-btn:focus-visible {
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.28);
 }
 /* 黑夜下 Today 按钮显式设置颜色，避免首次切黑夜时变量未生效导致不可见 */
 html.theme-dark .schedule-title-today-pill {
@@ -4360,27 +4369,27 @@ html.theme-dark .setting-hint strong {
 .receipt-zigzag {
     display: block;
     width: 400px;
-    height: 10px;
+    height: 11px;
 }
 
 .receipt-zigzag svg {
     display: block;
     width: 400px;
-    height: 10px;
+    height: 11px;
 }
 
-/* 底部锯齿条紧贴票体底边，不额外上叠 */
+/* 底部锯齿条紧贴票体底边，上叠 1px 消除票体与锯齿条之间的亚像素接缝 */
 .receipt-shell-zigzag .receipt-zigzag-bottom {
     position: relative;
     z-index: 1;
-    margin-top: 0;
+    margin-top: -1px;
 }
 
-/* 顶部锯齿条紧贴票体顶边 */
+/* 顶部锯齿条紧贴票体顶边，同样上叠 1px 防接缝（锯齿与票体同色，重叠不可见） */
 .receipt-shell-zigzag .receipt-zigzag-top {
     position: relative;
     z-index: 1;
-    margin-bottom: 0;
+    margin-bottom: -1px;
 }
 
 /* 有锯齿的一侧票体圆角取直，避免圆角处透出缺口 */
@@ -5384,15 +5393,16 @@ input:checked + .toggle-slider:before {
     --receipt-text: #5c1a1a;
     --receipt-border: none;
     --receipt-accent: #8b3e2f;
-    --receipt-font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Times New Roman', 'Georgia', 'Garamond', serif;
+    --receipt-font-family: 'Zfull-GB', '朝华打字机', '朝華打字機', 'ZhaohuaTypeWriter', 'ZhaohuaTypeWriter Light', 'Special Elite', '霞鹜文楷 Light', 'LXGW WenKai Light', 'LXGW WenKai Lite', '霞鹜文楷', 'LXGW WenKai', 'Times New Roman', 'Georgia', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(139, 62, 47, 0.15);
     --receipt-title-color: #5c1a1a;
     --receipt-divider-color: #c89b6e;
 }
 .receipt.receipt-theme-vintage {
-    /* 西文字体在前，英文与数字用 Times/Georgia；中文用后面宋体/衬线 */
-    font-family: 'Times New Roman', 'Georgia', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', serif !important;
+    /* 打字机复古风：首选 Zfull-GB（打字机点阵字，CDN 在线免下载）；未命中时回退朝华打字机/Special Elite（英文）/霞鹜文楷（中文，CDN Lite 版），最后回退衬线 */
+    font-family: 'Zfull-GB', '朝华打字机', '朝華打字機', 'ZhaohuaTypeWriter', 'ZhaohuaTypeWriter Light', 'Special Elite', '霞鹜文楷 Light', 'LXGW WenKai Light', 'LXGW WenKai Lite', '霞鹜文楷', 'LXGW WenKai', 'Times New Roman', 'Georgia', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', serif !important;
+    font-weight: 300;
 }
 
 /* 粉樱主题（sakura）：优雅衬线字体，柔美精致 */
@@ -8283,6 +8293,12 @@ html.theme-dark .schedule-todo-qty-value {
     background: var(--primary-color, #3b82f6);
     color: #fff;
     border-color: var(--primary-color, #3b82f6);
+}
+/* 黑夜模式：选中态统一为蓝底白字，避免近白底配白字看不清 */
+html.theme-dark .folder-time-btn.active {
+    background: #3b82f6;
+    color: #fff;
+    border-color: #3b82f6;
 }
 
 .modal-schedule {
@@ -11985,9 +12001,15 @@ html.theme-dark .convert-menu {
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
     }
 
-    .nav-btn:focus,
+    /* 桌面侧栏：焦点环改细（鼠标点击 1px、键盘 Tab 2px），选中态主要靠底色区分 */
+    .nav-btn:focus {
+        outline: none;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+    }
+
     .nav-btn:focus-visible {
-        box-shadow: 0 0 0 3px var(--primary-color);
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.28);
     }
 
     /* 抽屉：从侧栏右侧开始，全高展示 */

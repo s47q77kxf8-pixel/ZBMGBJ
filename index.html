@@ -861,31 +861,6 @@
                                 <button class="tab-btn" onclick="switchReceiptTab('font')">字体</button>
                             </div>
                             <div class="tab-content active" id="settings-tab">
-                                <!-- 小票版式设置 -->
-                                <div class="section">
-                                    <h3>小票版式</h3>
-                                    <div class="form-row">
-                                        <div class="form-group">
-                                            <div class="checkbox-row">
-                                                <div class="checkbox-item">
-                                                    <span>上边缘锯齿</span>
-                                                    <label class="custom-toggle">
-                                                        <input type="checkbox" id="zigzagTopEdge" onchange="updateReceiptCustomization('zigzagTopEdge', this.checked)">
-                                                        <span class="toggle-slider"></span>
-                                                    </label>
-                                                </div>
-                                                <div class="checkbox-item">
-                                                    <span>下边缘锯齿</span>
-                                                    <label class="custom-toggle">
-                                                        <input type="checkbox" id="zigzagBottomEdge" onchange="updateReceiptCustomization('zigzagBottomEdge', this.checked)">
-                                                        <span class="toggle-slider"></span>
-                                                    </label>
-                                                </div>
-                                            </div>
-                                            <small class="text-gray">上下边缘可分别设置锯齿撕边；温馨主题默认无锯齿，其他主题默认仅下边缘锯齿，手动开关后不再随主题变化</small>
-                                        </div>
-                                    </div>
-                                </div>
                                 <!-- 小票头部设置 -->
                                 <div class="section">
                                     <h3>小票头部</h3>
@@ -1051,6 +1026,39 @@
                             </div>
                             <!-- 主题标签页 -->
                             <div class="tab-content" id="theme-tab">
+                                <div class="section">
+                                    <h3>锯齿票根</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <div class="checkbox-row">
+                                                <div class="checkbox-item">
+                                                    <span>上边缘锯齿</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="zigzagTopEdge" onchange="updateReceiptCustomization('zigzagTopEdge', this.checked)">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="checkbox-item">
+                                                    <span>下边缘锯齿</span>
+                                                    <label class="custom-toggle">
+                                                        <input type="checkbox" id="zigzagBottomEdge" onchange="updateReceiptCustomization('zigzagBottomEdge', this.checked)">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="form-row" style="margin-top:0.5rem;">
+                                                <div class="form-group">
+                                                    <label for="zigzagStyle">锯齿形状</label>
+                                                    <select id="zigzagStyle" onchange="updateReceiptCustomization('zigzagStyle', this.value)">
+                                                        <option value="point">尖角撕边</option>
+                                                        <option value="round">圆角花边</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <small class="text-gray">上下边缘可分别设置锯齿；温馨主题默认无锯齿，其他主题默认仅下边缘锯齿，手动开关后不再随主题变化。锯齿形状对上下边缘同时生效</small>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="section">
                                     <h3>自定义主题</h3>
                                     <div class="form-row">
@@ -1302,6 +1310,10 @@
                                         <div class="form-group">
                                             <label for="receiptFontSize">字号 (px)</label>
                                             <input type="number" id="receiptFontSize" value="13" min="10" max="20" step="1" onchange="updateReceiptFont('fontSize', this.value)">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="receiptTitleFontSize">标题字号 (px)</label>
+                                            <input type="number" id="receiptTitleFontSize" value="18" min="10" max="48" step="1" onchange="updateReceiptFont('titleFontSize', this.value)">
                                         </div>
                                         <div class="form-group">
                                             <label for="receiptFontWeight">字重</label>
