@@ -7,7 +7,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260827-receipt-info-lang-align-v2">
+    <link rel="stylesheet" href="style.css?v=20260908-0644">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -1868,6 +1868,14 @@
                         <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
                     </button>
                     <hr style="margin:8px 0;border:0;border-top:1px solid var(--border-color);">
+                    <button type="button" class="btn secondary w-full" onclick="openChangelog()" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 12px;border:none;background:transparent;box-shadow:none;text-align:left;color:inherit;">
+                        <span style="font-size:15px;font-weight:600;">更新日志</span>
+                        <span style="display:flex;align-items:center;gap:8px;">
+                            <span id="changelogNewBadge" class="changelog-new-badge d-none">NEW</span>
+                            <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
+                        </span>
+                    </button>
+                    <hr style="margin:8px 0;border:0;border-top:1px solid var(--border-color);">
                     <button type="button" class="btn secondary w-full" onclick="openAnonymousFeedbackBoard()" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 12px;border:none;background:transparent;box-shadow:none;text-align:left;color:inherit;">
                         <span style="font-size:15px;font-weight:600;">意见反馈</span>
                         <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
@@ -3047,6 +3055,24 @@
     </div>
     <div id="globalToast" class="global-toast d-none"></div>
 
+    <!-- 更新日志 -->
+    <div id="changelogModal" class="history-record-modal d-none" aria-hidden="true">
+        <div class="history-record-overlay" onclick="closeChangelog()"></div>
+        <div class="history-record-content">
+            <div class="history-record-header">
+                <h2>更新日志</h2>
+                <button type="button" class="btn-icon btn--icon btn-close-flat" onclick="closeChangelog()" aria-label="关闭" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+            </div>
+            <div class="history-record-body">
+                <div id="changelogList"></div>
+                <p class="text-gray" style="font-size:0.85rem;margin-top:12px;">完整更新记录见「操作指南」或 README。</p>
+            </div>
+        </div>
+    </div>
+
     <!-- 匿名留言板 -->
     <div id="feedbackBoardModal" class="history-record-modal d-none" aria-hidden="true">
         <div class="history-record-overlay" onclick="closeAnonymousFeedbackBoard()"></div>
@@ -3162,7 +3188,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260827-zigzag-top-bottom-edges"></script>
+    <script src="script.js?v=20260908-0644"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

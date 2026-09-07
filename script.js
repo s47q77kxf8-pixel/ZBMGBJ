@@ -13127,6 +13127,93 @@ function deleteAnonymousFeedback(id) {
     });
 })();
 
+// 更新日志：版本号 + 最近更新内容 + 新版本提示
+const APP_VERSION = '20260908-0644';
+const APP_CHANGELOG = [
+    {
+        date: '2026-09-08',
+        items: [
+            '新增「更新日志」：我的页面可查看最近更新内容，发布新版后自动提示',
+            '优化发布机制：版本号随每次发布自动更新，确保所有用户都能看到最新内容',
+        ]
+    },
+    {
+        date: '2026-09-01',
+        items: [
+            '平台费支持分段费率；小票锯齿圆角与复古主题在线字体',
+            '修复小票制品行与赠品行数值位置不对齐的问题',
+            '制品/赠品加减号按钮圆形灰底样式统一、符号居中',
+        ]
+    },
+    {
+        date: '2026-07-14',
+        items: [
+            '追加单关联：原单与追加单双向关联，可跳转查看/取消关联',
+            '制品顺序调整：计算页制品卡片支持上移/下移',
+            '智能提取优化：别名映射支持多目标，匹配失败自动回退包含匹配',
+            '回收站优化：三行格式展示，显示排单自动生成 ID',
+            '统计页隐私保护：新增「隐藏金额」和「隐藏单主」按钮',
+            '数据分布排序：支持按名称/单数/金额排序',
+            'IP 名称归一化：自动提取 IP 中文核心部分',
+            '系数计算模式：加价类/折扣类支持乘法或加法模式',
+        ]
+    },
+];
+
+function renderChangelog(container) {
+    if (!container) return;
+    container.innerHTML = APP_CHANGELOG.map(function (rel) {
+        const items = (rel.items || []).map(function (it) { return '<li>' + it + '</li>'; }).join('');
+        return '<div class="changelog-release">' +
+            '<div class="changelog-release-head"><span class="changelog-date">' + rel.date + '</span></div>' +
+            '<ul class="changelog-items">' + items + '</ul>' +
+            '</div>';
+    }).join('');
+}
+
+function openChangelog() {
+    const modal = document.getElementById('changelogModal');
+    if (!modal) return;
+    renderChangelog(document.getElementById('changelogList'));
+    modal.classList.remove('d-none');
+    modal.setAttribute('aria-hidden', 'false');
+    const badge = document.getElementById('changelogNewBadge');
+    if (badge) badge.classList.add('d-none');
+    try { localStorage.setItem('mgLastSeenVersion', APP_VERSION); } catch (e) {}
+}
+
+function closeChangelog() {
+    const modal = document.getElementById('changelogModal');
+    if (!modal) return;
+    modal.classList.add('d-none');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function mgInitChangelog() {
+    renderChangelog(document.getElementById('changelogList'));
+    let lastSeen = '';
+    try { lastSeen = localStorage.getItem('mgLastSeenVersion') || ''; } catch (e) {}
+    if (lastSeen !== APP_VERSION) {
+        const badge = document.getElementById('changelogNewBadge');
+        if (badge) badge.classList.remove('d-none');
+        // 老用户升级后提示一次（首次使用不打扰）
+        if (lastSeen) {
+            setTimeout(function () {
+                showGlobalToast('应用已更新，点击「我的 → 更新日志」查看最新内容');
+            }, 1200);
+        }
+    }
+}
+
+(function mgChangelogInitRunner() {
+    function run() { try { mgInitChangelog(); } catch (e) {} }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', run);
+    } else {
+        run();
+    }
+})();
+
 // 网络守护：断网提示 + 手动重试 + 自动重连探测
 function mgInitNetworkGuard() {
     if (window.__mgNetworkGuardInited) return;

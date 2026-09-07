@@ -12048,3 +12048,49 @@ html.theme-dark .convert-menu {
         margin-left: var(--desktop-nav-width, 0px);
     }
 }
+
+/* 更新日志 */
+.changelog-new-badge {
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    line-height: 1.4;
+    animation: changelogBadgePulse 2s ease-in-out infinite;
+}
+@keyframes changelogBadgePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+}
+.changelog-release {
+    margin-bottom: 1.1rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.changelog-release:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+.changelog-release-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.changelog-date {
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+.changelog-items {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+.changelog-items li {
+    font-size: 0.88rem;
+    line-height: 1.65;
+    margin-bottom: 4px;
+    color: var(--text-color);
+}
