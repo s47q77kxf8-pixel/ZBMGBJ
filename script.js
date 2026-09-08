@@ -28,6 +28,7 @@ let selectedHistoryIds = new Set(); // 存储选中的历史记录ID
 let statsFocusedOrderIds = null; // 统计页“查看企划”后，记录页仅显示这些企划
 let statsFocusedLabel = ''; // 统计页“查看企划”后的筛选说明
 let templates = []; // 存储模板列表
+let customers = []; // 客户档案列表（localStorage 'customers'）
 let selectedPerItemExtraFeeIds = []; // 计算页全单级“每制品新增”勾选
 // ===== 制品/赠品「模块」分组（每个模块持独立的扩展加价/减价） =====
 let orderModules = [];   // [{ id, mtype:'product'|'gift', seq, symbol, upSelections:[], downSelections:[] }]
@@ -68,7 +69,11 @@ function pushOrderModule(m) {
         name: m.name || '',
         // 深拷贝系数选择，避免与历史记录的 modules 共享引用 —— 否则编辑时原地改动会污染原订单
         upSelections: Array.isArray(m.upSelections) ? m.upSelections.map(function (s) { return s && typeof s === 'object' ? Object.assign({}, s) : s; }) : [],
-        downSelections: Array.isArray(m.downSelections) ? m.downSelections.map(function (s) { return s && typeof s === 'object' ? Object.assign({}, s) : s; }) : []
+        downSelections: Array.isArray(m.downSelections) ? m.downSelections.map(function (s) { return s && typeof s === 'object' ? Object.assign({}, s) : s; }) : [],
+        // 组级同模优惠档位（null=未选，回退后台默认档位）
+        sameModelSelection: (m && m.sameModelSelection && typeof m.sameModelSelection === 'object')
+            ? Object.assign({}, m.sameModelSelection)
+            : null
     };
     orderModules.push(mod);
     return mod;
@@ -135,11 +140,14 @@ function resolveModuleCoefficient(g, key) {
     return { name: o.name || key, value: getCoefficientValue(o) || 1 };
 }
 // 生成某模块的加价类/折扣类下拉 HTML，模块级独立取值（无“跟随全局”）
+// 同模优惠档位同样下放到每个组（系数模式时显示，档位定义与默认档位在设置页后台）
 function buildModuleExpansionSelectsHtml(mod, currentUpIds, currentDownIds) {
     currentUpIds = currentUpIds || {};
     currentDownIds = currentDownIds || {};
     var groups = moduleCoefficientGroups();
-    if (!groups.up.length && !groups.down.length) return '';
+    var smObj = (defaultSettings && defaultSettings.sameModelCoefficients) || {};
+    var hasSm = defaultSettings && defaultSettings.sameModelMode !== 'minus' && Object.keys(smObj).length > 0;
+    if (!groups.up.length && !groups.down.length && !hasSm) return '';
     var h = '<div class="module-expansion-controls row-flex">';
     var renderGroup = function (side, g, curMap) {
         var keys = Object.keys(g.options || {});
@@ -161,6 +169,25 @@ function buildModuleExpansionSelectsHtml(mod, currentUpIds, currentDownIds) {
     };
     groups.up.forEach(function (g) { renderGroup('up', g, currentUpIds); });
     groups.down.forEach(function (g) { renderGroup('down', g, currentDownIds); });
+    // 组级同模优惠下拉（仅系数模式显示；默认取后台标记的默认档位）
+    if (hasSm) {
+        var smKeys = Object.keys(smObj).slice().sort(function (a, b) {
+            return getCoefficientValue(smObj[a]) - getCoefficientValue(smObj[b]);
+        });
+        var smCur = (mod.sameModelSelection && smKeys.indexOf(mod.sameModelSelection.key) >= 0)
+            ? mod.sameModelSelection.key
+            : (smKeys.indexOf((defaultSettings && defaultSettings.sameModelDefaultKey) || '') >= 0
+                ? defaultSettings.sameModelDefaultKey
+                : smKeys[0]);
+        var smHidden = (defaultSettings && defaultSettings.showSameModelOnCalculation === false) ? ' style="display:none;"' : '';
+        h += '<div class="form-group module-same-model-control"' + smHidden + '><label>同模优惠</label><select data-module-sm="' + mod.id + '">';
+        smKeys.forEach(function (k) {
+            var o = smObj[k];
+            var v = getCoefficientValue(o) || 1;
+            h += '<option value="' + k + '"' + (smCur === k ? ' selected' : '') + '>' + ((o && o.name) || k) + '*' + v + '</option>';
+        });
+        h += '</select></div>';
+    }
     h += '</div>';
     return h;
 }
@@ -188,6 +215,30 @@ function syncModuleExpansionFromDom(modId) {
     }
     mod.upSelections = up;
     mod.downSelections = down;
+}
+// 读取某模块「同模优惠」下拉选中值，写回 orderModules（仅系数模式）
+function syncModuleSameModelFromDom(modId) {
+    normalizeOrderModules();
+    var mod = findOrderModule(modId);
+    if (!mod) return;
+    var sel = document.querySelector('[data-module-sm="' + modId + '"]');
+    if (!sel || !sel.value) { mod.sameModelSelection = null; return; }
+    var o = (defaultSettings && defaultSettings.sameModelCoefficients && defaultSettings.sameModelCoefficients[sel.value]) || null;
+    if (!o) { mod.sameModelSelection = null; return; }
+    mod.sameModelSelection = { key: sel.value, name: o.name || sel.value, value: getCoefficientValue(o) };
+}
+// 将模块数据中的组级同模档位同步到计算页下拉（不重建选项；模板加载等场景使用）
+function refreshModuleSameModelSelects() {
+    if (!Array.isArray(orderModules)) return;
+    orderModules.forEach(function (m) {
+        var sel = document.querySelector('[data-module-sm="' + m.id + '"]');
+        if (!sel) return;
+        var smc = (defaultSettings && defaultSettings.sameModelCoefficients) || {};
+        var keys = Object.keys(smc);
+        var key = (m.sameModelSelection && m.sameModelSelection.key) || '';
+        if (keys.indexOf(key) < 0) key = (defaultSettings && defaultSettings.sameModelDefaultKey) || keys[0] || '';
+        if (keys.indexOf(key) >= 0) sel.value = key;
+    });
 }
 // 模块小计/标签用的扩展系数乘积（供小票展示）
 function moduleExpansionSnapshot(mod) {
@@ -219,6 +270,21 @@ function moduleCoefficientResult(mod, upMode, downMode) {
         down = dprod;
     }
     return { up: up, down: down, upReasons: upReasons, downReasons: downReasons };
+}
+// 取某模块的组级同模系数（系数模式）：优先组内已选，其次后台默认档位，最后第一档
+function moduleSameModelCoefficient(mod) {
+    var smc = (defaultSettings && defaultSettings.sameModelCoefficients) || {};
+    var key = (mod && mod.sameModelSelection && mod.sameModelSelection.key) || '';
+    var o = (key && smc[key]) || null;
+    if (!o) {
+        key = (defaultSettings && defaultSettings.sameModelDefaultKey) || '';
+        o = (key && smc[key]) || null;
+    }
+    if (!o) {
+        var first = Object.keys(smc)[0];
+        if (first) o = smc[first];
+    }
+    return o ? getCoefficientValue(o) : 0.5;
 }
 // 同系数判定/合并：仅比较实际生效的“名称+系数”，默认 1× 不参与
 function moduleReasonSignature(upReasons, downReasons) {
@@ -356,6 +422,15 @@ function renderModulePanels(mtype) {
             var map = type === 'up' ? upIds : downIds;
             if (map[eid] != null) sel.value = map[eid];
         }
+        // 回填组级同模优惠下拉
+        var smSel = container.querySelector('[data-module-sm="' + mod.id + '"]');
+        if (smSel) {
+            var smc = (defaultSettings && defaultSettings.sameModelCoefficients) || {};
+            var smKeys = Object.keys(smc);
+            var smKey = (mod.sameModelSelection && mod.sameModelSelection.key) || '';
+            if (smKeys.indexOf(smKey) < 0) smKey = (defaultSettings && defaultSettings.sameModelDefaultKey) || smKeys[0] || '';
+            if (smKeys.indexOf(smKey) >= 0) smSel.value = smKey;
+        }
     });
     bindModuleExpansionChange(mtype, container);
 }
@@ -367,6 +442,12 @@ function bindModuleExpansionChange(mtype, container) {
             var parts = attr.split(':');
             var modId = parts[0];
             syncModuleExpansionFromDom(modId);
+            if (typeof calculatePrice === 'function') calculatePrice(undefined, undefined, undefined, true);
+        };
+    });
+    container.querySelectorAll('select[data-module-sm]').forEach(function (sel) {
+        sel.onchange = function () {
+            syncModuleSameModelFromDom(sel.getAttribute('data-module-sm'));
             if (typeof calculatePrice === 'function') calculatePrice(undefined, undefined, undefined, true);
         };
     });
@@ -702,6 +783,8 @@ function showSettingsSubPage(pageName) {
             renderCoefficientSettings();
         } else if (pageName === 'userInfo') {
             loadSettings();
+        } else if (pageName === 'customerSettings') {
+            renderCustomerSettings();
         }
     }
 }
@@ -1217,6 +1300,8 @@ const defaultSettings = {
         basic: { value: 0.4, name: '改字、色、柄图' },
         advanced: { value: 0.6, name: '改字、色、柄图、元素' }
     },
+    // 计算页各组「同模优惠」下拉的默认档位（新建组/新订单时预选；设置页同模优惠后台可修改）
+    sameModelDefaultKey: 'basic',
     // 计算页显示总开关（同模优惠、工艺）
     showSameModelOnCalculation: true,  // 控制「是否同模 + 跨订单同模」是否显示在计算页
     showProcessOnCalculation: true,    // 控制「工艺类型 + 工艺复选框」是否显示在计算页
@@ -1224,6 +1309,16 @@ const defaultSettings = {
     discountCoefficients: {
         none: { value: 1, name: '无' },
         sample: { value: 0.95, name: '上次合作寄样' }
+    },
+    // 客户专属优惠统一规则（全局默认）：未单独设置单主折扣的客户自动套用
+    // enabled: 总开关；tiers[i].by: 'amount'=按累计金额 / 'count'=按累计单数
+    customerRewardPolicy: {
+        enabled: false,
+        tiers: [
+            { by: 'amount', threshold: 1000, value: 0.97, name: '累计满1k 97折' },
+            { by: 'amount', threshold: 3000, value: 0.95, name: '累计满3k 95折' },
+            { by: 'count', threshold: 5, value: 0.97, name: '累计满5单 97折' }
+        ]
     },
     // 平台手续费（%，约稿平台比例固定）
     // round: 手续费是否四舍五入取整（true=取整到元，false=保留两位小数）
@@ -2063,6 +2158,15 @@ function loadData() {
                     }
                 });
             }
+
+            // 同模默认档位兼容：默认键必须存在于当前同模系数中，否则回退到第一档
+            (function () {
+                var smc = (defaultSettings && defaultSettings.sameModelCoefficients) || {};
+                var smKeys = Object.keys(smc);
+                if (!defaultSettings.sameModelDefaultKey || smKeys.indexOf(defaultSettings.sameModelDefaultKey) < 0) {
+                    defaultSettings.sameModelDefaultKey = smKeys[0] || '';
+                }
+            })();
         }
         
         if (savedProductSettings) {
@@ -2078,6 +2182,15 @@ function loadData() {
         if (savedProcessSettings) {
             processSettings = JSON.parse(savedProcessSettings);
         }
+
+        // 客户档案：独立 key，结构简单直接替换
+        const savedCustomers = localStorage.getItem('customers');
+        if (savedCustomers) {
+            const parsedCustomers = JSON.parse(savedCustomers);
+            customers = Array.isArray(parsedCustomers) ? parsedCustomers : [];
+        } else {
+            customers = [];
+        }
     } catch (error) {
         console.error('加载数据失败:', error);
     }
@@ -2087,8 +2200,1235 @@ function loadData() {
 }
 
 
-// 保存数据到本地存储（防抖：短时间多次调用只写入一次）
+// ===== 客户档案数据层 =====
+function loadCustomers() {
+    try {
+        const raw = localStorage.getItem('customers');
+        customers = raw ? (JSON.parse(raw) || []) : [];
+        if (!Array.isArray(customers)) customers = [];
+    } catch (e) {
+        console.error('加载客户数据失败:', e);
+        customers = [];
+    }
+    return customers;
+}
+function saveCustomers() {
+    try {
+        localStorage.setItem('customers', JSON.stringify(customers));
+    } catch (error) {
+        console.error('保存客户数据失败:', error);
+    }
+}
+function findCustomerByName(name) {
+    if (!name) return null;
+    const key = String(name).trim();
+    if (!key) return null;
+    return customers.find(function (c) { return c && c.name && String(c.name).trim() === key; }) || null;
+}
+function upsertCustomer(customer) {
+    if (!customer || !customer.name) return null;
+    const key = String(customer.name).trim();
+    const idx = customers.findIndex(function (c) { return c && c.name && String(c.name).trim() === key; });
+    const now = new Date().toISOString();
+    if (idx >= 0) {
+        // 仅填空值，不覆盖用户已填内容
+        const merged = Object.assign({}, customers[idx], customer);
+        if (!merged.contact && customer.contact) merged.contact = customer.contact;
+        if (!merged.contactInfo && customer.contactInfo) merged.contactInfo = customer.contactInfo;
+        merged.updatedAt = now;
+        customers[idx] = merged;
+        return merged;
+    }
+    const created = Object.assign({
+        id: 'c' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        contact: '', contactInfo: '', note: '',
+        discount: { mode: 'none', manual: { value: 0.95, name: '' }, auto: { tiers: [] }, startDate: '', endDate: '' },
+        createdAt: now, updatedAt: now
+    }, customer);
+    created.createdAt = created.createdAt || now;
+    created.updatedAt = now;
+    customers.push(created);
+    return created;
+}
+function removeCustomer(id) {
+    customers = customers.filter(function (c) { return c && c.id !== id; });
+}
+
+// 下单成功保存后回写/建档客户：命中已有客户仅填空值（不覆盖已填）；未建档则用本单信息创建档案
+function backfillCustomerFromQuote(quote) {
+    if (!quote || !quote.clientId) return;
+    const key = String(quote.clientId).trim();
+    if (!key) return;
+    const payload = { name: key };
+    if (quote.contact) payload.contact = String(quote.contact);
+    if (quote.contactInfo) payload.contactInfo = String(quote.contactInfo);
+    const customer = upsertCustomer(payload);
+    if (customer) saveCustomers();
+}
+
+// 客户统计：实时遍历 history 聚合（不落盘，避免双写不一致）
+// 口径与统计页 Top 单主一致：排除已撤单；已结单取定金+本次收款，否则取约定实收/总价
+function computeCustomerStats(name) {
+    const key = String(name || '').trim();
+    const stats = { orderCount: 0, totalAmount: 0 };
+    if (!key || !Array.isArray(history)) return stats;
+    history.forEach(function (item) {
+        if (!item || !item.clientId || String(item.clientId).trim() !== key) return;
+        if (isCancelSettlementType(item && item.settlement)) return; // 排除已撤单
+        if (item && item.isSchedulePlaceholder) return; // 排除占位单（调度暂定，非真实成交）
+        stats.orderCount += 1;
+        stats.totalAmount += getStatsAmount(item, 'agreed', false);
+    });
+    stats.totalAmount = Math.round(stats.totalAmount * 100) / 100;
+    return stats;
+}
+
+// 有效期校验：startDate/endDate 为空表示不限；当天含边界
+function isDateInRange(startDate, endDate) {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const nowTs = now.getTime();
+    if (startDate && String(startDate).trim()) {
+        const s = new Date(String(startDate).trim() + 'T00:00:00');
+        if (!isNaN(s.getTime()) && s.getTime() > nowTs) return false;
+    }
+    if (endDate && String(endDate).trim()) {
+        const e = new Date(String(endDate).trim() + 'T23:59:59.999');
+        if (!isNaN(e.getTime()) && e.getTime() < nowTs) return false;
+    }
+    return true;
+}
+
+// 取某客户适用的档位上下文（统一规则 or 个体自动档），供命中判定与徽标展示复用
+// 返回 { source:'individual'|'policy', tiers:[{by,threshold,value,name}] }；无候选档位返回 null
+function resolveApplicableTiers(customer) {
+    if (!customer || !customer.discount) return null;
+    const d = customer.discount;
+    if (d.mode === 'auto') {
+        const tiers = Array.isArray(d.auto && d.auto.tiers) ? d.auto.tiers : [];
+        // 合并模式：个体档与统一规则档合并参与「取最优惠」（统一规则需启用）
+        const policy = defaultSettings && defaultSettings.customerRewardPolicy;
+        if (policy && policy.enabled && policy.mergeIndividual) {
+            ensureRewardPolicy();
+            const policyTiers = Array.isArray(policy.tiers) ? policy.tiers : [];
+            const all = tiers.concat(policyTiers);
+            return all.length ? { source: 'individual', tiers: all } : null;
+        }
+        return tiers.length ? { source: 'individual', tiers: tiers } : null;
+    }
+    // 未单独设置(无)：套用统一规则
+    if (d.mode === 'none') {
+        ensureRewardPolicy(); // 先自愈档位数据（修正名称与维度脱节的错位）
+        const policy = defaultSettings && defaultSettings.customerRewardPolicy;
+        if (policy && policy.enabled) {
+            const tiers = Array.isArray(policy.tiers) ? policy.tiers : [];
+            return tiers.length ? { source: 'policy', tiers: tiers } : null;
+        }
+    }
+    return null;
+}
+
+// 依据档位维度(by)比较量：'count' 用累计单数，否则用累计金额
+function tierCompareMeasure(by, stats) {
+    return (by === 'count') ? stats.orderCount : stats.totalAmount;
+}
+
+// 金额档位阈值缩写：≥10000 转 w，≥1000 转 k（2000→2k，20000→2w）
+function abbreviateAmount(n) {
+    const num = Number(n);
+    if (!isFinite(num)) return String(n);
+    if (num >= 10000) return (num / 10000) + 'w';
+    if (num >= 1000) return (num / 1000) + 'k';
+    return String(num);
+}
+
+// 档位缺省名称：按维度拼「累计满N单」/「累计满N 折」（金额 N 自动缩写 k/w；0.9 写「9折」而非「90折」）
+function tierDefaultName(by, threshold, value) {
+    let n = Math.round(value * 100);
+    while (n % 10 === 0 && n > 10) n /= 10; // 去掉末尾多余的 0：90折→9折、100折→10折
+    const zhe = n + '折';
+    return (by === 'count') ? ('累计' + threshold + '单 ' + zhe) : ('累计满' + abbreviateAmount(threshold) + ' ' + zhe);
+}
+
+// 取客户当前生效的单主折扣：manual 直接返回；auto/统一规则按累计金额或累计单数命中最高满足档；无命中/过期返回 null
+function getCustomerEffectiveDiscount(customer) {
+    if (!customer || !customer.discount) return null;
+    const d = customer.discount;
+    if (d.mode !== 'manual' && d.mode !== 'auto' && d.mode !== 'none') return null;
+    if (!isDateInRange(d.startDate, d.endDate)) return null;
+    if (d.mode === 'manual') {
+        const v = Number(d.manual && d.manual.value);
+        if (!isFinite(v) || v <= 0 || v > 1) return null;
+        return { value: v, name: '专属优惠', source: 'manual' };
+    }
+    const ctx = resolveApplicableTiers(customer);
+    if (!ctx) return null;
+    const stats = computeCustomerStats(customer.name);
+    // 收集所有命中的档位（兼容金额档与单数档混排），最终取折扣系数最小（最优惠）的一档
+    const hits = [];
+    ctx.tiers.forEach(function (tier) {
+        const thr = Number(tier && tier.threshold);
+        const v = Number(tier && tier.value);
+        if (!isFinite(thr) || thr <= 0 || !isFinite(v) || v <= 0 || v > 1) return; // thr<=0 视为脏数据（0 阈值恒命中）
+        const by = (tier && tier.by === 'count') ? 'count' : 'amount';
+        if (tierCompareMeasure(by, stats) >= thr) {
+            const nm = (tier.name && String(tier.name).trim()) ? String(tier.name).trim() : tierDefaultName(by, thr, v);
+            hits.push({ value: v, name: nm, source: 'auto', threshold: thr, by: by, autoName: tierDefaultName(by, thr, v) });
+        }
+    });
+    if (hits.length === 0) return null;
+    hits.sort(function (a, b) { return a.value - b.value; });
+    return hits[0];
+}
+
+// ===== 客户管理页（设置子页面 customerSettings） =====
+var customerEditingId = null;
+
+function renderCustomerSettings() {
+    renderRewardPolicyTiers();
+    renderCustomerHistoryPrompt();
+    renderCustomerList();
+    renderCustomerHistoryArchive();
+}
+
+function toggleCustomerHistoryPanel() {
+    const panel = document.getElementById('customerHistoryPanel');
+    const btn = document.getElementById('customerHistoryExpandBtn');
+    if (!panel) return;
+    const show = panel.classList.contains('d-none');
+    panel.classList.toggle('d-none', !show);
+    if (btn) btn.textContent = show ? '收起' : '展开建档';
+}
+
+// 空态引导：一键展开历史单主建档提示与面板
+function customerEmptyImportHistory() {
+    renderCustomerHistoryPrompt();
+    const prompt = document.getElementById('customerHistoryPrompt');
+    if (prompt) prompt.classList.remove('d-none');
+    const panel = document.getElementById('customerHistoryPanel');
+    if (panel) panel.classList.remove('d-none');
+    const btn = document.getElementById('customerHistoryExpandBtn');
+    if (btn) btn.textContent = '收起';
+}
+
+// 首次建档提示条：仅当存在未建档历史单主时显示
+function renderCustomerHistoryPrompt() {
+    const prompt = document.getElementById('customerHistoryPrompt');
+    if (!prompt) return;
+    const list = getUnarchivedClientSummaries();
+    if (list.length === 0) {
+        prompt.classList.add('d-none');
+        return;
+    }
+    const textEl = document.getElementById('customerHistoryPromptText');
+    if (textEl) textEl.textContent = '检测到 ' + list.length + ' 位历史单主尚未建档，是否纳入单主档案？';
+    prompt.classList.remove('d-none');
+}
+
+function customerContactLine(c) {
+    if (c.contact && c.contactInfo) return escapeHtml(c.contact) + ' · ' + escapeHtml(c.contactInfo);
+    return escapeHtml(c.contact || c.contactInfo || '');
+}
+
+function customerValidityText(d) {
+    if (!d) return '';
+    const s = d.startDate || '';
+    const e = d.endDate || '';
+    if (s && e) return '有效 ' + s + ' ~ ' + e;
+    if (s) return '自 ' + s + ' 起有效';
+    if (e) return '至 ' + e + ' 止有效';
+    return '';
+}
+
+function customerDiscountBadgeHtml(c) {
+    if (!c || !c.discount) return '<span class="customer-badge customer-badge-none">无折扣</span>';
+    const d = c.discount;
+    const expired = !isDateInRange(d.startDate, d.endDate);
+    const validText = customerValidityText(d);
+    const rangeNote = validText ? ' <span class="customer-badge-validity">' + escapeHtml(validText) + '</span>' : '';
+    if (d.mode === 'manual') {
+        const v = Number(d.manual && d.manual.value);
+        if (!isFinite(v) || v <= 0 || v > 1) return '<span class="customer-badge customer-badge-none">无效折扣</span>';
+        return '<span class="customer-badge customer-badge-manual' + (expired ? ' customer-badge-expired' : '') + '">专属优惠 ×' + v + '</span>' + rangeNote;
+    }
+    if (d.mode === 'auto' || d.mode === 'none') {
+        const ctx = resolveApplicableTiers(c);
+        if (!ctx) return '<span class="customer-badge customer-badge-none">无折扣</span>';
+        const eff = getCustomerEffectiveDiscount(c);
+        // 统一规则本身无独立有效期；个体 auto 档位才计算过期态
+        const isExpired = (ctx.source === 'individual') ? expired : false;
+        if (eff) {
+            // 展示优先用真实命中条件自动生成的名称，避免与自定义 name 脱节误导
+            const effName = (eff.autoName && String(eff.autoName).trim()) ? eff.autoName : eff.name;
+            return '<span class="customer-badge customer-badge-auto' + (isExpired ? ' customer-badge-expired' : '') + '">' +
+                escapeHtml(effName) + '</span>' + rangeNote;
+        }
+        // 未命中任何档：不显示任何文案（仅靠圆点区分状态）
+        return '';
+    }
+    return '<span class="customer-badge customer-badge-none">无折扣</span>';
+}
+
+// ===== 拼音首字母工具（用于客户 A-Z 分组）=====
+// 常用汉字拼音首字母映射表（按字母分组，覆盖常用字；生僻字归入 "#"）
+const PINYIN_INITIAL_MAP = (function () {
+    var map = {};
+    var data = {
+        'A': '阿啊呵腌嗄锕',
+        'B': '八巴拔把罢霸吧爸疤芭捌粑笆跋靶粑坝罢',
+        'C': '擦猜才材财裁采彩菜蔡餐参蚕残惭惨灿苍舱仓沧藏操糙槽草厕策侧册测层蹭插叉茬茶查碴搽察岔差诧拆柴豺搀掺蝉馋谗缠铲产阐颤昌猖场尝常长偿肠厂敞畅唱倡超抄钞朝嘲潮巢吵炒车扯撤掣彻澈郴臣辰尘晨忱沉陈趁衬撑称城橙成呈乘程惩澄诚承逞骋秤吃痴持匙池迟弛驰耻齿侈尺赤翅斥炽充冲虫崇宠抽酬畴踌稠愁筹仇绸瞅丑臭初出橱厨躇锄雏滁除楚础储矗搐触处揣川穿椽传船喘串疮窗幢床闯创吹炊捶锤垂春椿醇唇淳纯蠢戳绰疵茨磁雌辞慈瓷词此刺赐次聪葱囱匆从丛凑粗醋簇促蹿篡窜摧崔催脆瘁粹淬翠村存寸磋撮搓措挫错',
+        'D': '搭达答瘩打大呆歹傣戴带殆代贷袋待逮怠耽担丹单郸掸胆旦氮但惮淡诞弹蛋当挡党荡档刀捣蹈倒岛祷导到稻悼道盗德得的蹬灯登等瞪凳邓堤低滴迪敌笛狄涤翟嫡抵底地蒂第帝弟递缔颠掂滇碘点典靛垫电佃甸店惦奠淀殿碉叼雕凋刁掉吊钓调跌爹碟蝶迭谍叠丁盯叮钉顶鼎锭定订丢东冬董懂动栋侗恫冻洞兜抖斗陡豆逗痘都督毒犊独读堵睹赌杜镀肚度渡妒端短锻段断缎堆兑队对墩吨蹲敦顿囤钝盾遁掇哆多夺垛躲朵跺舵剁惰堕',
+        'E': '蛾峨鹅俄额讹娥恶厄扼遏鄂饿恩而儿耳尔饵洱二贰',
+        'F': '发罚筏伐乏阀法珐藩帆番翻樊矾钒繁凡烦反返范贩犯饭泛坊芳方肪房防妨仿访纺放菲非啡飞肥匪诽吠肺废沸费芬酚吩氛分纷坟焚汾粉奋份忿愤粪丰封枫蜂峰锋风疯烽逢冯缝讽奉凤佛否夫敷肤孵扶拂辐幅氟符伏俘服浮涪福袱弗甫抚辅俯釜斧脯腑府腐赴副覆赋复傅付阜父腹负富讣附妇缚咐',
+        'G': '噶嘎该改概钙盖溉干甘杆柑竿肝赶感秆敢赣冈刚钢缸肛纲岗港杠篙皋高膏羔糕搞镐稿告哥歌搁戈鸽胳疙割革葛格蛤阁隔铬个各给根跟耕更庚羹埂耿梗工攻功恭龚供躬公宫弓巩汞拱贡共钩勾沟苟狗垢构购够辜菇咕箍估沽孤姑鼓古蛊骨谷股故顾固雇刮瓜剐寡挂褂乖拐怪棺关官冠观管馆罐惯灌贯光广逛瑰规圭硅归龟闺轨鬼诡癸桂柜跪贵刽辊滚棍锅郭国果裹过',
+        'H': '哈骸孩海氦亥害骇酣憨邯韩含涵寒函喊罕翰撼捍旱憾悍焊汗汉夯杭航壕嚎豪毫郝好耗号浩呵喝荷菏核禾和何合盒貉阂河涸赫褐鹤贺嘿黑痕很狠恨哼亨横衡恒轰哄烘虹鸿洪宏弘红喉侯猴吼厚候后呼乎忽瑚壶葫胡蝴狐糊湖弧虎唬护互沪户花哗华猾滑画划化话槐徊怀淮坏欢环桓还缓换患唤痪豢焕涣宦幻荒慌黄磺蝗簧皇凰惶煌晃幌恍谎灰挥辉徽恢蛔回毁悔慧卉惠晦贿秽会烩汇讳诲绘荤昏婚魂浑混豁活伙火获或惑霍货祸',
+        'J': '圾基机畸稽积箕肌饥迹激讥鸡姬绩缉吉极棘辑籍集及急疾汲即嫉级挤几脊己蓟技冀季伎祭剂悸济寄寂计记既忌际妓继纪嘉枷夹佳家加荚颊贾甲钾假稼价架驾嫁歼监坚尖笺间煎兼肩艰奸缄茧检柬碱碱拣捡简俭剪减荐槛鉴践贱见键箭件健舰剑饯渐溅涧建僵姜将浆江疆蒋桨奖讲匠酱降蕉椒礁焦胶交郊浇骄娇嚼搅铰矫侥脚狡角饺缴绞剿教酵轿较叫窖揭接皆秸街阶截劫节桔杰捷睫竭洁结解姐戒藉芥界借介疥诫届巾筋斤金今津襟紧锦仅谨进靳晋禁近烬浸尽劲荆兢茎睛晶鲸京惊精粳经井警景颈静境敬镜径痉靖竟竞净炯窘揪究纠玖韭久灸九酒厩救旧臼舅咎就疚鞠拘狙疽居驹菊局咀矩举沮聚拒据巨具距踞锯俱句惧炬剧捐鹃娟倦眷卷绢撅攫抉掘倔爵觉决诀绝均菌钧军君峻俊竣浚郡骏',
+        'K': '喀咖卡咯开揩楷凯慨刊堪勘坎砍看康慷糠扛抗亢炕考拷烤靠坷苛柯棵磕颗科壳咳可渴克刻客课肯啃垦恳坑吭空恐孔控抠口扣寇枯哭窟苦酷库裤夸垮挎跨胯块筷侩快宽款匡筐狂框矿眶旷况亏盔岿窥葵奎魁傀馈愧溃坤昆捆困括扩廓阔',
+        'L': '垃拉喇蜡腊辣啦莱来赖蓝婪栏拦篮阑兰澜谰揽览懒缆烂滥琅榔狼廊郎朗浪捞劳牢老佬姥酪烙涝勒乐雷镭蕾磊累儡垒擂肋类泪棱楞冷厘梨犁黎篱狸离漓理李里鲤礼莉荔吏栗丽厉励砾历利傈例俐痢立粒沥隶力璃哩俩联莲连镰廉怜涟帘敛脸链恋炼练粮凉梁粱良两辆量晾亮谅撩聊僚疗燎寥辽潦了撂镣廖料列裂烈劣猎琳林磷霖临邻鳞淋凛赁吝拎玲菱零龄铃伶羚凌灵陵岭领另令溜琉榴硫馏留刘瘤流柳六龙聋咙笼窿隆垄拢陇楼娄搂篓漏陋芦卢颅庐炉掳卤虏鲁麓碌露路赂鹿潞禄录陆戮驴吕铝侣旅履屡缕虑氯律率滤绿峦挛孪滦卵乱掠略抡轮伦仑沦纶论萝螺罗逻锣箩骡裸落洛骆络',
+        'M': '妈麻玛码蚂马骂嘛吗埋买麦卖迈脉瞒馒蛮满蔓曼慢漫谩芒茫盲氓忙莽猫茅锚毛矛铆卯茂冒帽貌贸么玫枚梅酶霉煤没眉媒镁每美昧寐妹媚门闷们萌蒙檬盟锰猛梦孟眯醚靡糜迷谜弥米秘觅泌蜜密幂棉眠绵冕免勉娩缅面苗描瞄藐秒渺庙妙蔑灭民抿皿敏悯闽明螟鸣铭名命谬摸摹蘑模膜磨摩魔抹末莫墨默沫漠寞陌谋牟某拇牡亩姆母墓暮幕募慕木目睦牧穆',
+        'N': '拿哪呐钠那娜纳氖乃奶耐奈南男难囊挠脑恼闹淖呢馁内嫩能妮霓倪泥尼拟你匿腻逆溺蔫拈年碾撵捻念娘酿鸟尿捏聂孽啮镊镍涅您柠狞凝宁拧泞牛扭钮纽脓浓农弄奴努怒女暖虐疟挪懦糯诺',
+        'O': '哦欧鸥殴藕呕偶沤',
+        'P': '啪趴爬帕怕琶拍排牌徘湃派攀潘盘磐盼畔判叛乓庞旁耪胖抛咆刨炮袍跑泡呸胚培裴赔陪配佩沛喷盆砰抨烹澎彭蓬棚硼篷膨朋鹏捧碰坯砒霹批披劈琵毗啤脾疲皮匹痞僻屁譬篇偏片骗飘漂瓢票撇瞥拼频贫品聘乒坪苹萍平凭瓶评屏坡泼颇婆破魄迫粕剖扑铺仆莆葡菩蒲埔朴圃普浦谱曝瀑',
+        'Q': '期欺栖戚妻七凄漆柒沏其棋奇歧畦崎脐齐旗祈祁骑起岂乞企启契砌器气迄弃汽泣讫掐牵钎铅千迁签仟谦乾黔钱钳前潜遣浅谴堑嵌欠歉枪呛腔羌墙蔷强抢橇锹敲悄桥瞧乔侨巧鞘撬翘峭俏窍切茄且怯窃钦侵亲秦琴勤芹擒禽寝沁青轻氢倾卿清擎晴氰情顷请庆琼穷秋丘邱球求囚酋泅趋区蛆曲躯屈驱渠取娶龋趣去圈颧权醛泉全痊拳犬券劝缺炔瘸却鹊榷确雀裙群',
+        'R': '然燃冉染瓤壤攘嚷让饶扰绕惹热壬仁人忍韧任认刃妊纫扔仍日戎茸蓉荣融熔溶容绒冗揉柔肉茹蠕儒孺如辱乳汝入褥软阮蕊瑞锐闰润若弱',
+        'S': '撒洒萨腮鳃塞赛三叁伞散桑嗓丧搔骚扫嫂瑟色涩森僧莎砂杀刹沙纱傻啥煞筛晒珊苫杉山删煽衫闪陕擅赡膳善汕扇缮墒伤商赏晌上尚裳梢捎稍烧芍勺韶少哨邵绍奢赊蛇舌舍赦摄射慑涉社设砷申呻伸身深娠绅神沈审婶甚肾慎渗声生甥牲升绳省盛剩胜圣师失狮施湿诗尸虱十石拾时什食蚀实识史矢使屎驶始式示士世柿事拭誓逝势是嗜噬适仕侍释饰氏市恃室视试收手首守寿授售受瘦兽蔬枢梳殊抒输叔舒淑疏书赎孰熟薯暑曙署蜀黍鼠属术述树束戍竖墅庶数漱恕刷耍摔衰甩帅栓拴霜双爽谁水睡税吮瞬顺舜说硕朔烁斯撕嘶思私司丝死肆寺嗣四伺似饲巳松耸怂颂送宋讼诵搜艘擞嗽苏酥俗素速粟僳塑溯宿诉肃酸蒜算虽隋随绥髓碎岁穗遂隧祟孙损笋蓑梭唆缩琐索锁所',
+        'T': '塌他它她塔獭挞蹋踏胎苔抬台泰酞太态汰坍摊贪瘫滩坛檀痰潭谭谈坦毯袒碳探叹炭汤塘搪堂棠膛唐糖倘躺淌趟烫掏涛滔绦萄桃逃淘陶讨套特藤腾疼誊梯剔踢锑提题蹄啼体替嚏惕涕剃屉天添填田甜恬舔腆挑条迢眺跳贴铁帖厅听烃汀廷停亭庭挺艇通桐酮瞳同铜彤童桶捅筒统痛偷投头透凸秃突图徒途涂屠土吐兔湍团推颓腿蜕褪退吞屯臀拖托脱鸵陀驮驼椭妥拓唾',
+        'W': '挖哇蛙洼娃瓦袜歪外豌弯湾玩顽丸烷完碗挽晚皖惋宛婉万腕汪王亡枉网往旺望忘妄威巍微危韦违桅围唯惟为潍维苇萎委伟伪尾纬未蔚味畏胃喂魏位渭谓尉慰卫瘟温蚊文闻纹吻稳紊问嗡翁瓮挝蜗涡窝我斡卧握沃巫呜钨乌污诬屋无芜梧吾吴毋武五捂午舞伍侮坞戊雾晤物勿务悟误',
+        'X': '昔熙析西硒矽晰嘻吸锡牺稀息希悉膝夕惜熄烯溪汐犀檄袭席习媳喜铣洗系隙戏细瞎虾匣霞辖暇峡侠狭下厦夏吓掀锨先仙鲜纤咸贤衔舷闲涎弦嫌显险现献县腺馅羡宪陷限线相厢镶香箱襄湘乡翔祥详想响享项巷橡像向象萧硝霄削哮嚣销消宵淆晓小孝校肖啸笑效楔些歇蝎鞋协挟携邪斜胁谐写械卸蟹懈泄泻谢屑薪芯锌欣辛新忻心信衅星腥猩惺兴刑型形邢行醒幸杏性姓兄凶胸匈汹雄熊休修羞朽嗅锈秀袖绣墟戌需虚嘘须徐许蓄酗叙旭序畜恤絮婿绪续轩喧宣悬旋玄选癣眩绚靴薛学穴雪血勋熏循旬询寻驯巡殉汛训讯逊迅',
+        'Y': '压押鸦鸭呀丫芽牙蚜崖衙涯雅哑亚讶焉咽阉烟淹延严言颜阎炎沿奄掩眼衍演艳堰燕厌砚雁唁彦焰宴谚验殃央鸯秧杨扬佯疡羊洋阳氧仰痒养样漾邀腰妖瑶摇尧遥窑谣姚咬舀药要耀椰噎耶爷野冶也页掖业叶曳腋夜液一壹医揖铱依伊衣颐夷遗移仪胰疑沂宜姨彝椅蚁倚已乙矣以艺抑易邑屹亿役臆逸肄疫亦裔意毅忆义益溢诣议谊译异翼翌绎茵荫因殷音阴姻吟银淫寅饮尹引隐印英樱婴鹰应缨莹萤营荧蝇迎赢盈影颖硬映哟拥佣臃痈庸雍踊蛹咏泳涌永恿勇用幽优悠忧尤由邮铀犹油游酉有友右佑釉诱又幼迂淤于盂榆虞愚舆余俞逾鱼愉渝渔隅予娱雨与屿禹宇语羽玉域芋郁吁遇喻峪御愈欲狱育誉浴寓裕预豫驭鸳渊冤元垣袁原援辕园员圆猿源缘远苑愿怨院曰约越跃钥岳粤月悦阅耘云郧匀陨允运蕴酝晕韵孕',
+        'Z': '匝砸杂栽哉灾宰载再在咱攒暂赞赃脏葬遭糟凿藻枣早澡蚤躁噪造皂灶燥责择则泽贼怎增憎曾赠扎喳渣札轧铡闸眨栅榨咋乍炸诈摘斋宅窄债寨瞻毡詹粘沾盏斩辗崭展蘸栈占战站湛绽樟章彰漳张掌涨杖丈帐账仗胀瘴障招昭找沼赵照罩兆肇召遮折哲蛰辙者锗蔗这浙珍斟真甄砧臻贞针侦枕疹诊震振镇阵蒸挣睁征狰争怔整拯正政帧症郑证芝枝支吱蜘知肢脂汁之织职直植殖执值侄址指止趾只旨纸志挚掷至致置帜峙制智秩稚质炙痔滞治窒中盅忠钟衷终种肿重仲众舟周州洲诌粥轴肘帚咒皱宙昼骤珠株蛛朱猪诸诛逐竹烛煮拄瞩嘱主著柱助蛀贮铸筑住注祝驻抓爪拽专砖转撰赚篆桩庄装妆撞壮状椎锥追赘坠缀谆准捉拙卓桌琢茁酌啄着灼浊兹咨资姿滋淄孜紫仔籽滓子自渍字鬃棕踪宗综总纵邹走奏揍租足卒族祖诅阻组钻纂嘴醉最罪尊遵昨左佐做作坐座'
+    };
+    Object.keys(data).forEach(function (letter) {
+        var str = data[letter];
+        for (var i = 0; i < str.length; i++) {
+            map[str.charAt(i)] = letter;
+        }
+    });
+    return map;
+})();
+
+// 取字符串首字的分组键：A-Z 字母 / 数字归入 '#' / 中文取拼音首字母 / 其他归入 '#'
+// 拼音首字母兜底：字表外的汉字用 localeCompare('zh') 与声母锚点字比较推断
+// （覆盖字表缺失的常用字，如 百/哀/鸢 等，避免误入 '#' 组）
+var PINYIN_ANCHOR_CACHE = null;
+function getPinyinInitialFallback(ch) {
+    if (!PINYIN_ANCHOR_CACHE) {
+        PINYIN_ANCHOR_CACHE = [
+            ['A', '阿'], ['B', '芭'], ['C', '擦'], ['D', '搭'], ['E', '蛾'], ['F', '发'],
+            ['G', '噶'], ['H', '哈'], ['J', '击'], ['K', '喀'], ['L', '垃'], ['M', '妈'],
+            ['N', '拿'], ['O', '哦'], ['P', '啪'], ['Q', '期'], ['R', '然'], ['S', '撒'],
+            ['T', '塌'], ['W', '挖'], ['X', '西'], ['Y', '压'], ['Z', '匝']
+        ];
+    }
+    for (var i = PINYIN_ANCHOR_CACHE.length - 1; i >= 0; i--) {
+        if (ch.localeCompare(PINYIN_ANCHOR_CACHE[i][1], 'zh') >= 0) return PINYIN_ANCHOR_CACHE[i][0];
+    }
+    return '#';
+}
+
+function getCustomerGroupKey(name) {
+    if (!name) return '#';
+    var ch = String(name).trim().charAt(0);
+    if (!ch) return '#';
+    var code = ch.charCodeAt(0);
+    // A-Z / a-z
+    if (code >= 0x41 && code <= 0x5A) return ch.toUpperCase();
+    if (code >= 0x61 && code <= 0x7A) return ch.toUpperCase();
+    // 数字
+    if (code >= 0x30 && code <= 0x39) return '#';
+    // 中文
+    if (code >= 0x4E00 && code <= 0x9FFF) {
+        return PINYIN_INITIAL_MAP[ch] || getPinyinInitialFallback(ch);
+    }
+    return '#';
+}
+
+function renderCustomerList() {
+    const container = document.getElementById('customerListContainer');
+    if (!container) return;
+    const searchEl = document.getElementById('customerSearchInput');
+    const kw = searchEl ? String(searchEl.value || '').trim().toLowerCase() : '';
+    const filterMode = window._customerFilterMode || 'all'; // all / unified / individual
+    let list = customers.slice();
+    if (filterMode === 'individual') {
+        // 个人优惠：已单独设置优惠（manual/auto）
+        list = list.filter(function (c) {
+            return c && c.discount && (c.discount.mode === 'manual' || c.discount.mode === 'auto');
+        });
+    } else if (filterMode === 'unified') {
+        // 统一优惠：未单独设置优惠 且 累计数据已命中统一规则档位（达标）
+        list = list.filter(function (c) {
+            if (!c || !c.discount || c.discount.mode !== 'none') return false;
+            return getCustomerEffectiveDiscount(c) !== null;
+        });
+    }
+    if (kw) {
+        list = list.filter(function (c) {
+            if (!c) return false;
+            return [c.name, c.contact, c.contactInfo, c.note].some(function (v) {
+                return v && String(v).toLowerCase().indexOf(kw) !== -1;
+            });
+        });
+    }
+    if (list.length === 0) {
+        if (customers.length === 0) {
+            // 空态引导：有历史单主时提供「从历史导入」直达，否则仅「添加单主」
+            const unarchived = getUnarchivedClientSummaries();
+            const importBtn = unarchived.length > 0
+                ? '<button type="button" class="btn btn-compact" onclick="customerEmptyImportHistory()">从历史导入（' + unarchived.length + '）</button>'
+                : '';
+            container.innerHTML = '<div class="customer-empty text-gray" style="padding:32px 16px;text-align:center;">' +
+                '<div style="margin-bottom:14px;">还没有单主档案</div>' +
+                '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+                    importBtn +
+                    '<button type="button" class="btn secondary btn-compact" onclick="openCustomerEditModal()">添加单主</button>' +
+                '</div>' +
+            '</div>';
+        } else {
+            container.innerHTML = '<div class="customer-empty text-gray" style="padding:24px 0;text-align:center;">未找到匹配的单主。</div>';
+        }
+        renderCustomerIndexRail([]);
+        return;
+    }
+    const mode = window._customerSortMode || 'alpha';
+    const dir = window._customerSortDir || ((mode === 'alpha') ? 'asc' : 'desc');
+    if (mode === 'count' || mode === 'amount') {
+        // 数值排序：按累计单数/金额排序（默认降序，可切换升序），不分组、不显示字母索引
+        list.sort(function (a, b) {
+            const sa = computeCustomerStats(a.name);
+            const sb = computeCustomerStats(b.name);
+            const va = (mode === 'count') ? sa.orderCount : sa.totalAmount;
+            const vb = (mode === 'count') ? sb.orderCount : sb.totalAmount;
+            return (dir === 'asc') ? (va - vb) : (vb - va);
+        });
+        container.innerHTML = list.map(function (c) {
+            return customerCardHtml(c);
+        }).join('');
+        renderCustomerIndexRail([]);
+        return;
+    }
+    // 按分组键聚合，组内按拼音/字母排序（支持 Z-A 反向）
+    list.sort(function (a, b) {
+        const r = String(a.name).localeCompare(String(b.name), 'zh');
+        return (dir === 'desc') ? -r : r;
+    });
+    const groups = {};
+    const order = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    list.forEach(function (c) {
+        const key = getCustomerGroupKey(c.name);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(c);
+    });
+    let presentKeys = order.filter(function (k) { return groups[k] && groups[k].length > 0; });
+    if (dir === 'desc') presentKeys = presentKeys.slice().reverse(); // Z-A：组顺序随之反转
+    // 折叠状态：默认全部展开，组标题可点击切换
+    const collapsed = window._customerCollapsedGroups || {};
+    const html = presentKeys.map(function (key) {
+        const items = groups[key];
+        const isCollapsed = !!collapsed[key];
+        const label = key === '#' ? '# 数字/其他' : key;
+        const cards = items.map(function (c) { return customerCardHtml(c); }).join('');
+        return '<div class="customer-group" data-group="' + key + '"' + (isCollapsed ? ' data-collapsed="1"' : '') + '>' +
+            '<div class="customer-group-header" onclick="toggleCustomerGroup(\'' + key + '\')" title="' + (isCollapsed ? '展开' : '收起') + '">' +
+                '<span class="customer-group-letter">' + label + '</span>' +
+            '</div>' +
+            '<div class="customer-group-body' + (isCollapsed ? ' d-none' : '') + '">' + cards + '</div>' +
+        '</div>';
+    }).join('');
+    container.innerHTML = html;
+    renderCustomerIndexRail(presentKeys);
+}
+
+// 单张客户卡片 HTML（供分组与数值排序两种模式复用）
+function customerCardHtml(c) {
+    const st = computeCustomerStats(c.name);
+    const contactLine = customerContactLine(c);
+    // 圆点三态：个人优惠(manual/auto)=实心橙；统一优惠已命中(mode=none 且命中档位)=实心蓝；未达标/无优惠=灰空心
+    const hasIndividualDiscount = c && c.discount && (c.discount.mode === 'manual' || c.discount.mode === 'auto');
+    const unifiedHit = !hasIndividualDiscount && c && c.discount && c.discount.mode === 'none' && getCustomerEffectiveDiscount(c) !== null;
+    let dotClass = 'customer-dot customer-dot-gray customer-dot-hollow';
+    let dotTitle = '未达标任何优惠';
+    if (hasIndividualDiscount) { dotClass = 'customer-dot customer-dot-orange'; dotTitle = '已设置个人优惠'; }
+    else if (unifiedHit) { dotClass = 'customer-dot customer-dot-blue'; dotTitle = '已命中统一优惠'; }
+    return '<div class="customer-card' + (hasIndividualDiscount ? ' customer-card-starred' : '') + '">' +
+        '<div class="customer-card-main">' +
+            '<div class="customer-card-title-row">' +
+                '<span class="' + dotClass + '" title="' + dotTitle + '"></span>' +
+                '<span class="customer-card-title">' + escapeHtml(c.name) + '</span>' +
+                customerDiscountBadgeHtml(c) +
+            '</div>' +
+            '<div class="customer-card-subrow">' +
+                (contactLine ? '<span class="customer-card-contact">' + contactLine + '</span>' : '') +
+                '<span class="customer-card-stats">' + st.orderCount + ' 单 · ' + formatMoney(st.totalAmount) + '</span>' +
+                (c.note ? '<span class="customer-card-note">· ' + escapeHtml(c.note) + '</span>' : '') +
+            '</div>' +
+        '</div>' +
+        '<div class="customer-card-actions">' +
+            '<button class="btn customer-action-btn" title="编辑" aria-label="编辑" onclick="openCustomerEditModal(\'' + c.id + '\')">✎</button>' +
+            '<button class="btn customer-action-btn customer-action-btn-danger" title="删除" aria-label="删除" onclick="deleteCustomer(\'' + c.id + '\')">🗑</button>' +
+        '</div>' +
+    '</div>';
+}
+
+// 切换客户名单排序模式：alpha=字母分组 / count=按单数 / amount=按金额
+// 点击已激活的模式按钮时切换升序/降序（再点一次反转）
+function setCustomerSort(mode) {
+    const prevMode = window._customerSortMode || 'alpha';
+    window._customerSortMode = mode;
+    if (mode === prevMode) {
+        window._customerSortDir = (window._customerSortDir === 'asc') ? 'desc' : 'asc';
+    } else {
+        // 切换到新模式时恢复默认方向：字母升序、数值降序
+        window._customerSortDir = (mode === 'alpha') ? 'asc' : 'desc';
+    }
+    const seg = document.getElementById('customerSortSegmented');
+    if (seg) {
+        seg.querySelectorAll('button[data-mode]').forEach(function (b) {
+            const m = b.getAttribute('data-mode');
+            b.classList.toggle('is-active', m === mode);
+            // 方向指示：仅激活按钮显示（A-Z/Z-A 或 ↑/↓）
+            let label = (m === 'alpha') ? 'A-Z' : (m === 'count' ? '单数' : '金额');
+            if (m === mode) {
+                const dir = window._customerSortDir;
+                if (m === 'alpha') label = (dir === 'desc') ? 'Z-A' : 'A-Z';
+                else label = label + (dir === 'desc' ? ' ↓' : ' ↑');
+            }
+            b.textContent = label;
+        });
+    }
+    renderCustomerList();
+}
+
+// 单主筛选：all=全部 / unified=统一优惠（未单独设置）/ individual=个人优惠（已单独设置）
+function setCustomerFilter(mode) {
+    window._customerFilterMode = mode;
+    const seg = document.getElementById('customerFilterSegmented');
+    if (seg) {
+        seg.querySelectorAll('button[data-filter]').forEach(function (b) {
+            b.classList.toggle('is-active', b.getAttribute('data-filter') === mode);
+        });
+    }
+    renderCustomerList();
+}
+
+// 渲染右侧 A-Z# 快捷索引栏（空列表时不渲染按钮）
+function renderCustomerIndexRail(presentKeys) {
+    const rail = document.getElementById('customerIndexRail');
+    if (!rail) return;
+    const mode = window._customerSortMode || 'alpha';
+    if (mode !== 'alpha' || !presentKeys || presentKeys.length === 0) {
+        rail.classList.add('d-none');
+        rail.innerHTML = '';
+        return;
+    }
+    rail.classList.remove('d-none');
+    rail.innerHTML = presentKeys.map(function (k) {
+        return '<button type="button" class="customer-index-btn" data-idx="' + k + '" onclick="scrollToCustomerGroup(\'' + k + '\')">' + k + '</button>';
+    }).join('');
+}
+
+// 点击索引按钮平滑滚动到对应字母分组
+function scrollToCustomerGroup(key) {
+    const el = document.querySelector('#customerListContainer .customer-group[data-group="' + key + '"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function toggleCustomerGroup(key) {
+    if (!window._customerCollapsedGroups) window._customerCollapsedGroups = {};
+    window._customerCollapsedGroups[key] = !window._customerCollapsedGroups[key];
+    renderCustomerList();
+}
+
+// 未建档单主汇总：按 clientId 聚合历史（剔除已建档客户），取最近一笔的平台/联系方式
+function getUnarchivedClientSummaries() {
+    const archivedNames = new Set(customers.map(function (c) { return c && c.name ? String(c.name).trim() : ''; }).filter(Boolean));
+    const byName = {};
+    history.forEach(function (item) {
+        if (!item || !item.clientId) return;
+        const key = String(item.clientId).trim();
+        if (!key || archivedNames.has(key)) return;
+        if (!byName[key]) byName[key] = { name: key, contact: '', contactInfo: '', count: 0, total: 0, lastTs: 0 };
+        const rec = byName[key];
+        rec.count += 1;
+        rec.total += getStatsAmount(item, 'agreed', false);
+        const ts = new Date(item.timestamp || 0).getTime();
+        if (ts > rec.lastTs) {
+            rec.lastTs = ts;
+            rec.contact = item.contact || '';
+            rec.contactInfo = item.contactInfo || '';
+        }
+    });
+    return Object.values(byName).sort(function (a, b) { return b.total - a.total; });
+}
+
+function renderCustomerHistoryArchive() {
+    const container = document.getElementById('customerHistoryArchiveContainer');
+    if (!container) return;
+    const list = getUnarchivedClientSummaries();
+    if (list.length === 0) {
+        container.innerHTML = '<div class="customer-empty text-gray" style="padding:24px 0;text-align:center;">历史单主均已建档。</div>';
+        return;
+    }
+    const rows = list.map(function (r) {
+        const contact = (r.contact || r.contactInfo)
+            ? escapeHtml(r.contact || '') + (r.contact && r.contactInfo ? ' · ' : '') + escapeHtml(r.contactInfo || '')
+            : '<span class="text-gray">未记录联系方式</span>';
+        return '<div class="customer-archive-row">' +
+            '<div class="customer-card-main">' +
+                '<div class="customer-card-title">' + escapeHtml(r.name) + '</div>' +
+                '<div class="customer-card-contact text-gray">' + contact + '</div>' +
+                '<div class="customer-card-stats">' + r.count + ' 单 · ' + formatMoney(Math.round(r.total * 100) / 100) + '</div>' +
+            '</div>' +
+            '<div class="customer-card-actions">' +
+                '<button class="btn btn-compact" onclick="archiveCustomerFromHistory(\'' + encodeURIComponent(r.name) + '\')">建档</button>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+    container.innerHTML = rows + '<div style="margin-top:12px;"><button class="btn btn-compact w-full" onclick="archiveAllCustomersFromHistory()">全部建档</button></div>';
+}
+
+function archiveCustomerFromHistory(name) {
+    const key = decodeURIComponent(name);
+    const rec = getUnarchivedClientSummaries().find(function (r) { return r.name === key; });
+    if (!rec) { alert('未找到该单主的历史记录。'); return; }
+    if (findCustomerByName(key)) { alert('该单主已建档。'); renderCustomerHistoryPrompt(); renderCustomerHistoryArchive(); return; }
+    upsertCustomer({ name: rec.name, contact: rec.contact, contactInfo: rec.contactInfo });
+    saveCustomers();
+    renderCustomerHistoryPrompt();
+    renderCustomerHistoryArchive();
+    renderCustomerList();
+    alert('已为「' + rec.name + '」创建单主档案，可进入「我的单主」补充单主折扣。');
+}
+
+function archiveAllCustomersFromHistory() {
+    const list = getUnarchivedClientSummaries();
+    if (list.length === 0) { alert('没有可建档的历史单主。'); return; }
+    list.forEach(function (r) { upsertCustomer({ name: r.name, contact: r.contact, contactInfo: r.contactInfo }); });
+    saveCustomers();
+    renderCustomerHistoryPrompt();
+    renderCustomerHistoryArchive();
+    renderCustomerList();
+    alert('已为 ' + list.length + ' 位历史单主创建单主档案。');
+}
+
+function openCustomerEditModal(customerId) {
+    const modal = document.getElementById('customerEditModal');
+    if (!modal) return;
+    customerEditingId = customerId || null;
+    const isEdit = !!customerEditingId;
+    document.getElementById('customerEditModalTitle').textContent = isEdit ? '编辑单主' : '添加单主';
+    const c = isEdit ? (customers.find(function (x) { return x && x.id === customerId; }) || null) : null;
+    document.getElementById('customerEditId').value = c ? (c.id || '') : '';
+    document.getElementById('customerEditName').value = c ? (c.name || '') : '';
+    document.getElementById('customerEditContact').value = c ? (c.contact || '') : '';
+    document.getElementById('customerEditContactInfo').value = c ? (c.contactInfo || '') : '';
+    document.getElementById('customerEditNote').value = c ? (c.note || '') : '';
+    const d = (c && c.discount) ? c.discount : null;
+    const mode = (d && d.mode === 'manual') ? 'manual' : (d && d.mode === 'auto') ? 'auto' : 'none';
+    const modeSlider = document.getElementById('customerDiscountModeSlider');
+    if (modeSlider) {
+        modeSlider.querySelectorAll('.customer-mode-slider-btn').forEach(function (b) {
+            b.classList.toggle('is-active', b.getAttribute('data-mode') === mode);
+        });
+    }
+    document.getElementById('customerDiscountManualValue').value = (d && d.manual && isFinite(Number(d.manual.value))) ? d.manual.value : 0.95;
+    syncCustomerManualSliderLabel();
+    document.getElementById('customerDiscountManualName').value = (d && d.manual && d.manual.name) ? d.manual.name : '';
+    document.getElementById('customerDiscountStartDate').value = (d && d.startDate) || '';
+    document.getElementById('customerDiscountEndDate').value = (d && d.endDate) || '';
+    renderCustomerAutoTiers((d && d.mode === 'auto' && Array.isArray(d.auto && d.auto.tiers)) ? d.auto.tiers : [], (d && d.auto && d.auto.by) || null);
+    modal.classList.remove('d-none');
+    modal.setAttribute('aria-hidden', 'false');
+    onCustomerDiscountModeChange();
+    updateCustomerDiscountPreview();
+    setTimeout(function () { const el = document.getElementById('customerEditName'); if (el) el.focus(); }, 50);
+}
+
+function closeCustomerEditModal() {
+    const modal = document.getElementById('customerEditModal');
+    if (modal) { modal.classList.add('d-none'); modal.setAttribute('aria-hidden', 'true'); }
+    customerEditingId = null;
+}
+
+// 滑块式分段：将高亮拇指对齐到当前激活按钮
+function updateCustomerModeSliderThumb() {
+    const slider = document.getElementById('customerDiscountModeSlider');
+    if (!slider) return;
+    const thumb = slider.querySelector('.customer-mode-slider-thumb');
+    if (!thumb) return;
+    const active = slider.querySelector('.customer-mode-slider-btn.is-active');
+    if (!active) { thumb.style.opacity = '0'; return; }
+    thumb.style.opacity = '1';
+    thumb.style.width = active.offsetWidth + 'px';
+    thumb.style.transform = 'translateX(' + active.offsetLeft + 'px)';
+}
+
+function onCustomerDiscountModeChange(mode) {
+    if (!mode) {
+        const active = document.querySelector('#customerDiscountModeSlider .customer-mode-slider-btn.is-active');
+        mode = active ? active.getAttribute('data-mode') : 'none';
+    }
+    const slider = document.getElementById('customerDiscountModeSlider');
+    if (slider) {
+        slider.querySelectorAll('.customer-mode-slider-btn').forEach(function (b) {
+            b.classList.toggle('is-active', b.getAttribute('data-mode') === mode);
+        });
+        updateCustomerModeSliderThumb();
+    }
+    const manualWrap = document.getElementById('customerDiscountManualWrap');
+    const autoWrap = document.getElementById('customerDiscountAutoWrap');
+    if (manualWrap) manualWrap.classList.toggle('d-none', mode !== 'manual');
+    if (autoWrap) autoWrap.classList.toggle('d-none', mode !== 'auto');
+    updateCustomerDiscountPreview();
+}
+
+window.addEventListener('resize', updateCustomerModeSliderThumb);
+
+// 手动折扣滑块：同步百分比文本并刷新预览
+function syncCustomerManualSliderLabel() {
+    const r = document.getElementById('customerDiscountManualValue');
+    const lbl = document.getElementById('customerDiscountManualValueLabel');
+    if (r && lbl) lbl.textContent = Math.round(Number(r.value) * 100) + '%';
+}
+function onCustomerManualDiscountSlider() {
+    syncCustomerManualSliderLabel();
+    updateCustomerDiscountPreview();
+}
+
+function addCustomerAutoTier(tier) {
+    const container = document.getElementById('customerDiscountAutoTiers');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'customer-auto-tier-row';
+    const by = getCustomerAutoBy();
+    const t = tier || { threshold: '', value: 0.97, name: '' };
+    row.innerHTML =
+        '<input type="number" class="customer-tier-threshold" min="1" step="1" placeholder="' + (by === 'count' ? '满 N 单' : '满 N 元') + '" value="' + escapeHtml(t.threshold != null ? t.threshold : '') + '" oninput="updateCustomerDiscountPreview()">' +
+        '<input type="number" class="customer-tier-value" min="0.5" max="1" step="0.01" placeholder="折扣" title="折扣系数（0.5–1）" value="' + escapeHtml(t.value != null ? t.value : 0.97) + '" oninput="updateCustomerDiscountPreview()">' +
+        '<button type="button" class="btn secondary btn-compact" title="删除档位" onclick="removeCustomerAutoTier(this)">×</button>';
+    container.appendChild(row);
+    updateCustomerDiscountPreview();
+}
+
+// 个体档规则级维度（弹窗内分段控件，未保存前仅 UI 状态）
+function getCustomerAutoBy() {
+    const seg = document.getElementById('customerAutoBySeg');
+    if (!seg) return 'amount';
+    const active = seg.querySelector('button[data-by].is-active');
+    return (active && active.getAttribute('data-by') === 'count') ? 'count' : 'amount';
+}
+
+function syncCustomerAutoBySeg(by) {
+    const seg = document.getElementById('customerAutoBySeg');
+    if (!seg) return;
+    seg.querySelectorAll('button[data-by]').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-by') === by);
+    });
+}
+
+// 切换个体档维度：保留已输入的行数据并按新维度重渲染
+function onCustomerAutoByChange(by) {
+    const next = (by === 'count') ? 'count' : 'amount';
+    if (getCustomerAutoBy() === next) return;
+    syncCustomerAutoBySeg(next);
+    const rows = document.querySelectorAll('#customerDiscountAutoTiers .customer-auto-tier-row');
+    const data = Array.prototype.map.call(rows, function (row) {
+        return {
+            threshold: row.querySelector('.customer-tier-threshold').value,
+            value: row.querySelector('.customer-tier-value').value
+        };
+    });
+    const container = document.getElementById('customerDiscountAutoTiers');
+    if (!container) return;
+    container.innerHTML = '';
+    if (data.length === 0) { addCustomerAutoTier(); }
+    else { data.forEach(function (t) { addCustomerAutoTier(t); }); }
+    updateCustomerDiscountPreview();
+}
+
+function removeCustomerAutoTier(btn) {
+    const row = btn && btn.closest ? btn.closest('.customer-auto-tier-row') : null;
+    if (row && row.parentNode) row.parentNode.removeChild(row);
+    updateCustomerDiscountPreview();
+}
+
+function renderCustomerAutoTiers(tiers, ruleBy) {
+    const container = document.getElementById('customerDiscountAutoTiers');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!Array.isArray(tiers) || tiers.length === 0) {
+        syncCustomerAutoBySeg((ruleBy === 'count') ? 'count' : 'amount');
+        addCustomerAutoTier({ threshold: 500, value: 0.97, name: '累计满500 97折' });
+        return;
+    }
+    if (ruleBy === 'count' || ruleBy === 'amount') {
+        syncCustomerAutoBySeg(ruleBy); // 已保存的规则级维度优先回显
+    } else {
+        // 旧数据无规则级维度：按多数档推断
+        const cnt = tiers.filter(function (t) { return t && t.by === 'count'; }).length;
+        const amt = tiers.filter(function (t) { return t && t.by !== 'count'; }).length;
+        syncCustomerAutoBySeg((cnt > amt) ? 'count' : 'amount');
+    }
+    tiers.forEach(function (t) { addCustomerAutoTier(t); });
+}
+
+function getCustomerDiscountFromModal() {
+    const active = document.querySelector('#customerDiscountModeSlider .customer-mode-slider-btn.is-active');
+    const mode = active ? active.getAttribute('data-mode') : 'none';
+    const d = {
+        mode: mode,
+        manual: { value: 0.95, name: '' },
+        auto: { tiers: [] },
+        startDate: String(document.getElementById('customerDiscountStartDate').value || '').trim(),
+        endDate: String(document.getElementById('customerDiscountEndDate').value || '').trim()
+    };
+    if (mode === 'manual') {
+        d.manual = {
+            value: Number(document.getElementById('customerDiscountManualValue').value) || 0.95,
+            name: '专属优惠' // 手动折扣名称固定，不再从输入框读取
+        };
+    } else if (mode === 'auto') {
+        const rows = document.querySelectorAll('#customerDiscountAutoTiers .customer-auto-tier-row');
+        const tiers = [];
+        const ruleBy = getCustomerAutoBy(); // 维度为规则级（弹窗分段控件），档位行不再单独选择
+        Array.prototype.forEach.call(rows, function (row) {
+            const thrEl = row.querySelector('.customer-tier-threshold');
+            const valEl = row.querySelector('.customer-tier-value');
+            const thr = Number(thrEl ? thrEl.value : NaN);
+            const v = Number(valEl ? valEl.value : NaN);
+            const thrOk = isFinite(thr) && thr > 0;
+            const valOk = isFinite(v) && v > 0 && v <= 1;
+            markTierInvalid(thrEl, !thrOk);
+            markTierInvalid(valEl, !valOk);
+            if (!thrOk || !valOk) return; // 非法行标红并跳过保存（防阈值空值变 0 恒命中）
+            tiers.push({
+                by: ruleBy,
+                threshold: thr,
+                value: v,
+                name: tierDefaultName(ruleBy, thr, v) // 名称自动生成，不再手动输入
+            });
+        });
+        d.auto.tiers = sortTiersGrouped(tiers);
+        d.auto.by = ruleBy; // 记录规则级维度，供下次编辑回显
+    }
+    return d;
+}
+
+function updateCustomerDiscountPreview() {
+    const el = document.getElementById('customerDiscountPreview');
+    if (!el) return;
+    const nameEl = document.getElementById('customerEditName');
+    const nameVal = nameEl ? String(nameEl.value).trim() : '';
+    const d = getCustomerDiscountFromModal();
+    if (d.mode === 'none') { el.textContent = '当前无单主折扣。'; return; }
+    const st = computeCustomerStats(nameVal);
+    let parts = [];
+    if (d.mode === 'manual') {
+        parts.push('专属优惠：×' + d.manual.value);
+    } else {
+        parts.push('自动档：' + d.auto.tiers.map(function (t) {
+            const by = (t.by === 'count') ? 'count' : 'amount';
+            return t.name || tierDefaultName(by, t.threshold, t.value);
+        }).join('；'));
+    }
+    if (nameVal) parts.push('当前累计 ' + formatMoney(st.totalAmount) + '（' + st.orderCount + ' 单）');
+    el.textContent = parts.join('　');
+}
+
+function saveCustomerEdit() {
+    const name = String(document.getElementById('customerEditName').value || '').trim();
+    if (!name) { alert('请填写单主名。'); return; }
+    const existing = findCustomerByName(name);
+    if (existing && existing.id !== customerEditingId) {
+        alert('已存在同名单主「' + name + '」，请更换单主名。');
+        return;
+    }
+    const payload = {
+        name: name,
+        contact: String(document.getElementById('customerEditContact').value || '').trim(),
+        contactInfo: String(document.getElementById('customerEditContactInfo').value || '').trim(),
+        note: String(document.getElementById('customerEditNote').value || '').trim(),
+        discount: getCustomerDiscountFromModal()
+    };
+    if (customerEditingId) {
+        const idx = customers.findIndex(function (c) { return c && c.id === customerEditingId; });
+        if (idx >= 0) {
+            payload.id = customerEditingId;
+            payload.createdAt = customers[idx].createdAt;
+            customers[idx] = Object.assign({}, customers[idx], payload);
+            customers[idx].updatedAt = new Date().toISOString();
+        }
+    } else {
+        upsertCustomer(payload);
+    }
+    saveCustomers();
+    closeCustomerEditModal();
+    renderCustomerList();
+    renderCustomerHistoryPrompt();
+    renderCustomerHistoryArchive();
+    alert('单主「' + name + '」已保存。');
+}
+
+function deleteCustomer(id) {
+    const c = customers.find(function (x) { return x && x.id === id; });
+    if (!c) return;
+    if (!confirm('确定删除单主「' + c.name + '」？删除仅移除单主档案，不影响历史订单。')) return;
+    removeCustomer(id);
+    saveCustomers();
+    renderCustomerList();
+    renderCustomerHistoryPrompt();
+    renderCustomerHistoryArchive();
+}
+
+// ===== 客户专属优惠统一规则（全局默认） =====
+// 推荐合理档位（此前默认 500/3 及历史残留 1、3、500 过低档位，会被自愈替换为推荐值）
+function rewardDefaultTiers() {
+    return [
+        { by: 'amount', threshold: 1000, value: 0.97, name: '累计满1k 97折' },
+        { by: 'amount', threshold: 3000, value: 0.95, name: '累计满3k 95折' },
+        { by: 'count', threshold: 5, value: 0.97, name: '累计满5单 97折' }
+    ];
+}
+
+function ensureRewardPolicy() {
+    if (!defaultSettings.customerRewardPolicy || typeof defaultSettings.customerRewardPolicy !== 'object') {
+        defaultSettings.customerRewardPolicy = {
+            enabled: false,
+            tiers: rewardDefaultTiers()
+        };
+    }
+    if (!Array.isArray(defaultSettings.customerRewardPolicy.tiers)) defaultSettings.customerRewardPolicy.tiers = [];
+    // 数据自愈：修正「名称声明单数、维度却是金额」的错位档位
+    // 例：name='累计3单 95折' 但 by='amount'、threshold=3（早期编辑/迁移残留），按名称声明恢复为单数维度
+    defaultSettings.customerRewardPolicy.tiers.forEach(function (t) {
+        if (!t || typeof t !== 'object' || t.by === 'count') return;
+        const m = /^累计(\d+)单/.exec(String(t.name || '').trim());
+        if (m && Number(t.threshold) === Number(m[1])) t.by = 'count';
+    });
+    // 数据自愈：清理历史残留的不合理档位（阈值 1/3/500 这种过低的旧默认与迁移残留），替换为推荐档位。
+    // 仅当档位完全由残留值构成时触发，避免覆盖用户已设置的合理档位；normalized 标记防止反复替换。
+    const policy = defaultSettings.customerRewardPolicy;
+    if (!policy._rewardNormalized && Array.isArray(policy.tiers) && policy.tiers.length) {
+        const residualSet = { 1: true, 3: true, 500: true };
+        const allResidual = policy.tiers.every(function (t) {
+            return t && t.threshold != null && residualSet[Number(t.threshold)] === true;
+        });
+        if (allResidual) {
+            policy.tiers = rewardDefaultTiers();
+            policy._rewardNormalized = true;
+            try { localStorage.setItem('calculatorSettings', JSON.stringify(defaultSettings)); } catch (e) {}
+        }
+    }
+    // 规则级维度（旧数据无 by 时按现有档位多数派推断；空档默认金额）
+    if (policy.by !== 'count' && policy.by !== 'amount') {
+        const tiers = policy.tiers;
+        const cnt = tiers.filter(function (t) { return t && t.by === 'count'; }).length;
+        const amt = tiers.filter(function (t) { return t && t.by !== 'count'; }).length;
+        defaultSettings.customerRewardPolicy.by = (cnt > amt) ? 'count' : 'amount';
+    }
+    return defaultSettings.customerRewardPolicy;
+}
+
+function renderRewardPolicyTiers() {
+    ensureRewardPolicy();
+    const container = document.getElementById('rewardPolicyTiers');
+    if (!container) return;
+    const policy = defaultSettings.customerRewardPolicy;
+    const en = document.getElementById('rewardPolicyEnabled');
+    if (en) en.checked = !!policy.enabled;
+    const lbl = document.getElementById('rewardPolicyEnabledLabel');
+    if (lbl) lbl.textContent = policy.enabled ? '已启用' : '已停用';
+    const mg = document.getElementById('rewardPolicyMergeIndividual');
+    if (mg) mg.checked = !!policy.mergeIndividual;
+    syncRewardPolicyBySeg();
+    renderRewardPolicyTiersRows();
+    updateRewardPolicyPreview(0);
+}
+
+// 仅渲染「当前维度」已保存的档位行，避免金额/单数两套档位互相覆盖
+function renderRewardPolicyTiersRows() {
+    const container = document.getElementById('rewardPolicyTiers');
+    if (!container) return;
+    const policy = defaultSettings.customerRewardPolicy;
+    const currentBy = getRewardPolicyBy();
+    const rows = (Array.isArray(policy.tiers) ? policy.tiers : []).filter(function (t) { return t && t.by === currentBy; });
+    container.innerHTML = '';
+    if (rows.length === 0) { addRewardPolicyTier(); }
+    else { rows.forEach(function (t) { addRewardPolicyTier(t); }); }
+}
+
+function addRewardPolicyTier(tier) {
+    const container = document.getElementById('rewardPolicyTiers');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'customer-auto-tier-row';
+    const by = getRewardPolicyBy();
+    const t = tier || { threshold: '', value: 0.97, name: '' };
+    row.innerHTML =
+        '<input type="number" class="customer-tier-threshold" min="1" step="1" placeholder="' + (by === 'count' ? '满 N 单' : '满 N 元') + '" value="' + escapeHtml(t.threshold != null ? t.threshold : '') + '" oninput="onRewardPolicyTiersChange()">' +
+        '<input type="number" class="customer-tier-value" min="0.5" max="1" step="0.01" placeholder="折扣" title="折扣系数（0.5–1）" value="' + escapeHtml(t.value != null ? t.value : 0.97) + '" oninput="onRewardPolicyTiersChange()">' +
+        '<button type="button" class="btn secondary btn-compact" title="删除档位" onclick="removeRewardPolicyTier(this)">×</button>';
+    container.appendChild(row);
+}
+
+// 规则级维度：切换「按累计金额 / 按累计单数」并重渲染档位行（保留已输入的阈值/系数）
+function getRewardPolicyBy() {
+    const policy = ensureRewardPolicy();
+    return (policy.by === 'count') ? 'count' : 'amount';
+}
+
+function syncRewardPolicyBySeg() {
+    const seg = document.getElementById('rewardPolicyBySeg');
+    if (!seg) return;
+    const by = getRewardPolicyBy();
+    seg.querySelectorAll('button[data-by]').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-by') === by);
+    });
+}
+
+function onRewardPolicyByChange(by) {
+    const policy = ensureRewardPolicy();
+    const next = (by === 'count') ? 'count' : 'amount';
+    if (policy.by === next) return;
+    // 先落盘当前维度编辑中的行，再切到新维度，避免两套档位互相覆盖
+    onRewardPolicyTiersChange();
+    policy.by = next;
+    syncRewardPolicyBySeg(); // 同步分段按钮激活态（否则切换后高亮不更新，表现为“无法切换”）
+    renderRewardPolicyTiersRows();
+    updateRewardPolicyPreview(0);
+}
+
+function removeRewardPolicyTier(btn) {
+    const row = btn && btn.closest ? btn.closest('.customer-auto-tier-row') : null;
+    if (row && row.parentNode) row.parentNode.removeChild(row);
+    onRewardPolicyTiersChange();
+}
+
+function onRewardPolicyToggle() {
+    ensureRewardPolicy();
+    const en = document.getElementById('rewardPolicyEnabled');
+    defaultSettings.customerRewardPolicy.enabled = !!(en && en.checked);
+    const lbl = document.getElementById('rewardPolicyEnabledLabel');
+    if (lbl) lbl.textContent = defaultSettings.customerRewardPolicy.enabled ? '已启用' : '已停用';
+    updateRewardPolicyPreview(0);
+    onRewardPolicyPersist();
+}
+
+// 合并模式开关：个体档与统一规则合并参与「取最优惠」
+function onRewardPolicyMergeToggle() {
+    ensureRewardPolicy();
+    const el = document.getElementById('rewardPolicyMergeIndividual');
+    defaultSettings.customerRewardPolicy.mergeIndividual = !!(el && el.checked);
+    updateRewardPolicyPreview(0);
+    onRewardPolicyPersist();
+}
+
+// 折叠/展开「单主折扣统一规则」的档位编辑区（默认收起）
+function toggleRewardPolicyBody() {
+    const body = document.getElementById('rewardPolicyBody');
+    const btn = document.getElementById('rewardPolicyToggleBtn');
+    if (!body) return;
+    const show = body.classList.contains('d-none');
+    body.classList.toggle('d-none', !show);
+    if (btn) btn.textContent = show ? '收起档位编辑 ▴' : '展开档位编辑 ▾';
+}
+
+// 档位行控件标红/恢复（非法值提示）：threshold 需 >0，系数需 (0,1]
+function markTierInvalid(el, invalid) {
+    if (!el) return;
+    el.classList.toggle('customer-tier-invalid', !!invalid);
+}
+
+// 档位分组排序：金额档在前、单数档在后，组内阈值升序（修正金额/单数混排按数值排序的无意义顺序）
+function sortTiersGrouped(tiers) {
+    return tiers.slice().sort(function (a, b) {
+        if (a.by !== b.by) return (a.by === 'amount') ? -1 : 1;
+        return Number(a.threshold) - Number(b.threshold);
+    });
+}
+
+function onRewardPolicyTiersChange() {
+    const container = document.getElementById('rewardPolicyTiers');
+    if (!container) return;
+    const policy = defaultSettings.customerRewardPolicy;
+    const rows = container.querySelectorAll('.customer-auto-tier-row');
+    let invalidCount = 0;
+    const currentTiers = [];
+    const ruleBy = getRewardPolicyBy(); // 当前编辑维度（金额/单数），仅覆盖该维度档位，保留另一维度
+    Array.prototype.forEach.call(rows, function (row) {
+        const thrEl = row.querySelector('.customer-tier-threshold');
+        const valEl = row.querySelector('.customer-tier-value');
+        const thr = Number(thrEl ? thrEl.value : NaN);
+        const v = Number(valEl ? valEl.value : NaN);
+        const thrOk = isFinite(thr) && thr > 0;
+        const valOk = isFinite(v) && v > 0 && v <= 1;
+        markTierInvalid(thrEl, !thrOk);
+        markTierInvalid(valEl, !valOk);
+        if (!thrOk || !valOk) { invalidCount += 1; return; } // 非法行标红并跳过保存（防阈值空值变 0 致全员命中）
+        currentTiers.push({
+            by: ruleBy,
+            threshold: thr,
+            value: v,
+            name: tierDefaultName(ruleBy, thr, v) // 名称自动生成，不再手动输入
+        });
+    });
+    // 保留另一维度的档位，仅替换当前维度，避免金额/单数互相覆盖
+    const otherTiers = (Array.isArray(policy.tiers) ? policy.tiers : []).filter(function (t) { return t && t.by !== ruleBy; });
+    policy.tiers = sortTiersGrouped(otherTiers.concat(currentTiers));
+    updateRewardPolicyPreview(invalidCount);
+    onRewardPolicyPersist();
+}
+
+// 命中预览：统计「未单独设置」单主中按当前档位会命中折扣的数量
+function updateRewardPolicyPreview(invalidCount) {
+    const el = document.getElementById('rewardPolicyPreview');
+    if (!el) return;
+    const policy = defaultSettings && defaultSettings.customerRewardPolicy;
+    let text = '';
+    if (!policy || !policy.enabled) {
+        text = '统一规则已停用，不会对任何单主生效。';
+    } else {
+        let total = 0, hit = 0;
+        customers.forEach(function (c) {
+            if (!c || !c.discount || c.discount.mode !== 'none') return;
+            total += 1;
+            if (getCustomerEffectiveDiscount(c)) hit += 1;
+        });
+        text = '当前命中 ' + hit + ' / ' + total + ' 位「未单独设置」的单主。';
+    }
+    if (invalidCount > 0) text += ' 有 ' + invalidCount + ' 行无效（阈值需 >0、系数需 0.5–1），已忽略。';
+    el.textContent = text;
+}
+
+// 统一规则变更后：保存设置、刷新客户列表徽标
+function onRewardPolicyPersist() {
+    if (typeof saveData === 'function') saveData();
+    if (typeof renderCustomerList === 'function') renderCustomerList();
+}
+
+// ===== 计算页：客户单主折扣（独立折扣行，订单级系数） =====
+window.customerDiscountState = null; // { value, name, source, customerId, enabled }
+
+function recalcQuoteDisplay() {
+    if (typeof calculatePrice === 'function') {
+        try { calculatePrice(undefined, undefined, undefined, true); } catch (e) { /* ignore */ }
+    }
+}
+
+function applyCustomerDiscount(customer) {
+    if (!customer) { clearCustomerDiscount(); return; }
+    const eff = getCustomerEffectiveDiscount(customer);
+    const row = document.getElementById('customerDiscountRow');
+    if (!eff) {
+        clearCustomerDiscount();
+        if (row) row.classList.add('d-none');
+        return;
+    }
+    const state = window.customerDiscountState || (window.customerDiscountState = {});
+    // 名称展示优先用真实命中条件自动生成的名称，避免档位里残留的自定义 name 与阈值/折扣脱节误导
+    const effName = (eff.autoName && String(eff.autoName).trim()) ? eff.autoName : eff.name;
+    state.value = eff.value;
+    state.name = effName;
+    state.source = eff.source;
+    state.customerId = customer.id;
+    state.enabled = true;
+    if (row) {
+        const nameEl = document.getElementById('customerDiscountName');
+        const metaEl = document.getElementById('customerDiscountMeta');
+        if (nameEl) nameEl.textContent = '单主折扣：' + effName + ' ×' + eff.value;
+        if (metaEl) {
+            let meta = (eff.source === 'auto')
+                ? ((eff.by === 'count') ? '自动 · 累计' + eff.threshold + '单' : '自动 · 累计满' + eff.threshold)
+                : '手动';
+            const v = customerValidityText(customer.discount);
+            if (v) meta += ' · ' + v;
+            metaEl.textContent = meta;
+        }
+        const chk = document.getElementById('customerDiscountEnabled');
+        if (chk) chk.checked = true;
+        row.classList.remove('d-none');
+        row.classList.remove('customer-discount-disabled');
+    }
+    recalcQuoteDisplay();
+}
+
+function clearCustomerDiscount() {
+    window.customerDiscountState = null;
+    const row = document.getElementById('customerDiscountRow');
+    if (row) {
+        row.classList.add('d-none');
+        row.classList.remove('customer-discount-disabled');
+    }
+}
+
+function onCustomerDiscountToggle() {
+    const state = window.customerDiscountState;
+    if (!state) return;
+    const chk = document.getElementById('customerDiscountEnabled');
+    state.enabled = !!(chk && chk.checked);
+    const row = document.getElementById('customerDiscountRow');
+    if (row) row.classList.toggle('customer-discount-disabled', !state.enabled);
+    recalcQuoteDisplay();
+}
+
+// 单主ID输入变化/失焦时：精确命中客户则应用单主折扣，否则清除
+function syncCustomerDiscountFromClientId() {
+    const el = document.getElementById('clientId');
+    const val = el ? String(el.value || '').trim() : '';
+    if (!val) { clearCustomerDiscount(); return; }
+    const customer = findCustomerByName(val);
+    // 未建档的单主：录入时不自动建档（下单成功保存时才建档），无档案即无折扣
+    if (!customer) { clearCustomerDiscount(); return; }
+    // 命中客户但无生效折扣（无折扣/已过期）：隐藏折扣行但不显示错误
+    const eff = getCustomerEffectiveDiscount(customer);
+    const row = document.getElementById('customerDiscountRow');
+    if (!eff) {
+        window.customerDiscountState = null;
+        if (row) row.classList.add('d-none');
+        return;
+    }
+    applyCustomerDiscount(customer);
+}
+
+// 编辑历史订单时恢复客户单主折扣：仅提示、默认停用（避免改历史报价）
+function restoreCustomerDiscountForEdit(quote) {
+    const row = document.getElementById('customerDiscountRow');
+    if (!row) return;
+    clearCustomerDiscount();
+    const saved = quote && quote.customerDiscount;
+    if (!saved || !quote.clientId) return;
+    const customer = findCustomerByName(quote.clientId);
+    if (!customer) return;
+    const eff = getCustomerEffectiveDiscount(customer);
+    if (!eff) return;
+    // 名称展示优先用自动生成的名称（与客户列表徽标一致），避免残留 name 与阈值/折扣脱节
+    const effName = (eff.autoName && String(eff.autoName).trim()) ? eff.autoName : eff.name;
+    window.customerDiscountState = {
+        value: eff.value,
+        name: effName,
+        source: eff.source,
+        customerId: customer.id,
+        enabled: false // 默认停用
+    };
+    const nameEl = document.getElementById('customerDiscountName');
+    const metaEl = document.getElementById('customerDiscountMeta');
+    if (nameEl) nameEl.textContent = '单主折扣：' + effName + ' ×' + eff.value;
+    if (metaEl) {
+        let meta = (eff.source === 'auto')
+            ? ((eff.by === 'count') ? '自动 · 累计' + eff.threshold + '单' : '自动 · 累计满' + eff.threshold)
+            : '手动';
+        const v = customerValidityText(customer.discount);
+        if (v) meta += ' · ' + v;
+        metaEl.textContent = meta;
+    }
+    const chk = document.getElementById('customerDiscountEnabled');
+    if (chk) chk.checked = false;
+    row.classList.remove('d-none');
+    row.classList.add('customer-discount-disabled');
+}
+
 var _saveDataTimer;
+// 保存数据到本地存储（防抖：短时间多次调用只写入一次）
 function doSaveData() {
     // 保存前兜底防重：避免任何入口写入重复数据
     try {
@@ -2114,6 +3454,7 @@ function doSaveData() {
         localStorage.setItem('calculatorSettings', JSON.stringify(defaultSettings));
         localStorage.setItem('productSettings', JSON.stringify(productSettings));
         localStorage.setItem('processSettings', JSON.stringify(processSettings));
+        localStorage.setItem('customers', JSON.stringify(customers));
     } catch (error) {
         console.error('保存数据失败:', error);
     }
@@ -3083,6 +4424,27 @@ function updateCategoryFont(category, value) {
     debouncedApplyFontSettings();
 }
 
+// 把字体栈中的每个字体名加上引号（防止 12px 等数字开头名称被 CSS 解析器丢弃，导致整条 font-family 失效）
+function quoteFontFamily(family) {
+    var GENERIC = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-serif|ui-sans-serif|ui-monospace|ui-rounded|math|emoji|fangsong)$/;
+    return String(family || '').split(',')
+        .map(function (name) {
+            name = name.trim();
+            if (!name) return '';
+            // 已带引号的保持原样
+            if ((name.startsWith('"') && name.endsWith('"')) || (name.startsWith('\'') && name.endsWith('\''))) {
+                return name;
+            }
+            // 通用字体关键词不加引号
+            if (GENERIC.test(name)) {
+                return name;
+            }
+            return '"' + name.replace(/"/g, '\\"') + '"';
+        })
+        .filter(Boolean)
+        .join(', ');
+}
+
 // 应用字体设置（用户自定义时覆盖主题字体，否则使用主题字体）
 function applyFontSettings() {
     const fontSettings = defaultSettings.receiptCustomization.fontSettings || {
@@ -3121,31 +4483,31 @@ function applyFontSettings() {
         const catFonts = fontSettings.categoryFonts;
         // 如果使用默认字体且 body 未设置，不设置 font-family（让主题 CSS 变量生效）
         const bodyFontRule = catFonts.body 
-            ? `font-family: ${catFonts.body} !important;`
-            : (isUsingDefaultFont ? '' : `font-family: ${fontSettings.fontFamily} !important;`);
+            ? `font-family: ${quoteFontFamily(catFonts.body)} !important;`
+            : (isUsingDefaultFont ? '' : `font-family: ${quoteFontFamily(fontSettings.fontFamily)} !important;`);
         
         styleContent = `
             :root {
                 ${catFonts.number ? `--receipt-number-font: ${catFonts.number};` : ''}
             }
-            .receipt {
+            .receipt.receipt.receipt {
                 ${bodyFontRule}
                 font-size: ${fontSettings.fontSize}px !important;
                 font-weight: ${fontSettings.fontWeight} !important;
                 line-height: ${fontSettings.lineHeight} !important;
             }
-            ${catFonts.title ? `.receipt-title { font-family: ${catFonts.title} !important; }` : ''}
-            ${catFonts.number ? `.receipt-col-1, .receipt-sub-row .receipt-col-1 { font-family: ${catFonts.number} !important; }` : ''}
-            ${catFonts.summary ? `.receipt-summary, .receipt-summary-row, .receipt-summary-label, .receipt-summary-value, .receipt-total { font-family: ${catFonts.summary} !important; }` : ''}
-            ${catFonts.footer ? `.receipt-footer, .receipt-footer-text1, .receipt-footer-text2 { font-family: ${catFonts.footer} !important; }` : ''}
+            ${catFonts.title ? `.receipt-title { font-family: ${quoteFontFamily(catFonts.title)} !important; }` : ''}
+            ${catFonts.number ? `.receipt-col-1, .receipt-sub-row .receipt-col-1 { font-family: ${quoteFontFamily(catFonts.number)} !important; }` : ''}
+            ${catFonts.summary ? `.receipt-summary, .receipt-summary-row, .receipt-summary-label, .receipt-summary-value, .receipt-total { font-family: ${quoteFontFamily(catFonts.summary)} !important; }` : ''}
+            ${catFonts.footer ? `.receipt-footer, .receipt-footer-text1, .receipt-footer-text2 { font-family: ${quoteFontFamily(catFonts.footer)} !important; }` : ''}
         `;
     } else {
         // 统一字体设置：如果使用默认字体，不设置 font-family（让主题 CSS 变量生效）；否则使用用户自定义字体
         const fontFamilyRule = isUsingDefaultFont 
             ? ''  // 不设置 font-family，让 CSS 变量 --receipt-font-family 生效
-            : `font-family: ${fontSettings.fontFamily} !important;`;
+            : `font-family: ${quoteFontFamily(fontSettings.fontFamily)} !important;`;
         styleContent = `
-            .receipt {
+            .receipt.receipt.receipt {
                 ${fontFamilyRule}
                 font-size: ${fontSettings.fontSize}px !important;
                 font-weight: ${fontSettings.fontWeight} !important;
@@ -4160,6 +5522,46 @@ function initReceiptCustomization() {
             saveData();
         });
     });
+}
+
+// 恢复当前主题的预设样式：锯齿回到「跟随主题默认」；自定义主题的边框/底纹/圆角回预设默认；
+// 编辑区颜色/圆角/边框/底纹回当前主题预设值。保留已上传图片与标题/页脚等文字内容。
+function restoreReceiptPreset() {
+    const theme = (defaultSettings.receiptCustomization && defaultSettings.receiptCustomization.theme) || 'classic';
+    const labelMap = { classic: '经典', modern: '现代', warm: '温馨', dark: '深色', nature: '清新', vintage: '复古', sakura: '粉樱', iceBlue: '冰蓝' };
+    let themeLabel;
+    if (theme.indexOf('custom_') === 0 && defaultSettings.customThemes && defaultSettings.customThemes[theme]) {
+        themeLabel = '自定义 · ' + (defaultSettings.customThemes[theme].name || theme);
+    } else {
+        themeLabel = labelMap[theme] || theme;
+    }
+    if (!confirm('确定恢复「' + themeLabel + '」的预设样式吗？\n将重置锯齿、边框、底纹与编辑区颜色为预设值；已上传的图片、标题等文字内容将保留。')) return;
+
+    const rc = defaultSettings.receiptCustomization || (defaultSettings.receiptCustomization = {});
+    // 1. 锯齿回到「跟随主题默认」（温馨主题无锯齿，其他主题仅下边缘锯齿）
+    rc.zigzagTopEdge = null;
+    rc.zigzagBottomEdge = null;
+
+    // 2. 当前是自定义主题：边框/底纹/圆角回预设默认（保留用户自定义配色）
+    if (theme.indexOf('custom_') === 0 && defaultSettings.customThemes && defaultSettings.customThemes[theme]) {
+        const t = defaultSettings.customThemes[theme];
+        t.borderStyle = 'none';
+        t.borderWidth = 0;
+        t.borderColor = '#cbd5e0';
+        t.borderRadius = 0;
+        t.texture = 'none';
+        t.textureOpacity = 0.1;
+        if (typeof applyCustomThemeStyles === 'function') applyCustomThemeStyles(theme);
+    }
+
+    // 3. 编辑区颜色/圆角/边框/底纹回当前主题预设值（预设主题无存储字段，仅重置表单）
+    if (typeof loadCurrentThemeToCustom === 'function') loadCurrentThemeToCustom();
+
+    touchReceiptCustomizationUpdatedAt();
+    saveData();
+    loadReceiptCustomizationToForm();
+    syncZigzagEdgeControls();
+    refreshReceiptDisplay();
 }
 
 // 清除小票自定义设置
@@ -5402,6 +6804,7 @@ function getExportSyncPayload() {
         productSettings: productSettings,
         processSettings: processSettings,
         templates: templates,
+        customers: customers,
         exportDate: new Date().toISOString()
     };
 }
@@ -5525,7 +6928,7 @@ function importSyncDataFromClipboard() {
                 return;
             }
             const hasHistory = Array.isArray(data.quoteHistory);
-            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null;
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null;
             if (!hasHistory && !hasSettings) {
                 alert('剪贴板中未包含可导入的数据（需要 quoteHistory 或设置项）');
                 return;
@@ -5681,6 +7084,13 @@ function applyRecordImportOverwrite() {
             }
         });
     }
+    if (Array.isArray(data.customers)) {
+        // 覆盖导入：直接替换客户档案（与设置覆盖策略一致）
+        customers = data.customers.map(c => Object.assign({}, c));
+        customers.forEach(c => {
+            if (!c.discount) c.discount = { mode: 'none', manual: { value: 0.95, name: '' }, auto: { tiers: [] }, startDate: '', endDate: '' };
+        });
+    }
     saveData();
     applyRecordFilters();
     alert('导入成功，数据已同步到本机。');
@@ -5701,6 +7111,26 @@ function applyRecordImportMerge() {
         history.sort(function (a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
         appendedCount = toAppend.length;
     }
+    if (Array.isArray(data.customers) && data.customers.length > 0) {
+        // 合并导入客户：按 name 匹配，仅补缺失项与空值，不覆盖本地已填内容
+        data.customers.forEach(function (c) {
+            if (!c || !c.name) return;
+            const existing = findCustomerByName(c.name);
+            if (existing) {
+                const merged = Object.assign({}, existing);
+                if (!merged.contact && c.contact) merged.contact = c.contact;
+                if (!merged.contactInfo && c.contactInfo) merged.contactInfo = c.contactInfo;
+                if (!merged.note && c.note) merged.note = c.note;
+                if ((!merged.discount || merged.discount.mode === 'none') && c.discount && c.discount.mode !== 'none') {
+                    merged.discount = c.discount;
+                }
+                merged.updatedAt = new Date().toISOString();
+                customers[customers.findIndex(function (x) { return x && x.id === existing.id; })] = merged;
+            } else {
+                upsertCustomer(c);
+            }
+        });
+    }
     saveData();
     applyRecordFilters();
     alert('导入成功，已合并 ' + appendedCount + ' 条记录，本机设置未变更。');
@@ -5720,7 +7150,7 @@ function handleRecordSyncImport(event) {
                 return;
             }
             const hasHistory = Array.isArray(data.quoteHistory);
-            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null;
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null;
             if (!hasHistory && !hasSettings) {
                 alert('文件中未包含可导入的数据（需要 quoteHistory 或设置项）');
                 input.value = '';
@@ -6380,6 +7810,27 @@ function getStatsDataset(historySource, filters) {
                         running *= v;
                     }
                 });
+                // 专属折扣（单主管理中设置，随订单保存于 customerDiscount）：已按组叠加进各制品组，
+                // 此处按订单级倒推的滚动金额估算其优惠额，作为独立折扣原因计入数据分布
+                var cdObj = item.customerDiscount;
+                if (cdObj && cdObj.value != null) {
+                    var cdv = Number(cdObj.value);
+                    if (isFinite(cdv) && cdv > 0 && cdv < 1) {
+                        hadAnyCoeff = true;
+                        var cdReduction = running * (1 - cdv);
+                        // 数据分布只统计一个总的「专属折扣」，不按档位名拆分细项
+                        var cdnm = '专属折扣';
+                        if (!discountByReason[cdnm]) {
+                            discountByReason[cdnm] = { name: cdnm, orderCount: 0, amountTotal: 0, orderIds: [] };
+                        }
+                        pushOrderId(discountByReason[cdnm], item.id);
+                        discountByReason[cdnm].orderCount += 1;
+                        discountByReason[cdnm].amountTotal += cdReduction;
+                        discountByCoefficientTotal += cdReduction;
+                        pushOrderId({ orderIds: discountOrderIds }, item.id);
+                        running *= cdv;
+                    }
+                }
                 // 旧数据无法按系数拆分时，整笔计入「折扣类系数」
                 if (!hadAnyCoeff) {
                     var fallbackReduction = baseBeforeDown - twc;
@@ -9491,8 +10942,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const deadline = document.getElementById('deadline').value;
     
     // 获取设置选项的类型（接单平台与平台手续费联动，platform 与 orderPlatform 已同步）
-    const sameModelType = document.getElementById('sameModel').value;
     const platformType = (document.getElementById('platform') && document.getElementById('platform').value) || '';
+    // 从默认设置中获取对应的系数值（加价类/折扣类已下放到模块，见 moduleCoefficientResult；同模优惠档位下放到组，见 moduleSameModelCoefficient）
+    const sameModelMode = defaultSettings.sameModelMode || 'coefficient';
     const orderPlatformInput = document.getElementById('orderPlatform');
     const contactDisplay = (orderPlatformInput && orderPlatformInput.value) ? String(orderPlatformInput.value).trim() : '';
     const contactInfoEl = document.getElementById('contactInfo');
@@ -9544,9 +10996,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         return;
     }
     
-    // 从默认设置中获取对应的系数值（加价类/折扣类已下放到模块，见 moduleCoefficientResult）
-    const sameModelCoefficient = getCoefficientValue(defaultSettings.sameModelCoefficients[sameModelType]) || 0.5;
-    const sameModelMode = defaultSettings.sameModelMode || 'coefficient';
+    // 从默认设置中获取对应的系数值（加价类/折扣类已下放到模块，见 moduleCoefficientResult；同模优惠档位下放到组，见 moduleSameModelCoefficient）
     const sameModelMinusAmount = Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0;
     const platformFeeObj = defaultSettings.platformFees[platformType] || {};
     const platformFee = getCoefficientValue(platformFeeObj) || 0;
@@ -9557,6 +11007,20 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const calculationMode = defaultSettings.pricingCalculationMode || { up: 'multiplicative', down: 'multiplicative' };
     const upMode = calculationMode.up || 'multiplicative';
     const downMode = calculationMode.down || 'multiplicative';
+    // 客户单主折扣（专属折扣）：应用到每一个制品组，与组内制品折扣叠加，计算方式跟随「折扣类计算方式」设置
+    var customerDiscPerModule = null;
+    var _cdSt = window.customerDiscountState;
+    if (_cdSt && _cdSt.enabled) {
+        var _cdV = Number(_cdSt.value);
+        if (isFinite(_cdV) && _cdV > 0 && _cdV <= 1) {
+            customerDiscPerModule = {
+                customerId: _cdSt.customerId,
+                name: String(_cdSt.name || '单主折扣'),
+                value: _cdV,
+                source: _cdSt.source || 'manual'
+            };
+        }
+    }
     
     // 计算每个制品的价格
     const productPrices = [];
@@ -9653,6 +11117,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         
         // 计算同模相关数据（按节点收费不参与同模）
         // 跨订单同模时，所有件都按同模价计算
+        // 组级同模档位：本制品所在制品组独立选择，回退后台默认档位
+        const prodModule = (product.moduleId && findOrderModule(product.moduleId)) || firstOrderModule('product');
+        const sameModelCoefficient = moduleSameModelCoefficient(prodModule);
         const sameModelCount = productSetting.priceType === 'nodes' ? 0 : (product.sameModel ? (product.quantity - 1) : 0);
         const crossOrderSameModelCount = productSetting.priceType === 'nodes' ? 0 : (product.crossOrderSameModel ? product.quantity : 0);
         const sameModelUnitPrice = (sameModelMode === 'minus') ? Math.max(0, basePrice - sameModelMinusAmount) : (basePrice * sameModelCoefficient);
@@ -9725,8 +11192,17 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         const productTotal = baseProductTotal + totalProcessFee + totalExtraFee;
         
         // ==== 模块级加价类/折扣类：模块内 upSelections/downSelections 独立合成系数，作用到本制品 ====
-        const prodModule = (product.moduleId && findOrderModule(product.moduleId)) || firstOrderModule('product');
         const prodCoeff = moduleCoefficientResult(prodModule, upMode, downMode);
+        // 专属折扣叠加进本制品所在制品组：与组内制品折扣叠加，计算方式跟随折扣类设置（乘法/加法）
+        if (customerDiscPerModule) {
+            if (downMode === 'additive') {
+                prodCoeff.down = (Number(prodCoeff.down) || 1) + (customerDiscPerModule.value - 1);
+                prodCoeff.downReasons.push({ name: customerDiscPerModule.name, value: customerDiscPerModule.value, adjustment: customerDiscPerModule.value - 1 });
+            } else {
+                prodCoeff.down = (Number(prodCoeff.down) || 1) * customerDiscPerModule.value;
+                prodCoeff.downReasons.push({ name: customerDiscPerModule.name, value: customerDiscPerModule.value });
+            }
+        }
         const effectiveProductTotal = productTotal * prodCoeff.up * prodCoeff.down;
 
         // 按节点收费：生成节点明细
@@ -9894,6 +11370,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         }
 
         // 计算同模相关数据（跨订单同模时，所有件都按同模价计算）
+        // 组级同模档位：本赠品所在赠品组独立选择，回退后台默认档位
+        const giftModule = (gift.moduleId && findOrderModule(gift.moduleId)) || firstOrderModule('gift');
+        const sameModelCoefficient = moduleSameModelCoefficient(giftModule);
         const sameModelCount = gift.sameModel ? gift.quantity - 1 : 0;
         const crossOrderSameModelCount = gift.crossOrderSameModel ? gift.quantity : 0;
         const sameModelUnitPrice = (sameModelMode === 'minus') ? Math.max(0, basePrice - sameModelMinusAmount) : (basePrice * sameModelCoefficient);
@@ -9970,7 +11449,6 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         const giftOriginalPrice = baseGiftTotal + totalProcessFee + totalGiftExtraFee;
 
         // ==== 模块级加价类/折扣类（与制品同理）：赠品所属模块独立合成系数 ====
-        const giftModule = (gift.moduleId && findOrderModule(gift.moduleId)) || firstOrderModule('gift');
         const giftEff = moduleCoefficientResult(giftModule, upMode, downMode);
         const effectiveGiftTotal = giftOriginalPrice * giftEff.up * giftEff.down;
 
@@ -10036,7 +11514,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     
     // 计算总价：总价 = Σ（各制品/赠品模块折算后的金额）+ 其他费用合计 + 平台手续费
     const productsTotal = totalProductsPrice;
-    const totalWithCoefficients = productsTotal;
+    let totalWithCoefficients = productsTotal;
+    // 客户单主折扣（专属折扣）：已按折扣类计算方式在每个制品组内叠加，此处仅保留订单级记录字段
+    var customerDiscHit = customerDiscPerModule;
     // 3. 报价金额 = 我要收取的总金额（制品+系数+其他费用，不含平台费）
     const totalBeforePlatformFee = totalWithCoefficients + totalOtherFees;
     // 4. 约定实收：仅当“金额基数未变化”时保留手动值；金额变化则重置为最新报价金额
@@ -10103,6 +11583,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     var usageName = _usageS ? _usageS.name : '用途系数';
     var urgentName = _urgentS ? _urgentS.name : '加急系数';
     var discountName = _discountS ? _discountS.name : '折扣系数';
+    // 组级同模档位回填为订单级“代表值”（取首要制品组/赠品组），供统计/报表/导出/旧小票继续使用
+    var sameModelCoefficient = moduleSameModelCoefficient(primaryMod);
     // 全模块聚合的可读加价/折扣明细及扩展选中（兼容统计/报表/旧小票）
     var upCoefficients = [], downCoefficients = [], extraUpSelections = [], extraDownSelections = [];
     modulesOfType('product').concat(modulesOfType('gift')).forEach(function (m) {
@@ -10116,6 +11598,10 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
             extraDownSelections.push({ id: s.eid === 'discount' ? s.eid : (Number(s.eid) || s.eid), selectedKey: s.key, optionValue: s.key, moduleName: s.name, optionName: s.name, value: s.value });
         });
     });
+    // 客户单主折扣追加为独立折扣明细行（自动进入小票「折扣合计」与统计「折扣合计」链路）
+    if (customerDiscHit) {
+        downCoefficients.push({ name: customerDiscHit.name, value: customerDiscHit.value });
+    }
     var pricingUpProduct = null;      // 已下放模块，聚合值交由 usage/urgent/upCoefficients
     var pricingDownProduct = null;
     quoteData = {
@@ -10144,6 +11630,9 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         pricingCalculationMode: { up: upMode, down: downMode },
         upCoefficients: upCoefficients,
         downCoefficients: downCoefficients,
+        customerDiscount: customerDiscHit
+            ? { customerId: customerDiscHit.customerId, name: customerDiscHit.name, value: customerDiscHit.value, source: customerDiscHit.source }
+            : null,
         otherFees: dynamicOtherFees,
         totalOtherFees: totalOtherFees,
         platformFee: platformFee,
@@ -10916,6 +12405,8 @@ function generateQuote() {
             arr.forEach(function (l) {
                 var _nm = l && l.name ? l.name : '';
                 var _dv = l && l.v != null ? l.v : 1;
+                // 专属折扣行：名称加「专属折扣-」前缀并去掉「N折」（系数旁已显示），避免「90折+0.9×」冗余
+                if (isCustomerDiscEntry(_nm, _dv)) _nm = customerDiscDisplayName(_nm);
                 s += '<div class="receipt-module-reason-row"><div class="receipt-module-reason-label"><span class="receipt-module-reason-name">' + _nm + '</span><span class="receipt-module-coeff">' + fmtCoeff(_dv) + '</span></div></div>';
             });
             s += '</div>';
@@ -11539,6 +13030,24 @@ function generateQuote() {
     const addAmount = 0;
     const down = _summaryDown;
     const discountAmount = 0;
+    // 折扣明细行标签：名称已含「N折」（如 累计满1k 97折）时不再追加「：0.97×」，避免冗余过长
+    // 专属折扣行：统一显示「专属折扣-名称 系数×」，名称中的「N折」去掉（系数已表达），前缀标记来源
+    function isCustomerDiscEntry(name, value) {
+        var cd = quoteData && quoteData.customerDiscount;
+        if (!cd || !cd.name) return false;
+        return String(name || '') === String(cd.name) && Math.abs(Number(value) - Number(cd.value)) < 1e-6;
+    }
+    function customerDiscDisplayName(name) {
+        return '专属折扣-' + String(name || '').replace(/\d+(?:\.\d+)?折/g, '').trim();
+    }
+    function formatCoeffLabel(name, value) {
+        var nm = name ? String(name) : '';
+        if (isCustomerDiscEntry(nm, value)) {
+            return customerDiscDisplayName(nm) + ' ' + parseFloat((Number(value) || 1).toFixed(4)).toString() + '×';
+        }
+        if (nm.indexOf('折') !== -1) return nm;
+        return nm + '：' + parseFloat((Number(value) || 1).toFixed(4)).toString() + '×';
+    }
     // ---- 新的区块1（加价类剩余项）：只渲染模块块"未展示过"的同名同值 ----
     (function renderSummaryUpBlock1 () {
         var list = [];
@@ -11595,7 +13104,7 @@ function generateQuote() {
                 var aa = base * Number(c.adjustment);
                 adj = '+' + getCurrencySymbol() + aa.toFixed(2);
             }
-            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${c.name || ''}：${ds}×</div><div class="receipt-summary-value">${adj}</div></div>`;
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${formatCoeffLabel(c.name, c.value)}</div><div class="receipt-summary-value">${adj}</div></div>`;
         });
         html += `</div>`;
     })();
@@ -11647,7 +13156,7 @@ function generateQuote() {
                 var aa = base * Math.abs(Number(c.adjustment));
                 adj = '-' + getCurrencySymbol() + aa.toFixed(2);
             }
-            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${c.name || ''}：${ds}×</div><div class="receipt-summary-value">${adj}</div></div>`;
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${formatCoeffLabel(c.name, c.value)}</div><div class="receipt-summary-value">${adj}</div></div>`;
         });
         html += `</div>`;
     })();
@@ -11737,7 +13246,7 @@ function generateQuote() {
                 const adjAmount = base * coeff.adjustment;
                 adjustmentDisplay = '+' + getCurrencySymbol() + adjAmount.toFixed(2);
             }
-            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value">${adjustmentDisplay}</div></div>`;
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${formatCoeffLabel(coeff.name, coeff.value)}</div><div class="receipt-summary-value">${adjustmentDisplay}</div></div>`;
         });
         html += `</div>`;
     }
@@ -11812,7 +13321,7 @@ function generateQuote() {
                 const adjAmount = base * up * (1 - coeff.value);
                 adjustmentDisplay = '-' + getCurrencySymbol() + adjAmount.toFixed(2);
             }
-            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${coeff.name}：${coeffDisplay}×</div><div class="receipt-summary-value">${adjustmentDisplay}</div></div>`;
+            html += `<div class="receipt-summary-coefficient-detail receipt-summary-row"><div class="receipt-summary-label">${formatCoeffLabel(coeff.name, coeff.value)}</div><div class="receipt-summary-value">${adjustmentDisplay}</div></div>`;
         });
         html += `</div>`;
     }
@@ -13128,8 +14637,19 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260908-0644';
+const APP_VERSION = '20260909-1630';
 const APP_CHANGELOG = [
+    {
+        date: '2026-09-09',
+        items: [
+            '同模优惠下放到各制品组/赠品组：每组可独立选择档位，后台可标记计算页默认档位',
+            '单主管理：历史单主自动建档、单主折扣（手动/累计档位/统一规则）管理与统计',
+            '计算页：单主专属折扣仅在符合条件的单主填入时显示，可一键停用',
+            '小票：专属折扣显示优化为「专属折扣-档位名 系数×」，避免重复冗余',
+            '小票设置：新增「恢复预设」一键还原；字体名自动加引号，修复整条字体失效',
+            '统计页：数据分布新增「专属折扣」汇总统计项',
+        ]
+    },
     {
         date: '2026-09-08',
         items: [
@@ -13584,6 +15104,11 @@ function saveToHistory() {
     }
     
     saveData();
+
+    // 客户档案回写：新单/编辑保存后，命中客户则用本单平台/联系方式填空值（仅填空值，不覆盖已填）
+    try {
+        backfillCustomerFromQuote(quoteData);
+    } catch (e) { /* ignore */ }
     
     // 云端同步：如果已启用云端模式，异步同步到 Supabase
     if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
@@ -16629,29 +18154,74 @@ function showClientIdMatches() {
     if (!clientIdEl || !wrap || !listEl) return;
     var keyword = (clientIdEl.value || '').trim();
     var matches = getClientIdMatchList(keyword);
-    if (matches.length === 0) {
+
+    // 客户档案优先：命中关键词的客户排在最前，显示统计与单主折扣徽标
+    var customerMatches = [];
+    var keyLower = keyword.toLowerCase();
+    if (keyLower && Array.isArray(customers)) {
+        customers.forEach(function (c) {
+            if (!c || !c.name) return;
+            if (String(c.name).toLowerCase().indexOf(keyLower) >= 0 ||
+                String(c.contact || '').toLowerCase().indexOf(keyLower) >= 0 ||
+                String(c.contactInfo || '').toLowerCase().indexOf(keyLower) >= 0) {
+                customerMatches.push(c);
+            }
+        });
+    }
+    // 客户已覆盖的单主名从历史列表剔除，避免重复项
+    var customerNames = {};
+    customerMatches.forEach(function (c) { customerNames[String(c.name).trim()] = true; });
+    matches = matches.filter(function (m) { return !customerNames[m.clientId]; });
+
+    var items = [];
+    customerMatches.forEach(function (c) {
+        var st = computeCustomerStats(c.name);
+        var label = c.name;
+        if (c.contact || c.contactInfo) label += ' · ' + [c.contact, c.contactInfo].filter(Boolean).join(' ');
+        label += ' · ' + st.orderCount + '单 ' + formatMoney(st.totalAmount);
+        items.push({
+            label: label,
+            extra: customerDiscountBadgeHtml(c),
+            isCustomer: true,
+            cid: c.name,
+            contact: c.contact || '',
+            contactInfo: c.contactInfo || '',
+            customerId: c.id
+        });
+    });
+    matches.forEach(function (m) {
+        var label = m.clientId;
+        if (m.contact || m.contactInfo) label += ' · ' + [m.contact, m.contactInfo].filter(Boolean).join(' ');
+        items.push({
+            label: label,
+            extra: '',
+            isCustomer: false,
+            cid: m.clientId,
+            contact: m.contact || '',
+            contactInfo: m.contactInfo || '',
+            customerId: ''
+        });
+    });
+
+    if (items.length === 0) {
         wrap.classList.add('d-none');
         listEl.innerHTML = '';
         return;
     }
-    listEl.innerHTML = matches.map(function (m) {
-        var label = m.clientId;
-        if (m.contact || m.contactInfo) label += ' · ' + [m.contact, m.contactInfo].filter(Boolean).join(' ');
-        var labelEsc = (label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-        var cidAttr = (m.clientId || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-        var contactAttr = (m.contact || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-        var contactInfoAttr = (m.contactInfo || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-        return '<li class="client-id-match-item" role="button" tabindex="0" data-client-id="' + cidAttr + '" data-contact="' + contactAttr + '" data-contact-info="' + contactInfoAttr + '">' + labelEsc + '</li>';
+    var escAttr = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
+    var unescAttr = function (v) { return String(v == null ? '' : v).replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&'); };
+    listEl.innerHTML = items.map(function (m) {
+        var extraHtml = m.extra ? '<span class="client-id-match-customer-badge">' + m.extra + '</span>' : '';
+        var cidData = m.isCustomer ? ' data-customer-id="' + escAttr(m.customerId) + '"' : '';
+        return '<li class="client-id-match-item' + (m.isCustomer ? ' client-id-match-item-customer' : '') + '" role="button" tabindex="0" data-client-id="' + escAttr(m.cid) + '" data-contact="' + escAttr(m.contact) + '" data-contact-info="' + escAttr(m.contactInfo) + '"' + cidData + '>' + escAttr(m.label) + extraHtml + '</li>';
     }).join('');
     wrap.classList.remove('d-none');
     listEl.querySelectorAll('.client-id-match-item').forEach(function (li) {
         li.addEventListener('click', function () {
-            var id = li.getAttribute('data-client-id') || '';
-            var contact = li.getAttribute('data-contact') || '';
-            var contactInfo = li.getAttribute('data-contact-info') || '';
-            id = id.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
-            contact = contact.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
-            contactInfo = contactInfo.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+            var id = unescAttr(li.getAttribute('data-client-id') || '');
+            var contact = unescAttr(li.getAttribute('data-contact') || '');
+            var contactInfo = unescAttr(li.getAttribute('data-contact-info') || '');
+            var customerId = li.getAttribute('data-customer-id') || '';
             if (clientIdEl) clientIdEl.value = id;
             var orderPlatformEl = document.getElementById('orderPlatform');
             var contactInfoEl = document.getElementById('contactInfo');
@@ -16659,6 +18229,12 @@ function showClientIdMatches() {
             if (contactInfoEl) contactInfoEl.value = contactInfo;
             if (typeof syncOrderPlatformToPlatform === 'function') syncOrderPlatformToPlatform();
             if (typeof toggleOrderPlatformClear === 'function') toggleOrderPlatformClear();
+            if (customerId) {
+                var customer = customers.find(function (x) { return x && x.id === customerId; }) || findCustomerByName(id);
+                if (customer) applyCustomerDiscount(customer);
+            } else {
+                clearCustomerDiscount();
+            }
             hideClientIdMatchList();
         });
     });
@@ -18972,6 +20548,11 @@ function editHistoryItem(id) {
                 });
                 mod.downSelections = downs;
             }
+            // 旧订单同模档位：全局 sameModelType 迁移到组级 sameModelSelection
+            if (!mod.sameModelSelection && quoteData.sameModelType && defaultSettings.sameModelCoefficients && defaultSettings.sameModelCoefficients[quoteData.sameModelType]) {
+                var smOld = defaultSettings.sameModelCoefficients[quoteData.sameModelType];
+                mod.sameModelSelection = { key: quoteData.sameModelType, name: smOld.name || quoteData.sameModelType, value: getCoefficientValue(smOld) };
+            }
         }
         seedModuleFromLegacy(modulesOfType('product')[0] || null, quote);
         seedModuleFromLegacy(modulesOfType('gift')[0] || null, quote);
@@ -18999,6 +20580,10 @@ function editHistoryItem(id) {
     if (orderPlatformInput) orderPlatformInput.value = quote.contact || '';
     var contactInfoInput = document.getElementById('contactInfo');
     if (contactInfoInput) contactInfoInput.value = quote.contactInfo || '';
+    // 恢复客户单主折扣（仅提示、默认停用，避免改变历史报价；用户可手动开启）
+    try {
+        restoreCustomerDiscountForEdit(quote);
+    } catch (e) { /* ignore */ }
     var projectNameInput = document.getElementById('projectName');
     if (projectNameInput) projectNameInput.value = quote.projectName || '';
     var projectOriginInput = document.getElementById('projectOrigin');
@@ -19097,14 +20682,7 @@ function editHistoryItem(id) {
             }
         }
         
-        // 恢复同模系数
-        if (quote.sameModelType) {
-            const sameModelSelect = document.getElementById('sameModel');
-            if (sameModelSelect) {
-                sameModelSelect.value = quote.sameModelType;
-                if (sameModelSelect.onchange) sameModelSelect.onchange();
-            }
-        }
+        // 恢复同模系数：已由 seedModuleFromLegacy 迁移到各组「同模优惠」下拉（全局下拉已移除）
         
         // 恢复折扣系数
         if (quote.discountType) {
@@ -19375,10 +20953,9 @@ function saveTemplate() {
         return;
     }
     
-    // 收集设置选项
+    // 收集设置选项（同模优惠档位已下放到组，随 modules 存储；此处保留旧字段仅用于旧模板兼容）
     const usageType = (document.getElementById('usage') && document.getElementById('usage').value) || '';
     const urgentType = (document.getElementById('urgent') && document.getElementById('urgent').value) || '';
-    const sameModelType = (document.getElementById('sameModel') && document.getElementById('sameModel').value) || '';
     const discountType = (document.getElementById('discount') && document.getElementById('discount').value) || '';
     const platformType = (document.getElementById('platform') && document.getElementById('platform').value) || '';
     const extraUpSelections = [];
@@ -19408,7 +20985,6 @@ function saveTemplate() {
         settings: {
             usageType: usageType,
             urgentType: urgentType,
-            sameModelType: sameModelType,
             discountType: discountType,
             platformType: platformType,
             extraUpSelections: extraUpSelections,
@@ -19538,14 +21114,21 @@ function loadSelectedTemplate() {
         });
     }
     
-    // 恢复设置选项（用途、加急、同模、折扣、平台、其他加价/折扣类、其他费用）
+    // 恢复设置选项（用途、加急、折扣、平台、其他加价/折扣类、其他费用；同模档位已下放到组）
     const s = template.settings || {};
     const setSel = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; if (el.onchange) el.onchange(); } };
     setSel('usage', s.usageType || '');
     setSel('urgent', s.urgentType || '');
-    setSel('sameModel', s.sameModelType || '');
     setSel('discount', s.discountType || '');
     setSel('platform', s.platformType || '');
+    // 旧模板兼容：模板保存的全局同模档位应用到所有组（新模板同模档位随制品分组保存）
+    if (s.sameModelType && defaultSettings.sameModelCoefficients && defaultSettings.sameModelCoefficients[s.sameModelType]) {
+        var smTplO = defaultSettings.sameModelCoefficients[s.sameModelType];
+        modulesOfType('product').concat(modulesOfType('gift')).forEach(function (m) {
+            m.sameModelSelection = { key: s.sameModelType, name: smTplO.name || s.sameModelType, value: getCoefficientValue(smTplO) };
+        });
+        if (typeof refreshModuleSameModelSelects === 'function') refreshModuleSameModelSelects();
+    }
     selectedPerItemExtraFeeIds = Array.isArray(s.perItemExtraFeeIds) ? s.perItemExtraFeeIds.slice() : [];
     renderCalculatorPerItemExtraSelects();
     var orderPlatformEl = document.getElementById('orderPlatform');
@@ -23710,7 +25293,6 @@ function updateCalculatorBuiltinSelects() {
         const pairs = [
             { id: 'usage', key: 'usageCoefficients', asc: true },
             { id: 'urgent', key: 'urgentCoefficients', asc: true },
-            { id: 'sameModel', key: 'sameModelCoefficients', asc: true },
             { id: 'discount', key: 'discountCoefficients', asc: false },
             { id: 'platform', key: 'platformFees', asc: true }
         ];
@@ -23824,6 +25406,11 @@ function deleteCoefficient(type, key) {
             break;
         case 'sameModel':
             delete defaultSettings.sameModelCoefficients[key];
+            // 若删除的是默认档位，回退到剩余第一档
+            if (defaultSettings.sameModelDefaultKey === key) {
+                var smRemain = Object.keys(defaultSettings.sameModelCoefficients);
+                defaultSettings.sameModelDefaultKey = smRemain[0] || '';
+            }
             break;
         case 'discount':
             delete defaultSettings.discountCoefficients[key];
@@ -23983,10 +25570,12 @@ function renderSameModelCoefficients() {
     }
 
     // 系数模式：渲染档位
+    const defaultKey = defaultSettings.sameModelDefaultKey || '';
     for (const [key, item] of Object.entries(defaultSettings.sameModelCoefficients)) {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
         const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const isDefault = key === defaultKey;
 
         html += `
             <div class="mb-2 d-flex items-center gap-2">
@@ -23994,6 +25583,10 @@ function renderSameModelCoefficients() {
                        onchange="updateSameModelCoefficientName('${key}', this.value)" placeholder="名称">
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80" 
                        onchange="updateSameModelCoefficient('${key}', this.value)">
+                <button type="button" class="btn btn-xs sm-default-btn ${isDefault ? 'sm-default-active' : ''}"
+                        onclick="setSameModelDefault('${key}')" title="计算页新建组/新订单默认选中该档位">
+                    ${isDefault ? '默认' : '设默认'}
+                </button>
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('sameModel', '${key}')" aria-label="删除" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                                         <span class="sr-only">删除</span>
@@ -24003,6 +25596,14 @@ function renderSameModelCoefficients() {
     }
     html += '<button type="button" class="btn secondary mt-2" onclick="addSameModelOption()">+ 添加</button>';
     container.innerHTML = html;
+}
+
+// 设置后台默认同模档位：计算页新建组/新订单时该组的「同模优惠」下拉默认选中它
+function setSameModelDefault(key) {
+    if (!defaultSettings.sameModelCoefficients || !defaultSettings.sameModelCoefficients[key]) return;
+    defaultSettings.sameModelDefaultKey = key;
+    saveData();
+    renderSameModelCoefficients();
 }
 
 function updateSameModelMode(mode) {
@@ -24034,12 +25635,12 @@ function updateShowProcessOnCalculation(checked) {
 }
 
 // 把同模优惠相关行按当前开关显/隐到计算页
-// 包括：设置选项模块的全局同模优惠档位下拉、制品内的是否同模/跨订单同模、赠品内相同两行
+// 包括：制品内的是否同模/跨订单同模、赠品内相同两行、各组内的「同模优惠」下拉
 function applySameModelVisibilityOnCalc() {
     const show = defaultSettings.showSameModelOnCalculation !== false;
     const display = show ? '' : 'none';
     try {
-        document.querySelectorAll('.global-same-model-coefficient-row, .product-same-model-row, .gift-same-model-row').forEach(function (el) {
+        document.querySelectorAll('.product-same-model-row, .gift-same-model-row, .module-same-model-control').forEach(function (el) {
             el.style.display = display;
         });
     } catch (_) {}

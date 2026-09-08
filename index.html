@@ -7,7 +7,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260908-0644">
+    <link rel="stylesheet" href="style.css?v=20260909-1600">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -516,7 +516,7 @@
                                 <button type="button" id="scheduleColorPickerBtn" class="schedule-color-picker-dot-trigger" onclick="openScheduleColorPicker(event)" title="点击切换彩条颜色">
                                     <span class="schedule-color-preview-dot" id="scheduleColorPreviewDot"></span>
                                 </button>
-                                <input type="text" id="clientId" placeholder="单主ID (可匹配历史)" title="输入单主ID或关键字，匹配到历史单主后点击一项填充" oninput="debouncedShowClientIdMatches()" onblur="scheduleHideClientIdMatchList()">
+                                <input type="text" id="clientId" placeholder="单主ID (可匹配历史)" title="输入单主ID或关键字，匹配到历史单主后点击一项填充" oninput="debouncedShowClientIdMatches()" onblur="scheduleHideClientIdMatchList(); syncCustomerDiscountFromClientId();">
                                 <button class="btn-remark-full" onclick="openOrderRemarkModal()" type="button" title="添加备注；点开后粘贴单主备注可智能提取制品与赠品">
                                     <svg class="icon sm" aria-hidden="true"><use href="#i-note"></use></svg>
                                     <span class="remark-btn-label">
@@ -555,6 +555,16 @@
                                 <input type="text" id="contactInfo" placeholder="QQ号/微信号/手机号等" title="单主联系方式，如QQ号、微信号、手机号">
                             </div>
                         </div>
+                    </div>
+                    <div id="customerDiscountRow" class="customer-discount-row d-none">
+                        <div class="customer-discount-info">
+                            <span id="customerDiscountName" class="customer-discount-name"></span>
+                            <span id="customerDiscountMeta" class="customer-discount-meta"></span>
+                        </div>
+                        <label class="checkbox-line customer-discount-toggle" style="margin:0;">
+                            <input type="checkbox" id="customerDiscountEnabled" checked onchange="onCustomerDiscountToggle()">
+                            <span>启用</span>
+                        </label>
                     </div>
                     <div class="form-row schedule-time-row-triple">
                         <div class="form-group">
@@ -616,13 +626,7 @@
                             </div>
                         </div>
                     </div>
-                    <!-- 同模优惠（由 showSameModelOnCalculation 开关控制显示，与制品里的「是否同模」同步显隐） -->
-                    <div class="form-row global-same-model-coefficient-row">
-                        <div class="form-group">
-                            <label for="sameModel">同模优惠</label>
-                            <select id="sameModel"><option value="">--</option></select>
-                        </div>
-                    </div>
+                    <!-- 同模优惠已下放到各制品组/赠品组（每组独立的「同模优惠」下拉） -->
                     <!-- 每制品增加（可多选）：默认隐藏，设置页配置费用后由 JS 显示 -->
                     <div class="form-row d-none" id="perItemExtraSelectsRow">
                         <div class="form-group">
@@ -850,6 +854,7 @@
                             <button class="btn-icon" onclick="closeReceiptCustomizationPanel()">×</button>
                             <h2>小票设置</h2>
                             <div class="header-buttons">
+                                <button class="btn btn-sm" onclick="restoreReceiptPreset()">恢复预设</button>
                                 <button class="btn btn-sm" onclick="clearReceiptCustomization()">清除</button>
                                 <button class="btn btn-sm" onclick="closeReceiptCustomizationPanel()">保存</button>
                             </div>
@@ -1186,6 +1191,7 @@
                                                 <option value="Courier New, Source Han Sans SC, Noto Sans SC, PingFang SC, Hiragino Sans GB, Courier, Monaco, Consolas, monospace">等宽字体（默认）</option>
                                                 <option value="Source Han Sans SC, Noto Sans SC, PingFang SC, sans-serif">无衬线字体</option>
                                                 <option value="Source Han Serif SC, Noto Serif SC, Times New Roman, serif">衬线字体</option>
+                                                <option value="Z Labs Pixel 12px M CN, Courier New, Source Han Sans SC, Noto Sans SC, monospace">点阵字体（Z 工坊像素·复古小票）</option>
                                                 <option value="Source Han Sans SC, Noto Sans SC, sans-serif">思源黑体（推荐）</option>
                                                 <option value="Source Han Serif SC, Noto Serif SC, serif">思源宋体（推荐）</option>
                                                 <option value="custom">自定义字体</option>
@@ -1859,6 +1865,10 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-toolbox"></use></svg>
                             <span class="quick-entry-label">工艺<br>设置</span>
                         </button>
+                        <button class="quick-entry-btn" onclick="showSettingsSubPage('customerSettings')">
+                            <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
+                            <span class="quick-entry-label">单主<br>管理</span>
+                        </button>
                     </div>
                 </div>
 
@@ -2424,6 +2434,186 @@
                         </div>
                         <div id="processSettingsContainer">
                             <!-- 工艺设置将通过JavaScript动态添加 -->
+                        </div>
+                    </div>
+                </div>
+                <!-- 客户管理子页面 -->
+                <div id="settingsSubPage-customerSettings" class="settings-sub-page d-none">
+                    <div class="section">
+                        <div class="settings-subpage-header mb-4">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>单主管理</h2>
+                            <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn btn-compact" onclick="saveSettings()">保存</button>
+                            </div>
+                        </div>
+                        <div class="setting-hint text-gray" style="margin-bottom: 8px;">
+                            记录单主信息与单主折扣；单数与累计金额由历史记录实时统计。单主档案随 JSON 导出/导入同步。
+                        </div>
+                        <div class="reward-policy-card" style="margin-bottom:14px;">
+                            <div class="reward-policy-head d-flex items-center gap-2">
+                                <span class="reward-policy-title">单主折扣统一规则</span>
+                                <span class="reward-policy-toggle" id="rewardPolicyToggleBtn" onclick="toggleRewardPolicyBody()">展开档位编辑 ▾</span>
+                                <label class="inline-switch" style="margin-left:auto;">
+                                    <input type="checkbox" id="rewardPolicyEnabled" onchange="onRewardPolicyToggle()">
+                                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                                    <span class="switch-label" id="rewardPolicyEnabledLabel">已停用</span>
+                                </label>
+                            </div>
+                            <div class="reward-policy-body d-none" id="rewardPolicyBody">
+                                <div class="setting-hint text-gray" style="margin-top:4px;margin-bottom:8px;">
+                                    开启后，未单独设置单主折扣的单主将自动按下方档位计算优惠；已单独设置的单主优先使用个体规则。
+                                </div>
+                                <label class="inline-switch" style="margin:0 0 8px;">
+                                    <input type="checkbox" id="rewardPolicyMergeIndividual" onchange="onRewardPolicyMergeToggle()">
+                                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                                    <span class="switch-label">个体档与统一规则合并取最优惠</span>
+                                </label>
+                                <div class="customer-sort-segmented" id="rewardPolicyBySeg" style="margin:0 0 8px;">
+                                    <button type="button" data-by="amount" onclick="onRewardPolicyByChange('amount')">按累计金额</button>
+                                    <button type="button" data-by="count" onclick="onRewardPolicyByChange('count')">按累计单数</button>
+                                </div>
+                                <div id="rewardPolicyTiers" class="reward-policy-tiers">
+                                    <!-- 统一规则档位由脚本渲染 -->
+                                </div>
+                                <div class="d-flex items-center gap-2" style="margin-top:8px;">
+                                    <button type="button" class="btn secondary btn-compact" onclick="addRewardPolicyTier()">+ 添加档位</button>
+                                </div>
+                                <div id="rewardPolicyPreview" class="setting-hint text-gray" style="margin-top:8px;"></div>
+                            </div>
+                        </div>
+                        <div id="customerHistoryPrompt" class="d-none" style="margin-bottom:12px;">
+                            <div class="customer-history-prompt-inner" onclick="toggleCustomerHistoryPanel()">
+                                <span class="customer-history-prompt-text" id="customerHistoryPromptText"></span>
+                                <button type="button" class="btn btn-compact" id="customerHistoryExpandBtn">展开建档</button>
+                            </div>
+                            <div id="customerHistoryPanel" class="customer-history-panel d-none">
+                                <div class="setting-hint text-gray" style="margin-bottom:8px;">
+                                    从历史订单提取未建档的单主，创建单主档案；可在下方单个或全部建档。
+                                </div>
+                                <div id="customerHistoryArchiveContainer"></div>
+                            </div>
+                        </div>
+                        <div id="customerTab-mine">
+                            <!-- 第一行：搜索框 + 添加单主 -->
+                            <div class="form-row customer-toolbar-row" style="margin-bottom:6px;">
+                                <div class="form-group" style="flex:1;min-width:0;">
+                                    <input type="search" id="customerSearchInput" placeholder="搜索单主名 / 平台 / 联系方式" oninput="renderCustomerSettings()">
+                                </div>
+                                <div class="form-group" style="flex:0 0 auto;">
+                                    <button class="btn btn-compact" onclick="openCustomerEditModal()">+ 添加单主</button>
+                                </div>
+                            </div>
+                            <!-- 第二行：排序 + 筛选（全部|统一优惠|个人优惠） -->
+                            <div class="form-row customer-toolbar-row" style="margin-bottom:10px;">
+                                <div class="form-group" style="flex:0 0 auto;">
+                                    <div class="customer-sort-segmented" id="customerSortSegmented">
+                                        <button type="button" data-mode="alpha" class="is-active" onclick="setCustomerSort('alpha')">A-Z</button>
+                                        <button type="button" data-mode="count" onclick="setCustomerSort('count')">单数</button>
+                                        <button type="button" data-mode="amount" onclick="setCustomerSort('amount')">金额</button>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="flex:0 0 auto;">
+                                    <div class="customer-sort-segmented" id="customerFilterSegmented">
+                                        <button type="button" data-filter="all" class="is-active" onclick="setCustomerFilter('all')">全部</button>
+                                        <button type="button" data-filter="unified" onclick="setCustomerFilter('unified')">统一优惠</button>
+                                        <button type="button" data-filter="individual" onclick="setCustomerFilter('individual')">个人优惠</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="customer-list-layout">
+                                <div class="customer-list-wrap">
+                                    <div id="customerListContainer"></div>
+                                </div>
+                                <div id="customerIndexRail" class="customer-index-rail d-none"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 客户编辑弹窗 -->
+                <div id="customerEditModal" class="modal d-none">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3 id="customerEditModalTitle">添加单主</h3>
+                            <span class="close" onclick="closeCustomerEditModal()">&times;</span>
+                        </div>
+                        <div class="modal-body">
+                            <input type="hidden" id="customerEditId">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="customerEditName">单主名 <span class="text-danger">*</span></label>
+                                    <input type="text" id="customerEditName" placeholder="请输入单主名 / 昵称">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="customerEditContact">接单平台</label>
+                                    <input type="text" id="customerEditContact" placeholder="例如：QQ / 微信 / 小红书">
+                                </div>
+                                <div class="form-group">
+                                    <label for="customerEditContactInfo">联系方式</label>
+                                    <input type="text" id="customerEditContactInfo" placeholder="QQ号 / 微信号等">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="customerEditNote">备注</label>
+                                    <input type="text" id="customerEditNote" placeholder="可选备注">
+                                </div>
+                            </div>
+                            <div class="section" style="margin-top:4px;">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>单主折扣</label>
+                                        <div class="customer-mode-slider" id="customerDiscountModeSlider">
+                                            <div class="customer-mode-slider-thumb" aria-hidden="true"></div>
+                                            <button type="button" class="customer-mode-slider-btn is-active" data-mode="none" onclick="onCustomerDiscountModeChange('none')">无</button>
+                                            <button type="button" class="customer-mode-slider-btn" data-mode="manual" onclick="onCustomerDiscountModeChange('manual')">手动</button>
+                                            <button type="button" class="customer-mode-slider-btn" data-mode="auto" onclick="onCustomerDiscountModeChange('auto')">按规则自动</button>
+                                        </div>
+                                        <small class="text-gray" style="display:block;margin-top:4px;">选择「无」时，将自动套用「单主折扣统一规则」（若已开启）。</small>
+                                    </div>
+                                </div>
+                                <div id="customerDiscountManualWrap" class="d-none">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="customerDiscountManualValue">折扣系数</label>
+                                            <div class="d-flex items-center gap-2">
+                                                <input type="number" id="customerDiscountManualValue" min="0.5" max="1" step="0.01" value="0.95" oninput="onCustomerManualDiscountSlider()" style="flex:1;">
+                                                <span id="customerDiscountManualValueLabel" class="text-gray" style="min-width:44px;text-align:right;">95%</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>折扣名称</label>
+                                            <input type="text" id="customerDiscountManualName" value="专属优惠" disabled>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="customerDiscountAutoWrap" class="d-none">
+                                    <div class="customer-sort-segmented" id="customerAutoBySeg" style="margin:0 0 8px;">
+                                        <button type="button" data-by="amount" onclick="onCustomerAutoByChange('amount')">按累计金额</button>
+                                        <button type="button" data-by="count" onclick="onCustomerAutoByChange('count')">按累计单数</button>
+                                    </div>
+                                    <div id="customerDiscountAutoTiers"></div>
+                                    <button type="button" class="btn secondary btn-compact mt-2" onclick="addCustomerAutoTier()">+ 添加档位</button>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>有效期</label>
+                                        <div class="d-flex items-center gap-2">
+                                            <input type="date" id="customerDiscountStartDate" style="flex:1;" onchange="updateCustomerDiscountPreview()">
+                                            <span class="text-gray">至</span>
+                                            <input type="date" id="customerDiscountEndDate" style="flex:1;" onchange="updateCustomerDiscountPreview()">
+                                        </div>
+                                        <small class="text-gray" style="display:block;margin-top:4px;">起止均可选，留空表示不限；过期后折扣自动失效。</small>
+                                    </div>
+                                </div>
+                                <div id="customerDiscountPreview" class="setting-hint text-gray" style="margin-top:8px;"></div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn" onclick="saveCustomerEdit()">保存</button>
+                            <button class="btn secondary" onclick="closeCustomerEditModal()">取消</button>
                         </div>
                     </div>
                 </div>
@@ -3188,7 +3378,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260908-0644"></script>
+    <script src="script.js?v=20260909-1630"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

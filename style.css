@@ -3,6 +3,16 @@
 /* 在线字体：霞鹜文楷 Lite（CDN，兜底用） */
 @import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont/style.css');
 
+/* 本地点阵字体：Z 工坊像素黑体 12px（ZLabs Pixel 12px，OFL-1.1 免费可商用，嵌入/再分发允许）
+   小票复古主题首选点阵字，离线无需网络即可显示；批准：可 @font-face 内嵌引用 */
+@font-face {
+    font-family: 'Z Labs Pixel 12px M CN';
+    src: url('fonts/ZLabsPixel/ZLabsPixel_12px_M_CN.ttf.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
     /* 主色改为柔和黑色系 */
     --primary-color: #111111;
@@ -2295,6 +2305,36 @@ html.theme-dark .icon-action-btn.module-collapse-btn {
     font-size: 0.75rem;
 }
 
+/* 后台同模优惠「设默认/默认」小胶囊按钮 */
+.sm-default-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    height: auto;
+    padding: 3px 12px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    border-radius: 999px !important;
+    border: 1px solid var(--border-color, #d1d5db);
+    background: var(--bg-secondary, #f3f4f6);
+    color: var(--text-light, #6b7280);
+    cursor: pointer;
+    white-space: nowrap !important;
+    transition: all 0.15s;
+}
+.sm-default-btn:hover {
+    border-color: var(--primary-color, #111111);
+    color: var(--primary-color, #111111);
+}
+.sm-default-btn.sm-default-active {
+    background: var(--primary-color, #111111);
+    border-color: var(--primary-color, #111111);
+    color: #ffffff;
+    cursor: default;
+}
+
 /* 图标按钮：iOS 线性平面样式 */
 .mg-icon-btn {
     display: inline-flex;
@@ -2660,6 +2700,8 @@ html.theme-dark #roleManageBody::-webkit-scrollbar-thumb:hover {
     margin: 1rem 0;
     flex: 1;
     min-height: 0;
+    overflow-y: auto; /* 内容超高时弹窗内滚动（modal-content 为 overflow:hidden，缺此项内容被裁且无法下滑） */
+    overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
 }
 
@@ -4211,7 +4253,7 @@ html.theme-dark .setting-hint strong {
     height: 14px;
     margin: 0;
     cursor: pointer;
-    accent-color: var(--accent-color, #4f46e5);
+    accent-color: var(--primary-color);
 }
 
 /* 系数设置删除按钮 */
@@ -5393,16 +5435,16 @@ input:checked + .toggle-slider:before {
     --receipt-text: #5c1a1a;
     --receipt-border: none;
     --receipt-accent: #8b3e2f;
-    --receipt-font-family: 'Zfull-GB', '朝华打字机', '朝華打字機', 'ZhaohuaTypeWriter', 'ZhaohuaTypeWriter Light', 'Special Elite', '霞鹜文楷 Light', 'LXGW WenKai Light', 'LXGW WenKai Lite', '霞鹜文楷', 'LXGW WenKai', 'Times New Roman', 'Georgia', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', serif;
+    --receipt-font-family: 'Z Labs Pixel 12px M CN', 'Zfull-GB', '朝华打字机', '朝華打字機', 'ZhaohuaTypeWriter', 'ZhaohuaTypeWriter Light', 'Special Elite', '霞鹜文楷 Light', 'LXGW WenKai Light', 'LXGW WenKai Lite', '霞鹜文楷', 'LXGW WenKai', 'Times New Roman', 'Georgia', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', serif;
     --receipt-border-radius: 0;
     --receipt-box-shadow: 0 2px 8px rgba(139, 62, 47, 0.15);
     --receipt-title-color: #5c1a1a;
     --receipt-divider-color: #c89b6e;
 }
 .receipt.receipt-theme-vintage {
-    /* 打字机复古风：首选 Zfull-GB（打字机点阵字，CDN 在线免下载）；未命中时回退朝华打字机/Special Elite（英文）/霞鹜文楷（中文，CDN Lite 版），最后回退衬线 */
-    font-family: 'Zfull-GB', '朝华打字机', '朝華打字機', 'ZhaohuaTypeWriter', 'ZhaohuaTypeWriter Light', 'Special Elite', '霞鹜文楷 Light', 'LXGW WenKai Light', 'LXGW WenKai Lite', '霞鹜文楷', 'LXGW WenKai', 'Times New Roman', 'Georgia', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', serif !important;
-    font-weight: 300;
+    /* 打字机复古风：首选 ZLabs 点阵字（本地面字，OFL 免费可商用，离线可用）；未命中时回退 Zfull-GB（CDN）/朝华打字机/Special Elite（英文）/霞鹜文楷（中文），最后回退衬线 */
+    font-family: 'Z Labs Pixel 12px M CN', 'Zfull-GB', '朝华打字机', '朝華打字機', 'ZhaohuaTypeWriter', 'ZhaohuaTypeWriter Light', 'Special Elite', '霞鹜文楷 Light', 'LXGW WenKai Light', 'LXGW WenKai Lite', '霞鹜文楷', 'LXGW WenKai', 'Times New Roman', 'Georgia', 'Garamond', 'SimSun', 'NSimSun', '宋体', '新宋体', 'Source Han Serif SC', 'Noto Serif SC', serif !important;
+    font-weight: 400;
 }
 
 /* 粉樱主题（sakura）：优雅衬线字体，柔美精致 */
@@ -11754,6 +11796,10 @@ html.theme-dark .module-symbol {
     width: 100%;
     min-width: 0;
 }
+/* 组级同模优惠下拉：独立一行（与用途/加急/折扣区分） */
+.module-item-body .module-expansion-controls .form-group.module-same-model-control {
+    grid-column: 1 / -1;
+}
 .module-item.module-collapsed .module-item-body {
     display: none;
 }
@@ -12093,4 +12139,612 @@ html.theme-dark .convert-menu {
     line-height: 1.65;
     margin-bottom: 4px;
     color: var(--text-color);
+}
+    min-width: 0;
+}
+
+/* ===== 客户管理（A-Z 分组 + 卡片排版） ===== */
+.customer-group {
+    margin-bottom: 14px;
+}
+.customer-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    background: transparent;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 4px;
+}
+.customer-group-header:hover {
+    background: var(--bg-secondary, #f5f5f5);
+}
+.customer-group-letter {
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--text-light, #6b7280);
+    min-width: 16px;
+    text-align: center;
+}
+.customer-group-header::after {
+    content: '▾';
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-secondary, #888);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.customer-group-header:hover::after {
+    opacity: 0.7;
+}
+.customer-group[data-collapsed="1"] .customer-group-header::after {
+    content: '▸';
+}
+.customer-group-body {
+    padding-top: 2px;
+}
+/* 档位编辑行：三列栅格对齐（阈值/折扣/删除），名称自动生成不占列 */
+.customer-auto-tier-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) 84px 30px;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.customer-auto-tier-row .customer-tier-by,
+.customer-auto-tier-row .customer-tier-threshold,
+.customer-auto-tier-row .customer-tier-value,
+.customer-auto-tier-row .customer-tier-name {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+.customer-auto-tier-row .btn-compact {
+    justify-self: center;
+}
+/* 档位行非法值：红框提示（阈值需>0、系数需0.5–1），该行不参与保存 */
+.customer-tier-invalid,
+.customer-tier-invalid:focus {
+    border-color: #e5484d !important;
+    box-shadow: 0 0 0 1px rgba(229, 72, 77, 0.25) !important;
+}
+[data-theme="dark"] .customer-tier-invalid,
+[data-theme="dark"] .customer-tier-invalid:focus {
+    border-color: #ff6369 !important;
+    box-shadow: 0 0 0 1px rgba(255, 99, 105, 0.3) !important;
+}
+.customer-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: transparent;
+    border: none;
+    margin-bottom: 0;
+}
+/* 紧凑无边框：改用细分隔线区分，hover 才显表浅高亮 */
+.customer-card + .customer-card {
+    border-top: 1px solid var(--border-color, #e8e8e8);
+}
+.customer-card:hover {
+    background: var(--bg-secondary, #f5f5f5);
+    border-radius: 6px;
+}
+.customer-card-main {
+    flex: 1;
+    min-width: 0;
+}
+.customer-card-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.customer-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color, #222);
+    word-break: break-all;
+}
+/* 单主优惠状态圆点：实心橙=个人优惠；实心蓝=已命中统一优惠；灰空心=未达标任何优惠 */
+.customer-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    flex-shrink: 0;
+    align-self: center;
+}
+.customer-dot-orange {
+    background: #f59e0b;
+    border: 1px solid #f59e0b;
+}
+.customer-dot-blue {
+    background: #3b82f6;
+    border: 1px solid #3b82f6;
+}
+.customer-dot-gray {
+    background: transparent;
+    border: 1px solid #9ca3af;
+}
+.customer-dot-hollow {
+    background: transparent;
+}
+[data-theme="dark"] .customer-dot-orange {
+    background: #fbbf24;
+    border-color: #fbbf24;
+}
+[data-theme="dark"] .customer-dot-blue {
+    background: #60a5fa;
+    border-color: #60a5fa;
+}
+[data-theme="dark"] .customer-dot-gray {
+    background: transparent;
+    border-color: #6b7280;
+}
+[data-theme="dark"] .customer-dot-hollow {
+    background: transparent;
+}
+.customer-card-subrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-left: 20px; /* 与标题行对齐：圆点 8px + margin-right 6px + 容器 gap 6px = 20px */
+}
+.customer-card-contact {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+}
+.customer-card-stats {
+    font-size: 12px;
+    color: var(--text-light, #6b7280);
+    font-weight: 600;
+}
+.customer-card-note {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    line-height: 1.4;
+    word-break: break-all;
+    margin-left: 2px;
+}
+.customer-card-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.customer-card:hover .customer-card-actions {
+    opacity: 1;
+}
+/* 客户卡片：编辑/删除紧凑图标按钮（省空间） */
+.customer-card-actions .customer-action-btn {
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    font-size: 14px;
+    line-height: 1;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.customer-card-actions .customer-action-btn:hover {
+    background: var(--bg-secondary, #f5f5f5);
+    color: var(--primary-color);
+}
+.customer-card-actions .customer-action-btn-danger:hover {
+    background: rgba(231, 76, 60, 0.08);
+    color: #e74c3c;
+}
+.customer-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    /* 去胶囊：纯文字轻样式，无背景无圆角 */
+}
+.customer-badge-none {
+    color: var(--text-secondary, #999);
+}
+.customer-badge-manual {
+    color: var(--primary-color, #111);
+}
+.customer-badge-auto {
+    color: var(--primary-color, #111);
+    font-weight: 600;
+}
+.customer-badge-expired {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+.customer-badge-validity {
+    font-size: 11px;
+    color: var(--text-secondary, #888);
+    margin-left: 4px;
+}
+.customer-empty {
+    color: var(--text-secondary, #888);
+}
+
+/* 单主折扣统一规则：档位编辑区折叠按钮 */
+.reward-policy-toggle {
+    font-size: 12px;
+    color: var(--text-light, #6b7280);
+    cursor: pointer;
+    user-select: none;
+    line-height: 1;
+}
+.reward-policy-toggle:hover {
+    color: var(--primary-color);
+}
+
+/* 客户名单：布局 + 右侧 A-Z# 索引栏 + 排序切换 */
+.customer-list-layout {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+.customer-list-wrap {
+    flex: 1;
+    min-width: 0;
+}
+.customer-index-rail {
+    position: sticky;
+    top: 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-self: flex-start;
+    flex: 0 0 auto;
+}
+.customer-index-btn {
+    width: 24px;
+    height: 24px;
+    border: 0;
+    background: transparent;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    text-align: center;
+    line-height: 1;
+    padding: 0;
+}
+.customer-index-btn:hover {
+    background: var(--bg-secondary, #f5f5f5);
+    color: var(--primary-color);
+}
+.customer-sort-segmented {
+    display: inline-flex;
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 6px;
+    overflow: hidden;
+    gap: 0;
+}
+.customer-sort-segmented button {
+    padding: 4px 10px;
+    font-size: 13px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-secondary, #888);
+    border-right: 1px solid var(--border-color, #e8e8e8);
+}
+.customer-sort-segmented button:last-child {
+    border-right: 0;
+}
+.customer-sort-segmented button.is-active {
+    background: var(--primary-color);
+    color: var(--bg-color);
+}
+
+/* 单主工具栏：所有终端强制单行（覆盖 .form-row 移动端 column 布局） */
+.customer-toolbar-row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    gap: 6px !important;
+}
+.customer-toolbar-row .form-group {
+    margin-bottom: 0;
+    min-width: 0;
+    flex: 0 0 auto;
+}
+.customer-toolbar-row .form-group:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.customer-toolbar-row input[type="search"] {
+    min-width: 0;
+    width: 100%;
+}
+
+/* 从历史建档行 */
+.customer-archive-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+
+/* 专属优惠统一规则卡片 */
+.reward-policy-card {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+.reward-policy-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color, #222);
+}
+.reward-policy-tiers {
+    margin-top: 4px;
+}
+
+/* 内联开关（统一规则启用） */
+.inline-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+.inline-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.inline-switch .switch-track {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    border-radius: 22px;
+    background: #ccc;
+    transition: background 0.2s;
+    flex: 0 0 auto;
+}
+.inline-switch .switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    transition: left 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.inline-switch input:checked + .switch-track {
+    background: var(--primary-color);
+}
+.inline-switch input:checked + .switch-track .switch-thumb {
+    left: 20px;
+}
+.inline-switch .switch-label {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+}
+.inline-switch input:checked ~ .switch-label {
+    color: var(--primary-color);
+}
+
+/* 单主折扣模式：滑块式分段切换（无 / 手动 / 按规则自动） */
+.customer-mode-slider {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px;
+    background: var(--bg-secondary, #f5f5f5);
+    user-select: none;
+}
+.customer-mode-slider-thumb {
+    position: absolute;
+    top: 3px;
+    left: 0;
+    height: calc(100% - 6px);
+    border-radius: 6px;
+    background: var(--card-bg, #ffffff);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s ease, width 0.2s ease, opacity 0.2s ease;
+    z-index: 0;
+    opacity: 0;
+}
+.customer-mode-slider-btn {
+    position: relative;
+    z-index: 1;
+    border: 0;
+    background: transparent;
+    padding: 4px 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    border-radius: 6px;
+    white-space: nowrap;
+    transition: color 0.2s;
+}
+.customer-mode-slider-btn:hover {
+    color: var(--text-light, #6b7280);
+}
+.customer-mode-slider-btn.is-active {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* 计算页：单主折扣行 —— 文字与启用复选框同一行 */
+.customer-discount-row.d-none {
+    display: none !important;
+}
+.customer-discount-row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-top: 1px dashed var(--border-color, #e5e7eb);
+    border-bottom: 1px dashed var(--border-color, #e5e7eb);
+    margin: 4px 0;
+    font-size: 13px;
+}
+.customer-discount-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+.customer-discount-name {
+    font-weight: 600;
+    color: var(--primary-color);
+    white-space: nowrap;
+}
+.customer-discount-meta {
+    color: var(--text-secondary, #888);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.customer-discount-row.customer-discount-disabled .customer-discount-name,
+.customer-discount-row.customer-discount-disabled .customer-discount-meta {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+.customer-discount-toggle {
+    flex: 0 0 auto !important;
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    user-select: none;
+}
+.customer-discount-toggle input {
+    margin: 0;
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+}
+.customer-discount-toggle span {
+    white-space: nowrap;
+}
+
+/* 统一规则档位列（对齐个体档位行，含维度下拉） */
+.reward-policy-tiers .customer-auto-tier-row select.customer-tier-by {
+    flex: 0 0 auto;
+    width: 84px;
+}
+
+/* 首次建档提示条（可展开） */
+.customer-history-prompt-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--bg-secondary, #f5f5f5);
+    border: 1px dashed var(--border-color, #e5e7eb);
+    border-radius: 10px;
+    cursor: pointer;
+}
+.customer-history-prompt-text {
+    font-size: 13px;
+    color: var(--text-color);
+    flex: 1;
+    min-width: 0;
+}
+.customer-history-panel {
+    margin-top: 8px;
+    padding: 12px 14px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 10px;
+}
+
+/* ===== 单主管理手机端适配：工具行/统一规则卡/档位行不溢出 ===== */
+@media (max-width: 640px) {
+    /* 工具栏已由全局规则强制单行，此处仅压缩尺寸 */
+    .customer-toolbar-row input[type="search"] {
+        padding: 5px 8px;
+        font-size: 12px;
+    }
+    /* 手机端编辑/删除按钮常驻显示（无 hover） */
+    .customer-card-actions {
+        opacity: 1 !important;
+    }
+    .customer-toolbar-row .btn-compact {
+        padding: 5px 8px;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+    /* 仅看专属优惠开关：文字缩小，避免溢出 */
+    .customer-toolbar-row .switch-label {
+        font-size: 12px;
+    }
+    /* 排序/维度分段控件：紧凑显示 */
+    .customer-sort-segmented {
+        flex: 0 0 auto;
+    }
+    .customer-sort-segmented button {
+        padding: 4px 7px;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+    /* 档位行三列：压缩列宽防溢出 */
+    .customer-auto-tier-row {
+        grid-template-columns: minmax(72px, 1fr) 72px 30px;
+        gap: 5px;
+    }
+    .customer-auto-tier-row .customer-tier-threshold,
+    .customer-auto-tier-row .customer-tier-value {
+        padding: 5px 6px;
+        font-size: 12px;
+        min-width: 0;
+    }
+    /* 统一规则卡：开关/分段/按钮换行友好，整体不横向溢出 */
+    .reward-policy-head {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .reward-policy-body .inline-switch {
+        flex-wrap: nowrap;
+        white-space: nowrap;
+    }
+    .reward-policy-body .customer-sort-segmented {
+        display: flex;
+        flex-wrap: nowrap;
+        width: fit-content; /* 小屏下不撑满整行，按内容宽度自适应 */
+        align-self: flex-start;
+    }
+    .reward-policy-tiers {
+        min-width: 0;
+    }
 }
