@@ -7,7 +7,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260909-1600">
+    <link rel="stylesheet" href="style.css?v=20260909-0758">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -1869,6 +1869,10 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
                             <span class="quick-entry-label">单主<br>管理</span>
                         </button>
+                        <button class="quick-entry-btn" onclick="showSettingsSubPage('marketingCards')">
+                            <svg class="icon" aria-hidden="true"><use href="#i-image-line-b"></use></svg>
+                            <span class="quick-entry-label">接单<br>物料</span>
+                        </button>
                     </div>
                 </div>
 
@@ -2615,6 +2619,28 @@
                             <button class="btn" onclick="saveCustomerEdit()">保存</button>
                             <button class="btn secondary" onclick="closeCustomerEditModal()">取消</button>
                         </div>
+                    </div>
+                </div>
+                <!-- 接单物料子页面 -->
+                <div id="settingsSubPage-marketingCards" class="settings-sub-page d-none">
+                    <div class="section">
+                        <div class="settings-subpage-header mb-4">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>接单物料</h2>
+                            <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn btn-compact" onclick="saveMarketingCardSetting()">保存</button>
+                            </div>
+                        </div>
+                        <div class="setting-hint text-gray" style="margin-bottom: 8px;">
+                            编辑自介表 / 价目表 / 下单需知内容，实时预览后保存为图片，用于发布展示。
+                        </div>
+                        <div class="marketing-card-tabs d-flex items-center gap-2" style="margin-bottom:12px;">
+                            <button class="btn btn-compact marketing-card-tab-btn active" data-mc-tab="businessCard" onclick="switchMarketingCardTab('businessCard')">自介表</button>
+                            <button class="btn secondary btn-compact marketing-card-tab-btn" data-mc-tab="priceList" onclick="switchMarketingCardTab('priceList')">价目表</button>
+                            <button class="btn secondary btn-compact marketing-card-tab-btn" data-mc-tab="orderInfo" onclick="switchMarketingCardTab('orderInfo')">下单需知</button>
+                        </div>
+                        <div id="marketingCardFormArea"></div>
+                        <div id="marketingCardPreviewArea" style="margin-top:12px;"></div>
                     </div>
                 </div>
                 <!-- 添加系数弹窗 -->
@@ -3378,7 +3404,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260909-1630"></script>
+    <script src="script.js?v=20260909-0758"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

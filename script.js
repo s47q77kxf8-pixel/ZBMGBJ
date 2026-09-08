@@ -29,6 +29,8 @@ let statsFocusedOrderIds = null; // 统计页“查看企划”后，记录页�
 let statsFocusedLabel = ''; // 统计页“查看企划”后的筛选说明
 let templates = []; // 存储模板列表
 let customers = []; // 客户档案列表（localStorage 'customers'）
+let _mcData = null; // 接单物料配置缓存（localStorage 'marketingCards'），null 表示未加载
+let _mcTab = 'businessCard'; // 接单物料当前 tab：businessCard | priceList | orderInfo
 let selectedPerItemExtraFeeIds = []; // 计算页全单级“每制品新增”勾选
 // ===== 制品/赠品「模块」分组（每个模块持独立的扩展加价/减价） =====
 let orderModules = [];   // [{ id, mtype:'product'|'gift', seq, symbol, upSelections:[], downSelections:[] }]
@@ -785,6 +787,8 @@ function showSettingsSubPage(pageName) {
             loadSettings();
         } else if (pageName === 'customerSettings') {
             renderCustomerSettings();
+        } else if (pageName === 'marketingCards') {
+            renderMarketingCards();
         }
     }
 }
@@ -2191,6 +2195,15 @@ function loadData() {
         } else {
             customers = [];
         }
+        // 接单物料配置：独立 key
+        const savedMarketingCards = localStorage.getItem('marketingCards');
+        if (savedMarketingCards) {
+            try {
+                _mcData = JSON.parse(savedMarketingCards);
+            } catch (_e) {
+                _mcData = null;
+            }
+        }
     } catch (error) {
         console.error('加载数据失败:', error);
     }
@@ -3455,6 +3468,7 @@ function doSaveData() {
         localStorage.setItem('productSettings', JSON.stringify(productSettings));
         localStorage.setItem('processSettings', JSON.stringify(processSettings));
         localStorage.setItem('customers', JSON.stringify(customers));
+        localStorage.setItem('marketingCards', JSON.stringify(_mcData || getDefaultMarketingCards()));
     } catch (error) {
         console.error('保存数据失败:', error);
     }
@@ -6805,6 +6819,7 @@ function getExportSyncPayload() {
         processSettings: processSettings,
         templates: templates,
         customers: customers,
+        marketingCards: _mcData || getDefaultMarketingCards(),
         exportDate: new Date().toISOString()
     };
 }
@@ -6928,7 +6943,7 @@ function importSyncDataFromClipboard() {
                 return;
             }
             const hasHistory = Array.isArray(data.quoteHistory);
-            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null;
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null || data.marketingCards != null;
             if (!hasHistory && !hasSettings) {
                 alert('剪贴板中未包含可导入的数据（需要 quoteHistory 或设置项）');
                 return;
@@ -7091,6 +7106,10 @@ function applyRecordImportOverwrite() {
             if (!c.discount) c.discount = { mode: 'none', manual: { value: 0.95, name: '' }, auto: { tiers: [] }, startDate: '', endDate: '' };
         });
     }
+    if (data.marketingCards != null) {
+        // 覆盖导入：接单物料配置与设置一致，直接替换
+        _mcData = Object.assign(getDefaultMarketingCards(), data.marketingCards);
+    }
     saveData();
     applyRecordFilters();
     alert('导入成功，数据已同步到本机。');
@@ -7131,6 +7150,10 @@ function applyRecordImportMerge() {
             }
         });
     }
+    if (data.marketingCards != null) {
+        // 合并导入：接单物料配置按设置类处理，直接替换（卡片内容以导入端为准）
+        _mcData = Object.assign(getDefaultMarketingCards(), data.marketingCards);
+    }
     saveData();
     applyRecordFilters();
     alert('导入成功，已合并 ' + appendedCount + ' 条记录，本机设置未变更。');
@@ -7150,7 +7173,7 @@ function handleRecordSyncImport(event) {
                 return;
             }
             const hasHistory = Array.isArray(data.quoteHistory);
-            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null;
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null || data.marketingCards != null;
             if (!hasHistory && !hasSettings) {
                 alert('文件中未包含可导入的数据（需要 quoteHistory 或设置项）');
                 input.value = '';
@@ -14424,6 +14447,464 @@ async function copyQuoteAsImage() {
     }
 }
 
+// ===================== 接单物料（自介表 / 价目表 / 下单需知） =====================
+
+function getDefaultMarketingCards() {
+    return {
+        businessCard: {
+            displayName: '',
+            idMode: 'role',      // role=按身份（美工ID/画师ID…）| plain=只显示ID | none=不显示
+            showContact: true,
+            contact: '',
+            slogan: '',
+            accent: '#7c6ff0',
+            theme: 'gradient'    // gradient | light | dark
+        },
+        priceList: {
+            title: '价目表',
+            note: '',
+            items: [{ name: '', price: '' }, { name: '', price: '' }, { name: '', price: '' }]
+        },
+        orderInfo: {
+            title: '下单需知',
+            lines: [
+                { text: '请先仔细阅读并确认需求，确认后下单视为同意以下内容' },
+                { text: '排单顺序以付款时间为准，先付后做' },
+                { text: '工期以约定为准，如有延期会提前沟通' },
+                { text: '成品仅限个人展示，未经授权请勿商用或二次修改' }
+            ],
+            footer: ''
+        }
+    };
+}
+
+function loadMarketingCards() {
+    if (_mcData) return _mcData;
+    try {
+        const raw = localStorage.getItem('marketingCards');
+        const parsed = raw ? JSON.parse(raw) : null;
+        _mcData = (parsed && typeof parsed === 'object') ? parsed : null;
+    } catch (e) {
+        _mcData = null;
+    }
+    if (!_mcData) _mcData = getDefaultMarketingCards();
+    // 合并默认结构，防缺字段
+    const def = getDefaultMarketingCards();
+    Object.keys(def).forEach(function (k) {
+        if (!_mcData[k] || typeof _mcData[k] !== 'object') {
+            _mcData[k] = def[k];
+        } else {
+            _mcData[k] = Object.assign({}, def[k], _mcData[k]);
+        }
+        if (k === 'priceList' && Array.isArray(_mcData[k].items)) {
+            _mcData[k].items = _mcData[k].items.filter(function (it) { return it && typeof it === 'object'; });
+            if (_mcData[k].items.length === 0) _mcData[k].items = [{ name: '', price: '' }];
+        }
+        if (k === 'orderInfo' && Array.isArray(_mcData[k].lines)) {
+            _mcData[k].lines = _mcData[k].lines.filter(function (ln) { return ln && typeof ln === 'object'; });
+        }
+    });
+    return _mcData;
+}
+
+function saveMarketingCards() {
+    try {
+        localStorage.setItem('marketingCards', JSON.stringify(_mcData || getDefaultMarketingCards()));
+    } catch (e) {
+        console.error('保存接单物料失败:', e);
+    }
+}
+
+// 按身份生成 ID 标签：role=「美工ID：xxx」「画师ID：xxx」，plain=「ID：xxx」
+function buildCardIdLabel(cfg) {
+    const mode = (cfg && cfg.idMode) || 'role';
+    const id = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.id)
+        ? String(defaultSettings.artistInfo.id).trim() : '';
+    if (!id || mode === 'none') return '';
+    if (mode === 'plain') return 'ID：' + id;
+    const role = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.role)
+        ? String(defaultSettings.artistInfo.role).trim() : '';
+    return (role ? role + 'ID' : 'ID') + '：' + id;
+}
+
+function mcAccentColor(cfg) {
+    const a = cfg && cfg.accent ? String(cfg.accent) : '';
+    return /^#[0-9a-fA-F]{3,8}$/.test(a) ? a : '#7c6ff0';
+}
+
+// 将十六进制颜色加深（返回 rgb() 字符串）
+function mcDarken(hex, factor) {
+    factor = factor || 0.72;
+    let h = String(hex || '').replace('#', '');
+    if (!/^[0-9a-fA-F]{3,6}$/.test(h)) h = '7c6ff0';
+    if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+    const r = Math.round(parseInt(h.substr(0, 2), 16) * factor);
+    const g = Math.round(parseInt(h.substr(2, 2), 16) * factor);
+    const b = Math.round(parseInt(h.substr(4, 2), 16) * factor);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+function renderMarketingCards() {
+    if (!_mcData) loadMarketingCards();
+    if (!_mcTab) _mcTab = 'businessCard';
+    document.querySelectorAll('.marketing-card-tab-btn').forEach(function (btn) {
+        const key = btn.getAttribute('data-mc-tab');
+        btn.classList.toggle('active', key === _mcTab);
+        if (key === _mcTab) {
+            btn.classList.remove('secondary');
+        } else {
+            btn.classList.add('secondary');
+        }
+    });
+    renderMarketingCardForm(_mcTab);
+    renderMarketingCardPreview(_mcTab);
+}
+
+function switchMarketingCardTab(tab) {
+    if (tab === _mcTab) return;
+    collectMarketingCardForm(_mcTab);
+    saveMarketingCards();
+    _mcTab = tab;
+    renderMarketingCards();
+}
+
+// 表单输入实时收集 → 保存 → 重绘预览
+function onMcFormInput() {
+    collectMarketingCardForm(_mcTab);
+    saveMarketingCards();
+    renderMarketingCardPreview(_mcTab);
+}
+
+function saveMarketingCardSetting() {
+    collectMarketingCardForm(_mcTab);
+    saveMarketingCards();
+    showGlobalToast('接单物料已保存');
+}
+
+// 从 DOM 收集当前 tab 表单值写入 _mcData
+function collectMarketingCardForm(tab) {
+    if (!_mcData) loadMarketingCards();
+    const cfg = _mcData[tab];
+    if (!cfg) return;
+    if (tab === 'businessCard') {
+        const el = document.getElementById('mcDisplayName'); if (el) cfg.displayName = el.value;
+        const idMode = document.getElementById('mcIdMode'); if (idMode) cfg.idMode = idMode.value;
+        const showContact = document.getElementById('mcShowContact'); if (showContact) cfg.showContact = showContact.checked;
+        const contact = document.getElementById('mcContact'); if (contact) cfg.contact = contact.value;
+        const slogan = document.getElementById('mcSlogan'); if (slogan) cfg.slogan = slogan.value;
+        const accent = document.getElementById('mcAccent'); if (accent) cfg.accent = accent.value;
+        const theme = document.getElementById('mcTheme'); if (theme) cfg.theme = theme.value;
+    } else if (tab === 'priceList') {
+        const title = document.getElementById('mcPriceTitle'); if (title) cfg.title = title.value;
+        const note = document.getElementById('mcPriceNote'); if (note) cfg.note = note.value;
+        const rows = document.querySelectorAll('#mcPriceItems .mc-price-item-row');
+        cfg.items = [];
+        rows.forEach(function (row) {
+            const nameEl = row.querySelector('.mc-price-item-name-input');
+            const priceEl = row.querySelector('.mc-price-item-price-input');
+            cfg.items.push({
+                name: nameEl ? nameEl.value : '',
+                price: priceEl ? priceEl.value : ''
+            });
+        });
+        if (cfg.items.length === 0) cfg.items = [{ name: '', price: '' }];
+    } else if (tab === 'orderInfo') {
+        const title = document.getElementById('mcOrderTitle'); if (title) cfg.title = title.value;
+        const lines = document.getElementById('mcOrderLines');
+        if (lines) {
+            cfg.lines = lines.value.split('\n').filter(function (s) { return String(s).trim() !== ''; })
+                .map(function (s) { return { text: s }; });
+        }
+        const footer = document.getElementById('mcOrderFooter'); if (footer) cfg.footer = footer.value;
+    }
+}
+
+function renderMarketingCardForm(tab) {
+    const area = document.getElementById('marketingCardFormArea');
+    if (!area) return;
+    const data = loadMarketingCards();
+    const cfg = data[tab] || {};
+    let html = '';
+    if (tab === 'businessCard') {
+        const role = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.role)
+            ? String(defaultSettings.artistInfo.role).trim() : '美工';
+        html = '<div class="mc-form">' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcDisplayName">展示名称</label>' +
+                '<input type="text" id="mcDisplayName" value="' + escapeHtml(cfg.displayName || '') + '" placeholder="留空自动使用「用户ID」" oninput="onMcFormInput()"></div>' +
+            '</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcIdMode">ID 展示方式</label>' +
+                '<select id="mcIdMode" onchange="onMcFormInput()">' +
+                    '<option value="role"' + (cfg.idMode === 'role' ? ' selected' : '') + '>按身份（如 ' + escapeHtml(role + 'ID') + '）</option>' +
+                    '<option value="plain"' + (cfg.idMode === 'plain' ? ' selected' : '') + '>只显示ID</option>' +
+                    '<option value="none"' + (cfg.idMode === 'none' ? ' selected' : '') + '>不显示</option>' +
+                '</select>' +
+                '<small class="text-gray">按身份自动生成「美工ID / 画师ID / 题字ID…」，也可只显示 ID 或隐藏</small></div>' +
+            '</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label>联系方式</label>' +
+                '<div class="checkbox-line" style="margin-top:2px;"><input type="checkbox" id="mcShowContact"' + (cfg.showContact !== false ? ' checked' : '') + ' onchange="onMcFormInput()"><span>在卡片上显示联系方式</span></div>' +
+                '<input type="text" id="mcContact" value="' + escapeHtml(cfg.contact || '') + '" placeholder="留空自动使用「基础设置」中的联系方式" oninput="onMcFormInput()" style="margin-top:6px;"></div>' +
+            '</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcSlogan">简介 / 标语</label>' +
+                '<input type="text" id="mcSlogan" value="' + escapeHtml(cfg.slogan || '') + '" placeholder="一句话介绍自己（可留空）" oninput="onMcFormInput()"></div>' +
+            '</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcAccent">主题色</label>' +
+                '<div class="d-flex items-center gap-2"><input type="color" id="mcAccent" value="' + escapeHtml(cfg.accent || '#7c6ff0') + '" onchange="onMcFormInput()" style="width:48px;height:32px;padding:2px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;">' +
+                '<select id="mcTheme" onchange="onMcFormInput()" style="flex:1;">' +
+                    '<option value="gradient"' + (cfg.theme === 'gradient' ? ' selected' : '') + '>渐变背景</option>' +
+                    '<option value="light"' + (cfg.theme === 'light' ? ' selected' : '') + '>浅色背景</option>' +
+                    '<option value="dark"' + (cfg.theme === 'dark' ? ' selected' : '') + '>深色背景</option>' +
+                '</select></div></div>' +
+            '</div>' +
+        '</div>';
+    } else if (tab === 'priceList') {
+        const items = (Array.isArray(cfg.items) && cfg.items.length) ? cfg.items : [{ name: '', price: '' }];
+        html = '<div class="mc-form">' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcPriceTitle">标题</label>' +
+                '<input type="text" id="mcPriceTitle" value="' + escapeHtml(cfg.title || '') + '" placeholder="价目表" oninput="onMcFormInput()"></div>' +
+            '</div>' +
+            '<div class="form-group"><label>价格条目</label>' +
+            '<div id="mcPriceItems">' +
+                items.map(function (it, i) {
+                    return '<div class="mc-price-item-row d-flex gap-2" style="margin-bottom:6px;align-items:center;">' +
+                        '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml(it.name || '') + '" placeholder="制品名称" oninput="onMcFormInput()" style="flex:1.6;">' +
+                        '<input type="text" class="mc-price-item-price-input" value="' + escapeHtml(it.price || '') + '" placeholder="价格（可写“起”）" oninput="onMcFormInput()" style="flex:1;">' +
+                        '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
+                    '</div>';
+                }).join('') +
+            '</div>' +
+            '<div class="d-flex items-center gap-2" style="margin-top:2px;">' +
+                '<button type="button" class="btn secondary btn-compact" onclick="addMcPriceRow()">+ 添加一行</button>' +
+                '<button type="button" class="btn secondary btn-compact" onclick="importPriceFromProducts()">从制品设置导入</button>' +
+            '</div></div>' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcPriceNote">底部备注</label>' +
+                '<textarea id="mcPriceNote" rows="2" placeholder="如：量大从优、具体以报价单为准（可留空）" oninput="onMcFormInput()">' + escapeHtml(cfg.note || '') + '</textarea></div>' +
+            '</div>' +
+        '</div>';
+    } else if (tab === 'orderInfo') {
+        const linesText = (Array.isArray(cfg.lines) ? cfg.lines : []).map(function (l) { return l.text || ''; }).join('\n');
+        html = '<div class="mc-form">' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcOrderTitle">标题</label>' +
+                '<input type="text" id="mcOrderTitle" value="' + escapeHtml(cfg.title || '') + '" placeholder="下单需知" oninput="onMcFormInput()"></div>' +
+            '</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcOrderLines">需知内容</label>' +
+                '<textarea id="mcOrderLines" rows="7" placeholder="每行一条需知，导出时自动编号" oninput="onMcFormInput()">' + escapeHtml(linesText) + '</textarea>' +
+                '<small class="text-gray">每行一条，导出时自动编号</small></div>' +
+            '</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group"><label for="mcOrderFooter">底部信息</label>' +
+                '<input type="text" id="mcOrderFooter" value="' + escapeHtml(cfg.footer || '') + '" placeholder="如联系方式 / 感谢语（可留空）" oninput="onMcFormInput()"></div>' +
+            '</div>' +
+        '</div>';
+    }
+    area.innerHTML = html;
+}
+
+function addMcPriceRow() {
+    collectMarketingCardForm('priceList');
+    _mcData.priceList.items.push({ name: '', price: '' });
+    saveMarketingCards();
+    renderMarketingCardForm('priceList');
+    renderMarketingCardPreview('priceList');
+}
+
+function removeMcPriceRow(btn) {
+    const row = btn && btn.closest ? btn.closest('.mc-price-item-row') : null;
+    if (!row) return;
+    collectMarketingCardForm('priceList');
+    if (_mcData.priceList.items.length <= 1) {
+        _mcData.priceList.items = [{ name: '', price: '' }];
+    } else {
+        const idx = Array.prototype.indexOf.call(row.parentNode.children, row);
+        if (idx >= 0) _mcData.priceList.items.splice(idx, 1);
+    }
+    saveMarketingCards();
+    renderMarketingCardForm('priceList');
+    renderMarketingCardPreview('priceList');
+}
+
+// 从制品设置导入名称与起售价
+function importPriceFromProducts() {
+    if (!_mcData) loadMarketingCards();
+    const items = (Array.isArray(productSettings) ? productSettings : []).map(function (p) {
+        let price = '';
+        if (p && p.priceType === 'fixed' && isFinite(Number(p.price))) price = String(p.price);
+        else if (p && p.priceType === 'double' && isFinite(Number(p.priceSingle))) price = String(p.priceSingle) + '起';
+        else if (p && p.priceType === 'config' && isFinite(Number(p.basePrice))) price = String(p.basePrice) + '起';
+        else if (p && p.priceType === 'nodes' && isFinite(Number(p.price))) price = String(p.price) + '起';
+        return { name: p ? String(p.name || '') : '', price: price };
+    });
+    if (items.length === 0) {
+        alert('「制品设置」中暂无制品，请先添加制品');
+        return;
+    }
+    _mcData.priceList.items = items;
+    saveMarketingCards();
+    renderMarketingCardForm('priceList');
+    renderMarketingCardPreview('priceList');
+    showGlobalToast('已导入 ' + items.length + ' 项制品');
+}
+
+function renderMarketingCardPreview(tab) {
+    const area = document.getElementById('marketingCardPreviewArea');
+    if (!area) return;
+    const data = loadMarketingCards();
+    const cfg = data[tab] || {};
+    let cardHtml = '';
+    if (tab === 'businessCard') cardHtml = buildBizCardPreview(cfg);
+    else if (tab === 'priceList') cardHtml = buildPriceCardPreview(cfg);
+    else if (tab === 'orderInfo') cardHtml = buildOrderCardPreview(cfg);
+    area.innerHTML =
+        '<div class="mc-preview-scroll"><div id="marketingCardPreview" class="mc-preview-shell">' + cardHtml + '</div></div>' +
+        '<div class="d-flex items-center gap-2" style="margin-top:10px;">' +
+            '<button class="btn btn-compact" onclick="saveMarketingCardAsImage()">保存为图片</button>' +
+            '<span class="text-gray" style="font-size:12px;">导出宽度 400px，可直接发布 / 分享</span>' +
+        '</div>';
+}
+
+function buildBizCardPreview(cfg) {
+    const accent = mcAccentColor(cfg);
+    const theme = cfg.theme === 'dark' ? 'dark' : (cfg.theme === 'light' ? 'light' : 'gradient');
+    const name = String(cfg.displayName || '').trim() ||
+        ((defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.id) ? String(defaultSettings.artistInfo.id).trim() : '未填写名称');
+    const idLabel = buildCardIdLabel(cfg);
+    const slogan = String(cfg.slogan || '').trim();
+    const contact = String(cfg.contact || '').trim() ||
+        ((defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.contact) ? String(defaultSettings.artistInfo.contact).trim() : '');
+    const showContact = cfg.showContact !== false && contact;
+
+    let bgStyle = '', textColor = '#ffffff', subColor = '';
+    if (theme === 'gradient') {
+        bgStyle = 'background:linear-gradient(150deg, ' + accent + ' 0%, ' + mcDarken(accent) + ' 100%);';
+        subColor = 'rgba(255,255,255,0.85)';
+    } else if (theme === 'dark') {
+        bgStyle = 'background:#20232b;';
+        subColor = 'rgba(255,255,255,0.7)';
+    } else {
+        bgStyle = 'background:#ffffff;border:1px solid ' + accent + ';';
+        textColor = '#333333';
+        subColor = accent;
+    }
+    return '<div class="mc-biz-card" style="width:400px;' + bgStyle + 'color:' + textColor + ';">' +
+        '<div class="mc-biz-tag" style="color:' + (theme === 'light' ? accent : 'rgba(255,255,255,0.9)') + ';">自介表</div>' +
+        '<div class="mc-biz-name">' + escapeHtml(name) + '</div>' +
+        (idLabel ? '<div class="mc-biz-id" style="color:' + subColor + ';">' + escapeHtml(idLabel) + '</div>' : '') +
+        (slogan ? '<div class="mc-biz-slogan" style="color:' + subColor + ';">' + escapeHtml(slogan) + '</div>' : '') +
+        (showContact ? '<div class="mc-biz-contact" style="border-top:1px solid ' + (theme === 'light' ? '#eee' : 'rgba(255,255,255,0.25)') + ';">联系方式：' + escapeHtml(contact) + '</div>' : '') +
+        '<div class="mc-biz-footer" style="color:' + subColor + ';">感谢您的信任，欢迎随时咨询</div>' +
+    '</div>';
+}
+
+function buildPriceCardPreview(cfg) {
+    const accent = mcAccentColor(cfg);
+    const title = String(cfg.title || '').trim() || '价目表';
+    const note = String(cfg.note || '').trim();
+    const items = (Array.isArray(cfg.items) ? cfg.items : []).filter(function (it) { return it && String(it.name).trim() !== ''; });
+    const rows = items.length ? items.map(function (it) {
+        const price = String(it.price || '').trim();
+        return '<div class="mc-price-item">' +
+            '<span class="mc-price-item-name">' + escapeHtml(it.name) + '</span>' +
+            (price ? '<span class="mc-price-item-price">' + escapeHtml(price) + '</span>' : '<span class="mc-price-item-price mc-price-ask">询价</span>') +
+        '</div>';
+    }).join('') : '<div class="mc-price-empty">暂无内容，请添加条目或从制品设置导入</div>';
+    return '<div class="mc-price-card" style="width:400px;border-top:4px solid ' + accent + ';">' +
+        '<div class="mc-price-title" style="color:' + accent + ';">' + escapeHtml(title) + '</div>' +
+        '<div class="mc-price-items">' + rows + '</div>' +
+        (note ? '<div class="mc-price-note">' + escapeHtml(note) + '</div>' : '') +
+    '</div>';
+}
+
+function buildOrderCardPreview(cfg) {
+    const accent = mcAccentColor(cfg);
+    const title = String(cfg.title || '').trim() || '下单需知';
+    const lines = (Array.isArray(cfg.lines) ? cfg.lines : []).filter(function (l) { return l && String(l.text).trim() !== ''; });
+    const footer = String(cfg.footer || '').trim();
+    const listHtml = lines.length
+        ? lines.map(function (l) { return '<li>' + escapeHtml(l.text) + '</li>'; }).join('')
+        : '<div class="mc-order-empty">暂无内容，请在上方「需知内容」中填写</div>';
+    return '<div class="mc-order-card" style="width:400px;">' +
+        '<div class="mc-order-title" style="border-bottom:2px solid ' + accent + ';color:' + accent + ';">' + escapeHtml(title) + '</div>' +
+        '<ol class="mc-order-lines">' + listHtml + '</ol>' +
+        (footer ? '<div class="mc-order-footer">' + escapeHtml(footer) + '</div>' : '') +
+    '</div>';
+}
+
+// 保存当前卡片为图片（导出前先同步表单并重绘预览）
+async function saveMarketingCardAsImage() {
+    collectMarketingCardForm(_mcTab);
+    saveMarketingCards();
+    renderMarketingCardPreview(_mcTab);
+    const el = document.getElementById('marketingCardPreview');
+    if (!el) {
+        alert('请先填写卡片内容！');
+        return;
+    }
+    const label = _mcTab === 'businessCard' ? '自介表' : (_mcTab === 'priceList' ? '价目表' : '下单需知');
+    await exportDomElementAsImage(el, label + '_' + Date.now() + '.png', label);
+}
+
+// 通用：将 DOM 元素导出为 PNG（分享/下载/预览兜底，策略与小票一致）
+async function exportDomElementAsImage(el, filename, title) {
+    if (!el) {
+        alert('未找到可导出的内容！');
+        return;
+    }
+    try {
+        const canvas = await html2canvas(el, {
+            scale: 3,
+            useCORS: true,
+            logging: false,
+            width: el.scrollWidth,
+            height: el.scrollHeight,
+            backgroundColor: null
+        });
+        const dataUrl = canvas.toDataURL('image/png');
+
+        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+        const isMobileUA = /Mobi|Android|iPhone|iPod|Windows Phone/i.test(navigator.userAgent);
+        const isTabletUA = /iPad|Tablet|PlayBook|Silk/i.test(navigator.userAgent) ||
+                           (/Android/i.test(navigator.userAgent) && !/Mobi/i.test(navigator.userAgent));
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isMobile = isTouchDevice && (window.innerWidth <= 1024 || isMobileUA || isTabletUA || isIOS);
+
+        const doneToast = function () { showGlobalToast('图片已保存'); };
+        if (isMobile) {
+            canvas.toBlob(async function (blob) {
+                if (!blob) { showReceiptImagePreview(dataUrl, filename); return; }
+                const file = new File([blob], filename, { type: 'image/png' });
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({ files: [file], title: title || '接单物料' });
+                        doneToast();
+                    } catch (err) {
+                        if (err.name !== 'AbortError') {
+                            if (isIOS || !triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
+                            else doneToast();
+                        }
+                    }
+                } else {
+                    if (isIOS || !triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
+                    else doneToast();
+                }
+            }, 'image/png');
+        } else {
+            if (!triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
+            else doneToast();
+        }
+    } catch (error) {
+        console.error('导出图片失败:', error);
+        alert('导出图片失败，请重试！');
+    }
+}
+
 // 触发下载。返回 true 表示已尝试触发，false 表示不可用（调用方应走兜底）。
 // 注意：必须在用户手势同步上下文中调用，不要用 setTimeout 包裹，否则 iOS Safari / 夸克会静默拦截。
 function triggerDownload(dataUrl, filename) {
@@ -14637,7 +15118,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260909-1630';
+const APP_VERSION = '20260909-0758';
 const APP_CHANGELOG = [
     {
         date: '2026-09-09',

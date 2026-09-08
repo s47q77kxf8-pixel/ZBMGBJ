@@ -12140,6 +12140,142 @@ html.theme-dark .convert-menu {
     margin-bottom: 4px;
     color: var(--text-color);
 }
+
+/* ===== 接单物料（自介表 / 价目表 / 下单需知） ===== */
+.mc-preview-scroll {
+    overflow-x: auto;
+    padding: 14px;
+    background: repeating-conic-gradient(#eef0f3 0% 25%, #fff 0% 50%) 50% / 20px 20px;
+    border-radius: var(--radius-md, 10px);
+}
+.mc-preview-shell {
+    width: 400px;
+    max-width: 100%;
+    margin: 0 auto;
+}
+.mc-biz-card {
+    box-sizing: border-box;
+    padding: 34px 26px 22px;
+    border-radius: 14px;
+    text-align: center;
+    font-family: inherit;
+}
+.mc-biz-tag {
+    display: inline-block;
+    font-size: 11px;
+    letter-spacing: 2px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: 2px 12px;
+    margin-bottom: 16px;
+    opacity: .9;
+}
+.mc-biz-name {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 8px;
+    word-break: break-all;
+}
+.mc-biz-id {
+    font-size: 14px;
+    margin-bottom: 14px;
+}
+.mc-biz-slogan {
+    font-size: 13px;
+    line-height: 1.7;
+    margin-bottom: 18px;
+    padding: 0 8px;
+}
+.mc-biz-contact {
+    font-size: 13px;
+    padding: 12px 0 10px;
+    word-break: break-all;
+}
+.mc-biz-footer {
+    font-size: 11px;
+    margin-top: 4px;
+    opacity: .8;
+}
+.mc-price-card,
+.mc-order-card {
+    box-sizing: border-box;
+    background: #fff;
+    padding: 24px 26px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .08);
+}
+.mc-price-title {
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+    padding-bottom: 14px;
+}
+.mc-price-items {
+    border-top: 1px dashed #e2e2e2;
+    padding: 6px 0;
+}
+.mc-price-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 2px;
+    border-bottom: 1px solid #f2f2f2;
+    font-size: 14px;
+}
+.mc-price-item-name {
+    color: #333;
+}
+.mc-price-item-price {
+    color: #111;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.mc-price-ask {
+    color: #999;
+    font-weight: 400;
+}
+.mc-price-empty,
+.mc-order-empty {
+    text-align: center;
+    color: #999;
+    font-size: 13px;
+    padding: 20px 0;
+}
+.mc-price-note {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #888;
+    text-align: center;
+    line-height: 1.6;
+}
+.mc-order-title {
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+}
+.mc-order-lines {
+    margin: 0;
+    padding-left: 1.2em;
+}
+.mc-order-lines li {
+    font-size: 14px;
+    line-height: 1.75;
+    color: #444;
+    padding: 3px 0;
+}
+.mc-order-footer {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed #e2e2e2;
+    font-size: 13px;
+    color: #666;
+    text-align: center;
+}
+.mc-price-item-row input {
     min-width: 0;
 }
 
