@@ -7,7 +7,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260909-0758">
+    <link rel="stylesheet" href="style.css?v=20260910-1310">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -1869,7 +1869,8 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
                             <span class="quick-entry-label">单主<br>管理</span>
                         </button>
-                        <button class="quick-entry-btn" onclick="showSettingsSubPage('marketingCards')">
+                        <!-- 接单物料：dev=1 时显示 -->
+                        <button class="quick-entry-btn dev-feature d-none" onclick="showSettingsSubPage('marketingCards')">
                             <svg class="icon" aria-hidden="true"><use href="#i-image-line-b"></use></svg>
                             <span class="quick-entry-label">接单<br>物料</span>
                         </button>
@@ -2473,9 +2474,19 @@
                                     <span class="switch-track"><span class="switch-thumb"></span></span>
                                     <span class="switch-label">个体档与统一规则合并取最优惠</span>
                                 </label>
-                                <div class="customer-sort-segmented" id="rewardPolicyBySeg" style="margin:0 0 8px;">
-                                    <button type="button" data-by="amount" onclick="onRewardPolicyByChange('amount')">按累计金额</button>
-                                    <button type="button" data-by="count" onclick="onRewardPolicyByChange('count')">按累计单数</button>
+                                <div style="display:flex;align-items:center;gap:10px;margin:0 0 8px;flex-wrap:wrap;">
+                                    <span class="text-gray" style="font-size:12px;">优惠口径</span>
+                                    <div class="customer-sort-segmented seg-switch" id="rewardPolicyStatsBasisSeg">
+                                        <span class="seg-thumb"></span>
+                                        <button type="button" data-basis="accepted" onclick="onRewardPolicyStatsBasisChange('accepted')">已结单</button>
+                                        <button type="button" data-basis="all" onclick="onRewardPolicyStatsBasisChange('all')">所有</button>
+                                    </div>
+                                    <span class="text-gray" style="font-size:12px;">维度</span>
+                                    <div class="customer-sort-segmented seg-switch" id="rewardPolicyBySeg">
+                                        <span class="seg-thumb"></span>
+                                        <button type="button" data-by="amount" onclick="onRewardPolicyByChange('amount')">金额</button>
+                                        <button type="button" data-by="count" onclick="onRewardPolicyByChange('count')">单数</button>
+                                    </div>
                                 </div>
                                 <div id="rewardPolicyTiers" class="reward-policy-tiers">
                                     <!-- 统一规则档位由脚本渲染 -->
@@ -2594,9 +2605,19 @@
                                     </div>
                                 </div>
                                 <div id="customerDiscountAutoWrap" class="d-none">
-                                    <div class="customer-sort-segmented" id="customerAutoBySeg" style="margin:0 0 8px;">
-                                        <button type="button" data-by="amount" onclick="onCustomerAutoByChange('amount')">按累计金额</button>
-                                        <button type="button" data-by="count" onclick="onCustomerAutoByChange('count')">按累计单数</button>
+                                    <div style="display:flex;align-items:center;gap:10px;margin:0 0 8px;flex-wrap:wrap;">
+                                        <span class="text-gray" style="font-size:12px;">优惠口径</span>
+                                        <div class="customer-sort-segmented seg-switch" id="customerAutoStatsBasisSeg">
+                                            <span class="seg-thumb"></span>
+                                            <button type="button" data-basis="accepted" onclick="onCustomerAutoStatsBasisChange('accepted')">已结单</button>
+                                            <button type="button" data-basis="all" onclick="onCustomerAutoStatsBasisChange('all')">所有</button>
+                                        </div>
+                                        <span class="text-gray" style="font-size:12px;">维度</span>
+                                        <div class="customer-sort-segmented seg-switch" id="customerAutoBySeg">
+                                            <span class="seg-thumb"></span>
+                                            <button type="button" data-by="amount" onclick="onCustomerAutoByChange('amount')">金额</button>
+                                            <button type="button" data-by="count" onclick="onCustomerAutoByChange('count')">单数</button>
+                                        </div>
                                     </div>
                                     <div id="customerDiscountAutoTiers"></div>
                                     <button type="button" class="btn secondary btn-compact mt-2" onclick="addCustomerAutoTier()">+ 添加档位</button>
@@ -3404,7 +3425,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260909-0758"></script>
+    <script src="script.js?v=20260910-1310"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

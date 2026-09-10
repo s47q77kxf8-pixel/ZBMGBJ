@@ -2280,19 +2280,27 @@ function backfillCustomerFromQuote(quote) {
 }
 
 // 客户统计：实时遍历 history 聚合（不落盘，避免双写不一致）
-// 口径与统计页 Top 单主一致：排除已撤单；已结单取定金+本次收款，否则取约定实收/总价
+// 口径与统计页 Top 单主一致：排除已撤单；接单取定金+本次收款，否则取约定实收/总价
 function computeCustomerStats(name) {
     const key = String(name || '').trim();
-    const stats = { orderCount: 0, totalAmount: 0 };
+    // settled = 接单（settlement.type==='normal'）；all = 所有订单（排除撤单与占位单）
+    const stats = { orderCount: 0, totalAmount: 0, allOrderCount: 0, allTotalAmount: 0 };
     if (!key || !Array.isArray(history)) return stats;
     history.forEach(function (item) {
         if (!item || !item.clientId || String(item.clientId).trim() !== key) return;
-        if (isCancelSettlementType(item && item.settlement)) return; // 排除已撤单
-        if (item && item.isSchedulePlaceholder) return; // 排除占位单（调度暂定，非真实成交）
+        if (isCancelSettlementType(item && item.settlement)) return; // 撤单不计入任何口径
+        if (item && item.isSchedulePlaceholder) return; // 占位单不计入任何口径
+        const amt = getStatsAmount(item, 'agreed', false);
+        // 所有订单（未结单也计入，但排除撤单、占位单）
+        stats.allOrderCount += 1;
+        stats.allTotalAmount += amt;
+        // 已结单（settlement.type === 'normal'）
+        if (!(item && item.settlement && item.settlement.type === 'normal')) return;
         stats.orderCount += 1;
-        stats.totalAmount += getStatsAmount(item, 'agreed', false);
+        stats.totalAmount += amt;
     });
     stats.totalAmount = Math.round(stats.totalAmount * 100) / 100;
+    stats.allTotalAmount = Math.round(stats.allTotalAmount * 100) / 100;
     return stats;
 }
 
@@ -2319,15 +2327,16 @@ function resolveApplicableTiers(customer) {
     const d = customer.discount;
     if (d.mode === 'auto') {
         const tiers = Array.isArray(d.auto && d.auto.tiers) ? d.auto.tiers : [];
+        const individualBasis = (d.auto && d.auto.statsBasis === 'all') ? 'all' : 'accepted';
         // 合并模式：个体档与统一规则档合并参与「取最优惠」（统一规则需启用）
         const policy = defaultSettings && defaultSettings.customerRewardPolicy;
         if (policy && policy.enabled && policy.mergeIndividual) {
             ensureRewardPolicy();
             const policyTiers = Array.isArray(policy.tiers) ? policy.tiers : [];
             const all = tiers.concat(policyTiers);
-            return all.length ? { source: 'individual', tiers: all } : null;
+            return all.length ? { source: 'merged', individualTiers: tiers, policyTiers: policyTiers, individualBasis: individualBasis, policyBasis: getRewardPolicyStatsBasis() } : null;
         }
-        return tiers.length ? { source: 'individual', tiers: tiers } : null;
+        return tiers.length ? { source: 'individual', tiers: tiers, basis: individualBasis } : null;
     }
     // 未单独设置(无)：套用统一规则
     if (d.mode === 'none') {
@@ -2335,7 +2344,7 @@ function resolveApplicableTiers(customer) {
         const policy = defaultSettings && defaultSettings.customerRewardPolicy;
         if (policy && policy.enabled) {
             const tiers = Array.isArray(policy.tiers) ? policy.tiers : [];
-            return tiers.length ? { source: 'policy', tiers: tiers } : null;
+            return tiers.length ? { source: 'policy', tiers: tiers, basis: getRewardPolicyStatsBasis() } : null;
         }
     }
     return null;
@@ -2377,18 +2386,35 @@ function getCustomerEffectiveDiscount(customer) {
     const ctx = resolveApplicableTiers(customer);
     if (!ctx) return null;
     const stats = computeCustomerStats(customer.name);
+    // 辅助：按 basis 构造对比用的 stats
+    function statsByBasis(basis) {
+        return {
+            orderCount: (basis === 'all') ? stats.allOrderCount : stats.orderCount,
+            totalAmount: (basis === 'all') ? stats.allTotalAmount : stats.totalAmount
+        };
+    }
     // 收集所有命中的档位（兼容金额档与单数档混排），最终取折扣系数最小（最优惠）的一档
     const hits = [];
-    ctx.tiers.forEach(function (tier) {
-        const thr = Number(tier && tier.threshold);
-        const v = Number(tier && tier.value);
-        if (!isFinite(thr) || thr <= 0 || !isFinite(v) || v <= 0 || v > 1) return; // thr<=0 视为脏数据（0 阈值恒命中）
-        const by = (tier && tier.by === 'count') ? 'count' : 'amount';
-        if (tierCompareMeasure(by, stats) >= thr) {
-            const nm = (tier.name && String(tier.name).trim()) ? String(tier.name).trim() : tierDefaultName(by, thr, v);
-            hits.push({ value: v, name: nm, source: 'auto', threshold: thr, by: by, autoName: tierDefaultName(by, thr, v) });
-        }
-    });
+    // 根据 ctx 来源分两组档位各自判定（合并模式下个体档与统一规则档用各自 basis）
+    function evalTierGroup(tiers, basis) {
+        const sc = statsByBasis(basis);
+        tiers.forEach(function (tier) {
+            const thr = Number(tier && tier.threshold);
+            const v = Number(tier && tier.value);
+            if (!isFinite(thr) || thr <= 0 || !isFinite(v) || v <= 0 || v > 1) return;
+            const by = (tier && tier.by === 'count') ? 'count' : 'amount';
+            if (tierCompareMeasure(by, sc) >= thr) {
+                const nm = (tier.name && String(tier.name).trim()) ? String(tier.name).trim() : tierDefaultName(by, thr, v);
+                hits.push({ value: v, name: nm, source: 'auto', threshold: thr, by: by, autoName: tierDefaultName(by, thr, v) });
+            }
+        });
+    }
+    if (ctx.source === 'merged') {
+        evalTierGroup(ctx.individualTiers, ctx.individualBasis);
+        evalTierGroup(ctx.policyTiers, ctx.policyBasis);
+    } else {
+        evalTierGroup(ctx.tiers, ctx.basis || 'accepted');
+    }
     if (hits.length === 0) return null;
     hits.sort(function (a, b) { return a.value - b.value; });
     return hits[0];
@@ -2468,8 +2494,8 @@ function customerDiscountBadgeHtml(c) {
         const ctx = resolveApplicableTiers(c);
         if (!ctx) return '<span class="customer-badge customer-badge-none">无折扣</span>';
         const eff = getCustomerEffectiveDiscount(c);
-        // 统一规则本身无独立有效期；个体 auto 档位才计算过期态
-        const isExpired = (ctx.source === 'individual') ? expired : false;
+        // 统一规则本身无独立有效期；个体 auto 档位才计算过期态（merged 也有个体档需检查）
+        const isExpired = (ctx.source === 'individual' || ctx.source === 'merged') ? expired : false;
         if (eff) {
             // 展示优先用真实命中条件自动生成的名称，避免与自定义 name 脱节误导
             const effName = (eff.autoName && String(eff.autoName).trim()) ? eff.autoName : eff.name;
@@ -2672,7 +2698,7 @@ function customerCardHtml(c) {
             '</div>' +
             '<div class="customer-card-subrow">' +
                 (contactLine ? '<span class="customer-card-contact">' + contactLine + '</span>' : '') +
-                '<span class="customer-card-stats">' + st.orderCount + ' 单 · ' + formatMoney(st.totalAmount) + '</span>' +
+                '<span class="customer-card-stats">已结单 ' + st.orderCount + '/' + st.allOrderCount + ' · ' + formatMoney(st.totalAmount) + '/' + formatMoney(st.allTotalAmount) + '</span>' +
                 (c.note ? '<span class="customer-card-note">· ' + escapeHtml(c.note) + '</span>' : '') +
             '</div>' +
         '</div>' +
@@ -2849,11 +2875,17 @@ function openCustomerEditModal(customerId) {
     document.getElementById('customerDiscountManualName').value = (d && d.manual && d.manual.name) ? d.manual.name : '';
     document.getElementById('customerDiscountStartDate').value = (d && d.startDate) || '';
     document.getElementById('customerDiscountEndDate').value = (d && d.endDate) || '';
-    renderCustomerAutoTiers((d && d.mode === 'auto' && Array.isArray(d.auto && d.auto.tiers)) ? d.auto.tiers : [], (d && d.auto && d.auto.by) || null);
+    renderCustomerAutoTiers((d && d.mode === 'auto' && Array.isArray(d.auto && d.auto.tiers)) ? d.auto.tiers : [], (d && d.auto && d.auto.by) || null, (d && d.auto && d.auto.statsBasis) || 'accepted');
     modal.classList.remove('d-none');
     modal.setAttribute('aria-hidden', 'false');
     onCustomerDiscountModeChange();
     updateCustomerDiscountPreview();
+    // 弹窗刚显示时更新 seg-switch thumb（从 display:none 出来后 offsetWidth 才正确）
+    requestAnimationFrame(function () {
+        modal.querySelectorAll('.customer-sort-segmented.seg-switch').forEach(function (seg) {
+            updateSegThumb(seg);
+        });
+    });
     setTimeout(function () { const el = document.getElementById('customerEditName'); if (el) el.focus(); }, 50);
 }
 
@@ -2937,6 +2969,27 @@ function syncCustomerAutoBySeg(by) {
     seg.querySelectorAll('button[data-by]').forEach(function (b) {
         b.classList.toggle('is-active', b.getAttribute('data-by') === by);
     });
+    updateSegThumb(seg);
+}
+
+// 个体档规则级优惠口径（弹窗内分段控件，未保存前仅 UI 状态）
+function getCustomerAutoStatsBasis() {
+    const seg = document.getElementById('customerAutoStatsBasisSeg');
+    if (!seg) return 'accepted';
+    const active = seg.querySelector('button[data-basis].is-active');
+    return (active && active.getAttribute('data-basis') === 'all') ? 'all' : 'accepted';
+}
+function syncCustomerAutoStatsBasisSeg(basis) {
+    const seg = document.getElementById('customerAutoStatsBasisSeg');
+    if (!seg) return;
+    seg.querySelectorAll('button[data-basis]').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-basis') === basis);
+    });
+    updateSegThumb(seg);
+}
+function onCustomerAutoStatsBasisChange(basis) {
+    syncCustomerAutoStatsBasisSeg((basis === 'all') ? 'all' : 'accepted');
+    updateCustomerDiscountPreview();
 }
 
 // 切换个体档维度：保留已输入的行数据并按新维度重渲染
@@ -2965,10 +3018,11 @@ function removeCustomerAutoTier(btn) {
     updateCustomerDiscountPreview();
 }
 
-function renderCustomerAutoTiers(tiers, ruleBy) {
+function renderCustomerAutoTiers(tiers, ruleBy, basis) {
     const container = document.getElementById('customerDiscountAutoTiers');
     if (!container) return;
     container.innerHTML = '';
+    syncCustomerAutoStatsBasisSeg((basis === 'all') ? 'all' : 'accepted');
     if (!Array.isArray(tiers) || tiers.length === 0) {
         syncCustomerAutoBySeg((ruleBy === 'count') ? 'count' : 'amount');
         addCustomerAutoTier({ threshold: 500, value: 0.97, name: '累计满500 97折' });
@@ -3023,6 +3077,7 @@ function getCustomerDiscountFromModal() {
         });
         d.auto.tiers = sortTiersGrouped(tiers);
         d.auto.by = ruleBy; // 记录规则级维度，供下次编辑回显
+        d.auto.statsBasis = getCustomerAutoStatsBasis(); // 记录规则级优惠口径
     }
     return d;
 }
@@ -3044,7 +3099,7 @@ function updateCustomerDiscountPreview() {
             return t.name || tierDefaultName(by, t.threshold, t.value);
         }).join('；'));
     }
-    if (nameVal) parts.push('当前累计 ' + formatMoney(st.totalAmount) + '（' + st.orderCount + ' 单）');
+    if (nameVal) parts.push('已结单 ' + st.orderCount + '/' + st.allOrderCount + ' · ' + formatMoney(st.totalAmount) + '/' + formatMoney(st.allTotalAmount));
     el.textContent = parts.join('　');
 }
 
@@ -3154,6 +3209,7 @@ function renderRewardPolicyTiers() {
     const mg = document.getElementById('rewardPolicyMergeIndividual');
     if (mg) mg.checked = !!policy.mergeIndividual;
     syncRewardPolicyBySeg();
+    syncRewardPolicyStatsBasisSeg();
     renderRewardPolicyTiersRows();
     updateRewardPolicyPreview(0);
 }
@@ -3190,6 +3246,16 @@ function getRewardPolicyBy() {
     return (policy.by === 'count') ? 'count' : 'amount';
 }
 
+// Switch 风格 segmented：让 thumb 指示器对齐激活按钮
+function updateSegThumb(seg) {
+    if (!seg || !seg.classList.contains('seg-switch')) return;
+    const thumb = seg.querySelector('.seg-thumb');
+    const activeBtn = seg.querySelector('button.is-active');
+    if (!thumb || !activeBtn) return;
+    thumb.style.width = activeBtn.offsetWidth + 'px';
+    thumb.style.left = activeBtn.offsetLeft + 'px';
+}
+
 function syncRewardPolicyBySeg() {
     const seg = document.getElementById('rewardPolicyBySeg');
     if (!seg) return;
@@ -3197,6 +3263,7 @@ function syncRewardPolicyBySeg() {
     seg.querySelectorAll('button[data-by]').forEach(function (b) {
         b.classList.toggle('is-active', b.getAttribute('data-by') === by);
     });
+    updateSegThumb(seg);
 }
 
 function onRewardPolicyByChange(by) {
@@ -3236,6 +3303,29 @@ function onRewardPolicyMergeToggle() {
     onRewardPolicyPersist();
 }
 
+// 统计口径：已结单(accepted)=已结算订单 / 所有订单(all)=全部订单（排除撤单与占位单）
+function getRewardPolicyStatsBasis() {
+    const policy = ensureRewardPolicy();
+    return (policy.statsBasis === 'all') ? 'all' : 'accepted';
+}
+function syncRewardPolicyStatsBasisSeg() {
+    const seg = document.getElementById('rewardPolicyStatsBasisSeg');
+    if (!seg) return;
+    const basis = getRewardPolicyStatsBasis();
+    seg.querySelectorAll('button[data-basis]').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-basis') === basis);
+    });
+    updateSegThumb(seg);
+}
+function onRewardPolicyStatsBasisChange(basis) {
+    ensureRewardPolicy();
+    defaultSettings.customerRewardPolicy.statsBasis = (basis === 'all') ? 'all' : 'accepted';
+    syncRewardPolicyStatsBasisSeg();
+    updateRewardPolicyPreview(0);
+    onRewardPolicyPersist();
+    renderCustomerList(); // 切换口径后刷新卡片圆点
+}
+
 // 折叠/展开「单主折扣统一规则」的档位编辑区（默认收起）
 function toggleRewardPolicyBody() {
     const body = document.getElementById('rewardPolicyBody');
@@ -3244,6 +3334,14 @@ function toggleRewardPolicyBody() {
     const show = body.classList.contains('d-none');
     body.classList.toggle('d-none', !show);
     if (btn) btn.textContent = show ? '收起档位编辑 ▴' : '展开档位编辑 ▾';
+    // 展开后下一帧更新 seg-switch thumb（刚从 display:none 出来时 offsetWidth 可能为 0）
+    if (show) {
+        requestAnimationFrame(function () {
+            body.querySelectorAll('.customer-sort-segmented.seg-switch').forEach(function (seg) {
+                updateSegThumb(seg);
+            });
+        });
+    }
 }
 
 // 档位行控件标红/恢复（非法值提示）：threshold 需 >0，系数需 (0,1]
@@ -7277,7 +7375,7 @@ function openStatsPage() {
     showPage('stats');
 }
 
-// 与 getRecordProgressStatus 对齐，支持待排单/已撤单/有废稿/已结单
+// 与 getRecordProgressStatus 对齐，支持待排单/已撤单/有废稿/接单
 function isCancelSettlementType(settlement) {
     if (!settlement || !settlement.type) return false;
     return settlement.type === 'full_refund' || settlement.type === 'cancel_with_fee' || settlement.type === 'cancel';
@@ -7285,7 +7383,7 @@ function isCancelSettlementType(settlement) {
 
 function getStatsOrderStatus(item) {
     if (!item) return '未开始';
-    // 终态最高优先级：只要有 settlement，就按 settlement 判定（已撤单/有废稿/已结单是不可逆的归档状态）
+    // 终态最高优先级：只要有 settlement，就按 settlement 判定（已撤单/有废稿/接单是不可逆的归档状态）
     if (item.settlement) {
         if (isCancelSettlementType(item.settlement)) return '已撤单';
         if (item.settlement.type === 'waste_fee') return '有废稿';
@@ -7342,7 +7440,7 @@ function isStatsOrderOverdue(item) {
     return d < today;
 }
 
-// 曾经逾期过：当前逾期，或终态（已完成/已结单/有废稿）的实际完成/结算时间晚于 deadline
+// 曾经逾期过：当前逾期，或终态（已完成/接单/有废稿）的实际完成/结算时间晚于 deadline
 function isStatsOrderEverOverdue(item, overdueMode) {
     if (!item || !item.deadline) return false;
     if (isStatsOrderOverdue(item)) return true;
@@ -7356,7 +7454,7 @@ function isStatsOrderEverOverdue(item, overdueMode) {
     deadlineDate.setHours(23, 59, 59, 999); // 和主状态判断对齐：截止日当天 23:59:59 前完成都不算逾期
     const deadlineTs = deadlineDate.getTime();
 
-    // 优先级 1：已结单/撤单/废稿 —— 有精确的 settlement.at 结单时间
+    // 优先级 1：接单/撤单/废稿 —— 有精确的 settlement.at 结单时间
     if (item.settlement && item.settlement.at) {
         const settleTs = new Date(item.settlement.at).getTime();
         return settleTs > deadlineTs;
@@ -7673,7 +7771,7 @@ function getStatsDataset(historySource, filters) {
         }
 
         const orderStatus = getStatsOrderStatus(item);
-        // 已完成/已结单企划兜底视为全部完成，避免趋势完成率异常为 0
+        // 已完成/接单企划兜底视为全部完成，避免趋势完成率异常为 0
         if ((orderStatus === '已完成' || orderStatus === '已结单') && actualItemTotal > 0) {
             nDone = Math.max(nDone, actualItemTotal);
         }
@@ -7681,7 +7779,7 @@ function getStatsDataset(historySource, filters) {
         itemTotal += actualItemTotal;
         itemDone += nDone;
         if (orderStatus === '已完成') orderDoneCount++;
-        // 对于已结单的企划，只有当所有制品都完成时才计入制品全完成
+        // 对于接单的企划，只有当所有制品都完成时才计入制品全完成
         else if (orderStatus === '已结单') {
             const states = item.productDoneStates || [];
             const total = states.length;
@@ -14242,6 +14340,10 @@ window.addEventListener('resize', function() {
     if (document.querySelector('.receipt')) {
         adjustReceiptScale();
     }
+    // 重算 seg-switch thumb 位置（窗口变化时按钮宽度变了）
+    document.querySelectorAll('.customer-sort-segmented.seg-switch').forEach(function (seg) {
+        updateSegThumb(seg);
+    });
 });
 
 // 等待小票渲染稳定（字体 + 图片加载完成）
@@ -16057,7 +16159,7 @@ function getOrderItemQuantityTotal(item) {
 
 // 企划已完成的制品数量（按 quantity 求和，支持部分完成）
 function getOrderDoneQuantityTotal(item) {
-    // 已结单的企划视为全部完成
+    // 接单的企划视为全部完成
     if (item.settlement && item.settlement.type === 'normal') {
         return getOrderItemQuantityTotal(item);
     }
@@ -16237,7 +16339,7 @@ function getScheduleBarsForCalendar(year, month) {
         const bSettled = isOrderSettled(b);
         if (aSettled !== bSettled) return Number(aSettled) - Number(bSettled);
 
-        // 同时间：未完成排前；已完成排后；已结单最沉底
+        // 同时间：未完成排前；已完成排后；接单最沉底
         const aTotal = (Array.isArray(a.productPrices) ? a.productPrices.length : 0) + (Array.isArray(a.giftPrices) ? a.giftPrices.length : 0);
         const bTotal = (Array.isArray(b.productPrices) ? b.productPrices.length : 0) + (Array.isArray(b.giftPrices) ? b.giftPrices.length : 0);
         const aDone = aTotal > 0 && (a.productDoneStates || []).filter(Boolean).length === aTotal;
@@ -16631,7 +16733,7 @@ function renderScheduleCalendar() {
                     var textColor = barTextColors[idx];
                     var singleDay = s.startCol === s.endCol ? ' data-single-day="1"' : '';
 
-                    // 检查是否已结单或已完成，应用划线和透明度样式
+                    // 检查是否接单或已完成，应用划线和透明度样式
                     var isSettled = false;
                     var isDone = false;
                     const fullItem = history.find(h => h.id === b.id);
