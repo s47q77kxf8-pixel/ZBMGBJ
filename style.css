@@ -4256,6 +4256,106 @@ html.theme-dark .setting-hint strong {
     accent-color: var(--primary-color);
 }
 
+/* 平台手续费：取整方式分段选择器（不取整 / 向下 / 向上 / 四舍五入） */
+.coefficient-settings .platform-fee-round-caption {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    white-space: nowrap;
+}
+.coefficient-settings .platform-fee-round-seg {
+    display: inline-flex;
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-color, #fff);
+}
+.coefficient-settings .platform-fee-round-seg button {
+    padding: 2px 10px;
+    font-size: 0.78rem;
+    line-height: 1.7;
+    border: 0;
+    border-right: 1px solid var(--border-color, #e8e8e8);
+    background: transparent;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+.coefficient-settings .platform-fee-round-seg button:last-child {
+    border-right: 0;
+}
+.coefficient-settings .platform-fee-round-seg button.is-active {
+    background: var(--primary-color);
+    color: #fff;
+    font-weight: 500;
+}
+
+/* 平台手续费：「取整/分段」设置按钮（点开面板） */
+.coefficient-settings .platform-fee-settings-btn {
+    flex: 0 0 auto;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 6px;
+    background: var(--bg-secondary, #f5f5f5);
+    color: var(--text-light, #6b7280);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+}
+.coefficient-settings .platform-fee-settings-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+.coefficient-settings .platform-fee-settings-btn.is-open {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: rgba(0, 0, 0, 0.04);
+}
+.coefficient-settings .platform-fee-settings-btn.is-active {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+}
+
+/* 平台手续费：取整/分段设置面板 */
+.coefficient-settings .platform-fee-settings-panel {
+    margin-top: -0.5rem; /* 收紧与上一行的间距 */
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 8px;
+    background: var(--bg-secondary, #f7f7f8);
+}
+.coefficient-settings .platform-fee-panel-section {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0.2rem 0;
+}
+.coefficient-settings .platform-fee-panel-section + .platform-fee-panel-section {
+    border-top: 1px dashed var(--border-color, #e8e8e8);
+    margin-top: 0.25rem;
+    padding-top: 0.5rem;
+}
+.coefficient-settings .platform-fee-panel-tier {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.coefficient-settings .platform-fee-panel-tier input.w-80 {
+    flex: 0 0 64px !important;
+    width: 64px !important;
+    min-width: 64px !important;
+    max-width: 64px !important;
+    padding: 0.25rem !important;
+    font-size: 0.78rem !important;
+}
+
 /* 系数设置删除按钮 */
 .coefficient-settings .mb-2.d-flex.items-center.gap-2 .btn.danger.small {
     flex: 0 0 auto !important;

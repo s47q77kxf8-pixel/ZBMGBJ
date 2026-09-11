@@ -1325,12 +1325,13 @@ const defaultSettings = {
         ]
     },
     // 平台手续费（%，约稿平台比例固定）
-    // round: 手续费是否四舍五入取整（true=取整到元，false=保留两位小数）
+    // roundMode: 取整模式 ''(不取整/保留两位) | 'floor'(向下取整) | 'ceil'(向上取整) | 'round'(四舍五入)
+    //            兼容旧 round 布尔字段（true=四舍五入，false=保留两位）；米画师默认向下取整
     // tiers: 分段费率（可选）。按计费基数（约定实收）分段：不超过 upTo 的部分按该段 rate 计费，upTo 为 null 表示无上限；
     //        value 始终保持与第一段费率一致（用于排序与旧逻辑兼容）。不配置 tiers 时按 value 单一费率计算
     platformFees: {
-        none: { value: 0, name: '无', round: false },
-        mihua: { value: 5, name: '米画师', round: true },
+        none: { value: 0, name: '无', roundMode: '' },
+        mihua: { value: 5, name: '米画师', roundMode: 'floor' },
         painter: { value: 5, name: '画加', round: false, tiers: [ { upTo: 500, rate: 5 }, { upTo: null, rate: 1 } ] }
     },
     // 其他费用
@@ -1842,10 +1843,31 @@ function getCoefficientValue(coefficientObj) {
     return coefficientObj || 0;
 }
 
+// 平台手续费取整模式：''(不取整/保留两位) | 'floor'(向下取整到元) | 'ceil'(向上取整到元) | 'round'(四舍五入到元)
+// 优先读 feeObj.roundMode，并兼容旧的 boolean round 字段（true=四舍五入，false=保留两位）
+function getFeeRoundMode(feeObj) {
+    if (feeObj && typeof feeObj === 'object') {
+        if (feeObj.roundMode) return feeObj.roundMode;
+        if (feeObj.round !== undefined) return feeObj.round ? 'round' : '';
+    }
+    return '';
+}
+
+// 从订单/历史记录 item 上解析取整模式（兼容新旧存储），无信息时按平台兜底（米画师默认向下取整）
+function getItemRoundMode(item, fallbackChief) {
+    if (!item) return fallbackChief ? 'floor' : '';
+    if (item.platformFeeRoundMode) return item.platformFeeRoundMode;
+    var pr = item.platformFeeRound;
+    if (pr === 'floor' || pr === 'ceil' || pr === 'round') return pr;
+    if (pr !== undefined) return pr ? 'round' : '';
+    return fallbackChief ? 'floor' : '';
+}
+
 // 计算平台手续费金额（统一入口，所有场景必须调用此函数，避免多处公式不一致）：
 // - feeObj 支持 { value: 5 } 单一费率，或 { tiers: [{ upTo: 500, rate: 5 }, { upTo: null, rate: 1 }] } 分段费率
 //   分段规则：不超过 upTo 的部分按该段费率计费，upTo 为 null 表示该段无上限；分段按传入的计费基数（约定实收）判断
-// - round=true 四舍五入取整到元，否则保留两位小数
+// - round 支持三种取整模式 'floor'/'ceil'/'round'，兼容旧的 boolean（true=四舍五入，false=保留两位）
+//   未显式传入时读取 feeObj 自身 roundMode/round 配置
 function calcPlatformFeeAmount(base, feeObj, round) {
     var b = Math.max(0, Number(base) || 0);
     var fee = null;
@@ -1880,7 +1902,16 @@ function calcPlatformFeeAmount(base, feeObj, round) {
     if (fee == null) {
         fee = b * (getCoefficientValue(feeObj) || 0) / 100;
     }
-    return round ? Math.round(fee) : Math.round(fee * 100) / 100;
+    // 取整模式：优先使用显式传入的 round，否则读取 feeObj 自身 roundMode/round 配置
+    var mode;
+    if (round === 'floor' || round === 'ceil' || round === 'round') mode = round;
+    else if (round === true) mode = 'round';
+    else if (round === false) mode = '';
+    else mode = getFeeRoundMode(feeObj);
+    if (mode === 'floor') return Math.floor(fee);
+    if (mode === 'ceil') return Math.ceil(fee);
+    if (mode === 'round') return Math.round(fee);
+    return Math.round(fee * 100) / 100;
 }
 
 // 生成平台费率展示文本：单一费率返回 "5%"，分段返回 "≤500:5% / >500:1%"
@@ -1998,6 +2029,16 @@ function loadData() {
             if (!Array.isArray(defaultSettings.perItemExtraFees)) {
                 var oldBg = Number(defaultSettings.backgroundFee);
                 defaultSettings.perItemExtraFees = [{ id: 'bg', name: '背景费', amount: isFinite(oldBg) ? Math.max(0, oldBg) : 5 }];
+            }
+            // 平台手续费：米画师默认取整改为「向下取整」，旧配置（round:true 即四舍五入）迁移为新字段
+            if (defaultSettings.platformFees && defaultSettings.platformFees.mihua && typeof defaultSettings.platformFees.mihua === 'object') {
+                var _mf = defaultSettings.platformFees.mihua;
+                if (!_mf.roundMode && _mf.round === true) _mf.roundMode = 'floor';
+            }
+            // 平台手续费：「无」平台费率为 0，取整无意义，始终不取整（清理旧数据遗留的取整配置，避免按钮误高亮）
+            if (defaultSettings.platformFees && defaultSettings.platformFees.none && typeof defaultSettings.platformFees.none === 'object') {
+                defaultSettings.platformFees.none.roundMode = '';
+                defaultSettings.platformFees.none.round = false;
             }
             
             // 确保receiptCustomization结构完整
@@ -2808,6 +2849,10 @@ function renderCustomerHistoryArchive() {
         container.innerHTML = '<div class="customer-empty text-gray" style="padding:24px 0;text-align:center;">历史单主均已建档。</div>';
         return;
     }
+    const topBtn = '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">' +
+        '<span class="text-gray" style="font-size:13px;">共 ' + list.length + ' 位待建档</span>' +
+        '<button class="btn btn-compact" style="margin-left:auto;" onclick="archiveAllCustomersFromHistory()">全部建档</button>' +
+    '</div>';
     const rows = list.map(function (r) {
         const contact = (r.contact || r.contactInfo)
             ? escapeHtml(r.contact || '') + (r.contact && r.contactInfo ? ' · ' : '') + escapeHtml(r.contactInfo || '')
@@ -2823,7 +2868,8 @@ function renderCustomerHistoryArchive() {
             '</div>' +
         '</div>';
     }).join('');
-    container.innerHTML = rows + '<div style="margin-top:12px;"><button class="btn btn-compact w-full" onclick="archiveAllCustomersFromHistory()">全部建档</button></div>';
+    const bottomBtn = '<div style="margin-top:12px;"><button class="btn btn-compact w-full" onclick="archiveAllCustomersFromHistory()">全部建档（' + list.length + ' 位）</button></div>';
+    container.innerHTML = topBtn + rows + bottomBtn;
 }
 
 function archiveCustomerFromHistory(name) {
@@ -11121,10 +11167,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
     const sameModelMinusAmount = Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0;
     const platformFeeObj = defaultSettings.platformFees[platformType] || {};
     const platformFee = getCoefficientValue(platformFeeObj) || 0;
-    // 手续费是否四舍五入取整：历史数据无 round 字段时，米画师默认 true，其他默认 false
-    const platformFeeRound = platformFeeObj.round !== undefined
-        ? !!platformFeeObj.round
-        : (platformType === 'mihua');
+    // 平台手续费取整模式（''=保留两位 | 'floor' | 'ceil' | 'round'），历史数据无 roundMode 时米画师默认向下取整
+    const platformFeeRound = getFeeRoundMode(platformFeeObj) || ((platformType === 'mihua') ? 'floor' : '');
     const calculationMode = defaultSettings.pricingCalculationMode || { up: 'multiplicative', down: 'multiplicative' };
     const upMode = calculationMode.up || 'multiplicative';
     const downMode = calculationMode.down || 'multiplicative';
@@ -11757,6 +11801,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         otherFees: dynamicOtherFees,
         totalOtherFees: totalOtherFees,
         platformFee: platformFee,
+        platformFeeRoundMode: platformFeeRound,
         platformFeeRound: platformFeeRound,
         // 下单时快照分段费率规则，结算重算「新平台费」时按快照计算，不受后续设置修改影响
         platformFeeRule: (platformFeeObj && Array.isArray(platformFeeObj.tiers))
@@ -15220,8 +15265,16 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260910-1310';
+const APP_VERSION = '20260912-1630';
 const APP_CHANGELOG = [
+    {
+        date: '2026-09-12',
+        items: [
+            '米画师平台手续费默认取整改为「向下取整」，旧存档自动迁移',
+            '平台费设置优化：取整/分段压缩为一行，改为「取整」「分段」按钮点开独立设置面板',
+            '取整/分段按钮启用状态高亮；「无」平台费率为 0 时始终不取整',
+        ]
+    },
     {
         date: '2026-09-10',
         items: [
@@ -20394,7 +20447,7 @@ function settlementUpdateNormalPreview(skipAmountUpdate) {
     var receivableThisTime = Math.max(0, receipt - deposit);
     if (amountEl && !skipAmountUpdate) amountEl.value = receivableThisTime.toFixed(2);
     var currentReceipt = amountEl ? (parseFloat(amountEl.value) || receivableThisTime) : receivableThisTime;
-    var newPlatformFee = hasPlatformFee ? calcPlatformFeeAmount(currentReceipt, platformFeeObjForCalc, item.platformFeeRound === true) : 0;
+    var newPlatformFee = hasPlatformFee ? calcPlatformFeeAmount(currentReceipt, platformFeeObjForCalc, getItemRoundMode(item, item.platformType === 'mihua')) : 0;
     if (newPlatformEl) {
         if (hasPlatformFee) {
             newPlatformEl.textContent = '新平台费：' + getCurrencySymbol() + newPlatformFee.toFixed(2);
@@ -20773,7 +20826,7 @@ function settlementConfirm() {
         if (!isFinite(deposit) || deposit < 0) deposit = 0;
         var receiptThisTime = amountEl ? (parseFloat(amountEl.value) || Math.max(0, receiptTotal - deposit)) : Math.max(0, receiptTotal - deposit);
         receiptThisTime = Math.max(0, receiptThisTime);
-        var newPlatformFee = (item.platformFeeAmount || 0) > 0 ? calcPlatformFeeAmount(receiptThisTime, platformFeeObjForCalc, item.platformFeeRound === true) : undefined;
+        var newPlatformFee = (item.platformFeeAmount || 0) > 0 ? calcPlatformFeeAmount(receiptThisTime, platformFeeObjForCalc, getItemRoundMode(item, item.platformType === 'mihua')) : undefined;
         item.settlement = {
             type: 'normal',
             amount: receiptThisTime,
@@ -21845,7 +21898,8 @@ function loadQuoteFromHistory(id) {
             otherFees: quote.otherFees || [],
             totalOtherFees: quote.totalOtherFees || 0,
             platformFee: quote.platformFee || 0,
-            platformFeeRound: quote.platformFeeRound !== undefined ? !!quote.platformFeeRound : (quote.platformType === 'mihua'),
+            platformFeeRoundMode: getItemRoundMode(quote, quote.platformType === 'mihua'),
+            platformFeeRound: getItemRoundMode(quote, quote.platformType === 'mihua'),
             giftPrices: quote.giftPrices || [],
             // 兼容旧数据：已收定金默认为 0
             depositReceived: quote.depositReceived != null ? quote.depositReceived : 0,
@@ -22403,13 +22457,16 @@ function updatePlatformFeeName(type, name) {
     }
 }
 
-// 更新平台手续费是否四舍五入取整
-function updatePlatformFeeRound(type, roundOn) {
+// 更新平台手续费取整模式：''(不取整/保留两位) | 'floor'(向下取整) | 'ceil'(向上取整) | 'round'(四舍五入)
+function updatePlatformFeeRound(type, mode) {
+    mode = (mode === 'floor' || mode === 'ceil' || mode === 'round') ? mode : '';
     if (!defaultSettings.platformFees[type] || typeof defaultSettings.platformFees[type] !== 'object') {
-        defaultSettings.platformFees[type] = { value: 0, name: type, round: !!roundOn };
+        defaultSettings.platformFees[type] = { value: 0, name: type, roundMode: mode, round: (mode === 'round') };
     } else {
-        defaultSettings.platformFees[type].round = !!roundOn;
+        defaultSettings.platformFees[type].roundMode = mode;
+        defaultSettings.platformFees[type].round = (mode === 'round');
     }
+    renderPlatformFees();
 }
 
 function normalizePerItemExtraFees() {
@@ -26348,11 +26405,23 @@ function renderUrgentDiscountPairRow() {
     pairRowEl.classList.remove('d-none');
 }
 
+// 当前展开设置面板的平台+分区（'key:round' 取整 | 'key:tier' 分段，null 表示全部收起）
+let pfOpenSection = null;
+
+// 展开/收起平台费设置面板（section: 'round' 取整 | 'tier' 分段）
+function togglePlatformFeeSettings(key, section) {
+    const id = key + ':' + section;
+    pfOpenSection = (pfOpenSection === id) ? null : id;
+    renderPlatformFees();
+}
+
 // 渲染平台手续费
 function renderPlatformFees() {
     const container = document.querySelector('#platformFee-content .coefficient-settings');
     if (!container) return;
     
+    const roundModeList = [['','不取整'],['floor','向下取整'],['ceil','向上取整'],['round','四舍五入']];
+
     let html = '';
     // 按系数值升序排序后渲染（与计算页保持一致）
     const sortedEntries = Object.entries(defaultSettings.platformFees).sort((a, b) => {
@@ -26364,10 +26433,8 @@ function renderPlatformFees() {
         const value = getCoefficientValue(item);
         const displayName = (item && typeof item === 'object' && item.name) ? item.name : key;
         const escapedName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        // 取整开关：历史数据无 round 字段时，米画师默认 true，其他默认 false
-        const roundOn = item && typeof item === 'object' && item.round !== undefined
-            ? !!item.round
-            : (key === 'mihua');
+        // 取整模式：优先读 roundMode，兼容旧 round 布尔字段，历史数据无配置时米画师默认向下取整
+        const roundMode = getFeeRoundMode(item) || ((key === 'mihua') ? 'floor' : '');
         // 分段费率：tiers = [{ upTo: 阈值, rate: 第一段费率 }, { upTo: null, rate: 超出部分费率 }]
         const tiered = !!(item && typeof item === 'object' && Array.isArray(item.tiers) && item.tiers.length);
         let tierThreshold = 500;
@@ -26379,40 +26446,68 @@ function renderPlatformFees() {
             if (uncapped && uncapped.rate != null) tierAboveRate = Number(uncapped.rate);
         }
         const safeKey = key.replace(/'/g, "\\'");
+        const openRound = (pfOpenSection === key + ':round');
+        const openTier = (pfOpenSection === key + ':tier');
+        // 当前取整模式中文名（用于「取整」按钮悬浮提示）
+        const roundModeLabel = (function (list, m) {
+            for (var i = 0; i < list.length; i++) { if (list[i][0] === m) return list[i][1]; }
+            return '不取整';
+        })(roundModeList, roundMode);
 
         html += `
-            <div class="mb-2 d-flex items-center gap-2">
+            <div class="mb-2 d-flex items-center gap-2 platform-fee-row">
                 <input type="text" value="${escapedName}" class="flex-1"
                        onchange="updatePlatformFeeName('${safeKey}', this.value)" placeholder="名称">
                 <input type="number" value="${value}" min="0" step="0.1" class="w-80"
                        onchange="updatePlatformFee('${safeKey}', this.value)" aria-label="手续费比例" title="${tiered ? '第一段（不超过阈值部分）费率' : '手续费比例'}">
                 <span class="coefficient-percent-suffix" aria-hidden="true">%</span>
-                <label class="platform-fee-round-label" title="开启后手续费四舍五入取整到元，关闭则保留两位小数">
-                    <input type="checkbox" ${roundOn ? 'checked' : ''}
-                           onchange="updatePlatformFeeRound('${safeKey}', this.checked)">
-                    <span>取整</span>
-                </label>
-                <label class="platform-fee-round-label" title="开启后按分段计费：不超过阈值的部分按左侧费率，超出部分按第二段费率">
-                    <input type="checkbox" ${tiered ? 'checked' : ''}
-                           onchange="updatePlatformFeeTiered('${safeKey}', this.checked)">
-                    <span>分段</span>
-                </label>
+                <button type="button" class="platform-fee-settings-btn ${roundMode ? 'is-active' : ''} ${openRound ? 'is-open' : ''}"
+                        onclick="togglePlatformFeeSettings('${safeKey}', 'round')"
+                        aria-label="设置取整方式" aria-expanded="${openRound}"
+                        title="手续费取整方式：${roundModeLabel}">取整</button>
+                <button type="button" class="platform-fee-settings-btn ${tiered ? 'is-active' : ''} ${openTier ? 'is-open' : ''}"
+                        onclick="togglePlatformFeeSettings('${safeKey}', 'tier')"
+                        aria-label="设置分段费率" aria-expanded="${openTier}"
+                        title="开启后按分段计费：不超过阈值部分按第一段费率，超出部分按第二段费率">分段</button>
                 <button class="icon-action-btn delete" onclick="deleteCoefficient('platform', '${safeKey}')" aria-label="删除" title="删除">
                     <svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
-                                        <span class="sr-only">删除</span>
+                    <span class="sr-only">删除</span>
                 </button>
             </div>
         `;
-        if (tiered) {
+        if (openRound) {
             html += `
-            <div class="mb-2 d-flex items-center gap-2" style="padding-left:8px;">
-                <span style="font-size:12px;color:var(--color-text-tertiary,#888);white-space:nowrap;">分段：≤</span>
-                <input type="number" value="${tierThreshold}" min="0" step="1" class="w-80"
-                       onchange="updatePlatformFeeTier('${safeKey}', 'upTo', this.value)" aria-label="分段阈值" title="不超过该金额的部分按第一段费率">
-                <span style="font-size:12px;color:var(--color-text-tertiary,#888);white-space:nowrap;">元；超出</span>
-                <input type="number" value="${tierAboveRate}" min="0" step="0.1" class="w-80"
-                       onchange="updatePlatformFeeTier('${safeKey}', 'rate', this.value)" aria-label="超出部分费率">
-                <span class="coefficient-percent-suffix" aria-hidden="true">%</span>
+            <div class="mb-2 platform-fee-settings-panel">
+                <div class="platform-fee-panel-section">
+                    <span class="platform-fee-round-caption">取整</span>
+                    <span class="platform-fee-round-seg" role="group" aria-label="手续费取整方式">
+                        ${roundModeList.map(function(o){
+                            return '<button type="button" class="' + (roundMode === o[0] ? 'is-active' : '') + '" onclick="updatePlatformFeeRound(\'' + safeKey + '\',\'' + o[0] + '\')">' + o[1] + '</button>';
+                        }).join('')}
+                    </span>
+                </div>
+            </div>
+            `;
+        }
+        if (openTier) {
+            html += `
+            <div class="mb-2 platform-fee-settings-panel">
+                <div class="platform-fee-panel-section">
+                    <label class="platform-fee-round-label" title="开启后按分段计费：不超过阈值的部分按左侧费率，超出部分按第二段费率">
+                        <input type="checkbox" ${tiered ? 'checked' : ''}
+                               onchange="updatePlatformFeeTiered('${safeKey}', this.checked)">
+                        <span>分段费率</span>
+                    </label>
+                    ${tiered ? `
+                    <span class="platform-fee-panel-tier">分段：≤
+                        <input type="number" value="${tierThreshold}" min="0" step="1" class="w-80"
+                               onchange="updatePlatformFeeTier('${safeKey}', 'upTo', this.value)" aria-label="分段阈值" title="不超过该金额的部分按第一段费率">
+                        元；超出
+                        <input type="number" value="${tierAboveRate}" min="0" step="0.1" class="w-80"
+                               onchange="updatePlatformFeeTier('${safeKey}', 'rate', this.value)" aria-label="超出部分费率">
+                        <span class="coefficient-percent-suffix" aria-hidden="true">%</span>
+                    </span>` : ''}
+                </div>
             </div>
             `;
         }
