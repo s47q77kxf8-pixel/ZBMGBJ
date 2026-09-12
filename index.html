@@ -7,7 +7,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260912-1630">
+    <link rel="stylesheet" href="style.css?v=20260912-1900">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -2870,10 +2870,11 @@
                 <div class="modal-body">
                     <p id="moduleMergeConfirmHint" style="margin-bottom:12px;line-height:1.65;">检测到以下组的加价、折扣系数完全相同，生成小票时会将它们合并为一组，系数明细只保留一份：</p>
                     <div id="moduleMergeConfirmList"></div>
-                    <p style="margin:12px 0 0;font-size:13px;color:var(--text-light, #6b7280);">如需保留分组展示，可返回修改任意一组的系数。</p>
+                    <p style="margin:12px 0 0;font-size:13px;color:var(--text-light, #6b7280);">可在此次选择是否合并；选择“不合并，直接生成”即保留分组展示。</p>
                     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
                         <button type="button" class="btn secondary" onclick="closeModuleMergeConfirmModal()">返回修改</button>
-                        <button type="button" class="btn primary" onclick="confirmModuleMergeAndGenerate()">确认合并并生成小票</button>
+                        <button type="button" class="btn secondary" onclick="confirmModuleMergeAndGenerate('no')">不合并，直接生成</button>
+                        <button type="button" class="btn primary" onclick="confirmModuleMergeAndGenerate('merge')">合并并生成小票</button>
                     </div>
                 </div>
             </div>
@@ -3425,7 +3426,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260912-1630"></script>
+    <script src="script.js?v=20260912-1910"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

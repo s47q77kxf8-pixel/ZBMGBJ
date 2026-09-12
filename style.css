@@ -2230,13 +2230,15 @@ input:focus, select:focus {
 .icon-action-btn.move-to-top,
 .icon-action-btn.move-up,
 .icon-action-btn.move-down,
-.icon-action-btn.module-collapse-btn {
+.icon-action-btn.module-collapse-btn,
+.icon-action-btn.module-duplicate-btn {
     color: var(--text-color);
 }
 html.theme-dark .icon-action-btn.move-to-top,
 html.theme-dark .icon-action-btn.move-up,
 html.theme-dark .icon-action-btn.move-down,
-html.theme-dark .icon-action-btn.module-collapse-btn {
+html.theme-dark .icon-action-btn.module-collapse-btn,
+html.theme-dark .icon-action-btn.module-duplicate-btn {
     color: #e5e7eb;
 }
 
@@ -4289,6 +4291,11 @@ html.theme-dark .setting-hint strong {
     color: #fff;
     font-weight: 500;
 }
+html.theme-dark .coefficient-settings .platform-fee-round-seg button.is-active {
+    background: #3a3a3a;
+    color: #fff;
+    border-color: #555;
+}
 
 /* 平台手续费：「取整/分段」设置按钮（点开面板） */
 .coefficient-settings .platform-fee-settings-btn {
@@ -4317,6 +4324,15 @@ html.theme-dark .setting-hint strong {
     background: var(--primary-color);
     color: #fff;
     border-color: var(--primary-color);
+}
+/* 暗色模式：primary-color 为浅色，激活态按钮需用深色背景+浅色文字 */
+html.theme-dark .coefficient-settings .platform-fee-settings-btn.is-active {
+    background: #3a3a3a;
+    color: #fff;
+    border-color: #555;
+}
+html.theme-dark .coefficient-settings .platform-fee-settings-btn.is-open {
+    background: rgba(255, 255, 255, 0.06);
 }
 
 /* 平台手续费：取整/分段设置面板 */
@@ -11879,6 +11895,10 @@ html.theme-dark .module-symbol {
     flex-shrink: 0;
     margin-left: 0.1rem;
     color: var(--danger, #e11d48);
+}
+.module-duplicate-btn {
+    flex-shrink: 0;
+    margin-left: 0.1rem;
 }
 .module-item-body {
     padding: 0.5rem 0.1rem;

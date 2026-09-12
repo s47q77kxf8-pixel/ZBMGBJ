@@ -319,7 +319,8 @@ function collectDuplicateModuleCoeffGroups() {
         var hasItem = (mod.mtype === 'product' ? products : gifts).some(function (x) { return x && String(x.moduleId) === String(mod.id); });
         if (!hasItem) return;
         var r = moduleCoefficientResult(mod, upMode, downMode);
-        var key = mod.mtype + '|' + moduleReasonSignature(r.upReasons, r.downReasons);
+        // 同模系数也纳入合并判定：只有加价/折扣明细相同且同模档位也一致时才合并
+        var key = mod.mtype + '|' + moduleReasonSignature(r.upReasons, r.downReasons) + '|sm:' + moduleSameModelCoefficient(mod);
         (buckets[key] = buckets[key] || []).push({ mod: mod, upReasons: r.upReasons, downReasons: r.downReasons });
     });
     var groups = [];
@@ -334,6 +335,9 @@ function collectDuplicateModuleCoeffGroups() {
     return groups;
 }
 // 计算页点击「小票」：先同步模块下拉；有同系数组时弹窗确认，否则直接生成
+// 每次生成小票时临时选择是否合并同系数组（false=本次不合并；合并后即复位）
+let _skipModuleCoeffMerge = false;
+
 function handleCalculatorQuoteClick() {
     normalizeOrderModules();
     orderModules.forEach(function (mod) {
@@ -380,9 +384,13 @@ function closeModuleMergeConfirmModal() {
     var modal = document.getElementById('moduleMergeConfirmModal');
     if (modal) modal.classList.add('d-none');
 }
-function confirmModuleMergeAndGenerate() {
+function confirmModuleMergeAndGenerate(mode) {
+    // mode: 'merge'=合并并生成 | 'no'=不合并直接生成
+    _skipModuleCoeffMerge = (mode === 'no');
     closeModuleMergeConfirmModal();
     if (typeof calculatePrice === 'function') calculatePrice();
+    // 生成完成后复位，避免影响下一次
+    _skipModuleCoeffMerge = false;
 }
 // 渲染某类型（product/gift）的全部模块面板容器；不重新渲染其内的制品/赠品卡片
 function renderModulePanels(mtype) {
@@ -399,6 +407,9 @@ function renderModulePanels(mtype) {
             + '<div class="module-item-header"><span class="module-symbol">' + moduleSymbol(mtype, mod.seq) + '</span>'
             + '<span class="module-item-title">' + tag + '</span>'
             + '<button type="button" class="icon-action-btn module-collapse-btn" onclick="toggleModuleCollapse(\'' + mod.id + '\')" title="折叠/展开">▸</button>'
+            + '<button type="button" class="icon-action-btn module-duplicate-btn" onclick="duplicateModuleGroup(\'' + mod.id + '\')" title="复制此组（含组内全部' + (mtype === 'product' ? mgL('{制品}') : '赠品') + '与组级系数设置）">'
+            + '<svg class="icon sm" aria-hidden="true"><use href="#i-copy-new"></use></svg>'
+            + '<span class="sr-only">复制此组</span></button>'
             + '<button type="button" class="icon-action-btn delete module-delete-btn" onclick="openDeleteModuleChoice(\'' + mtype + '\',\'' + mod.id + '\')" title="删除此组">'
             + '<svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>'
             + '<span class="sr-only">删除此组</span></button></div>'
@@ -501,6 +512,52 @@ function addGiftModule() {
     try {
         (gifts || []).forEach(function (g) { try { renderGift(g); } catch (e) { /* ignore */ } });
     } catch (_eRerenderG) { /* ignore */ }
+    return newMod;
+}
+// 复制整个制品组/赠品组：连同组内全部条目（制品/赠品）与组级系数设置（加价/折扣/同模）一并复制为新组
+function duplicateModuleGroup(modId) {
+    normalizeOrderModules();
+    var mod = findOrderModule(modId);
+    if (!mod) return null;
+    var isProd = mod.mtype === 'product';
+    var targets = isProd ? products : gifts;
+    // 分配新组序号（复用被释放的最小序号）
+    var mods = modulesOfType(mod.mtype);
+    var seq = 1;
+    while (mods.some(function (m) { return m.seq === seq; })) seq++;
+    var newId = (mod.mtype === 'product' ? 'P' : 'G') + seq;
+    // 深拷贝组级设置
+    var newMod = pushOrderModule({
+        id: newId,
+        mtype: mod.mtype,
+        seq: seq,
+        upSelections: JSON.parse(JSON.stringify(mod.upSelections || [])),
+        downSelections: JSON.parse(JSON.stringify(mod.downSelections || [])),
+        sameModelSelection: mod.sameModelSelection ? JSON.parse(JSON.stringify(mod.sameModelSelection)) : undefined,
+        collapsed: !!mod.collapsed
+    });
+    // 复制该组下所有条目并分配新 id（与新增条目逻辑一致：复用最小可用序号）
+    targets.forEach(function (it) {
+        if (String(it.moduleId) !== String(mod.id)) return;
+        var copy = JSON.parse(JSON.stringify(it));
+        copy.moduleId = newId;
+        var used = targets.map(function (x) { return Number(x.id) || 0; });
+        var nid = 1;
+        var usedSet = {};
+        used.forEach(function (n) { usedSet[n] = true; });
+        while (usedSet[nid]) nid++;
+        copy.id = nid;
+        targets.push(copy);
+    });
+    renderModulePanels(mod.mtype);
+    // 重建面板后再挂载新组条目（含该组复制出的全部制品/赠品）
+    try {
+        targets.forEach(function (it) {
+            if (String(it.moduleId) !== String(newId)) return;
+            try { (isProd ? renderProduct(it) : renderGift(it)); } catch (e) { /* ignore */ }
+        });
+    } catch (_eRerenderDup) { /* ignore */ }
+    if (typeof syncExpectedProductCountFromProducts === 'function') syncExpectedProductCountFromProducts();
     return newMod;
 }
 // —— 制品组/赠品组删除：弹窗二选一（并入其他组 / 连同其下制品一并删除）——
@@ -11991,6 +12048,117 @@ function buildReceiptZigzagHtml(position, color) {
     return `<svg class="receipt-zigzag receipt-zigzag-${position}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${svgContent}</svg>`;
 }
 
+// —— 小票同明细制品合并（金更改·显示层）——
+// 同一分组块内，名称/单价/同模/工艺/附加配置均相同（仅数量可不同）的制品合成一行（不要求相邻）：
+// 数量与各类金额相加，但保留每组各自的首件全价（sameModel 时首件数=合并源组数），保证合并后总金额与合并前完全一致。
+// list: quoteData.productPrices（制品或赠品）；moduleMergeKey: 同系数组合并后的模块映射；gift=1 时按赠品口径处理。
+function mergeReceiptDisplayItems(list, moduleMergeKey, gift) {
+    if (!Array.isArray(list) || list.length < 2) return list;
+    const pf = defaultSettings;
+    const sameModelMode = (gift ? (quoteData && quoteData.sameModelModeGift) : (quoteData && quoteData.sameModelMode))
+        || (gift ? pf.sameModelModeGift : pf.sameModelMode);
+    // 明细签名：不比较数量与金额相关字段
+    function sig(it) {
+        const proc = (Array.isArray(it.processDetails) ? it.processDetails : [])
+            .map(p => (p.name || '') + '|' + (Number(p.layers) || 0) + '|' + (Number(p.unitPrice) || 0))
+            .sort().join(';');
+        const addc = (Array.isArray(it.additionalConfigDetails) ? it.additionalConfigDetails : [])
+            .map(c => (c.name || '') + '|' + (Number(c.price) || 0))
+            .sort().join(';');
+        const nodes = (Array.isArray(it.nodeDetails) ? it.nodeDetails : [])
+            .map(n => (n.name || '') + '|' + (n.percent != null ? n.percent : ''))
+            .sort().join(';');
+        return [
+            String(it.product || ''), String(it.productType || ''), String(it.sides || ''), !!it.crossOrderSameModel,
+            Number(it.basePrice) || 0, Number(it.charPrice) || 0, String(it.charUnit || ''),
+            String(it.processFeeMode || ''), String(it.additionalName || ''),
+            (Number(it.sameModelCount) || 0) > 0, Number(it.sameModelUnitPrice) || 0, String(sameModelMode || ''),
+            proc, addc, nodes, String((it.baseConfig && it.baseConfig.name) || ''), String(it.baseConfig || '')
+        ].join('|');
+    }
+    function block(it) {
+        const k = moduleMergeKey ? (moduleMergeKey[it.moduleId] || it.moduleId) : it.moduleId;
+        return k == null ? '' : String(k);
+    }
+    // 按「分组块 + 明细签名」分组，保持首次出现顺序
+    const groups = [];        // [{ key, first, members:[], block }]
+    const idxMap = {};        // key -> groups 下标
+    list.forEach(function (it) {
+        const key = block(it) + '::' + sig(it);
+        if (idxMap[key] != null) {
+            groups[idxMap[key]].members.push(it);
+        } else {
+            idxMap[key] = groups.length;
+            groups.push({ key: key, first: it, members: [it] });
+        }
+    });
+    const out = [];
+    groups.forEach(function (g) {
+        const members = g.members;
+        if (members.length === 1) {
+            out.push(members[0]);
+            return;
+        }
+        // 构造合并项：以首个为模板，累加数量/金额标量
+        const m = JSON.parse(JSON.stringify(members[0]));
+        let q = 0, smc = 0, smt = 0, tef = 0, tpf = 0, pt = 0, ntp = 0, bpt = 0, lineSum = 0, lineKnown = true;
+        members.forEach(function (it) {
+            q += Number(it.quantity) || 0;
+            smc += Number(it.sameModelCount) || 0;
+            smt += Number(it.sameModelTotal) || 0;
+            tef += Number(it.totalExtraFee) || 0;
+            tpf += Number(it.totalProcessFee) || 0;
+            pt += Number(it.productTotal) || 0;
+            ntp += Number(it.nodeTotalPrice) || 0;
+            bpt += Number(it.baseProductTotal) || 0;
+            if (it.baseLineTotal == null) lineKnown = false;
+            else lineSum += Number(it.baseLineTotal) || 0;
+        });
+        if (!lineKnown) lineSum = bpt + tpf + tef;
+        m.quantity = q;
+        m.sameModelCount = smc;
+        m.sameModelTotal = smt;
+        m.totalExtraFee = tef;
+        m.totalProcessFee = tpf;
+        m.productTotal = pt;
+        m.nodeTotalPrice = ntp;
+        m.baseProductTotal = bpt;
+        m.baseLineTotal = lineSum;
+        m.__fullPriceCount = members.length;   // 合并了 n 个同明细源组 → 首件全价应为 n 件
+        m.__mergeCount = members.length;
+        // 工艺：逐行累加 fee / quantity（明细数组同序且一致）
+        if (Array.isArray(m.processDetails)) {
+            m.processDetails = m.processDetails.map(function (p, idx) {
+                let _fee = 0, _qty = 0;
+                members.forEach(function (it) {
+                    const pd = (it.processDetails || [])[idx];
+                    if (pd) { _fee += Number(pd.fee) || 0; _qty += Number(pd.quantity) || 0; }
+                });
+                const np = JSON.parse(JSON.stringify(p));
+                np.fee = _fee; np.quantity = _qty;
+                return np;
+            });
+        }
+        // 节点：逐行累加 amount（同序一致）
+        if (Array.isArray(m.nodeDetails)) {
+            m.nodeDetails = m.nodeDetails.map(function (n, idx) {
+                let _amt = 0;
+                members.forEach(function (it) {
+                    const nd = (it.nodeDetails || [])[idx];
+                    if (nd) _amt += Number(nd.amount) || 0;
+                });
+                const nn = JSON.parse(JSON.stringify(n));
+                nn.amount = _amt;
+                return nn;
+            });
+        }
+        out.push(m);
+    });
+    // 重新编号
+    out.forEach(function (it, idx) { it.productIndex = idx + 1; });
+    return out;
+}
+
 // 生成报价单
 function generateQuote() {
     const container = document.getElementById('quoteContent');
@@ -12401,9 +12569,9 @@ function generateQuote() {
         if (hasExplicit) return;
         moduleTotalCoeffs[mid] = { up: _up, down: _down };
     });
-    // —— 同系数组合并：同类型模块若加价/折扣明细完全相同，小票上合为一组展示 ——
+    // —— 同系数组合并：同类型模块若加价/折扣明细完全相同，小票上合为一组展示（可由小票弹窗临时选择不合并）——
     var moduleMergeKey = {}, moduleMergeLabels = {};
-    (function () {
+    if (!_skipModuleCoeffMerge) (function () {
         function shortModNum(name) { return String(name || '').replace(/^(制品组|赠品组)/, ''); }
         var midType = {}, midSym = {};
         (quoteData.productPrices || []).forEach(function (it) {
@@ -12582,7 +12750,8 @@ function generateQuote() {
         var upCoeff = fmtCoeff(tc.up);
         var downCoeff = fmtCoeff(tc.down);
         var prodModNum = String(curProdModSym || '').replace(/^(制品组|赠品组)/, '');
-        var symLabel = moduleMergeLabels[curProdMod] || (multiModuleP ? '<span class="receipt-module-sym">组' + prodModNum + '</span>' : '制品');
+        // 合并组不再显示"组一、二"前缀，直接显示小计/合计
+        var symLabel = moduleMergeLabels[curProdMod] ? '' : (multiModuleP ? '<span class="receipt-module-sym">组' + prodModNum + '</span>' : '制品');
         var finalTotal = Number(moduleFinalTotals[curProdMod]);
         if (!isFinite(finalTotal)) finalTotal = baseTotal + upSum - downSum;
         var showSubtotal = Math.abs(baseTotal - finalTotal) >= 0.005;
@@ -12610,7 +12779,9 @@ function generateQuote() {
         h += '</div>';
         return h;
     }
-    quoteData.productPrices.forEach((item) => {
+    const _renderProductList = (typeof mergeReceiptDisplayItems === 'function')
+        ? mergeReceiptDisplayItems(quoteData.productPrices, moduleMergeKey, 0) : quoteData.productPrices;
+    _renderProductList.forEach((item) => {
         // 模块边界：跨模块时先闭合上一模块小计（不再输出组标题，靠组尾小计的编号辨识分组）
         // 注意：单组也需要维护当前模块并在末尾闭合，以显示「小计/加价合计/折扣合计 + 合计」聚合块
         var _itemModKey = quoteItemModuleKey(item, false);
@@ -12643,7 +12814,8 @@ function generateQuote() {
         
         // 计算全价制品单价和数量
         const fullPriceUnitPrice = item.basePrice; // 全价制品单价（基础价，config时已包含配件）
-        const fullPriceQuantity = hasSameModel ? 1 : item.quantity; // 全价制品数量
+        // 全价制品数量：合并的同明细制品保留各自首件全价（__fullPriceCount）
+        const fullPriceQuantity = hasSameModel ? (item.__fullPriceCount || 1) : item.quantity; // 全价制品数量
         
         // config的成品单价（basePrice已包含配件）
         const finishedProductUnitPrice = item.basePrice;
@@ -12680,9 +12852,10 @@ function generateQuote() {
                 const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
                 const sameModelHint = (_sameMode === 'minus') ? `−${getCurrencySymbol()}${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
                 const sameModelDisplayCount = item.crossOrderSameModel ? item.quantity : item.sameModelCount;
-                const firstCharCount = charCount;
+                const _mergeN = item.__fullPriceCount || 1; // 合并源组数 → 首件件数
+                const firstCharCount = charCount * _mergeN;
                 const sameModelCharTotal = charCount * sameModelDisplayCount;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 首件</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${formatCharCount(firstCharCount)}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.basePrice.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 首件</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${formatCharCount(firstCharCount)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.basePrice * _mergeN).toFixed(2)}</div></div>`;
                 html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模${mgL('{制品}')}(${sameModelHint})</div><div class="receipt-col-1">${getCurrencySymbol()}${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${formatCharCount(sameModelCharTotal)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal).toFixed(2)}</div></div>`;
             }
 
@@ -12749,7 +12922,7 @@ function generateQuote() {
             if (!item.crossOrderSameModel) {
                 var extraBase = (item.extraFees || []).reduce(function (sum, f) { return sum + (Number(f.amount) || 0); }, 0);
                 var fullPriceExtraTotal = hasSameModel
-                    ? extraBase
+                    ? (extraBase * (item.__fullPriceCount || 1))
                     : (Number(item.totalExtraFee) || 0);
                 var fullUnitWithExtra = fullPriceQuantity > 0
                     ? (fullPriceUnitPrice + (fullPriceExtraTotal / fullPriceQuantity))
@@ -12806,7 +12979,7 @@ function generateQuote() {
                 const _sameMode = quoteData.sameModelMode || defaultSettings.sameModelMode;
                 const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
                 const sameModelHint = (_sameMode === 'minus') ? `−${getCurrencySymbol()}${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
-                var sameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - (item.crossOrderSameModel ? 0 : extraBase));
+                var sameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - (item.crossOrderSameModel ? 0 : fullPriceExtraTotal));
                 // 跨订单同模时，所有件都按同模价计算
                 var sameModelDisplayCount = item.crossOrderSameModel ? item.quantity : item.sameModelCount;
                 var sameUnitWithExtra = sameModelDisplayCount > 0
@@ -12878,7 +13051,8 @@ function generateQuote() {
             if (curGiftMod == null) return '';
             var h = '<div class="receipt-module-close' + (isBoundary ? ' receipt-module-close-boundary' : '') + '">';
             var origSum = Number(moduleBaseTotals[curGiftMod]) || 0;
-            var symLabel = multiModuleG ? (moduleMergeLabels[curGiftMod] ? '<span class="receipt-module-sym">' + moduleMergeLabels[curGiftMod] + '</span>' : '<span class="receipt-module-sym">组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '') + '</span>') : '赠品';
+            // 合并组不再显示"组一、二"前缀，直接显示合计
+            var symLabel = multiModuleG ? (moduleMergeLabels[curGiftMod] ? '' : '<span class="receipt-module-sym">组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '') + '</span>') : '赠品';
             // 赠品小计与合计行的划线原价相同，只保留合计行（0 在前、原价在后），不再重复小计
             h += '<div class="receipt-module-subtotal receipt-module-subtotal-total"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span></div></div>';
             h += '</div>';
@@ -15265,14 +15439,20 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260912-1630';
+const APP_VERSION = '20260912-1910';
 const APP_CHANGELOG = [
     {
         date: '2026-09-12',
         items: [
+            '小票同明细制品自动合并：名称/单价/同模/工艺/附加配置相同的制品合并为一行，数量与金额相加（工艺不同则不合并）',
+            '同系数组合并改为每次生成小票时临时选择：返回修改 / 不合并直接生成 / 合并并生成',
+            '同模系数纳入合并判定：加价/折扣/同模三者均一致才合并',
+            '新增「复制此组」：一键复制整个制品组/赠品组（含组内制品与组级系数）',
+            '合并组小票聚合行不再显示「组一、二」前缀，直接显示「小计」「合计」',
+            '平台手续费取整方式增加四选项：不取整 / 向下取整 / 向上取整 / 四舍五入',
+            '暗色模式：平台手续费设置按钮激活态样式修复（深灰底+白字）',
             '米画师平台手续费默认取整改为「向下取整」，旧存档自动迁移',
             '平台费设置优化：取整/分段压缩为一行，改为「取整」「分段」按钮点开独立设置面板',
-            '取整/分段按钮启用状态高亮；「无」平台费率为 0 时始终不取整',
         ]
     },
     {
