@@ -13227,6 +13227,25 @@ html.theme-dark .customer-sort-segmented button.is-active {
 /* 历史建档行：忽略/建档是主要操作，常驻显示（客户卡片的 hover 显隐仅适用于 .customer-card） */
 .customer-archive-row .customer-card-actions {
     opacity: 1;
+    /* 行内按钮（忽略 / 编辑 / 建档）在窄屏可换行，避免横向溢出 */
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+/* 已忽略的历史角色：常驻一行提示 + 恢复入口 */
+.role-history-ignored-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--border-color, #e8e8e8) 35%, transparent);
+    font-size: 13px;
+}
+.role-history-ignored-bar .btn {
+    margin-left: auto;
 }
 
 /* 专属优惠统一规则卡片 */

@@ -3586,6 +3586,8 @@ function deleteCustomer(id) {
 // ===== 角色档案管理页（设置子页面 roleProfiles） =====
 var roleEditingId = null;
 var roleEditViewMode = 'edit'; // 角色弹窗当前形态：card=角色卡片 / edit=编辑表单
+// 「从历史建档 → 编辑」时的原始历史角色名：改名建档后把它记为已处理，避免继续留在待建档列表
+var roleArchiveSourceName = null;
 
 // ===== 重复 / 复合名档案整理 =====
 // 背景：早期建档的档案可能存着复合名（如「克莱恩/Klein Moretti」），或同一角色被拆成多条档案。
@@ -3709,6 +3711,7 @@ function renderRoleSettings() {
     renderRoleHistoryPrompt();
     renderRoleList();
     renderRoleHistoryArchive();
+    renderRoleIgnoredBar();
 }
 
 function toggleRoleHistoryPanel() {
@@ -3885,6 +3888,7 @@ function renderRoleHistoryArchive() {
             '<input type="checkbox" id="roleHistorySelectAll"' + (list.length > 0 && selectedCount === list.length ? ' checked' : '') + ' onchange="toggleSelectAllRoles(this.checked)"> 全选</label>' +
         '<button class="btn btn-compact" id="roleHistorySelectedBtn" style="margin-left:auto;" onclick="archiveSelectedRolesFromHistory()"' + (selectedCount === 0 ? ' disabled' : '') + '>选中建档（' + selectedCount + '）</button>' +
         '<button class="btn btn-compact" onclick="archiveAllRolesFromHistory()">全部建档</button>' +
+        '<button class="btn btn-compact" onclick="ignoreAllRolesFromHistory()" title="本次列出的历史角色都不再提示建档">全部忽略</button>' +
     '</div>';
     const rows = list.map(function (r) {
         const ipText = [r.ip, r.ipEn].filter(Boolean).join(' / ');
@@ -3900,7 +3904,8 @@ function renderRoleHistoryArchive() {
                 '<div class="customer-card-stats">' + r.count + ' 单</div>' +
             '</div>' +
             '<div class="customer-card-actions">' +
-                '<button class="btn btn-compact" title="忽略后不再提示，且不可恢复" onclick="ignoreRoleFromHistory(\'' + encodeURIComponent(r.name) + '\')">忽略</button>' +
+                '<button class="btn btn-compact" title="忽略后不再提示建档，可点下方「恢复忽略」找回" onclick="ignoreRoleFromHistory(\'' + encodeURIComponent(r.name) + '\')">忽略</button>' +
+                '<button class="btn btn-compact" title="先修改角色名 / 原作等信息再建档" onclick="openRoleArchiveModal(\'' + encodeURIComponent(r.name) + '\')">编辑</button>' +
                 '<button class="btn btn-compact" onclick="archiveRoleFromHistory(\'' + encodeURIComponent(r.name) + '\')">建档</button>' +
             '</div>' +
         '</div>';
@@ -3909,6 +3914,17 @@ function renderRoleHistoryArchive() {
         ? '<div class="customer-empty text-gray" style="padding:16px 0;text-align:center;">暂无待建档角色</div>'
         : '';
     container.innerHTML = toolbar + emptyRows + rows;
+}
+
+// 已忽略提示条：常驻在角色档案页（建档面板可能已整体隐藏），提供找回入口
+function renderRoleIgnoredBar() {
+    const bar = document.getElementById('roleIgnoredBar');
+    if (!bar) return;
+    const n = roleIgnoredNames.length;
+    if (!n) { bar.classList.add('d-none'); bar.innerHTML = ''; return; }
+    bar.innerHTML = '<span class="text-gray">已忽略 ' + n + ' 个历史角色，不再提示建档</span>' +
+        '<button type="button" class="btn btn-compact" onclick="restoreIgnoredRoles()">恢复忽略</button>';
+    bar.classList.remove('d-none');
 }
 
 // 勾选/取消单个角色
@@ -3943,38 +3959,32 @@ function syncRoleHistoryToolbar() {
 function archiveSelectedRolesFromHistory() {
     const list = getUnarchivedRoleSummaries();
     const selected = list.filter(function (r) { return selectedRoleNames.has(r.name); });
-    if (selected.length === 0) { alert('请先勾选要建档的角色。'); return; }
+    if (selected.length === 0) { showToast('请先勾选要建档的角色', 'warn'); return; }
     selected.forEach(function (r) { upsertRoleProfile({ name: r.name, nameEn: r.nameEn, ip: r.ip, ipEn: r.ipEn }); selectedRoleNames.delete(r.name); });
     saveRoleProfiles();
-    renderRoleHistoryPrompt();
-    renderRoleHistoryArchive();
-    renderRoleList();
-    alert('已为 ' + selected.length + ' 个角色创建档案，可进入列表补充设定/备注。');
+    renderRoleSettings();
+    showToast('已为 ' + selected.length + ' 个角色创建档案，可进入列表补充设定/备注', 'ok');
 }
 
 function archiveRoleFromHistory(name) {
     const key = decodeURIComponent(name);
     const rec = getUnarchivedRoleSummaries().find(function (r) { return r.name === key; });
-    if (!rec) { alert('未找到该角色的历史记录。'); return; }
-    if (findRoleProfileByName(key)) { alert('该角色已建档。'); renderRoleHistoryPrompt(); renderRoleHistoryArchive(); return; }
+    if (!rec) { showToast('未找到该角色的历史记录', 'warn'); return; }
+    if (findRoleProfileByName(key)) { showToast('该角色已建档', 'warn'); renderRoleSettings(); return; }
     upsertRoleProfile({ name: rec.name, nameEn: rec.nameEn, ip: rec.ip, ipEn: rec.ipEn });
     saveRoleProfiles();
     selectedRoleNames.delete(key);
-    renderRoleHistoryPrompt();
-    renderRoleHistoryArchive();
-    renderRoleList();
-    alert('已为「' + rec.name + '」创建角色档案，可进入列表补充设定/备注。');
+    renderRoleSettings();
+    showToast('已为「' + rec.name + '」创建角色档案，可进入列表补充设定/备注', 'ok');
 }
 
 function archiveAllRolesFromHistory() {
     const list = getUnarchivedRoleSummaries();
-    if (list.length === 0) { alert('没有可建档的历史角色。'); return; }
+    if (list.length === 0) { showToast('没有可建档的历史角色', 'warn'); return; }
     list.forEach(function (r) { upsertRoleProfile({ name: r.name, nameEn: r.nameEn, ip: r.ip, ipEn: r.ipEn }); selectedRoleNames.delete(r.name); });
     saveRoleProfiles();
-    renderRoleHistoryPrompt();
-    renderRoleHistoryArchive();
-    renderRoleList();
-    alert('已为 ' + list.length + ' 个历史角色创建角色档案。');
+    renderRoleSettings();
+    showToast('已为 ' + list.length + ' 个历史角色创建角色档案', 'ok');
 }
 
 // 忽略单个历史角色（不再提示建档，可事后恢复）
@@ -3983,9 +3993,32 @@ function ignoreRoleFromHistory(name) {
     if (roleIgnoredNames.indexOf(key) < 0) roleIgnoredNames.push(key);
     selectedRoleNames.delete(key);
     saveRoleIgnored();
-    renderRoleHistoryPrompt();
-    renderRoleHistoryArchive();
-    renderRoleList();
+    renderRoleSettings();
+    showToast('已忽略「' + key + '」，可在列表下方「恢复忽略」找回', 'ok');
+}
+
+// 全部忽略：把当前列出的历史角色一次性标记为忽略（可在列表下方「恢复忽略」找回）
+function ignoreAllRolesFromHistory() {
+    const list = getUnarchivedRoleSummaries();
+    if (list.length === 0) { showToast('没有可忽略的历史角色', 'warn'); return; }
+    if (!confirm('确定忽略全部 ' + list.length + ' 个历史角色？\n\n忽略后不再提示建档，可在列表下方点「恢复忽略」找回。')) return;
+    list.forEach(function (r) {
+        if (roleIgnoredNames.indexOf(r.name) < 0) roleIgnoredNames.push(r.name);
+        selectedRoleNames.delete(r.name);
+    });
+    saveRoleIgnored();
+    renderRoleSettings();
+    showToast('已忽略 ' + list.length + ' 个历史角色，不再提示建档', 'ok');
+}
+
+// 恢复忽略：清空忽略名单，历史角色重新进入待建档列表
+function restoreIgnoredRoles() {
+    const n = roleIgnoredNames.length;
+    if (!n) return;
+    roleIgnoredNames = [];
+    saveRoleIgnored();
+    renderRoleSettings();
+    showToast('已恢复 ' + n + ' 个被忽略的历史角色', 'ok');
 }
 
 // 角色列表分组方式：alpha 按拼音首字母 / ip 按原作IP（默认按IP，会话内记忆）
@@ -4245,6 +4278,9 @@ function cancelRoleEditMode() {
 function openRoleEditModal(roleId, preferredMode) {
     const modal = document.getElementById('roleEditModal');
     if (!modal) return;
+    roleArchiveSourceName = null; // 普通添加/编辑入口，不联动历史建档
+    var plainSaveBtn = document.getElementById('roleEditSaveBtn');
+    if (plainSaveBtn) plainSaveBtn.textContent = '保存';
     roleEditingId = roleId || null;
     const isEdit = !!roleEditingId;
     document.getElementById('roleEditModalTitle').textContent = isEdit ? '编辑角色' : '添加角色';
@@ -4300,6 +4336,26 @@ function openRoleEditModal(roleId, preferredMode) {
     }
 }
 
+// 从历史建档 → 编辑后建档：预填解析出的角色名 / 外文名 / 原作 / 外文原作，保存即建档
+function openRoleArchiveModal(name) {
+    const key = decodeURIComponent(name);
+    const rec = getUnarchivedRoleSummaries().find(function (r) { return r.name === key; });
+    if (!rec) { showToast('未找到该角色的历史记录', 'warn'); return; }
+    if (findRoleProfileByName(key)) { showToast('该角色已建档', 'warn'); renderRoleSettings(); return; }
+    openRoleEditModal(null, 'edit');
+    setRoleEditValue('roleEditName', rec.name);
+    setRoleEditValue('roleEditNameEn', rec.nameEn);
+    setRoleEditValue('roleEditIp', rec.ip);
+    setRoleEditValue('roleEditIpEn', rec.ipEn);
+    roleArchiveSourceName = rec.name;
+    const titleEl = document.getElementById('roleEditModalTitle');
+    if (titleEl) titleEl.textContent = '编辑后建档';
+    const saveBtn = document.getElementById('roleEditSaveBtn');
+    if (saveBtn) saveBtn.textContent = '保存并建档';
+    const nameEl = document.getElementById('roleEditName');
+    if (nameEl) nameEl.focus();
+}
+
 // 弹窗字段安全赋值（元素不存在时静默跳过，兼容旧版 HTML）
 function setRoleEditValue(id, value) {
     var el = document.getElementById(id);
@@ -4310,6 +4366,9 @@ function closeRoleEditModal() {
     const modal = document.getElementById('roleEditModal');
     if (modal) { modal.classList.add('d-none'); modal.setAttribute('aria-hidden', 'true'); }
     roleEditingId = null;
+    roleArchiveSourceName = null;
+    var saveBtn = document.getElementById('roleEditSaveBtn');
+    if (saveBtn) saveBtn.textContent = '保存';
 }
 
 function saveRoleEdit() {
@@ -4318,6 +4377,7 @@ function saveRoleEdit() {
     const id = document.getElementById('roleEditId').value || '';
     const existing = findRoleProfileByName(name);
     if (existing && existing.id !== id) { showToast('已存在同名角色「' + name + '」', 'warn'); return; }
+    const archiveSource = roleArchiveSourceName; // 从历史建档进入时的原始角色名
 
     // 固定基础资料：非空才写入，空值表示「清空该项」
     var profile = {
@@ -4349,9 +4409,19 @@ function saveRoleEdit() {
         }
     }
     saveRoleProfiles();
-    renderRoleList();
-    renderRoleHistoryPrompt();
-    renderRoleHistoryArchive();
+    // 改名建档：原始历史角色名记为已处理，避免它以旧名继续留在待建档列表
+    if (archiveSource && archiveSource !== name) {
+        if (roleIgnoredNames.indexOf(archiveSource) < 0) roleIgnoredNames.push(archiveSource);
+        saveRoleIgnored();
+    }
+    roleArchiveSourceName = null;
+    renderRoleSettings();
+    if (archiveSource) {
+        // 建档完成：直接回到列表，待建档项已消失
+        closeRoleEditModal();
+        showToast('已为「' + name + '」创建角色档案，可进入列表补充设定/备注', 'ok');
+        return;
+    }
     // 保存后回到卡片视图，直观确认结果
     setRoleEditMode('card');
     showToast('角色「' + name + '」已保存', 'ok');
@@ -16851,14 +16921,21 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260913-0950';
+const APP_VERSION = '20260914-0358';
 const APP_CHANGELOG = [
+    {
+        date: '2026-09-14',
+        items: [
+            '【角色档案-从历史建档】建档成功的提示改为轻提示（不再弹窗打断）；新增「全部忽略」，一键忽略后不再提示建档，并可在角色档案页「恢复忽略」找回',
+            '【角色档案-从历史建档】每一行新增「编辑」：预填自动识别出的角色名 / 外文名 / 原作，可先改成完整档案再保存，保存即完成建档',
+        ]
+    },
     {
         date: '2026-09-13',
         items: [
             '【角色档案】新增角色卡片：集中管理中外文名、原作IP、身高生日等资料、设定和语录，点击角色名即可弹出查看，并可直接编辑补充',
             '【角色档案列表】默认按 IP 排序，右侧新增 A-Z 快速跳转；支持一键整理重复档案',
-            '【角色档案-从历史建档】自动识别历史订单里的角色，支持多选批量建档，不需要的可忽略',
+            '【角色档案-从历史建档】自动识别历史订单里的角色，支持多选批量建档，不需要的可单个或全部忽略',
             '【排单页】Todo 卡片点击角色名即可弹出角色卡片查看，并可直接编辑',
             '【计算页】角色支持从角色档案多选填写，输入新角色自动入档',
         ]
@@ -33633,4 +33710,3 @@ function forceShowDevFeatures() {
         // ignore
     }
 }
-

@@ -7,7 +7,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260913-0950">
+    <link rel="stylesheet" href="style.css?v=20260914-0358">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -2573,11 +2573,13 @@
                             </div>
                             <div id="roleHistoryPanel" class="customer-history-panel d-none">
                                 <div class="setting-hint text-gray" style="margin-bottom:8px;">
-                                    从历史订单提取未建档的角色，自动拆分多角色、识别中/外文名；可在下方单个、多选或全部建档。
+                                    从历史订单提取未建档的角色，自动拆分多角色、识别中/外文名；可先点「编辑」修正角色名 / 原作等资料再建档，也能单个、多选或全部建档，不需要的可单个忽略或全部忽略。
                                 </div>
                                 <div id="roleHistoryArchiveContainer"></div>
                             </div>
                         </div>
+                        <!-- 已忽略的历史角色：常驻提示条，提供一键恢复 -->
+                        <div id="roleIgnoredBar" class="role-history-ignored-bar d-none"></div>
                         <div id="roleTab-mine">
                             <!-- 第一行：搜索框 + 添加角色 -->
                             <div class="form-row customer-toolbar-row" style="margin-bottom:6px;">
@@ -3593,7 +3595,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260913-0950"></script>
+    <script src="script.js?v=20260914-0358"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {
@@ -3654,8 +3656,6 @@
 </body>
 </html>
 </html>
-
-
 
 
 
