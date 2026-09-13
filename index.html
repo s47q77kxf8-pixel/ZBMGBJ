@@ -7,7 +7,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260912-1630">
+    <link rel="stylesheet" href="style.css?v=20260913-0950">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -605,6 +605,10 @@
                     <!-- 原作IP历史匹配下拉（全局节点，动态插入到原作输入框所在 form-group 后面） -->
                     <div id="projectOriginMatchWrap" class="project-origin-match-dropdown d-none" style="display:none;">
                         <ul id="projectOriginMatchList"></ul>
+                    </div>
+                    <!-- 角色档案匹配下拉（全局节点，动态插入到角色输入框所在 form-group 后面） -->
+                    <div id="roleMatchWrap" class="project-origin-match-dropdown d-none" style="display:none;" onmousedown="event.preventDefault();cancelHideRoleMatch();">
+                        <ul id="roleMatchList"></ul>
                     </div>
                 </div>
                 <div class="section settings-section">
@@ -1869,6 +1873,10 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
                             <span class="quick-entry-label">单主<br>管理</span>
                         </button>
+                        <button class="quick-entry-btn" onclick="showSettingsSubPage('roleProfiles')">
+                            <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
+                            <span class="quick-entry-label">角色<br>档案</span>
+                        </button>
                         <!-- 接单物料：dev=1 时显示 -->
                         <button class="quick-entry-btn dev-feature d-none" onclick="showSettingsSubPage('marketingCards')">
                             <svg class="icon" aria-hidden="true"><use href="#i-image-line-b"></use></svg>
@@ -2545,6 +2553,62 @@
                         </div>
                     </div>
                 </div>
+                <!-- 角色档案子页面 -->
+                <div id="settingsSubPage-roleProfiles" class="settings-sub-page d-none">
+                    <div class="section">
+                        <div class="settings-subpage-header mb-4">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>角色档案</h2>
+                            <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn btn-compact" onclick="saveSettings()">保存</button>
+                            </div>
+                        </div>
+                        <div class="setting-hint text-gray" style="margin-bottom: 8px;">
+                            记录约稿角色（原作/IP + 角色名）的个人信息；计算页输入角色名可自动匹配填充原作，排单页自动显示角色信息。角色档案随 JSON 导出/导入同步。
+                        </div>
+                        <div id="roleHistoryPrompt" class="d-none" style="margin-bottom:12px;">
+                            <div class="customer-history-prompt-inner" onclick="toggleRoleHistoryPanel()">
+                                <span class="customer-history-prompt-text" id="roleHistoryPromptText"></span>
+                                <button type="button" class="btn btn-compact" id="roleHistoryExpandBtn">展开建档</button>
+                            </div>
+                            <div id="roleHistoryPanel" class="customer-history-panel d-none">
+                                <div class="setting-hint text-gray" style="margin-bottom:8px;">
+                                    从历史订单提取未建档的角色，自动拆分多角色、识别中/外文名；可在下方单个、多选或全部建档。
+                                </div>
+                                <div id="roleHistoryArchiveContainer"></div>
+                            </div>
+                        </div>
+                        <div id="roleTab-mine">
+                            <!-- 第一行：搜索框 + 添加角色 -->
+                            <div class="form-row customer-toolbar-row" style="margin-bottom:6px;">
+                                <div class="form-group" style="flex:1;min-width:0;">
+                                    <input type="search" id="roleSearchInput" placeholder="搜索角色名 / 原作 / 设定" oninput="renderRoleSettings()">
+                                </div>
+                                <div class="form-group" style="flex:0 0 auto;">
+                                    <button class="btn btn-compact" onclick="openRoleEditModal()">+ 添加角色</button>
+                                </div>
+                            </div>
+                            <!-- 第二行：分组方式（按首字母 / 按原作IP） -->
+                            <div class="form-row customer-toolbar-row" style="margin-bottom:10px;">
+                                <div class="form-group" style="flex:0 0 auto;">
+                                    <div class="customer-sort-segmented" id="roleGroupSegmented">
+                                        <button type="button" data-mode="alpha" onclick="setRoleGroupMode('alpha')">按首字母</button>
+                                        <button type="button" data-mode="ip" class="is-active" onclick="setRoleGroupMode('ip')">按IP</button>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="flex:0 0 auto;">
+                                    <button type="button" class="btn btn-compact" onclick="cleanupRoleProfiles()" title="把「钟离/Zhongli」这类复合名规范化，并合并同一角色的重复档案">整理重复档案</button>
+                                </div>
+                            </div>
+                            <div class="customer-list-layout">
+                                <div class="customer-list-wrap">
+                                    <div id="roleListContainer"></div>
+                                </div>
+                                <div id="roleIndexRail" class="customer-index-rail d-none"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <!-- 客户编辑弹窗 -->
                 <div id="customerEditModal" class="modal d-none">
                     <div class="modal-content">
@@ -2642,6 +2706,7 @@
                         </div>
                     </div>
                 </div>
+                <!-- 角色档案编辑弹窗 -->
                 <!-- 接单物料子页面 -->
                 <div id="settingsSubPage-marketingCards" class="settings-sub-page d-none">
                     <div class="section">
@@ -2664,6 +2729,8 @@
                         <div id="marketingCardPreviewArea" style="margin-top:12px;"></div>
                     </div>
                 </div>
+<!-- 角色档案弹窗（顶层：排单页 Todo 点击角色名也要能弹出，不能放在设置子页面里） -->
+
                 <!-- 添加系数弹窗 -->
                 <div id="addCoefficientModal" class="modal d-none">
                     <div class="modal-content">
@@ -2870,10 +2937,11 @@
                 <div class="modal-body">
                     <p id="moduleMergeConfirmHint" style="margin-bottom:12px;line-height:1.65;">检测到以下组的加价、折扣系数完全相同，生成小票时会将它们合并为一组，系数明细只保留一份：</p>
                     <div id="moduleMergeConfirmList"></div>
-                    <p style="margin:12px 0 0;font-size:13px;color:var(--text-light, #6b7280);">如需保留分组展示，可返回修改任意一组的系数。</p>
+                    <p style="margin:12px 0 0;font-size:13px;color:var(--text-light, #6b7280);">可在此次选择是否合并；选择“不合并，直接生成”即保留分组展示。</p>
                     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
                         <button type="button" class="btn secondary" onclick="closeModuleMergeConfirmModal()">返回修改</button>
-                        <button type="button" class="btn primary" onclick="confirmModuleMergeAndGenerate()">确认合并并生成小票</button>
+                        <button type="button" class="btn secondary" onclick="confirmModuleMergeAndGenerate('no')">不合并，直接生成</button>
+                        <button type="button" class="btn primary" onclick="confirmModuleMergeAndGenerate('merge')">合并并生成小票</button>
                     </div>
                 </div>
             </div>
@@ -3090,6 +3158,106 @@
             </div>
         </main>
     </div>
+<!-- 角色档案弹窗（顶层：排单页 Todo 点击角色名也要能弹出，不能放在设置子页面内） -->
+                <div id="roleEditModal" class="modal d-none">
+                    <div class="modal-content modal-content-wide">
+                        <div class="modal-header">
+                            <h3 id="roleEditModalTitle">添加角色</h3>
+                            <span class="close" onclick="closeRoleEditModal()">&times;</span>
+                        </div>
+                        <div class="modal-body">
+                            <!-- 卡片视图：点击角色名默认展示完整资料 -->
+                            <div id="roleEditCardView" class="role-card-view d-none"></div>
+                            <!-- 编辑视图：同一弹窗内切换到表单补充资料 -->
+                            <div id="roleEditFormView">
+                            <input type="hidden" id="roleEditId">
+
+                            <!-- 身份：中/外文名 + 别名 -->
+                            <div class="role-edit-group-title">角色身份</div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="roleEditName">角色名 <span class="text-danger">*</span></label>
+                                    <input type="text" id="roleEditName" placeholder="中文名，如：钟离">
+                                </div>
+                                <div class="form-group">
+                                    <label for="roleEditNameEn">角色名（外文）</label>
+                                    <input type="text" id="roleEditNameEn" placeholder="如：Zhongli / ショウリ">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="roleEditFullName">全名 / 真名</label>
+                                    <input type="text" id="roleEditFullName" placeholder="可选，如：摩拉克斯">
+                                </div>
+                                <div class="form-group">
+                                    <label for="roleEditAliases">别名 / 称号</label>
+                                    <input type="text" id="roleEditAliases" placeholder="多个用顿号或逗号分隔">
+                                </div>
+                            </div>
+
+                            <!-- 原作 / IP -->
+                            <div class="role-edit-group-title">原作 / IP</div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="roleEditIp">原作 / IP</label>
+                                    <input type="text" id="roleEditIp" placeholder="如：原神 / 排球少年">
+                                </div>
+                                <div class="form-group">
+                                    <label for="roleEditIpEn">原作 / IP（外文）</label>
+                                    <input type="text" id="roleEditIpEn" placeholder="如：Genshin Impact">
+                                </div>
+                            </div>
+
+                            <!-- 基础资料（固定项） -->
+                            <div class="role-edit-group-title">基础资料</div>
+                            <div class="role-base-grid" id="roleBaseFieldGrid">
+                                <div class="form-group"><label for="roleEdit_gender">性别</label><input type="text" id="roleEdit_gender" placeholder=""></div>
+                                <div class="form-group"><label for="roleEdit_age">年龄</label><input type="text" id="roleEdit_age" placeholder=""></div>
+                                <div class="form-group"><label for="roleEdit_birthday">生日</label><input type="text" id="roleEdit_birthday" placeholder="如：12月31日"></div>
+                                <div class="form-group"><label for="roleEdit_height">身高</label><input type="text" id="roleEdit_height" placeholder="如：182cm"></div>
+                                <div class="form-group"><label for="roleEdit_weight">体重</label><input type="text" id="roleEdit_weight" placeholder="如：65kg"></div>
+                                <div class="form-group"><label for="roleEdit_bloodType">血型</label><input type="text" id="roleEdit_bloodType" placeholder=""></div>
+                                <div class="form-group"><label for="roleEdit_constellation">星座</label><input type="text" id="roleEdit_constellation" placeholder=""></div>
+                                <div class="form-group"><label for="roleEdit_cv">声优</label><input type="text" id="roleEdit_cv" placeholder=""></div>
+                                <div class="form-group"><label for="roleEdit_affiliation">阵营</label><input type="text" id="roleEdit_affiliation" placeholder=""></div>
+                                <div class="form-group"><label for="roleEdit_identity">身份</label><input type="text" id="roleEdit_identity" placeholder=""></div>
+                            </div>
+
+                            <!-- 更多资料（折叠区：自定义字段 + 语录） -->
+                            <div class="role-edit-more-toggle">
+                                <button type="button" class="btn secondary btn-compact" id="roleEditMoreBtn" onclick="toggleRoleMoreFields(this)">展开更多资料</button>
+                            </div>
+                            <div id="roleEditMoreBox" class="d-none">
+                                <div class="role-edit-group-title">
+                                    自定义资料
+                                    <button type="button" class="btn secondary btn-compact role-add-field-btn" onclick="addRoleCustomFieldRow()">+ 添加一项</button>
+                                </div>
+                                <div class="role-custom-list" id="roleEditCustomList"></div>
+                                <div class="role-edit-group-title">语录 / 台词</div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <textarea id="roleEditQuotes" rows="3" placeholder="每行一条，例如：&#10;天动万象。&#10;这是必须的礼节。"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="role-edit-group-title">补充说明</div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="roleEditDescription">设定 / 描述</label>
+                                    <textarea id="roleEditDescription" rows="3" placeholder="角色设定、外貌、性格、注意事项等"></textarea>
+                                </div>
+                            </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn" id="roleEditToEditBtn" onclick="setRoleEditMode('edit')">编辑资料</button>
+                            <button class="btn" id="roleEditSaveBtn" onclick="saveRoleEdit()">保存</button>
+                            <button class="btn secondary" id="roleEditCancelBtn" onclick="cancelRoleEditMode()">取消</button>
+                        </div>
+                    </div>
+                </div>
+
     <!-- 全局轻提示（toast），用于非阻塞提示“排单已更新”等信息 -->
     <!-- 企划备注查看弹窗（只读） -->
     <div id="orderRemarkViewModal" class="modal d-none">
@@ -3425,7 +3593,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260912-1630"></script>
+    <script src="script.js?v=20260913-0950"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

@@ -29,6 +29,9 @@ let statsFocusedOrderIds = null; // 统计页“查看企划”后，记录页�
 let statsFocusedLabel = ''; // 统计页“查看企划”后的筛选说明
 let templates = []; // 存储模板列表
 let customers = []; // 客户档案列表（localStorage 'customers'）
+let roleProfiles = []; // 角色档案列表（localStorage 'roleProfiles'）：记录约稿角色名/原作IP/设定/备注
+let roleIgnoredNames = []; // 忽略的历史角色名（localStorage 'roleIgnoredNames'），不再提示建档
+const selectedRoleNames = new Set(); // 从历史建档：多选状态（会话内，不被持久化）
 let _mcData = null; // 接单物料配置缓存（localStorage 'marketingCards'），null 表示未加载
 let _mcTab = 'businessCard'; // 接单物料当前 tab：businessCard | priceList | orderInfo
 let selectedPerItemExtraFeeIds = []; // 计算页全单级“每制品新增”勾选
@@ -43,6 +46,54 @@ function moduleSymbol(mtype, seq) {
     return (mtype === 'gift' ? '赠品组' : '制品组') + label;
 }
 
+// —— 制品「显示序号」重编：按模块顺序（组一→组二→…）连续编号 ——
+// 背景：item.productIndex 在创建时就固定为「全局数组下标+1」，与模块分组无关。
+// 因此往组一里新加一件制品，它会拿到全局最大号（如 5），在小票上显示为「1. 2. 5.」，
+// 视觉上像"跑到所有制品后面去了"。
+// 注意：productIndex 同时是排期完成状态数组（productDoneStates / productNodeDoneStates）的下标，
+// 直接改写它会打乱排期数据，所以这里只生成「显示用」的序号映射，不动原始字段。
+// 返回 Map<item, 显示序号>；item 以对象引用为键（调用方传入的就是同一批对象）。
+function buildModuleOrderedIndexMap(list, opts) {
+    var arr = Array.isArray(list) ? list.slice() : [];
+    var o = opts || {};
+    // 模块序号解析：优先外部传入的 seqOf，其次 orderModules，最后 quoteData.modules
+    function seqOfItem(it) {
+        if (!it) return 999999;
+        var mid = it.moduleId ? String(it.moduleId) : '';
+        if (o.seqOf) { var s = o.seqOf(it); if (s != null && isFinite(s)) return Number(s); }
+        var pool = [];
+        if (Array.isArray(orderModules) && orderModules.length) pool = orderModules;
+        else if (quoteData && Array.isArray(quoteData.modules) && quoteData.modules.length) pool = quoteData.modules;
+        var found = mid ? pool.find(function (m) { return m && String(m.id) === mid; }) : null;
+        if (found && found.seq != null && isFinite(Number(found.seq))) return Number(found.seq);
+        return 999999;
+    }
+    // 稳定排序：模块 seq 升序；同模块内保持原数组顺序
+    var ordered = arr.slice().sort(function (a, b) {
+        var sa = seqOfItem(a), sb = seqOfItem(b);
+        return (sa !== sb) ? (sa - sb) : 0;
+    });
+    var map = new Map();
+    ordered.forEach(function (it, idx) { if (it) map.set(it, idx + 1); });
+    return map;
+}
+// 取某制品的显示序号；未命中映射时回退到其自身的 productIndex（兼容非分组场景）
+function displayProductIndex(item, map) {
+    if (map && map.has(item)) return map.get(item);
+    return (item && item.productIndex) || '';
+}
+// 显示序号映射的「回退」构造：Map 未命中(item 被克隆/包装)时，按已排好序的列表直接编号。
+// 之所以需要它：buildModuleOrderedIndexMap 在极端情况下可能因桥接层差异拿不到模块 seq，
+// 一旦漏配就会回退到全局 productIndex，用户看到「分组顺序错乱 + 序号跳号」。
+function buildDisplayIndexFromOrderedList(orderedList, map) {
+    var fallback = new Map();
+    (orderedList || []).forEach(function (it, idx) {
+        if (!it) return;
+        if (!map || !map.has(it)) fallback.set(it, idx + 1);
+    });
+    return fallback;
+}
+
 function normalizeOrderModules() {
     if (!Array.isArray(orderModules)) orderModules = [];
     var hasP = orderModules.some(function (m) { return m && m.mtype === 'product'; });
@@ -52,6 +103,15 @@ function normalizeOrderModules() {
         orderModules = [];
         orderModuleSeq = { product: 0, gift: 0 };
         (orig.length ? orig : buildDefaultModules()).forEach(function (m) { pushOrderModule(m); });
+    }
+    // 补齐 moduleId 为空的制品/赠品：归入对应类型的第一个模块，避免小票出现独立遗留组
+    var firstP = firstOrderModule('product');
+    var firstG = firstOrderModule('gift');
+    if (firstP && Array.isArray(products)) {
+        products.forEach(function (p) { if (p && !p.moduleId) p.moduleId = firstP.id; });
+    }
+    if (firstG && Array.isArray(gifts)) {
+        gifts.forEach(function (g) { if (g && !g.moduleId) g.moduleId = firstG.id; });
     }
 }
 function buildDefaultModules() {
@@ -88,8 +148,35 @@ function resetOrderModulesToDefault() {
 function findOrderModule(id) {
     return orderModules.find(function (m) { return m && m.id === id; }) || null;
 }
+// 小票/预览等「只读展示」场景下，orderModules（计算页状态）往往为空数组，
+// 模块元数据只存在于当前订单快照 quoteData.modules 上。
+// 这里统一做两级查找：先查计算页状态，未命中再回退订单快照。
+// 少了这一步，查找失败会让调用方（如组序号解析、模块名校验）静默回退到「首模块」，
+// 表现为所有分组边界塌成一组。
+function findAnyModule(id) {
+    if (id == null) return null;
+    var direct = findOrderModule(id);
+    if (direct) return direct;
+    try {
+        if (typeof quoteData !== 'undefined' && quoteData && Array.isArray(quoteData.modules)) {
+            return quoteData.modules.find(function (m) { return m && String(m.id) === String(id); }) || null;
+        }
+    } catch (e) { /* quoteData 尚未初始化时忽略 */ }
+    return null;
+}
 function firstOrderModule(mtype) {
     return orderModules.find(function (m) { return m && m.mtype === mtype; }) || null;
+}
+// 取某类型「首模块」的快照版：计算页状态为空时回退 quoteData.modules
+function firstAnyModule(mtype) {
+    var direct = firstOrderModule(mtype);
+    if (direct) return direct;
+    try {
+        if (typeof quoteData !== 'undefined' && quoteData && Array.isArray(quoteData.modules)) {
+            return quoteData.modules.find(function (m) { return m && m.mtype === mtype; }) || null;
+        }
+    } catch (e) { /* ignore */ }
+    return null;
 }
 function modulesOfType(mtype) {
     normalizeOrderModules();
@@ -319,7 +406,8 @@ function collectDuplicateModuleCoeffGroups() {
         var hasItem = (mod.mtype === 'product' ? products : gifts).some(function (x) { return x && String(x.moduleId) === String(mod.id); });
         if (!hasItem) return;
         var r = moduleCoefficientResult(mod, upMode, downMode);
-        var key = mod.mtype + '|' + moduleReasonSignature(r.upReasons, r.downReasons);
+        // 同模系数也纳入合并判定：只有加价/折扣明细相同且同模档位也一致时才合并
+        var key = mod.mtype + '|' + moduleReasonSignature(r.upReasons, r.downReasons) + '|sm:' + moduleSameModelCoefficient(mod);
         (buckets[key] = buckets[key] || []).push({ mod: mod, upReasons: r.upReasons, downReasons: r.downReasons });
     });
     var groups = [];
@@ -334,11 +422,72 @@ function collectDuplicateModuleCoeffGroups() {
     return groups;
 }
 // 计算页点击「小票」：先同步模块下拉；有同系数组时弹窗确认，否则直接生成
+// 合并选择持久化到订单自身（quoteData.moduleMergeChoice），跨会话/跨入口保持一致，
+// 保存历史后再从历史/排单卡片重新查看小票仍按该订单自己的选择渲染。
+// 'merge'=合并；'no'=不合并；'auto'/空=默认合并（针对旧数据）
+// 用 _pendingModuleMergeChoice 暂存本次会话的合并选择：弹框选择时 quoteData 可能尚未生成（首次生成小票时），
+// 不能只写 quoteData 字段，否则选择会丢失、导致"选不合并仍按合并生成"。
+let _pendingModuleMergeChoice = null;
+// 刷新页面会让内存变量归零，因此再落一份到 localStorage。
+// 记录「本单的合并选择 + 归属订单标识」，页面重载后仅当订单标识一致才复用，
+// 避免上一单的「不合并」污染新建的订单。
+var MERGE_CHOICE_LS_KEY = 'mg_module_merge_choice';
+function _orderMergeIdentity() {
+    try {
+        if (window.editingHistoryId != null) return 'h:' + window.editingHistoryId;
+        if (quoteData && quoteData.id != null) return 'h:' + quoteData.id;
+        // 未保存的新单：用单主ID + 报价时间做指纹，保证同一张未保存订单刷新后仍能恢复选择
+        if (quoteData) return 'q:' + String(quoteData.clientId || '') + '@' + String(quoteData.timestamp || '');
+    } catch (e) { /* ignore */ }
+    return null;
+}
+function _saveMergeChoiceToLocal(v) {
+    try {
+        var ident = _orderMergeIdentity();
+        if (ident == null) return;
+        localStorage.setItem(MERGE_CHOICE_LS_KEY, JSON.stringify({ ident: ident, v: v }));
+    } catch (e) { /* localStorage 不可用时忽略，退回内存/订单字段 */ }
+}
+// 从 localStorage 恢复合并选择；仅当指纹与当前订单一致时才采用
+function _localModuleMergeChoice() {
+    try {
+        var raw = localStorage.getItem(MERGE_CHOICE_LS_KEY);
+        if (!raw) return null;
+        var o = JSON.parse(raw);
+        if (!o || o.ident == null) return null;
+        var ident = _orderMergeIdentity();
+        if (ident == null || o.ident !== ident) return null;
+        return o.v != null ? o.v : null;
+    } catch (e) { return null; }
+}
+function getOrderModuleMergeNo() {
+    var v = _pendingModuleMergeChoice;
+    if (v == null && quoteData) v = quoteData.moduleMergeChoice;
+    if (v == null) v = _localModuleMergeChoice();     // 刷新后先看本机存档（未保存到历史的订单也能记住）
+    if (v == null) v = _historyModuleMergeChoice();
+    return v === 'no';
+}
+// 兜底：从当前订单在 history 中的记录恢复合并选择，覆盖各打开入口（loadQuoteFromHistory / editHistoryItem 等）
+function _historyModuleMergeChoice() {
+    try {
+        var id = (quoteData && quoteData.id) || window.editingHistoryId || null;
+        if (!id) return null;
+        var h = (Array.isArray(history) ? history : []).find(function (x) { return x && x.id === id; });
+        return (h && h.moduleMergeChoice != null) ? h.moduleMergeChoice : null;
+    } catch (e) { return null; }
+}
+function setOrderModuleMergeChoice(v) {
+    _pendingModuleMergeChoice = v;
+    if (quoteData) quoteData.moduleMergeChoice = v;
+    _saveMergeChoiceToLocal(v);
+}
+
 function handleCalculatorQuoteClick() {
     normalizeOrderModules();
     orderModules.forEach(function (mod) {
         try { syncModuleExpansionFromDom(mod.id); } catch (e) { /* ignore */ }
     });
+    // 弹窗让用户选择合并/不合并（纳入该订单自身，选择由 confirmModuleMergeAndGenerate 写入订单）
     var groups = collectDuplicateModuleCoeffGroups();
     if (!groups.length) {
         if (typeof calculatePrice === 'function') calculatePrice();
@@ -380,7 +529,10 @@ function closeModuleMergeConfirmModal() {
     var modal = document.getElementById('moduleMergeConfirmModal');
     if (modal) modal.classList.add('d-none');
 }
-function confirmModuleMergeAndGenerate() {
+function confirmModuleMergeAndGenerate(mode) {
+    // mode: 'merge'=合并并生成 | 'no'=不合并直接生成
+    // 选择持久化到订单自身（quoteData.moduleMergeChoice），保存后再从历史/排单卡片查看仍保持
+    setOrderModuleMergeChoice(mode === 'no' ? 'no' : 'merge');
     closeModuleMergeConfirmModal();
     if (typeof calculatePrice === 'function') calculatePrice();
 }
@@ -399,6 +551,9 @@ function renderModulePanels(mtype) {
             + '<div class="module-item-header"><span class="module-symbol">' + moduleSymbol(mtype, mod.seq) + '</span>'
             + '<span class="module-item-title">' + tag + '</span>'
             + '<button type="button" class="icon-action-btn module-collapse-btn" onclick="toggleModuleCollapse(\'' + mod.id + '\')" title="折叠/展开">▸</button>'
+            + '<button type="button" class="icon-action-btn module-duplicate-btn" onclick="duplicateModuleGroup(\'' + mod.id + '\')" title="复制此组（含组内全部' + (mtype === 'product' ? mgL('{制品}') : '赠品') + '与组级系数设置）">'
+            + '<svg class="icon sm" aria-hidden="true"><use href="#i-copy-new"></use></svg>'
+            + '<span class="sr-only">复制此组</span></button>'
             + '<button type="button" class="icon-action-btn delete module-delete-btn" onclick="openDeleteModuleChoice(\'' + mtype + '\',\'' + mod.id + '\')" title="删除此组">'
             + '<svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"></use></svg>'
             + '<span class="sr-only">删除此组</span></button></div>'
@@ -501,6 +656,52 @@ function addGiftModule() {
     try {
         (gifts || []).forEach(function (g) { try { renderGift(g); } catch (e) { /* ignore */ } });
     } catch (_eRerenderG) { /* ignore */ }
+    return newMod;
+}
+// 复制整个制品组/赠品组：连同组内全部条目（制品/赠品）与组级系数设置（加价/折扣/同模）一并复制为新组
+function duplicateModuleGroup(modId) {
+    normalizeOrderModules();
+    var mod = findOrderModule(modId);
+    if (!mod) return null;
+    var isProd = mod.mtype === 'product';
+    var targets = isProd ? products : gifts;
+    // 分配新组序号（复用被释放的最小序号）
+    var mods = modulesOfType(mod.mtype);
+    var seq = 1;
+    while (mods.some(function (m) { return m.seq === seq; })) seq++;
+    var newId = (mod.mtype === 'product' ? 'P' : 'G') + seq;
+    // 深拷贝组级设置
+    var newMod = pushOrderModule({
+        id: newId,
+        mtype: mod.mtype,
+        seq: seq,
+        upSelections: JSON.parse(JSON.stringify(mod.upSelections || [])),
+        downSelections: JSON.parse(JSON.stringify(mod.downSelections || [])),
+        sameModelSelection: mod.sameModelSelection ? JSON.parse(JSON.stringify(mod.sameModelSelection)) : undefined,
+        collapsed: !!mod.collapsed
+    });
+    // 复制该组下所有条目并分配新 id（与新增条目逻辑一致：复用最小可用序号）
+    targets.forEach(function (it) {
+        if (String(it.moduleId) !== String(mod.id)) return;
+        var copy = JSON.parse(JSON.stringify(it));
+        copy.moduleId = newId;
+        var used = targets.map(function (x) { return Number(x.id) || 0; });
+        var nid = 1;
+        var usedSet = {};
+        used.forEach(function (n) { usedSet[n] = true; });
+        while (usedSet[nid]) nid++;
+        copy.id = nid;
+        targets.push(copy);
+    });
+    renderModulePanels(mod.mtype);
+    // 重建面板后再挂载新组条目（含该组复制出的全部制品/赠品）
+    try {
+        targets.forEach(function (it) {
+            if (String(it.moduleId) !== String(newId)) return;
+            try { (isProd ? renderProduct(it) : renderGift(it)); } catch (e) { /* ignore */ }
+        });
+    } catch (_eRerenderDup) { /* ignore */ }
+    if (typeof syncExpectedProductCountFromProducts === 'function') syncExpectedProductCountFromProducts();
     return newMod;
 }
 // —— 制品组/赠品组删除：弹窗二选一（并入其他组 / 连同其下制品一并删除）——
@@ -787,6 +988,8 @@ function showSettingsSubPage(pageName) {
             loadSettings();
         } else if (pageName === 'customerSettings') {
             renderCustomerSettings();
+        } else if (pageName === 'roleProfiles') {
+            renderRoleSettings();
         } else if (pageName === 'marketingCards') {
             renderMarketingCards();
         }
@@ -2236,6 +2439,16 @@ function loadData() {
         } else {
             customers = [];
         }
+        // 角色档案：独立 key，结构简单直接替换
+        const savedRoleProfiles = localStorage.getItem('roleProfiles');
+        if (savedRoleProfiles) {
+            const parsedRoleProfiles = JSON.parse(savedRoleProfiles);
+            roleProfiles = Array.isArray(parsedRoleProfiles) ? parsedRoleProfiles : [];
+        } else {
+            roleProfiles = [];
+        }
+        // 忽略列表：已跳过不再提示建档的历史角色
+        loadRoleIgnored();
         // 接单物料配置：独立 key
         const savedMarketingCards = localStorage.getItem('marketingCards');
         if (savedMarketingCards) {
@@ -2318,6 +2531,182 @@ function backfillCustomerFromQuote(quote) {
     if (quote.contactInfo) payload.contactInfo = String(quote.contactInfo);
     const customer = upsertCustomer(payload);
     if (customer) saveCustomers();
+}
+
+// ===== 角色档案（localStorage 'roleProfiles'）：约稿角色名/原作IP/设定/备注 =====
+function loadRoleProfiles() {
+    try {
+        const raw = localStorage.getItem('roleProfiles');
+        roleProfiles = raw ? (JSON.parse(raw) || []) : [];
+        if (!Array.isArray(roleProfiles)) roleProfiles = [];
+    } catch (e) {
+        console.error('加载角色档案失败:', e);
+        roleProfiles = [];
+    }
+    return roleProfiles;
+}
+function saveRoleProfiles() {
+    try {
+        localStorage.setItem('roleProfiles', JSON.stringify(roleProfiles));
+    } catch (error) {
+        console.error('保存角色档案失败:', error);
+    }
+}
+function loadRoleIgnored() {
+    try {
+        const raw = localStorage.getItem('roleIgnoredNames');
+        const arr = raw ? JSON.parse(raw) : [];
+        roleIgnoredNames = Array.isArray(arr) ? arr.map(function (x) { return String(x).trim(); }).filter(Boolean) : [];
+    } catch (e) {
+        roleIgnoredNames = [];
+    }
+    return roleIgnoredNames;
+}
+function saveRoleIgnored() {
+    try {
+        localStorage.setItem('roleIgnoredNames', JSON.stringify(roleIgnoredNames));
+    } catch (error) {
+        console.error('保存忽略列表失败:', error);
+    }
+}
+function findRoleProfileByName(name) {
+    if (!name) return null;
+    const key = String(name).trim();
+    if (!key) return null;
+    return roleProfiles.find(function (r) { return r && r.name && String(r.name).trim() === key; }) || null;
+}
+function upsertRoleProfile(profile) {
+    if (!profile || !profile.name) return null;
+    const key = String(profile.name).trim();
+    const idx = roleProfiles.findIndex(function (r) { return r && r.name && String(r.name).trim() === key; });
+    const now = new Date().toISOString();
+    if (idx >= 0) {
+        // 仅填空值，不覆盖用户已填内容（显式编辑走 saveRoleEdit 的 Object.assign 覆盖路径）
+        const merged = Object.assign({}, roleProfiles[idx]);
+        Object.keys(profile).forEach(function (k) {
+            if (k === 'id' || k === 'name' || k === 'createdAt' || k === 'updatedAt') return;
+            if (profile[k] == null || profile[k] === '') return;
+            // 自定义字段：逐键补空值（整块已存在也要逐键合并，否则新键会丢）
+            if (k === 'customFields') {
+                if (typeof profile[k] !== 'object' || Array.isArray(profile[k])) return;
+                const curCustom = (merged.customFields && typeof merged.customFields === 'object') ? Object.assign({}, merged.customFields) : {};
+                Object.keys(profile[k]).forEach(function (ck) {
+                    const cv = profile[k][ck];
+                    if (cv == null || cv === '') return;
+                    if (curCustom[ck] == null || String(curCustom[ck]).trim() === '') curCustom[ck] = cv;
+                });
+                merged.customFields = curCustom;
+                return;
+            }
+            const cur = merged[k];
+            const isEmpty = cur == null
+                || (typeof cur === 'string' && !cur.trim())
+                || (Array.isArray(cur) && cur.length === 0);
+            if (!isEmpty) return;
+            merged[k] = profile[k];
+        });
+        merged.updatedAt = now;
+        roleProfiles[idx] = merged;
+        return merged;
+    }
+    const created = Object.assign({
+        id: 'r' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        ip: '', description: '',
+        createdAt: now, updatedAt: now
+    }, profile);
+    created.createdAt = created.createdAt || now;
+    created.updatedAt = now;
+    roleProfiles.push(created);
+    return created;
+}
+function removeRoleProfile(id) {
+    roleProfiles = roleProfiles.filter(function (r) { return r && r.id !== id; });
+}
+
+// ===== 角色档案字段字典 =====
+// 基础资料固定项：常用角色信息，编辑弹窗给固定输入框，卡片上按此顺序展示
+const ROLE_BASE_FIELDS = [
+    { key: 'gender',      label: '性别' },
+    { key: 'age',         label: '年龄' },
+    { key: 'birthday',    label: '生日' },
+    { key: 'height',      label: '身高' },
+    { key: 'weight',      label: '体重' },
+    { key: 'bloodType',   label: '血型' },
+    { key: 'constellation', label: '星座' },
+    { key: 'cv',          label: '声优' },
+    { key: 'affiliation', label: '阵营' },
+    { key: 'identity',    label: '身份' }
+];
+const ROLE_BASE_FIELD_KEYS = ROLE_BASE_FIELDS.map(function (f) { return f.key; });
+
+// 中/外文名 + 中/外文IP 的固定项（含在基础资料里单独成组展示）
+const ROLE_NAME_FIELDS = [
+    { key: 'name',       label: '角色名' },
+    { key: 'nameEn',     label: '角色名（外文）' },
+    { key: 'ip',         label: '原作 / IP' },
+    { key: 'ipEn',       label: '原作 / IP（外文）' },
+    { key: 'fullName',   label: '全名 / 真名' }
+];
+
+// 取角色基础资料（固定项 + 自定义项），返回 [{ key, label, value }]，空值已剔除
+function getRoleBaseInfo(rec) {
+    if (!rec) return [];
+    var out = [];
+    ROLE_BASE_FIELDS.forEach(function (f) {
+        var v = rec[f.key];
+        if (v == null) return;
+        v = String(v).trim();
+        if (!v) return;
+        out.push({ key: f.key, label: f.label, value: v });
+    });
+    var custom = rec.customFields;
+    if (custom && typeof custom === 'object') {
+        Object.keys(custom).forEach(function (k) {
+            if (ROLE_BASE_FIELD_KEYS.indexOf(k) >= 0) return; // 固定项优先，避免重复
+            var v = custom[k];
+            if (v == null) return;
+            v = String(v).trim();
+            if (!v) return;
+            out.push({ key: k, label: k, value: v });
+        });
+    }
+    return out;
+}
+
+// 取角色的语录列表（兼容字符串/数组两种历史写法）
+function getRoleQuotes(rec) {
+    if (!rec || rec.quotes == null) return [];
+    var raw = rec.quotes;
+    if (Array.isArray(raw)) {
+        return raw.map(function (q) { return String(q == null ? '' : q).trim(); }).filter(Boolean);
+    }
+    return String(raw).split('\n').map(function (q) { return q.trim(); }).filter(Boolean);
+}
+
+// 取角色别名列表（逗号/顿号/斜杠分隔）
+function getRoleAliases(rec) {
+    if (!rec || !rec.aliases) return [];
+    return String(rec.aliases).split(/[,，、\/|]/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+// 下单成功保存后回写/建档角色：命中已有角色仅填空值（不覆盖已填）；未建档则用本单信息创建档案
+// 角色名走智能解析：多角色自动拆分（各自建档）、中外文自动配对（nameEn/ipEn）
+function backfillRoleProfileFromQuote(quote) {
+    if (!quote || !quote.characterName) return;
+    const roles = parseHistoryRoleNames(quote.characterName);
+    if (!roles.length) return;
+    const ipp = parseHistoryIpPair(quote.projectOrigin);
+    let saved = false;
+    roles.forEach(function (p) {
+        if (!p.name) return;
+        const payload = { name: p.name };
+        if (p.nameEn) payload.nameEn = p.nameEn;
+        if (ipp.ip) payload.ip = ipp.ip;
+        if (ipp.ipEn) payload.ipEn = ipp.ipEn;
+        const role = upsertRoleProfile(payload);
+        if (role) saved = true;
+    });
+    if (saved) saveRoleProfiles();
 }
 
 // 客户统计：实时遍历 history 聚合（不落盘，避免双写不一致）
@@ -3192,6 +3581,835 @@ function deleteCustomer(id) {
     renderCustomerList();
     renderCustomerHistoryPrompt();
     renderCustomerHistoryArchive();
+}
+
+// ===== 角色档案管理页（设置子页面 roleProfiles） =====
+var roleEditingId = null;
+var roleEditViewMode = 'edit'; // 角色弹窗当前形态：card=角色卡片 / edit=编辑表单
+
+// ===== 重复 / 复合名档案整理 =====
+// 背景：早期建档的档案可能存着复合名（如「克莱恩/Klein Moretti」），或同一角色被拆成多条档案。
+// 规则：按「解析后的规范名」归并——规范名拆出中文名+外文名，重复项的字段逐项并入保留项后移除。
+var ROLE_MERGE_TEXT_FIELDS = ['nameEn', 'fullName', 'aliases', 'ip', 'ipEn', 'description', 'note', 'quotes'];
+
+// 规范名：复合名取中文部分（「克莱恩/Klein Moretti」→「克莱恩」）
+function canonicalRoleName(raw) {
+    var s = String(raw || '').trim();
+    if (!s) return '';
+    var parsed = parseHistoryRoleNames(s);
+    return (parsed.length && parsed[0].name) ? parsed[0].name : s;
+}
+
+function countRoleFilledFields(rec) {
+    if (!rec) return 0;
+    var n = 0;
+    ROLE_MERGE_TEXT_FIELDS.forEach(function (k) { if (rec[k] && String(rec[k]).trim()) n++; });
+    ROLE_BASE_FIELD_KEYS.forEach(function (k) { if (rec[k] && String(rec[k]).trim()) n++; });
+    if (rec.customFields && typeof rec.customFields === 'object') n += Object.keys(rec.customFields).length;
+    return n;
+}
+
+function mergeRoleAliasText(cur, add) {
+    var parts = String(cur || '').split(/[、，,/／|]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    String(add || '').split(/[、，,/／|]+/).map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (x) {
+        if (parts.indexOf(x) < 0) parts.push(x);
+    });
+    return parts.join('、');
+}
+
+// 计算整理方案：规范名相同的档案归为一组（保留字段最全的那条），含复合名规范化的单条也算
+function getRoleProfileCleanupPlan() {
+    var groups = {};
+    roleProfiles.forEach(function (r) {
+        if (!r || !r.name) return;
+        var canon = canonicalRoleName(r.name);
+        if (!canon) return;
+        (groups[canon] = groups[canon] || []).push(r);
+    });
+    var plan = [];
+    Object.keys(groups).forEach(function (k) {
+        var arr = groups[k];
+        if (!arr.length) return;
+        var keep = arr[0];
+        arr.forEach(function (r) { if (countRoleFilledFields(r) > countRoleFilledFields(keep)) keep = r; });
+        var dups = arr.filter(function (r) { return r !== keep; });
+        var rename = String(keep.name || '').trim() !== k;
+        if (dups.length || rename) plan.push({ canonical: k, keep: keep, dups: dups, rename: rename });
+    });
+    return plan;
+}
+
+// 执行整理：返回处理条数（已填内容只并入、不清空）
+function applyRoleProfileCleanup() {
+    var plan = getRoleProfileCleanupPlan();
+    if (!plan.length) return 0;
+    plan.forEach(function (g) {
+        var keep = g.keep;
+        // 1) 规范名：拆出中文名 + 外文名，旧写法沉淀为别名
+        if (g.rename) {
+            var parsed = parseHistoryRoleNames(keep.name);
+            var p = parsed.length ? parsed[0] : null;
+            if (p) {
+                var oldName = String(keep.name || '').trim();
+                if (p.nameEn && !keep.nameEn) keep.nameEn = p.nameEn;
+                if (p.name && p.name !== oldName) keep.name = p.name;
+                // 旧写法不沉淀为别名：中文名已入 name、外文名已入 nameEn，再存一遍只是噪音
+            }
+        }
+        // 2) 合并重复项
+        g.dups.forEach(function (dup) {
+            ROLE_MERGE_TEXT_FIELDS.forEach(function (k) {
+                var dv = dup[k] ? String(dup[k]).trim() : '';
+                if (!dv) return;
+                if (k === 'aliases') { keep.aliases = mergeRoleAliasText(keep.aliases, dv); return; }
+                var kv = keep[k] ? String(keep[k]).trim() : '';
+                if (!kv) { keep[k] = dv; return; }
+                if (k === 'quotes' && kv.indexOf(dv) < 0) keep[k] = kv + '\n' + dv;
+            });
+            ROLE_BASE_FIELD_KEYS.forEach(function (k) {
+                var dv = dup[k] ? String(dup[k]).trim() : '';
+                if (dv && !(keep[k] && String(keep[k]).trim())) keep[k] = dv;
+            });
+            if (dup.customFields && typeof dup.customFields === 'object') {
+                keep.customFields = Object.assign({}, dup.customFields, keep.customFields || {});
+                var ck = Object.keys(keep.customFields).length ? keep.customFields : null;
+                if (!ck) delete keep.customFields;
+            }
+            keep.updatedAt = new Date().toISOString();
+            removeRoleProfile(dup.id);
+        });
+    });
+    saveRoleProfiles();
+    return plan.length;
+}
+
+// 入口：先预览确认再执行（合并会移除重复项，建议先导出备份）
+function cleanupRoleProfiles() {
+    var plan = getRoleProfileCleanupPlan();
+    if (!plan.length) { showToast('没有检测到重复或复合名档案', 'ok'); return; }
+    var mergeCount = plan.reduce(function (n, g) { return n + g.dups.length; }, 0);
+    var renameCount = plan.filter(function (g) { return g.rename; }).length;
+    var lines = plan.slice(0, 12).map(function (g) {
+        var t = '· ' + g.canonical;
+        if (g.dups.length) t += '（合并 ' + g.dups.length + ' 条重复）';
+        if (g.rename) t += '（名称规范化）';
+        return t;
+    }).join('\n');
+    if (plan.length > 12) lines += '\n…等共 ' + plan.length + ' 项';
+    var ok = confirm('将整理 ' + plan.length + ' 个档案：合并 ' + mergeCount + ' 条重复、规范 ' + renameCount + ' 个名称。\n\n'
+        + lines
+        + '\n\n已填信息会并入保留项、不会被清空；重复项会被移除。建议先导出 JSON 备份。\n\n确定继续？');
+    if (!ok) return;
+    var n = applyRoleProfileCleanup();
+    renderRoleSettings();
+    showToast('已整理 ' + n + ' 个档案（合并 ' + mergeCount + ' 条重复）', 'ok');
+}
+
+function renderRoleSettings() {
+    renderRoleHistoryPrompt();
+    renderRoleList();
+    renderRoleHistoryArchive();
+}
+
+function toggleRoleHistoryPanel() {
+    const panel = document.getElementById('roleHistoryPanel');
+    const btn = document.getElementById('roleHistoryExpandBtn');
+    if (!panel) return;
+    const show = panel.classList.contains('d-none');
+    panel.classList.toggle('d-none', !show);
+    if (btn) btn.textContent = show ? '收起' : '展开建档';
+}
+
+// 空态引导：一键展开历史角色建档提示与面板
+function roleEmptyImportHistory() {
+    renderRoleHistoryPrompt();
+    const prompt = document.getElementById('roleHistoryPrompt');
+    if (prompt) prompt.classList.remove('d-none');
+    const panel = document.getElementById('roleHistoryPanel');
+    if (panel) panel.classList.remove('d-none');
+    const btn = document.getElementById('roleHistoryExpandBtn');
+    if (btn) btn.textContent = '收起';
+}
+
+// 首次建档提示条：仅当存在未建档历史角色时显示
+function renderRoleHistoryPrompt() {
+    const prompt = document.getElementById('roleHistoryPrompt');
+    if (!prompt) return;
+    const list = getUnarchivedRoleSummaries();
+    if (list.length === 0) {
+        prompt.classList.add('d-none');
+        return;
+    }
+    const textEl = document.getElementById('roleHistoryPromptText');
+    if (textEl) textEl.textContent = '检测到 ' + list.length + ' 个历史角色尚未建档，是否纳入角色档案？';
+    prompt.classList.remove('d-none');
+}
+
+// ===== 历史角色名智能解析：拆分多角色 + 识别中/外文名 =====
+// "钟离、胡桃" → 2 个角色；"克莱恩/Klein Moretti" → 中文+外文一对；"奥黛丽Audrey Hall" → 同上
+// 识别不到配对时整体作为中文名（nameEn 留空），绝不误拆纯外文名（如 Fate/Grand Order）
+function isCjkName(s) {
+    return /^[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF·・\s]+$/.test(String(s || '').trim());
+}
+function isLatinName(s) {
+    return /^[A-Za-z][A-Za-z\s'’\-\.]*$/.test(String(s || '').trim());
+}
+// 单段解析：括号对 / 中文后接外文 / 外文后接中文；都不命中则整段作为中文名
+function parseSingleRoleName(seg) {
+    var s = String(seg || '').trim();
+    if (!s) return null;
+    // 「中文名(外文名)」/「中文名（外文名）」
+    var m = s.match(/^(.+?)\s*[(（]\s*([A-Za-z][A-Za-z\s'’\-\.]*?)\s*[)）]$/);
+    if (m && isCjkName(m[1]) && isLatinName(m[2])) return { name: m[1].trim(), nameEn: m[2].trim() };
+    // 中文（含日文假名）后直接接外文：奥黛丽Audrey Hall / 初音ミクHatsune Miku
+    m = s.match(/^([\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF·・]+)\s*([A-Za-z][A-Za-z\s'’\-\.]*)$/);
+    if (m) return { name: m[1].trim(), nameEn: m[2].trim() };
+    // 外文在前：Fischl菲谢尔 / Klein克莱恩
+    m = s.match(/^([A-Za-z][A-Za-z\s'’\-\.]*?)\s*([\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF·・]+)$/);
+    if (m) return { name: m[2].trim(), nameEn: m[1].trim() };
+    return { name: s, nameEn: '' };
+}
+// 把「中文/外文」连续块切分并配对用的分词器：中文块 / 外文块（外文块可含内部空格，如 Optimus Prime）
+function tokenizeRoleRuns(seg) {
+    var s = String(seg || '');
+    var runs = [];
+    var re = /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF·・]+|[A-Za-z][A-Za-z'’\-\.]*(?:[ \t]+[A-Za-z][A-Za-z'’\-\.]*)*/g;
+    var m, lastEnd = 0, hasOther = false;
+    while ((m = re.exec(s)) !== null) {
+        if (s.slice(lastEnd, m.index).trim()) hasOther = true;
+        runs.push({ type: /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF·・]/.test(m[0].charAt(0)) ? 'cjk' : 'latin', text: m[0].trim() });
+        lastEnd = re.lastIndex;
+    }
+    if (s.slice(lastEnd).trim()) hasOther = true;
+    return { runs: runs, hasOther: hasOther };
+}
+
+// 段内展开：一个段可能含多个角色（中英文块交替），按「中文 + 外文」两两配对拆开
+// 「伦纳德·米切尔Leonard Mitchell克莱恩·莫雷蒂Klein Moretti」→ 2 个角色
+// 「西木子 池年 哪吒」→ 3 个角色；「威震天Megatron 擎天柱Optimus Prime」→ 2 个角色
+// 外文起头的多块串（如「JJL职业战队AWG屠夫选手」）整体保留，避免误拆战队/描述串
+function expandRoleSegment(seg) {
+    var s = String(seg || '').trim();
+    if (!s) return [];
+    var paren = parseSingleRoleName(s);
+    if (paren && paren.nameEn) return [paren];
+    var tk = tokenizeRoleRuns(s);
+    if (tk.hasOther || tk.runs.length <= 1) return [{ name: s, nameEn: '' }];
+    if (tk.runs[0].type === 'cjk') {
+        var out = [];
+        for (var i = 0; i < tk.runs.length; i++) {
+            var cur = tk.runs[i], next = tk.runs[i + 1];
+            if (cur.type === 'cjk' && next && next.type === 'latin') {
+                out.push({ name: cur.text, nameEn: next.text });
+                i++;
+            } else {
+                out.push({ name: cur.text, nameEn: '' });
+            }
+        }
+        return out;
+    }
+    var one = parseSingleRoleName(s);
+    return one && one.name ? [one] : [];
+}
+
+// 拆分多角色：显式分隔符（、，,/／|;；&＋+）+ 连接符（x/×/vs，仅当两侧都是名字字符）+ 中英文块交替
+function parseHistoryRoleNames(raw) {
+    var s = String(raw || '').trim();
+    if (!s) return [];
+    // 连接符归一化：中文/右括号 + x|×|vs + 中文/左括号 → 分隔符（不吞拉丁，避免误伤 钟离xiao / Ex 这类拼音或单词）
+    s = s.replace(/([\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF)）])\s*(?:[xX×✕╳*＊]|vs|VS|Vs|vS)\s*(?=[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF(（])/g, '$1\u0001');
+    var parts = s.split(/[\u0001、，,/／|;；&＆＋+]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    if (!parts.length) return [];
+    var roles = [];
+    for (var i = 0; i < parts.length; i++) {
+        var cur = parts[i], next = parts[i + 1] || null;
+        // 跨段配对：中文段 + 相邻外文段（或反之）合并为一个角色
+        if (next && isCjkName(cur) && isLatinName(next)) { roles.push({ name: cur.trim(), nameEn: next.trim() }); i++; continue; }
+        if (next && isLatinName(cur) && isCjkName(next)) { roles.push({ name: next.trim(), nameEn: cur.trim() }); i++; continue; }
+        expandRoleSegment(cur).forEach(function (r) { roles.push(r); });
+    }
+    return roles;
+}
+// 原作/IP 解析：不拆多段，只识别中/外文对；识别失败整体作为中文 IP
+function parseHistoryIpPair(raw) {
+    var s = String(raw || '').trim();
+    if (!s) return { ip: '', ipEn: '' };
+    var one = parseSingleRoleName(s);
+    if (one && one.nameEn) return { ip: one.name, ipEn: one.nameEn };
+    var parts = s.split(/[、，,/／|;；&＆＋+]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    if (parts.length === 2 && isCjkName(parts[0]) && isLatinName(parts[1])) return { ip: parts[0], ipEn: parts[1] };
+    if (parts.length === 2 && isLatinName(parts[0]) && isCjkName(parts[1])) return { ip: parts[1], ipEn: parts[0] };
+    return { ip: s, ipEn: '' };
+}
+
+// 未建档角色汇总：按解析后的角色名聚合历史（自动拆分多角色/配对中外文，剔除已建档与已忽略），附最近一笔的原作/IP
+function getUnarchivedRoleSummaries() {
+    const archivedNames = new Set(roleProfiles.map(function (r) { return r && r.name ? String(r.name).trim() : ''; }).filter(Boolean));
+    const ignoredNames = new Set(roleIgnoredNames.map(function (n) { return String(n).trim(); }).filter(Boolean));
+    const byName = {};
+    history.forEach(function (item) {
+        if (!item || !item.characterName) return;
+        const roles = parseHistoryRoleNames(item.characterName);
+        if (!roles.length) return;
+        const ipp = parseHistoryIpPair(item.projectOrigin);
+        const ts = new Date(item.timestamp || 0).getTime();
+        roles.forEach(function (p) {
+            const key = p.name;
+            if (!key || archivedNames.has(key) || ignoredNames.has(key)) return;
+            if (!byName[key]) byName[key] = { name: key, nameEn: '', ip: '', ipEn: '', count: 0, lastTs: 0 };
+            const rec = byName[key];
+            rec.count += 1;
+            if (!rec.nameEn && p.nameEn) rec.nameEn = p.nameEn;
+            if (ts > rec.lastTs) {
+                rec.lastTs = ts;
+                rec.ip = ipp.ip;
+                rec.ipEn = ipp.ipEn;
+            }
+        });
+    });
+    return Object.values(byName).sort(function (a, b) { return b.count - a.count; });
+}
+
+function renderRoleHistoryArchive() {
+    const container = document.getElementById('roleHistoryArchiveContainer');
+    if (!container) return;
+    const list = getUnarchivedRoleSummaries();
+    if (list.length === 0) {
+        container.innerHTML = '<div class="customer-empty text-gray" style="padding:24px 0;text-align:center;">历史角色均已建档或已忽略。</div>';
+        return;
+    }
+    const selectedCount = list.filter(function (r) { return selectedRoleNames.has(r.name); }).length;
+    const toolbar = '<div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">' +
+        '<span class="text-gray" style="font-size:13px;">共 ' + list.length + ' 个待建档</span>' +
+        '<label class="role-history-selectall" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;user-select:none;">' +
+            '<input type="checkbox" id="roleHistorySelectAll"' + (list.length > 0 && selectedCount === list.length ? ' checked' : '') + ' onchange="toggleSelectAllRoles(this.checked)"> 全选</label>' +
+        '<button class="btn btn-compact" id="roleHistorySelectedBtn" style="margin-left:auto;" onclick="archiveSelectedRolesFromHistory()"' + (selectedCount === 0 ? ' disabled' : '') + '>选中建档（' + selectedCount + '）</button>' +
+        '<button class="btn btn-compact" onclick="archiveAllRolesFromHistory()">全部建档</button>' +
+    '</div>';
+    const rows = list.map(function (r) {
+        const ipText = [r.ip, r.ipEn].filter(Boolean).join(' / ');
+        const ip = ipText ? escapeHtml(ipText) : '<span class="text-gray">未记录原作/IP</span>';
+        const titleEn = r.nameEn ? '<span class="role-card-title-en">' + escapeHtml(r.nameEn) + '</span>' : '';
+        const checked = selectedRoleNames.has(r.name) ? ' checked' : '';
+        return '<div class="customer-archive-row">' +
+            '<label class="role-history-check" style="flex:0 0 auto;display:inline-flex;align-items:center;cursor:pointer;">' +
+                '<input type="checkbox" data-role-name="' + escapeHtml(r.name) + '" onchange="toggleRoleSelect(this)"' + checked + '></label>' +
+            '<div class="customer-card-main">' +
+                '<div class="customer-card-title">' + escapeHtml(r.name) + titleEn + '</div>' +
+                '<div class="customer-card-contact text-gray">' + ip + '</div>' +
+                '<div class="customer-card-stats">' + r.count + ' 单</div>' +
+            '</div>' +
+            '<div class="customer-card-actions">' +
+                '<button class="btn btn-compact" title="忽略后不再提示，且不可恢复" onclick="ignoreRoleFromHistory(\'' + encodeURIComponent(r.name) + '\')">忽略</button>' +
+                '<button class="btn btn-compact" onclick="archiveRoleFromHistory(\'' + encodeURIComponent(r.name) + '\')">建档</button>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+    const emptyRows = list.length === 0
+        ? '<div class="customer-empty text-gray" style="padding:16px 0;text-align:center;">暂无待建档角色</div>'
+        : '';
+    container.innerHTML = toolbar + emptyRows + rows;
+}
+
+// 勾选/取消单个角色
+function toggleRoleSelect(checkbox) {
+    const name = checkbox.getAttribute('data-role-name');
+    if (checkbox.checked) selectedRoleNames.add(name);
+    else selectedRoleNames.delete(name);
+    syncRoleHistoryToolbar();
+}
+
+// 全选/取消全选
+function toggleSelectAllRoles(checked) {
+    const list = getUnarchivedRoleSummaries();
+    list.forEach(function (r) { if (checked) selectedRoleNames.add(r.name); else selectedRoleNames.delete(r.name); });
+    renderRoleHistoryArchive();
+}
+
+// 仅更新工具栏的选中计数与全选状态（不整块重绘，避免勾选时跳动）
+function syncRoleHistoryToolbar() {
+    const list = getUnarchivedRoleSummaries();
+    const selectedCount = list.filter(function (r) { return selectedRoleNames.has(r.name); }).length;
+    const btn = document.getElementById('roleHistorySelectedBtn');
+    if (btn) {
+        btn.disabled = (selectedCount === 0);
+        btn.textContent = '选中建档（' + selectedCount + '）';
+    }
+    const selAll = document.getElementById('roleHistorySelectAll');
+    if (selAll) selAll.checked = (list.length > 0 && selectedCount === list.length);
+}
+
+// 选中建档（批量）
+function archiveSelectedRolesFromHistory() {
+    const list = getUnarchivedRoleSummaries();
+    const selected = list.filter(function (r) { return selectedRoleNames.has(r.name); });
+    if (selected.length === 0) { alert('请先勾选要建档的角色。'); return; }
+    selected.forEach(function (r) { upsertRoleProfile({ name: r.name, nameEn: r.nameEn, ip: r.ip, ipEn: r.ipEn }); selectedRoleNames.delete(r.name); });
+    saveRoleProfiles();
+    renderRoleHistoryPrompt();
+    renderRoleHistoryArchive();
+    renderRoleList();
+    alert('已为 ' + selected.length + ' 个角色创建档案，可进入列表补充设定/备注。');
+}
+
+function archiveRoleFromHistory(name) {
+    const key = decodeURIComponent(name);
+    const rec = getUnarchivedRoleSummaries().find(function (r) { return r.name === key; });
+    if (!rec) { alert('未找到该角色的历史记录。'); return; }
+    if (findRoleProfileByName(key)) { alert('该角色已建档。'); renderRoleHistoryPrompt(); renderRoleHistoryArchive(); return; }
+    upsertRoleProfile({ name: rec.name, nameEn: rec.nameEn, ip: rec.ip, ipEn: rec.ipEn });
+    saveRoleProfiles();
+    selectedRoleNames.delete(key);
+    renderRoleHistoryPrompt();
+    renderRoleHistoryArchive();
+    renderRoleList();
+    alert('已为「' + rec.name + '」创建角色档案，可进入列表补充设定/备注。');
+}
+
+function archiveAllRolesFromHistory() {
+    const list = getUnarchivedRoleSummaries();
+    if (list.length === 0) { alert('没有可建档的历史角色。'); return; }
+    list.forEach(function (r) { upsertRoleProfile({ name: r.name, nameEn: r.nameEn, ip: r.ip, ipEn: r.ipEn }); selectedRoleNames.delete(r.name); });
+    saveRoleProfiles();
+    renderRoleHistoryPrompt();
+    renderRoleHistoryArchive();
+    renderRoleList();
+    alert('已为 ' + list.length + ' 个历史角色创建角色档案。');
+}
+
+// 忽略单个历史角色（不再提示建档，可事后恢复）
+function ignoreRoleFromHistory(name) {
+    const key = decodeURIComponent(name);
+    if (roleIgnoredNames.indexOf(key) < 0) roleIgnoredNames.push(key);
+    selectedRoleNames.delete(key);
+    saveRoleIgnored();
+    renderRoleHistoryPrompt();
+    renderRoleHistoryArchive();
+    renderRoleList();
+}
+
+// 角色列表分组方式：alpha 按拼音首字母 / ip 按原作IP（默认按IP，会话内记忆）
+var roleGroupMode = 'ip';
+
+function setRoleGroupMode(mode) {
+    roleGroupMode = (mode === 'ip') ? 'ip' : 'alpha';
+    const seg = document.getElementById('roleGroupSegmented');
+    if (seg) {
+        seg.querySelectorAll('button[data-mode]').forEach(function (b) {
+            b.classList.toggle('is-active', b.getAttribute('data-mode') === roleGroupMode);
+        });
+    }
+    renderRoleList();
+}
+
+// 角色列表渲染：按拼音首字母分组（复用客户分组 key）或按原作IP分组
+function renderRoleList() {
+    const container = document.getElementById('roleListContainer');
+    if (!container) return;
+    const kw = String((document.getElementById('roleSearchInput') || {}).value || '').trim().toLowerCase();
+    let list = roleProfiles.slice();
+    if (kw) {
+        list = list.filter(function (r) {
+            return (r.name || '').toLowerCase().indexOf(kw) >= 0 ||
+                (r.ip || '').toLowerCase().indexOf(kw) >= 0 ||
+                (r.description || '').toLowerCase().indexOf(kw) >= 0 ||
+                (r.note || '').toLowerCase().indexOf(kw) >= 0;
+        });
+    }
+    list.sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || ''), 'zh'); });
+    if (list.length === 0) {
+        container.innerHTML = '<div class="customer-empty text-gray" style="padding:32px 0;text-align:center;">' +
+            (roleProfiles.length === 0
+                ? '还没有角色档案。<br>点击「+ 添加角色」手动建档，或'
+                : '未找到匹配的角色档案。') +
+            (roleProfiles.length === 0 ? ' <a href="javascript:void(0)" onclick="roleEmptyImportHistory()" style="color:var(--accent, #4f7cff);">从历史订单导入</a>。' : '') +
+        '</div>';
+        renderRoleIndexRail([]);
+        return;
+    }
+    const groups = {};
+    list.forEach(function (r) {
+        const g = roleGroupMode === 'ip'
+            ? (String(r.ip || '').trim() ? getCustomerGroupKey(r.ip) : '未记录')
+            : getCustomerGroupKey(r.name);
+        (groups[g] = groups[g] || []).push(r);
+    });
+    // 分组排序：字母顺序 A-Z，# 与 未记录 沉底（两种分组模式通用）
+    const keyOrder = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    const keys = Object.keys(groups).sort(function (a, b) {
+        const aEnd = (a === '未记录');
+        const bEnd = (b === '未记录');
+        if (aEnd && bEnd) return 0;
+        if (aEnd) return 1;
+        if (bEnd) return -1;
+        const ia = keyOrder.indexOf(a);
+        const ib = keyOrder.indexOf(b);
+        if (ia < 0 && ib < 0) return a.localeCompare(b, 'zh');
+        if (ia < 0) return 1;
+        if (ib < 0) return -1;
+        return ia - ib;
+    });
+    const html = keys.map(function (g) {
+        const labelHtml = roleGroupMode === 'ip'
+            ? '<span class="customer-group-ip">' + escapeHtml(g) + '</span>'
+            : '<span class="customer-group-letter">' + escapeHtml(g) + '</span>';
+        return '<div class="customer-group" data-group="' + escapeHtml(g) + '">' +
+            '<div class="customer-group-header">' + labelHtml + '</div>' +
+            '<div class="customer-group-body">' + groups[g].map(roleCardHtml).join('') + '</div>' +
+        '</div>';
+    }).join('');
+    container.innerHTML = html;
+    // 右侧 A-Z# 快捷索引（仅显示实际存在的分组字母）
+    const presentKeys = keyOrder.filter(function (k) { return groups[k] && groups[k].length > 0; });
+    renderRoleIndexRail(presentKeys);
+}
+
+// 渲染角色列表右侧 A-Z# 快捷索引栏（空列表时不渲染按钮）
+function renderRoleIndexRail(presentKeys) {
+    const rail = document.getElementById('roleIndexRail');
+    if (!rail) return;
+    if (!presentKeys || presentKeys.length === 0) {
+        rail.classList.add('d-none');
+        rail.innerHTML = '';
+        return;
+    }
+    rail.classList.remove('d-none');
+    rail.innerHTML = presentKeys.map(function (k) {
+        const label = k === '#' ? '#' : k;
+        return '<button type="button" class="customer-index-btn" data-idx="' + escapeHtml(k) + '" onclick="scrollToRoleGroup(\'' + escapeHtml(k) + '\')">' + escapeHtml(label) + '</button>';
+    }).join('');
+}
+
+// 点击索引按钮平滑滚动到对应字母分组
+function scrollToRoleGroup(key) {
+    const el = document.querySelector('#roleListContainer .customer-group[data-group="' + key + '"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// 单张角色档案卡片 HTML（列表内紧凑展示：外文名/别名 + 资料摘要，点击名字进编辑弹窗）
+function roleCardHtml(r) {
+    if (!r) return '';
+    var nameEn = r.nameEn ? String(r.nameEn).trim() : '';
+    var ipZh = r.ip ? String(r.ip).trim() : '';
+    var ipEn = r.ipEn ? String(r.ipEn).trim() : '';
+    var aliases = getRoleAliases(r);
+
+    // 头部：中文名 +（外文名）
+    var titleHtml = '<span class="customer-card-title role-card-clickable" title="点击查看角色卡片"'
+        + ' onclick="event.stopPropagation();openRoleEditModal(\'' + escapeHtml(String(r.id)) + '\')">'
+        + escapeHtml(String(r.name || '未命名'))
+        + (nameEn ? '<span class="role-card-title-en">' + escapeHtml(nameEn) + '</span>' : '')
+        + '</span>';
+
+    // 原作行：中文 IP + 外文 IP
+    var ipLine = '';
+    if (ipZh || ipEn) {
+        ipLine = '<div class="role-card-ip-line">'
+            + (ipZh ? '<span class="role-card-ip">' + escapeHtml(ipZh) + '</span>' : '')
+            + (ipEn ? '<span class="role-card-ip-en">' + escapeHtml(ipEn) + '</span>' : '')
+            + '</div>';
+    }
+
+    // 别名行
+    var aliasLine = aliases.length
+        ? '<div class="role-card-alias-line">' + aliases.map(function (a) {
+            return '<span class="role-view-alias">' + escapeHtml(a) + '</span>';
+        }).join('') + '</div>'
+        : '';
+
+    // 列表卡片只显示前三行：名字 / IP / 别名；资料/设定/语录进编辑弹窗查看
+    return '<div class="customer-card role-card-with-view">' +
+        '<div class="customer-card-main">' +
+            '<div class="customer-card-title-row">' + titleHtml + '</div>' +
+            ipLine +
+            aliasLine +
+        '</div>' +
+        '<div class="customer-card-actions">' +
+            '<button class="btn customer-action-btn" title="编辑资料" aria-label="编辑资料" onclick="openRoleEditModal(\'' + escapeHtml(String(r.id)) + '\', \'edit\')">✎</button>' +
+            '<button class="btn customer-action-btn customer-action-btn-danger" title="删除" aria-label="删除" onclick="deleteRoleProfile(\'' + escapeHtml(String(r.id)) + '\')">🗑</button>' +
+        '</div>' +
+    '</div>';
+}
+
+
+// ===== 角色卡片视图（与编辑表单共处同一弹窗，卡片 ⇄ 编辑可自由切换） =====
+// 判断档案是否已补充过任何资料（只有名字的档案直接进编辑，避免看到空卡片）
+function roleHasContent(rec) {
+    if (!rec) return false;
+    var textKeys = ['nameEn', 'fullName', 'aliases', 'ip', 'ipEn', 'description', 'quotes'];
+    if (textKeys.some(function (k) { return rec[k] && String(rec[k]).trim(); })) return true;
+    if (ROLE_BASE_FIELD_KEYS.some(function (k) { return rec[k] && String(rec[k]).trim(); })) return true;
+    if (rec.customFields && typeof rec.customFields === 'object' && Object.keys(rec.customFields).length) return true;
+    return false;
+}
+
+// 角色卡片 HTML：头部（中/外文名 + 全名/别名）→ 原作IP → 基础资料 → 设定 → 语录 → 备注
+function buildRoleCardViewHtml(rec) {
+    if (!rec) return '';
+    var nameEn = rec.nameEn ? String(rec.nameEn).trim() : '';
+    var fullName = rec.fullName ? String(rec.fullName).trim() : '';
+    var aliases = getRoleAliases(rec);
+    var ipZh = rec.ip ? String(rec.ip).trim() : '';
+    var ipEn = rec.ipEn ? String(rec.ipEn).trim() : '';
+    var desc = rec.description ? String(rec.description).trim() : '';
+    var quotes = getRoleQuotes(rec);
+    var baseInfo = getRoleBaseInfo(rec);
+    var html = '';
+
+    html += '<div class="role-card-view-head">'
+        + '<div class="role-card-view-name">' + escapeHtml(String(rec.name || '未命名'))
+        + (nameEn ? '<span class="role-card-view-name-en">' + escapeHtml(nameEn) + '</span>' : '')
+        + '</div>';
+    var chips = [];
+    if (fullName) chips.push('<span class="role-view-chip">全名：' + escapeHtml(fullName) + '</span>');
+    aliases.forEach(function (a) { chips.push('<span class="role-view-chip">' + escapeHtml(a) + '</span>'); });
+    if (chips.length) html += '<div class="role-card-view-sub">' + chips.join('') + '</div>';
+    html += '</div>';
+
+    if (ipZh || ipEn) {
+        html += '<div class="role-card-view-ip">'
+            + (ipZh ? '<span class="ip-zh">' + escapeHtml(ipZh) + '</span>' : '')
+            + (ipEn ? '<span class="ip-en">' + escapeHtml(ipEn) + '</span>' : '')
+            + '</div>';
+    }
+
+    if (baseInfo.length) {
+        html += '<div class="role-card-view-section">'
+            + '<div class="role-card-view-label">基础资料</div>'
+            + '<div class="role-card-view-grid">'
+            + baseInfo.map(function (f) {
+                return '<div class="role-card-view-item"><i>' + escapeHtml(f.label) + '</i><span>' + escapeHtml(f.value) + '</span></div>';
+            }).join('')
+            + '</div></div>';
+    }
+    if (desc) {
+        html += '<div class="role-card-view-section">'
+            + '<div class="role-card-view-label">设定 / 描述</div>'
+            + '<div class="role-card-view-text">' + escapeHtml(desc) + '</div></div>';
+    }
+    if (quotes.length) {
+        html += '<div class="role-card-view-section">'
+            + '<div class="role-card-view-label">语录 / 台词</div>'
+            + '<div class="role-card-view-quote">' + quotes.map(function (q) { return escapeHtml(q); }).join('<br>') + '</div></div>';
+    }
+    if (!roleHasContent(rec)) {
+        html += '<div class="role-card-view-empty">还没有补充资料，点击「编辑资料」完善这个角色。</div>';
+    }
+    return html;
+}
+
+// 切换弹窗内的卡片 / 编辑两种形态
+function setRoleEditMode(mode) {
+    roleEditViewMode = (mode === 'card') ? 'card' : 'edit';
+    var cardView = document.getElementById('roleEditCardView');
+    var formView = document.getElementById('roleEditFormView');
+    var idEl = document.getElementById('roleEditId');
+    var curId = idEl ? String(idEl.value || '') : '';
+    var titleEl = document.getElementById('roleEditModalTitle');
+    var isCard = (roleEditViewMode === 'card');
+    if (isCard) {
+        // 卡片始终从最新档案渲染，保证保存后即时反映
+        var rec = curId ? (roleProfiles.find(function (x) { return x && x.id === curId; }) || null) : null;
+        if (!rec) {
+            var nEl = document.getElementById('roleEditName');
+            var eEl = document.getElementById('roleEditNameEn');
+            rec = { name: nEl ? nEl.value : '', nameEn: eEl ? eEl.value : '' };
+        }
+        if (cardView) { cardView.innerHTML = buildRoleCardViewHtml(rec); cardView.classList.remove('d-none'); }
+        if (formView) formView.classList.add('d-none');
+        if (titleEl) titleEl.textContent = '角色信息';
+    } else {
+        if (cardView) cardView.classList.add('d-none');
+        if (formView) formView.classList.remove('d-none');
+        if (titleEl) titleEl.textContent = curId ? '编辑角色' : '添加角色';
+    }
+    var toEditBtn = document.getElementById('roleEditToEditBtn');
+    var saveBtn = document.getElementById('roleEditSaveBtn');
+    var cancelBtn = document.getElementById('roleEditCancelBtn');
+    if (toEditBtn) toEditBtn.classList.toggle('d-none', !isCard);
+    if (saveBtn) saveBtn.classList.toggle('d-none', isCard);
+    if (cancelBtn) cancelBtn.textContent = isCard ? '关闭' : '取消';
+}
+
+// 取消 / 关闭：编辑已有档案时回到卡片（放弃本次改动），其余情况直接关闭弹窗
+function cancelRoleEditMode() {
+    var idEl = document.getElementById('roleEditId');
+    if (roleEditViewMode === 'edit' && idEl && String(idEl.value || '')) {
+        setRoleEditMode('card');
+        return;
+    }
+    closeRoleEditModal();
+}
+
+// 打开角色弹窗：默认展示角色卡片（无资料的新档案直接进编辑），可直接切换编辑补充信息
+function openRoleEditModal(roleId, preferredMode) {
+    const modal = document.getElementById('roleEditModal');
+    if (!modal) return;
+    roleEditingId = roleId || null;
+    const isEdit = !!roleEditingId;
+    document.getElementById('roleEditModalTitle').textContent = isEdit ? '编辑角色' : '添加角色';
+    const r = isEdit ? (roleProfiles.find(function (x) { return x && x.id === roleId; }) || null) : null;
+    document.getElementById('roleEditId').value = r ? (r.id || '') : '';
+    document.getElementById('roleEditName').value = r ? (r.name || '') : '';
+    // 中/外文名 + 别名 + 全名
+    setRoleEditValue('roleEditNameEn', r ? r.nameEn : '');
+    setRoleEditValue('roleEditFullName', r ? r.fullName : '');
+    setRoleEditValue('roleEditAliases', r ? r.aliases : '');
+    // 中/外文 IP
+    document.getElementById('roleEditIp').value = r ? (r.ip || '') : '';
+    setRoleEditValue('roleEditIpEn', r ? r.ipEn : '');
+    // 基础资料固定项
+    ROLE_BASE_FIELDS.forEach(function (f) {
+        setRoleEditValue('roleEdit_' + f.key, r ? r[f.key] : '');
+    });
+    // 语录（数组 → 每行一条）
+    setRoleEditValue('roleEditQuotes', r ? getRoleQuotes(r).join('\n') : '');
+    document.getElementById('roleEditDescription').value = r ? (r.description || '') : '';
+
+    // 自定义字段行
+    var list = document.getElementById('roleEditCustomList');
+    if (list) {
+        list.innerHTML = '';
+        var custom = (r && r.customFields && typeof r.customFields === 'object') ? r.customFields : {};
+        Object.keys(custom).forEach(function (k) {
+            if (ROLE_BASE_FIELD_KEYS.indexOf(k) >= 0) return;
+            addRoleCustomFieldRow(k, custom[k]);
+        });
+    }
+
+    // 有「更多资料」内容时自动展开折叠区
+    var hasMore = ROLE_BASE_FIELDS.some(function (f) { return r && r[f.key] && String(r[f.key]).trim(); })
+        || (r && r.customFields && Object.keys(r.customFields).length > 0)
+        || (r && getRoleQuotes(r).length > 0)
+        || (r && r.aliases);
+    var moreBox = document.getElementById('roleEditMoreBox');
+    var moreBtn = document.getElementById('roleEditMoreBtn');
+    if (moreBox && moreBtn) {
+        if (hasMore) { moreBox.classList.remove('d-none'); moreBtn.textContent = '收起更多资料'; }
+        else { moreBox.classList.add('d-none'); moreBtn.textContent = '展开更多资料'; }
+    }
+
+    modal.classList.remove('d-none');
+    modal.setAttribute('aria-hidden', 'false');
+    // 默认卡片视图（空档案无内容可看，直接进编辑），可传 preferredMode 强制指定
+    var mode = preferredMode || (isEdit ? 'card' : 'edit');
+    if (mode === 'card' && !roleHasContent(r)) mode = 'edit';
+    setRoleEditMode(mode);
+    if (mode === 'edit') {
+        setTimeout(function () { const el = document.getElementById('roleEditName'); if (el) el.focus(); }, 50);
+    }
+}
+
+// 弹窗字段安全赋值（元素不存在时静默跳过，兼容旧版 HTML）
+function setRoleEditValue(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.value = value == null ? '' : String(value);
+}
+
+function closeRoleEditModal() {
+    const modal = document.getElementById('roleEditModal');
+    if (modal) { modal.classList.add('d-none'); modal.setAttribute('aria-hidden', 'true'); }
+    roleEditingId = null;
+}
+
+function saveRoleEdit() {
+    const name = String(document.getElementById('roleEditName').value || '').trim();
+    if (!name) { showToast('请填写角色名', 'warn'); return; }
+    const id = document.getElementById('roleEditId').value || '';
+    const existing = findRoleProfileByName(name);
+    if (existing && existing.id !== id) { showToast('已存在同名角色「' + name + '」', 'warn'); return; }
+
+    // 固定基础资料：非空才写入，空值表示「清空该项」
+    var profile = {
+        name: name,
+        nameEn: String((document.getElementById('roleEditNameEn') || {}).value || '').trim(),
+        fullName: String((document.getElementById('roleEditFullName') || {}).value || '').trim(),
+        aliases: String((document.getElementById('roleEditAliases') || {}).value || '').trim(),
+        ip: String(document.getElementById('roleEditIp').value || '').trim(),
+        ipEn: String((document.getElementById('roleEditIpEn') || {}).value || '').trim(),
+        description: String(document.getElementById('roleEditDescription').value || '').trim(),
+        quotes: String((document.getElementById('roleEditQuotes') || {}).value || '').trim(),
+        customFields: collectRoleCustomFields()
+    };
+    ROLE_BASE_FIELDS.forEach(function (f) {
+        var el = document.getElementById('roleEdit_' + f.key);
+        profile[f.key] = el ? String(el.value || '').trim() : '';
+    });
+
+    if (id) {
+        const idx = roleProfiles.findIndex(function (x) { return x && x.id === id; });
+        if (idx >= 0) Object.assign(roleProfiles[idx], profile, { updatedAt: new Date().toISOString() });
+    } else {
+        // 新建：回填 id，保存后可直接切到卡片视图
+        const created = upsertRoleProfile(profile);
+        if (created && created.id) {
+            var idEl = document.getElementById('roleEditId');
+            if (idEl) idEl.value = created.id;
+            roleEditingId = created.id;
+        }
+    }
+    saveRoleProfiles();
+    renderRoleList();
+    renderRoleHistoryPrompt();
+    renderRoleHistoryArchive();
+    // 保存后回到卡片视图，直观确认结果
+    setRoleEditMode('card');
+    showToast('角色「' + name + '」已保存', 'ok');
+}
+
+// 收集编辑弹窗里的自定义键值对（跳过空行）
+function collectRoleCustomFields() {
+    var out = {};
+    var rows = document.querySelectorAll('#roleEditCustomList .role-custom-row');
+    Array.prototype.forEach.call(rows, function (row) {
+        var kEl = row.querySelector('.role-custom-key');
+        var vEl = row.querySelector('.role-custom-value');
+        var k = kEl ? String(kEl.value || '').trim() : '';
+        var v = vEl ? String(vEl.value || '').trim() : '';
+        if (!k || !v) return;
+        if (ROLE_BASE_FIELD_KEYS.indexOf(k) >= 0) return; // 固定项优先
+        out[k] = v;
+    });
+    return out;
+}
+
+// 编辑弹窗：动态增删一行「字段名 + 值」
+function addRoleCustomFieldRow(key, value) {
+    var list = document.getElementById('roleEditCustomList');
+    if (!list) return null;
+    var row = document.createElement('div');
+    row.className = 'role-custom-row';
+    row.innerHTML = '<input type="text" class="role-custom-key" placeholder="字段名，如 武器">'
+        + '<input type="text" class="role-custom-value" placeholder="内容">'
+        + '<button type="button" class="role-custom-del" aria-label="删除该项" title="删除该项">×</button>';
+    if (key) row.querySelector('.role-custom-key').value = key;
+    if (value) row.querySelector('.role-custom-value').value = value;
+    list.appendChild(row);
+    return row;
+}
+
+function removeRoleCustomFieldRow(btn) {
+    var row = btn && btn.closest ? btn.closest('.role-custom-row') : null;
+    if (row && row.parentNode) row.parentNode.removeChild(row);
+}
+
+// 编辑弹窗：切换「更多资料」折叠区
+function toggleRoleMoreFields(btn) {
+    var box = document.getElementById('roleEditMoreBox');
+    if (!box) return;
+    var open = box.classList.toggle('d-none') === false;
+    if (btn) btn.textContent = open ? '收起更多资料' : '展开更多资料';
+}
+
+function deleteRoleProfile(id) {
+    const r = roleProfiles.find(function (x) { return x && x.id === id; });
+    if (!r) return;
+    if (!confirm('确定删除角色「' + r.name + '」？删除仅移除角色档案，不影响历史订单。')) return;
+    removeRoleProfile(id);
+    saveRoleProfiles();
+    renderRoleList();
+    renderRoleHistoryPrompt();
+    renderRoleHistoryArchive();
 }
 
 // ===== 客户专属优惠统一规则（全局默认） =====
@@ -6221,6 +7439,27 @@ function escapeHtml(str) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// 轻量提示（toast）：不阻塞操作，用于保存校验等即时反馈
+function showToast(message, type) {
+    if (!message) return;
+    var host = document.getElementById('toastHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'toastHost';
+        host.className = 'toast-host';
+        document.body.appendChild(host);
+    }
+    var el = document.createElement('div');
+    el.className = 'toast-item' + (type ? ' toast-' + type : '');
+    el.textContent = String(message);
+    host.appendChild(el);
+    setTimeout(function () { el.classList.add('toast-in'); }, 10);
+    setTimeout(function () {
+        el.classList.remove('toast-in');
+        setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 220);
+    }, 2400);
+}
+
 function renderRecordPage() {
     // 初次进入记录页：默认应用筛选并渲染
     updateRecordFilterBadge();
@@ -6963,6 +8202,7 @@ function getExportSyncPayload() {
         processSettings: processSettings,
         templates: templates,
         customers: customers,
+        roleProfiles: roleProfiles,
         marketingCards: _mcData || getDefaultMarketingCards(),
         exportDate: new Date().toISOString()
     };
@@ -7087,7 +8327,7 @@ function importSyncDataFromClipboard() {
                 return;
             }
             const hasHistory = Array.isArray(data.quoteHistory);
-            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null || data.marketingCards != null;
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null || data.roleProfiles != null || data.marketingCards != null;
             if (!hasHistory && !hasSettings) {
                 alert('剪贴板中未包含可导入的数据（需要 quoteHistory 或设置项）');
                 return;
@@ -7250,6 +8490,10 @@ function applyRecordImportOverwrite() {
             if (!c.discount) c.discount = { mode: 'none', manual: { value: 0.95, name: '' }, auto: { tiers: [] }, startDate: '', endDate: '' };
         });
     }
+    if (Array.isArray(data.roleProfiles)) {
+        // 覆盖导入：直接替换角色档案（与设置覆盖策略一致）
+        roleProfiles = data.roleProfiles.map(r => Object.assign({}, r));
+    }
     if (data.marketingCards != null) {
         // 覆盖导入：接单物料配置与设置一致，直接替换
         _mcData = Object.assign(getDefaultMarketingCards(), data.marketingCards);
@@ -7294,6 +8538,39 @@ function applyRecordImportMerge() {
             }
         });
     }
+    if (Array.isArray(data.roleProfiles) && data.roleProfiles.length > 0) {
+        // 合并导入角色：按 name 匹配，仅补空值，不覆盖本地已填内容
+        data.roleProfiles.forEach(function (r) {
+            if (!r || !r.name) return;
+            const existing = findRoleProfileByName(r.name);
+            if (existing) {
+                const merged = Object.assign({}, existing);
+                Object.keys(r).forEach(function (k) {
+                    if (k === 'id' || k === 'createdAt' || k === 'updatedAt') return;
+                    // 仅当本地该项为空/缺失时用导入值补齐
+                    const cur = merged[k];
+                    const isEmpty = cur == null
+                        || (typeof cur === 'string' && !cur.trim())
+                        || (Array.isArray(cur) && cur.length === 0);
+                    if (isEmpty && r[k] != null && r[k] !== '') merged[k] = r[k];
+                });
+                // 自定义字段逐键补齐，避免整块被跳过
+                if (r.customFields && typeof r.customFields === 'object') {
+                    const curCustom = (merged.customFields && typeof merged.customFields === 'object') ? Object.assign({}, merged.customFields) : {};
+                    Object.keys(r.customFields).forEach(function (ck) {
+                        const cv = r.customFields[ck];
+                        if (cv == null || cv === '') return;
+                        if (curCustom[ck] == null || String(curCustom[ck]).trim() === '') curCustom[ck] = cv;
+                    });
+                    merged.customFields = curCustom;
+                }
+                merged.updatedAt = new Date().toISOString();
+                roleProfiles[roleProfiles.findIndex(function (x) { return x && x.id === existing.id; })] = merged;
+            } else {
+                upsertRoleProfile(r);
+            }
+        });
+    }
     if (data.marketingCards != null) {
         // 合并导入：接单物料配置按设置类处理，直接替换（卡片内容以导入端为准）
         _mcData = Object.assign(getDefaultMarketingCards(), data.marketingCards);
@@ -7317,7 +8594,7 @@ function handleRecordSyncImport(event) {
                 return;
             }
             const hasHistory = Array.isArray(data.quoteHistory);
-            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null || data.marketingCards != null;
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null || data.roleProfiles != null || data.marketingCards != null;
             if (!hasHistory && !hasSettings) {
                 alert('文件中未包含可导入的数据（需要 quoteHistory 或设置项）');
                 input.value = '';
@@ -10097,6 +11374,8 @@ function openCalculatorDrawer(skipOrderTimeReset) {
             quoteData = null;
         }
         window.editingHistoryId = null;
+        _pendingModuleMergeChoice = null; // 新建订单：重置合并选择，默认按合并，生成时可再选
+        try { localStorage.removeItem(MERGE_CHOICE_LS_KEY); } catch (e) { /* ignore */ }
         // 重置追加单智能提示状态
         resetCrossOrderSmartPromptState();
         if (typeof initScheduleColorPreview === 'function') initScheduleColorPreview();
@@ -10151,6 +11430,11 @@ function addProduct() {
 // 新增制品：moduleId 指定制品信息模块（null=首模块）
 function internalAddProductToModule(moduleId) {
     normalizeOrderModules();
+    // moduleId 为空时默认归入第一个制品模块，避免小票上出现独立的遗留组
+    if (!moduleId) {
+        var firstMod = firstOrderModule('product');
+        if (firstMod) moduleId = firstMod.id;
+    }
     // 复用被删除制品释放的最小序号
     var used = products.map(function (p) { return Number(p.id) || 0; });
     var nextId = 1;
@@ -10290,6 +11574,11 @@ function addGift() {
 // 新增赠品：moduleId 指定赠品信息模块（null=首模块）
 function internalAddGiftToModule(moduleId) {
     normalizeOrderModules();
+    // moduleId 为空时默认归入第一个赠品模块，避免小票上出现独立的遗留组
+    if (!moduleId) {
+        var firstGiftMod = firstOrderModule('gift');
+        if (firstGiftMod) moduleId = firstGiftMod.id;
+    }
     // 复用被删除赠品释放的最小序号
     var used = gifts.map(function (g) { return Number(g.id) || 0; });
     var nextId = 1;
@@ -11810,7 +13099,29 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         platformFeeAmount: platformFeeAmount,
         productPrices: productPrices,
         giftPrices: giftPrices,
-        modules: orderModules,
+        // 模块元数据：计算页以 orderModules 为准；但小票/预览等只读场景下 orderModules 可能为空
+        // （页面重载、抽屉预览、从历史/排单卡片打开小票等，都不会重建计算页的模块状态）。
+        // 此时若直接写空数组，会让所有制品在分组时找不到模块 → 全部回退到「首模块」，
+        // 表现为多组塌成一组、组小计消失、序号变成全局连续。
+        // 因此这里做一次兜底继承，并把继承结果回填给 orderModules，保证同一次渲染内各级查找都命中。
+        modules: (function () {
+            if (Array.isArray(orderModules) && orderModules.length) return orderModules;
+            var _inherit = (quoteData && Array.isArray(quoteData.modules)) ? quoteData.modules : null;
+            if (_inherit && _inherit.length) {
+                try {
+                    orderModules = [];
+                    orderModuleSeq = { product: 0, gift: 0 };
+                    _inherit.forEach(function (m) { if (m && m.mtype) pushOrderModule(m); });
+                } catch (e) { /* 回填失败时退化为只读快照，不影响金额口径 */ }
+                return orderModules.length ? orderModules : _inherit;
+            }
+            return orderModules;
+        })(),
+        // 合并选择随订单重建传递：优先本次生成时弹窗的选择（_pendingModuleMergeChoice），
+        // 否则沿用旧 quoteData 已保存的选择（编辑历史订单重新生成时保持原选择），避免重建后丢失
+        moduleMergeChoice: (_pendingModuleMergeChoice != null)
+            ? _pendingModuleMergeChoice
+            : ((quoteData && quoteData.moduleMergeChoice) || null),
         totalProductsPrice: totalProductsPrice,
         totalGiftsOriginalPrice: totalGiftsOriginalPrice,
         totalWithCoefficients: totalWithCoefficients,
@@ -11830,6 +13141,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         projectName: projectNameValue,
         projectOrigin: projectOriginValue,
         characterName: characterNameValue,
+        roleProfileId: (function () { var _r = findRoleProfileByName(characterNameValue); return _r ? _r.id : null; })(),
         customProjectFields: JSON.parse(JSON.stringify(customProjectFields || {})),
         customTag: (quoteData && quoteData.customTag) ? String(quoteData.customTag).trim() : '',
         tags: (quoteData && Array.isArray(quoteData.tags)) ? JSON.parse(JSON.stringify(quoteData.tags)) : [],
@@ -11989,6 +13301,152 @@ function buildReceiptZigzagHtml(position, color) {
     const fillerY = position === 'bottom' ? 0 : toothDepth - 1;
     svgContent += `<rect x="0" y="${fillerY}" width="${width}" height="${stripDepth}" fill="${color}"/>`;
     return `<svg class="receipt-zigzag receipt-zigzag-${position}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${svgContent}</svg>`;
+}
+
+// —— 小票同明细制品合并（金更改·显示层）——
+// 同一分组块内，名称/单价/同模/工艺/附加配置均相同（仅数量可不同）的制品合成一行（不要求相邻）：
+// 数量与各类金额相加，但保留每组各自的首件全价（sameModel 时首件数=合并源组数），保证合并后总金额与合并前完全一致。
+// list: quoteData.productPrices（制品或赠品）；moduleMergeKey: 同系数组合并后的模块映射；gift=1 时按赠品口径处理。
+function mergeReceiptDisplayItems(list, moduleMergeKey, gift) {
+    if (!Array.isArray(list) || list.length < 2) return list;
+    const pf = defaultSettings;
+    const sameModelMode = (gift ? (quoteData && quoteData.sameModelModeGift) : (quoteData && quoteData.sameModelMode))
+        || (gift ? pf.sameModelModeGift : pf.sameModelMode);
+    // 明细签名：不比较数量与金额相关字段
+    function sig(it) {
+        const proc = (Array.isArray(it.processDetails) ? it.processDetails : [])
+            .map(p => (p.name || '') + '|' + (Number(p.layers) || 0) + '|' + (Number(p.unitPrice) || 0))
+            .sort().join(';');
+        const addc = (Array.isArray(it.additionalConfigDetails) ? it.additionalConfigDetails : [])
+            .map(c => (c.name || '') + '|' + (Number(c.price) || 0))
+            .sort().join(';');
+        const nodes = (Array.isArray(it.nodeDetails) ? it.nodeDetails : [])
+            .map(n => (n.name || '') + '|' + (n.percent != null ? n.percent : ''))
+            .sort().join(';');
+        return [
+            String(it.product || ''), String(it.productType || ''), String(it.sides || ''), !!it.crossOrderSameModel,
+            Number(it.basePrice) || 0, Number(it.charPrice) || 0, String(it.charUnit || ''),
+            String(it.processFeeMode || ''), String(it.additionalName || ''),
+            (Number(it.sameModelCount) || 0) > 0, Number(it.sameModelUnitPrice) || 0, String(sameModelMode || ''),
+            proc, addc, nodes, String((it.baseConfig && it.baseConfig.name) || ''), String(it.baseConfig || '')
+        ].join('|');
+    }
+    function block(it) {
+        const k = moduleMergeKey ? (moduleMergeKey[it.moduleId] || it.moduleId) : it.moduleId;
+        return k == null ? '' : String(k);
+    }
+    // 分组策略（两步）：
+    // 1) 先按「分组块 + 明细签名」分组 —— 保证每个组块都有自己的行，组小计归属不会错乱。
+    // 2) 再把「跨块的同明细制品」的数量/金额合并到 **该明细首次出现的那个块** 的行上。
+    //    即：同一款制品分散在组一/组二时，组一那一行显示「总数量」，组二不再重复列该明细。
+    //    这样既满足「一样的制品把数量合起来」，又不影响各组记账（组小计用的是原始数据聚合，见 moduleBaseTotals）。
+    const groups = [];        // [{ key, first, members:[], block }]
+    const idxMap = {};        // key -> groups 下标
+    list.forEach(function (it) {
+        const key = block(it) + '::' + sig(it);
+        if (idxMap[key] != null) {
+            groups[idxMap[key]].members.push(it);
+        } else {
+            idxMap[key] = groups.length;
+            groups.push({ key: key, first: it, members: [it], block: block(it) });
+        }
+    });
+    // 第二步：按「明细签名」把跨块成员并入首现行。
+    // 被并入的块本身仍要参与展示（否则该组的组小计/合计没有行来"钉住"，整块会消失、金额看不见），
+    // 因此这里记下「被吸收的块」，由调用方补充输出一个只含组小计的收尾块。
+    const sigHost = {};       // 签名 -> 承载该明细的行 key
+    const sigExtras = {};     // 签名 -> 需要并入的后续块成员
+    const absorbedBlocks = []; // 被整行吸收的块（保留其组小计展示）
+    groups.forEach(function (g) {
+        const s = sig(g.first);
+        if (sigHost[s] == null) {
+            sigHost[s] = g.key;
+            sigExtras[s] = [];
+        } else {
+            sigExtras[s] = sigExtras[s].concat(g.members);
+            g.__absorbed = true;   // 该行整行被首现行接管，不再单独渲染
+        }
+    });
+    groups.forEach(function (g) {
+        if (!g.__absorbed) return;
+        const s = sig(g.first);
+        const host = groups[idxMap[sigHost[s]]];
+        if (host) host.members = host.members.concat(sigExtras[s]);
+        // 该块的所有行都被吸走 → 记录块 key，供渲染层补一个"仅组小计"的块
+        var _stillHasRow = groups.some(function (x) {
+            return !x.__absorbed && x.block === g.block;
+        });
+        if (!_stillHasRow && absorbedBlocks.indexOf(g.block) === -1) absorbedBlocks.push(g.block);
+    });
+    const out = [];
+    groups.forEach(function (g) {
+        if (g.__absorbed) return;   // 已被首现行吸收
+        const members = g.members;
+        if (members.length === 1) {
+            out.push(members[0]);
+            return;
+        }
+        // 构造合并项：以首个为模板，累加数量/金额标量
+        const m = JSON.parse(JSON.stringify(members[0]));
+        let q = 0, smc = 0, smt = 0, tef = 0, tpf = 0, pt = 0, ntp = 0, bpt = 0, lineSum = 0, lineKnown = true;
+        members.forEach(function (it) {
+            q += Number(it.quantity) || 0;
+            smc += Number(it.sameModelCount) || 0;
+            smt += Number(it.sameModelTotal) || 0;
+            tef += Number(it.totalExtraFee) || 0;
+            tpf += Number(it.totalProcessFee) || 0;
+            pt += Number(it.productTotal) || 0;
+            ntp += Number(it.nodeTotalPrice) || 0;
+            bpt += Number(it.baseProductTotal) || 0;
+            if (it.baseLineTotal == null) lineKnown = false;
+            else lineSum += Number(it.baseLineTotal) || 0;
+        });
+        if (!lineKnown) lineSum = bpt + tpf + tef;
+        m.quantity = q;
+        m.sameModelCount = smc;
+        m.sameModelTotal = smt;
+        m.totalExtraFee = tef;
+        m.totalProcessFee = tpf;
+        m.productTotal = pt;
+        m.nodeTotalPrice = ntp;
+        m.baseProductTotal = bpt;
+        m.baseLineTotal = lineSum;
+        m.__fullPriceCount = members.length;   // 合并了 n 个同明细源组 → 首件全价应为 n 件
+        m.__mergeCount = members.length;
+        // 工艺：逐行累加 fee / quantity（明细数组同序且一致）
+        if (Array.isArray(m.processDetails)) {
+            m.processDetails = m.processDetails.map(function (p, idx) {
+                let _fee = 0, _qty = 0;
+                members.forEach(function (it) {
+                    const pd = (it.processDetails || [])[idx];
+                    if (pd) { _fee += Number(pd.fee) || 0; _qty += Number(pd.quantity) || 0; }
+                });
+                const np = JSON.parse(JSON.stringify(p));
+                np.fee = _fee; np.quantity = _qty;
+                return np;
+            });
+        }
+        // 节点：逐行累加 amount（同序一致）
+        if (Array.isArray(m.nodeDetails)) {
+            m.nodeDetails = m.nodeDetails.map(function (n, idx) {
+                let _amt = 0;
+                members.forEach(function (it) {
+                    const nd = (it.nodeDetails || [])[idx];
+                    if (nd) _amt += Number(nd.amount) || 0;
+                });
+                const nn = JSON.parse(JSON.stringify(n));
+                nn.amount = _amt;
+                return nn;
+            });
+        }
+        out.push(m);
+    });
+    // 重新编号
+    out.forEach(function (it, idx) { it.productIndex = idx + 1; });
+    // 被吸收的块（其明细行已并入首现行）随列表返回，渲染层据此补输出「仅组小计」块，
+    // 保证每个组的组小计/合计都还在 → 用户能看到每一组的钱去哪了
+    out.absorbedBlocks = absorbedBlocks;
+    return out;
 }
 
 // 生成报价单
@@ -12160,12 +13618,37 @@ function generateQuote() {
     // 模块分组信息：仅当制品模块数 > 1 时，才显示「符号分隔线 + 模块小计」（单组保持现状，无分隔线/小计）
     var LEGACY_PRODUCT_MODULEKEY = '__legacy_product__';
     var LEGACY_GIFT_MODULEKEY = '__legacy_gift__';
+    // 校验 moduleId 是否对应真实存在的模块，否则回退到对应类型首模块（避免历史数据 ID 不匹配产生独立幽灵组）
+    // 注意：必须用 findAnyModule / firstAnyModule —— 小票页 orderModules 为空，
+    // 若只查计算页状态会「校验失败」并把所有条目回退到首模块，导致组边界整体塌陷成一组。
+    function resolveProductModuleKey(item) {
+        if (!item || !item.moduleId) {
+            var fp = firstAnyModule('product');
+            return fp ? String(fp.id) : LEGACY_PRODUCT_MODULEKEY;
+        }
+        var mid = String(item.moduleId);
+        if (findAnyModule(mid)) return mid;
+        var fp2 = firstAnyModule('product');
+        return fp2 ? String(fp2.id) : mid;
+    }
+    function resolveGiftModuleKey(item) {
+        if (!item || !item.moduleId) {
+            var fg = firstAnyModule('gift');
+            return fg ? String(fg.id) : LEGACY_GIFT_MODULEKEY;
+        }
+        var mid = String(item.moduleId);
+        if (findAnyModule(mid)) return mid;
+        var fg2 = firstAnyModule('gift');
+        return fg2 ? String(fg2.id) : mid;
+    }
     function quoteItemModuleKey(item, isGift) {
-        if (item && item.moduleId) return String(item.moduleId);
-        return isGift ? LEGACY_GIFT_MODULEKEY : LEGACY_PRODUCT_MODULEKEY;
+        return isGift ? resolveGiftModuleKey(item) : resolveProductModuleKey(item);
     }
     var prodModuleSet = new Set();
     (quoteData.productPrices || []).forEach(function (it) { if (it) prodModuleSet.add(quoteItemModuleKey(it, false)); });
+    // 合并前的制品模块数（用于判定是否为多组语境）：同系数合并后 _prodMergeSet 会缩成 1，
+    // 但小票仍需按「多组」展示组标签，故这里先记录合并前的原始组数
+    var _rawProductModuleCount = prodModuleSet.size;
     var multiModuleP = prodModuleSet.size > 1;
     var curProdMod = null, curProdModSym = '';
     // 小票“小计”列口径：系数前基础原价（如 80+工艺10=90）。
@@ -12401,9 +13884,13 @@ function generateQuote() {
         if (hasExplicit) return;
         moduleTotalCoeffs[mid] = { up: _up, down: _down };
     });
-    // —— 同系数组合并：同类型模块若加价/折扣明细完全相同，小票上合为一组展示 ——
+    // 把本次会话的合并选择回填进订单数据，便于 saveToHistory 随订单持久化
+    if (quoteData && _pendingModuleMergeChoice != null && quoteData.moduleMergeChoice == null) {
+        quoteData.moduleMergeChoice = _pendingModuleMergeChoice;
+    }
+    // —— 同系数组合并：同类型模块若加价/折扣明细完全相同，小票上合为一组展示（可由生成时的弹窗选择不合并，选择持久化到订单自身）——
     var moduleMergeKey = {}, moduleMergeLabels = {};
-    (function () {
+    if (!getOrderModuleMergeNo()) (function () {
         function shortModNum(name) { return String(name || '').replace(/^(制品组|赠品组)/, ''); }
         var midType = {}, midSym = {};
         (quoteData.productPrices || []).forEach(function (it) {
@@ -12434,8 +13921,12 @@ function generateQuote() {
             var ids = buckets[key];
             ids.forEach(function (mid) { moduleMergeKey[mid] = ids[0]; });
             if (ids.length < 2) return;
-            var nums = ids.map(function (mid) { return shortModNum(midSym[mid]); }).filter(Boolean);
-            moduleMergeLabels[ids[0]] = '组' + nums.join('、');
+            // 合并标签：只存「N组」（如「三组」），渲染时按行类型再拼「小计」/「合计」
+            // 这样「三组小计」「三组合计」都自然成立，且组数一多也不会像「组一、二、三…」那样撑坏布局
+            var _cnNum = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+            var _n = ids.length;
+            var _nTxt = _n <= 10 ? _cnNum[_n] : String(_n);
+            moduleMergeLabels[ids[0]] = _nTxt + '组';
         });
         // 把同系数组的数据按代表模块合并，后续小计/原因行统一走代表模块
         var _newBase = {}, _newFinal = {}, _newCoeff = {}, _newRep = {};
@@ -12477,7 +13968,9 @@ function generateQuote() {
         var k = quoteItemModuleKey(it, false);
         _prodMergeSet.add(moduleMergeKey[k] || k);
     });
-    multiModuleP = _prodMergeSet.size > 1;
+    // 多组语境 = 合并后的展示组数 > 1，或合并前的原始组数 > 1（同系数多组被合并时后者成立）。
+    // 否则同系数合并会让 multiModuleP 退化为 false，把「制品」单组专有词打到多组小票上。
+    multiModuleP = _prodMergeSet.size > 1 || _rawProductModuleCount > 1;
     // 模块 → 加价/减价原因行（仅显式设置的）；每条后附对应加减金额
     var moduleReasonLines = {};
     var _rcvUp = (quoteData.pricingCalculationMode && quoteData.pricingCalculationMode.up) || 'multiplicative';
@@ -12582,7 +14075,18 @@ function generateQuote() {
         var upCoeff = fmtCoeff(tc.up);
         var downCoeff = fmtCoeff(tc.down);
         var prodModNum = String(curProdModSym || '').replace(/^(制品组|赠品组)/, '');
-        var symLabel = moduleMergeLabels[curProdMod] || (multiModuleP ? '<span class="receipt-module-sym">组' + prodModNum + '</span>' : '制品');
+        // 组标签三档：合并组显示「N组」（渲染成 N组小计 / N组合计，如「三组合计」）；多组未合并显示「组N」；真单组才显示「制品」
+        // 注意：必须在合并「之前」的多组集合（prodModuleSet）上判断，否则同系数合并后 _prodMergeSet.size 变 1，
+        // multiModuleP 会误判为单组，导致把「制品」这种单组专有词打到多组小票上（多组显示异常的根因）
+        var _mergedLabel = moduleMergeLabels[curProdMod];
+        var symLabel;
+        if (_mergedLabel) {
+            symLabel = '<span class="receipt-module-sym">' + _mergedLabel + '</span>';
+        } else if (multiModuleP) {
+            symLabel = '<span class="receipt-module-sym">组' + prodModNum + '</span>';
+        } else {
+            symLabel = '制品';
+        }
         var finalTotal = Number(moduleFinalTotals[curProdMod]);
         if (!isFinite(finalTotal)) finalTotal = baseTotal + upSum - downSum;
         var showSubtotal = Math.abs(baseTotal - finalTotal) >= 0.005;
@@ -12610,7 +14114,57 @@ function generateQuote() {
         h += '</div>';
         return h;
     }
-    quoteData.productPrices.forEach((item) => {
+    // 同明细合并仅在「合并」形式下生效；用户选择「不合并」时每个制品独立成行，归入各自组
+    const _renderProductList = (!getOrderModuleMergeNo() && typeof mergeReceiptDisplayItems === 'function')
+        ? mergeReceiptDisplayItems(quoteData.productPrices, moduleMergeKey, 0) : quoteData.productPrices;
+    // 小票按模块分组渲染：组序按模块序号，组内保持原顺序。
+    // 目的：新增制品被 push 到 productPrices 末尾后，虽 moduleId 归属正确，却会因数组顺序
+    // 被渲染到其它组之后，形成「组一制品夹在组二后面」的错位。
+    // 与之前「整体 sort」方案的区别：这里用「模块首现顺序」分组（组内稳定），
+    // 而不是依赖 _modSeqOf 单次比较 —— sort 的比较函数一旦在某些条目上退化为一致值，
+    // 排序结果就不可预期；分组方案只要求首现顺序正确，鲁棒性更高。
+    const _modKeyOf = function (it) {
+        if (!it) return '__none__';
+        return (moduleMergeKey && it.moduleId) ? (moduleMergeKey[it.moduleId] || it.moduleId) : (it.moduleId || '__none__');
+    };
+    const _groupedRender = (function (list) {
+        var src = list || [];
+        var groupOrder = [], groups = new Map();
+        // 第一遍：按「模块在数据中的首次出现顺序」归组（组内保持原数组顺序）
+        src.forEach(function (it) {
+            var k = _modKeyOf(it);
+            if (!groups.has(k)) { groups.set(k, []); groupOrder.push(k); }
+            groups.get(k).push(it);
+        });
+        // 第二遍：按模块 seq 升序排列组（seq 解析不到时保留首现位置，回退到 map 末尾）
+        var rankOf = function (k) {
+            var m = findAnyModule(k);
+            var seq = (m && m.seq != null && isFinite(Number(m.seq))) ? Number(m.seq) : null;
+            return (seq == null) ? Infinity : seq;
+        };
+        var ranked = groupOrder.map(function (k, i) { return { k: k, i: i, rank: rankOf(k) }; });
+        ranked.sort(function (a, b) {
+            if (a.rank !== b.rank) return a.rank - b.rank;
+            return a.i - b.i; // 同 rank（或同为 Infinity）时保持首现顺序，保证稳定
+        });
+        var out = [];
+        ranked.forEach(function (r) { groups.get(r.k).forEach(function (it) { out.push(it); }); });
+        // 显示序号：按最终渲染顺序从 1 连续编号
+        var map = new Map();
+        out.forEach(function (it, idx) { if (it) map.set(it, idx + 1); });
+        return { list: out, indexMap: map };
+    })(_renderProductList);
+    const _renderProductListOrdered = _groupedRender.list;
+    // 跨块合并同明细后，被吸走全部行的那几个组不会再有行经过边界判断 → 其组小计块会整体消失。
+    // 这里把它们挂到列表尾部，在制品区收尾前补输出「仅组小计」的块，保证每一组的金额都可见。
+    const _absorbedBlocks = Array.isArray(_renderProductList.absorbedBlocks) ? _renderProductList.absorbedBlocks : [];
+    // 显示序号映射：按最终渲染顺序连续编号（未命中时下方用渲染序号兜底）
+    const _dispIdxMap = _groupedRender.indexMap;
+    let _renderOrdinal = 0;
+    _renderProductListOrdered.forEach((item) => {
+        // 该制品在小票上的显示序号：优先用映射，未命中时用渲染序号兜底，保证页面/导出永远连续
+        _renderOrdinal += 1;
+        const dispIdx = displayProductIndex(item, _dispIdxMap) || _renderOrdinal;
         // 模块边界：跨模块时先闭合上一模块小计（不再输出组标题，靠组尾小计的编号辨识分组）
         // 注意：单组也需要维护当前模块并在末尾闭合，以显示「小计/加价合计/折扣合计 + 合计」聚合块
         var _itemModKey = quoteItemModuleKey(item, false);
@@ -12620,7 +14174,8 @@ function generateQuote() {
                 html += prodModuleCloseHtml(true);
             }
             curProdMod = _prodModKey;
-            curProdModSym = item.moduleName || ' ';
+            var _resolvedMod = findAnyModule(_prodModKey);
+            curProdModSym = (_resolvedMod && moduleSymbol(_resolvedMod.mtype, _resolvedMod.seq)) || item.moduleName || ' ';
         }
         // 判断是否满足乘法（无同模、无工艺、无配件时，fixed/double可合并；config永远不合并）
         const hasSameModel = item.sameModelCount > 0;
@@ -12643,7 +14198,8 @@ function generateQuote() {
         
         // 计算全价制品单价和数量
         const fullPriceUnitPrice = item.basePrice; // 全价制品单价（基础价，config时已包含配件）
-        const fullPriceQuantity = hasSameModel ? 1 : item.quantity; // 全价制品数量
+        // 全价制品数量：合并的同明细制品保留各自首件全价（__fullPriceCount）
+        const fullPriceQuantity = hasSameModel ? (item.__fullPriceCount || 1) : item.quantity; // 全价制品数量
         
         // config的成品单价（basePrice已包含配件）
         const finishedProductUnitPrice = item.basePrice;
@@ -12672,7 +14228,7 @@ function generateQuote() {
             const totalCharCount = charCount * (item.quantity || 1);
             const countText = formatCharCount(totalCharCount);
             const priceText = `${getCurrencySymbol()}${charPrice}/${unitText}`;
-            html += `<div class="receipt-row" title="字数：${charCount}字 × ${item.quantity || 1}件"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${countText}</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
+            html += `<div class="receipt-row" title="字数：${charCount}字 × ${item.quantity || 1}件"><div class="receipt-col-2">${dispIdx}. ${productName}</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${countText}</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
 
             // 同模明细（首件字数 / 同模后续字数）
             if (hasSameModel) {
@@ -12680,9 +14236,10 @@ function generateQuote() {
                 const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
                 const sameModelHint = (_sameMode === 'minus') ? `−${getCurrencySymbol()}${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
                 const sameModelDisplayCount = item.crossOrderSameModel ? item.quantity : item.sameModelCount;
-                const firstCharCount = charCount;
+                const _mergeN = item.__fullPriceCount || 1; // 合并源组数 → 首件件数
+                const firstCharCount = charCount * _mergeN;
                 const sameModelCharTotal = charCount * sameModelDisplayCount;
-                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 首件</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${formatCharCount(firstCharCount)}</div><div class="receipt-col-1">${getCurrencySymbol()}${item.basePrice.toFixed(2)}</div></div>`;
+                html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 首件</div><div class="receipt-col-1">${priceText}</div><div class="receipt-col-1">${formatCharCount(firstCharCount)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.basePrice * _mergeN).toFixed(2)}</div></div>`;
                 html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> 同模${mgL('{制品}')}(${sameModelHint})</div><div class="receipt-col-1">${getCurrencySymbol()}${item.sameModelUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${formatCharCount(sameModelCharTotal)}</div><div class="receipt-col-1">${getCurrencySymbol()}${(item.sameModelTotal).toFixed(2)}</div></div>`;
             }
 
@@ -12711,7 +14268,7 @@ function generateQuote() {
             }
         } else if (isNodes) {
             const nodeTotal = item.nodeTotalPrice != null ? item.nodeTotalPrice : item.basePrice;
-            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${nodeTotal.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
+            html += `<div class="receipt-row"><div class="receipt-col-2">${dispIdx}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${nodeTotal.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
             if (item.nodeDetails && item.nodeDetails.length > 0) {
                 item.nodeDetails.forEach(node => {
                     html += `<div class="receipt-sub-row"><div class="receipt-sub-row-indent"></div><div class="receipt-col-2"><span class="receipt-bullet">•</span> ${(node.name || '节点').replace(/</g, '&lt;')} ${node.percent}%</div><div class="receipt-col-1"></div><div class="receipt-col-1"></div><div class="receipt-col-1">${getCurrencySymbol()}${(node.amount || 0).toFixed(2)}</div></div>`;
@@ -12722,7 +14279,7 @@ function generateQuote() {
             // fixed/double 无同模无工艺：合并到总览行（方案A下单价应包含每制品增加）
             var mergedExtraPerPiece = (item.quantity > 0) ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
             var mergedUnitPrice = fullPriceUnitPrice + mergedExtraPerPiece;
-            html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${mergedUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
+            html += `<div class="receipt-row"><div class="receipt-col-2">${dispIdx}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${mergedUnitPrice.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
         } else {
             // 需要拆明细
             if (item.productType === 'config') {
@@ -12730,18 +14287,18 @@ function generateQuote() {
                 if (!hasAdditionalConfig) {
                     var configExtraPerPiece = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
                     var configUnitWithExtra = finishedProductUnitPrice + configExtraPerPiece;
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${dispIdx}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
                 } else if (!hasSameModel && !hasProcess) {
                     // 有额外配件但无同模无工艺：显示成品单价（已包含配件）
                     var configExtraPerPiece2 = item.quantity > 0 ? ((Number(item.totalExtraFee) || 0) / item.quantity) : 0;
                     var configUnitWithExtra2 = finishedProductUnitPrice + configExtraPerPiece2;
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra2.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${dispIdx}. ${productName}</div><div class="receipt-col-1">${getCurrencySymbol()}${configUnitWithExtra2.toFixed(2)}</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
                 } else {
-                    html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
+                    html += `<div class="receipt-row"><div class="receipt-col-2">${dispIdx}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
                 }
             } else {
                 // fixed/double：总览行单价留空
-                html += `<div class="receipt-row"><div class="receipt-col-2">${item.productIndex}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
+                html += `<div class="receipt-row"><div class="receipt-col-2">${dispIdx}. ${productName}</div><div class="receipt-col-1" style="color:#999;">—</div><div class="receipt-col-1">${item.quantity}件</div><div class="receipt-col-1">${getCurrencySymbol()}${receiptProductBaseTotal(item).toFixed(2)}</div></div>`;
             }
             
             // 明细：全价制品行（方案A：每制品增加并入全价/同模单价，不单列）
@@ -12749,7 +14306,7 @@ function generateQuote() {
             if (!item.crossOrderSameModel) {
                 var extraBase = (item.extraFees || []).reduce(function (sum, f) { return sum + (Number(f.amount) || 0); }, 0);
                 var fullPriceExtraTotal = hasSameModel
-                    ? extraBase
+                    ? (extraBase * (item.__fullPriceCount || 1))
                     : (Number(item.totalExtraFee) || 0);
                 var fullUnitWithExtra = fullPriceQuantity > 0
                     ? (fullPriceUnitPrice + (fullPriceExtraTotal / fullPriceQuantity))
@@ -12806,7 +14363,7 @@ function generateQuote() {
                 const _sameMode = quoteData.sameModelMode || defaultSettings.sameModelMode;
                 const _sameMinus = Number.isFinite(Number(quoteData.sameModelMinusAmount)) ? Math.max(0, Number(quoteData.sameModelMinusAmount)) : (Number.isFinite(Number(defaultSettings.sameModelMinusAmount)) ? Math.max(0, Number(defaultSettings.sameModelMinusAmount)) : 0);
                 const sameModelHint = (_sameMode === 'minus') ? `−${getCurrencySymbol()}${_sameMinus.toFixed(2)}` : `${sameModelRate}x`;
-                var sameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - (item.crossOrderSameModel ? 0 : extraBase));
+                var sameExtraTotal = Math.max(0, (Number(item.totalExtraFee) || 0) - (item.crossOrderSameModel ? 0 : fullPriceExtraTotal));
                 // 跨订单同模时，所有件都按同模价计算
                 var sameModelDisplayCount = item.crossOrderSameModel ? item.quantity : item.sameModelCount;
                 var sameUnitWithExtra = sameModelDisplayCount > 0
@@ -12861,6 +14418,20 @@ function generateQuote() {
         html += prodModuleCloseHtml(false);
         curProdMod = null;
     }
+    // 跨块合并同明细后，被整体吸收的组没有行经过上面的边界判断，此处补输出它们的组小计块
+    // （该组金额仍由原始数据聚合在 moduleBaseTotals/moduleFinalTotals 中，展示口径不变）
+    if (_absorbedBlocks.length) {
+        _absorbedBlocks.forEach(function (blockKey) {
+            // 统一走 findAnyModule（orderModules → quoteData.modules 两级查找），
+            // 避免小票页计算页状态为空时取不到模块而整块不输出
+            var _bm = findAnyModule(blockKey);
+            if (!_bm) return;
+            curProdMod = blockKey;
+            curProdModSym = moduleSymbol(_bm.mtype || 'product', _bm.seq) || ' ';
+            html += prodModuleCloseHtml(false);
+            curProdMod = null;
+        });
+    }
     
     // 结束制品详情部分
     html += `</div>`;
@@ -12872,15 +14443,29 @@ function generateQuote() {
         // 模块分组信息：仅当赠品模块数 > 1 时才显示分隔线 + 模块合计（单组保持现状）
         var giftModuleSet = new Set();
         (quoteData.giftPrices || []).forEach(function (it) { if (!it) return; var k = quoteItemModuleKey(it, true); giftModuleSet.add(moduleMergeKey[k] || k); });
-        var multiModuleG = giftModuleSet.size > 1;
+        // 合并前的赠品原始组数：同系数合并后 giftModuleSet 会缩成 1，但小票仍属多组语境，
+        // 必须用合并前的组数判定，否则多组赠品会退化成单组词「赠品」并丢失组标签
+        var _rawGiftModuleSet = new Set();
+        (quoteData.giftPrices || []).forEach(function (it) { if (it) _rawGiftModuleSet.add(quoteItemModuleKey(it, true)); });
+        var multiModuleG = giftModuleSet.size > 1 || _rawGiftModuleSet.size > 1;
         var curGiftMod = null, curGiftModSym = '';
         function giftModuleCloseHtml(isBoundary) {
             if (curGiftMod == null) return '';
             var h = '<div class="receipt-module-close' + (isBoundary ? ' receipt-module-close-boundary' : '') + '">';
             var origSum = Number(moduleBaseTotals[curGiftMod]) || 0;
-            var symLabel = multiModuleG ? (moduleMergeLabels[curGiftMod] ? '<span class="receipt-module-sym">' + moduleMergeLabels[curGiftMod] + '</span>' : '<span class="receipt-module-sym">组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '') + '</span>') : '赠品';
+            // 组标签三档：合并组显示「N组」（渲染成 N组合计，如「三组合计」）；多组未合并显示「组N」；真单组才显示「赠品」
+            // （与 prodModuleCloseHtml 口径一致，避免多组赠品显示成单组词「赠品」）
+            var giftSymLabel;
+            var _giftMergedLabel = moduleMergeLabels[curGiftMod];
+            if (_giftMergedLabel) {
+                giftSymLabel = '<span class="receipt-module-sym">' + _giftMergedLabel + '</span>';
+            } else if (multiModuleG) {
+                giftSymLabel = '<span class="receipt-module-sym">组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '') + '</span>';
+            } else {
+                giftSymLabel = '赠品';
+            }
             // 赠品小计与合计行的划线原价相同，只保留合计行（0 在前、原价在后），不再重复小计
-            h += '<div class="receipt-module-subtotal receipt-module-subtotal-total"><div class="receipt-module-reason-label">' + symLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span></div></div>';
+            h += '<div class="receipt-module-subtotal receipt-module-subtotal-total"><div class="receipt-module-reason-label">' + giftSymLabel + '合计</div><div class="receipt-module-reason-value gift-free-cell"><span class="receipt-gift-free-amount">' + getCurrencySymbol() + '0.00</span><span class="receipt-gift-original-price">' + getCurrencySymbol() + origSum.toFixed(2) + '</span></div></div>';
             h += '</div>';
             return h;
         }
@@ -12899,7 +14484,8 @@ function generateQuote() {
                     html += giftModuleCloseHtml(true);
                 }
                 curGiftMod = _giftModKey;
-                curGiftModSym = item.moduleName || ' ';
+                var _resolvedGiftMod = findAnyModule(_giftModKey);
+                curGiftModSym = (_resolvedGiftMod && moduleSymbol(_resolvedGiftMod.mtype, _resolvedGiftMod.seq)) || item.moduleName || ' ';
             }
             // 判断是否满足乘法（赠品规则与制品相同）
             const hasSameModelGift = item.sameModelCount > 0;
@@ -15265,14 +16851,35 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260912-1630';
+const APP_VERSION = '20260913-0950';
 const APP_CHANGELOG = [
+    {
+        date: '2026-09-13',
+        items: [
+            '角色档案资料扩展：中/外文名、全名/别名、中文/外文 IP，基础资料固定项（性别/年龄/生日/身高/体重/血型/星座/声优/阵营/身份）、自定义键值资料、语录台词',
+            '角色弹窗二合一：点击角色名弹出完整角色卡片，可在卡片内一键切换编辑补充资料；空档案直接进编辑',
+            '排单页 Todo：企划摘要里的已建档角色名高亮显示，点击弹出角色卡片；移除悬浮气泡',
+            '角色列表：默认按 IP 分组排序（A-Z），右侧新增 A-Z 快捷索引；列表卡片精简为 名字/IP/别名 三行',
+            '从历史建档：支持多选/全选批量建档，可忽略待建档角色；列表行展示中外文名与中外文 IP',
+            '角色名智能解析：自动拆分多角色（顿号/斜杠/x/空格/中英交替拼接等）、自动配对中外文名与中外文 IP（如「克莱恩/Klein Moretti」「威震天Megatron 擎天柱Optimus Prime」）',
+            '重复/复合名整理：一键把「克莱恩/Klein Moretti」类复合名规范化，并合并同一角色的重复档案（信息只并入不覆盖）',
+            '计算页角色选择器：「+」打开档案多选，搜索支持中/外文名与 IP；输入新角色失焦自动入档，无匹配可一键新建',
+            '计算页角色下拉默认按 IP 排序（同 IP 内按名称，无 IP 沉底）',
+            '移除角色「备注」字段（存量数据保留在存储中）；修复角色弹窗嵌在设置子页面内导致排单页点击无法弹出的问题',
+        ]
+    },
     {
         date: '2026-09-12',
         items: [
+            '小票同明细制品自动合并：名称/单价/同模/工艺/附加配置相同的制品合并为一行，数量与金额相加（工艺不同则不合并）',
+            '同系数组合并改为每次生成小票时临时选择：返回修改 / 不合并直接生成 / 合并并生成',
+            '同模系数纳入合并判定：加价/折扣/同模三者均一致才合并',
+            '新增「复制此组」：一键复制整个制品组/赠品组（含组内制品与组级系数）',
+            '合并组小票聚合行不再显示「组一、二」前缀，直接显示「小计」「合计」',
+            '平台手续费取整方式增加四选项：不取整 / 向下取整 / 向上取整 / 四舍五入',
+            '暗色模式：平台手续费设置按钮激活态样式修复（深灰底+白字）',
             '米画师平台手续费默认取整改为「向下取整」，旧存档自动迁移',
             '平台费设置优化：取整/分段压缩为一行，改为「取整」「分段」按钮点开独立设置面板',
-            '取整/分段按钮启用状态高亮；「无」平台费率为 0 时始终不取整',
         ]
     },
     {
@@ -15640,7 +17247,11 @@ function saveToHistory() {
         alert('请先生成报价单！');
         return;
     }
-    
+    // 兜底：若订单数据缺合并选择（生成小票与保存的时机差异可能未回填到 quoteData），
+    // 用本会话的合并选择补齐，保证已选「不合并」的订单随历史持久化，刷新/重新打开仍按不合并渲染
+    if (quoteData.moduleMergeChoice == null && _pendingModuleMergeChoice != null) {
+        quoteData.moduleMergeChoice = _pendingModuleMergeChoice;
+    }
     // 保存前自动创建数据快照（用于异常恢复）
     mgCreateDataSnapshot();
     
@@ -15756,6 +17367,11 @@ function saveToHistory() {
     // 客户档案回写：新单/编辑保存后，命中客户则用本单平台/联系方式填空值（仅填空值，不覆盖已填）
     try {
         backfillCustomerFromQuote(quoteData);
+    } catch (e) { /* ignore */ }
+
+    // 角色档案回写：新单/编辑保存后，命中角色则用本单原作/IP 填空值（仅填空值，不覆盖已填）
+    try {
+        backfillRoleProfileFromQuote(quoteData);
     } catch (e) { /* ignore */ }
     
     // 云端同步：如果已启用云端模式，异步同步到 Supabase
@@ -16374,7 +17990,7 @@ function getScheduleBarsForCalendar(year, month) {
         const startDate = toYmd(start);
         const endDate = toYmd(end);
         const productCount = getOrderItemQuantityTotal(item);
-        bars.push({ id: item.id, clientId: item.clientId || '', productCount, startDate, endDate });
+        bars.push({ id: item.id, clientId: item.clientId || '', productCount, startDate, endDate, characterName: item.characterName || '', projectOrigin: item.projectOrigin || '' });
     });
 
     // 排序逻辑：完全复刻 Todo 卡片排序 (方案 A)
@@ -16794,7 +18410,11 @@ function renderScheduleCalendar() {
                         idx = Math.abs(b.id) % barColors.length;
                     }
                     const color = barColors[idx];
-                    const label = (b.clientId || '—') + '  ' + b.productCount + '制品';
+                    // 彩条 label 增加角色名（超长截断）；悬浮 title 补全角色与原作信息
+                    const barCharName = b.characterName ? String(b.characterName).trim() : '';
+                    const label = (b.clientId || '—') + '  ' + b.productCount + '制品'
+                        + (barCharName ? (' · ' + (barCharName.length > 6 ? barCharName.slice(0, 6) + '…' : barCharName)) : '');
+                    const barTitle = label + (b.projectOrigin ? (' · ' + b.projectOrigin) : '');
                     var textColor = barTextColors[idx];
                     var singleDay = s.startCol === s.endCol ? ' data-single-day="1"' : '';
 
@@ -16811,7 +18431,7 @@ function renderScheduleCalendar() {
                     }
                     const barStyle = (isSettled || isDone) ? 'text-decoration: line-through; opacity: 0.6;' : '';
 
-                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';' + barStyle + '" title="' + label + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '"' + singleDay + '>' + label + '</div>';
+                    html += '<div class="schedule-bar-strip" style="grid-column: ' + (s.startCol + 1) + ' / ' + (s.endCol + 2) + '; grid-row: ' + (ti + 1) + '; background:' + color + '; color:' + textColor + ';' + barStyle + '" title="' + barTitle + '" data-week-first-day="' + weekFirstDay + '" data-start-col="' + s.startCol + '" data-end-col="' + s.endCol + '"' + singleDay + '>' + label + '</div>';
                 });
             });
             html += '</div>';
@@ -17599,6 +19219,35 @@ async function renderScheduleTodoSection() {
     
     // 应用当前的换行模式
     setScheduleTodoWrapMode(window.scheduleTodoWrapMode);
+}
+
+// 排单页 Todo 卡片：把企划摘要里的角色名替换成「已建档」高亮 chip
+// 未建档的角色名保持纯文本原样输出；建档后强调色显示，点击弹出角色卡片（可切编辑）
+// 注：不再做悬浮气泡，完整信息一律在点开的角色卡片里看
+function buildScheduleTodoRoleChipHtml(rec) {
+    if (!rec) return '';
+    // 建档标记：右上角小圆点角标，作为「此角色已建档」的视觉提示
+    var initial = rec.name ? String(rec.name).trim().charAt(0) : '';
+    return '<span class="schedule-todo-role-chip"'
+        + ' data-role-id="' + escapeHtml(String(rec.id)) + '"'
+        + ' title="点击查看角色档案"'
+        + ' onclick="event.stopPropagation();openRoleEditModal(\'' + escapeHtml(String(rec.id)) + '\')">'
+        + escapeHtml(String(rec.name || ''))
+        + (initial && initial !== String(rec.name || '') ? '<i class="schedule-todo-role-chip-mark" aria-hidden="true"></i>' : '')
+        + '</span>';
+}
+
+// 生成角色名对应的摘要 HTML（智能解析：多角色逐个渲染；已建档→高亮 chip，未建档→纯文本）
+function buildScheduleTodoCharacterHtml(charName) {
+    var name = charName ? String(charName).trim() : '';
+    if (!name) return '';
+    var roles = parseHistoryRoleNames(name);
+    if (!roles.length) return escapeHtml(name);
+    return roles.map(function (p) {
+        var rec = findRoleProfileByName(p.name);
+        if (rec) return buildScheduleTodoRoleChipHtml(rec);
+        return escapeHtml(p.nameEn ? p.name + ' ' + p.nameEn : p.name);
+    }).join('、');
 }
 
 function toggleScheduleTodoDone(checkbox) {
@@ -18990,6 +20639,220 @@ function hideProjectOriginMatchList() {
     if (hideProjectOriginMatchTimer) clearTimeout(hideProjectOriginMatchTimer);
     hideProjectOriginMatchTimer = null;
     var wrap = document.getElementById('projectOriginMatchWrap');
+    if (wrap) wrap.classList.add('d-none');
+}
+
+// ===== 角色档案匹配（计算页「角色」输入框自动关联角色档案） =====
+function getRoleMatchList(keyword, limit) {
+    if (!Array.isArray(roleProfiles) || roleProfiles.length === 0) return [];
+    var keyLower = keyword ? String(keyword).trim().toLowerCase() : '';
+    var list = roleProfiles.slice();
+    if (keyLower) {
+        list = list.filter(function (r) {
+            return (r && r.name && String(r.name).toLowerCase().indexOf(keyLower) >= 0) ||
+                (r && r.ip && String(r.ip).toLowerCase().indexOf(keyLower) >= 0) ||
+                (r && r.nameEn && String(r.nameEn).toLowerCase().indexOf(keyLower) >= 0) ||
+                (r && r.ipEn && String(r.ipEn).toLowerCase().indexOf(keyLower) >= 0);
+        });
+    }
+    // 默认按原作（IP）分组首字母排序（与角色档案列表一致），同 IP 内按名称；无 IP 沉底
+    var order = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    list.sort(function (a, b) {
+        var ka = (a && a.ip && String(a.ip).trim()) ? getCustomerGroupKey(a.ip) : '未记录';
+        var kb = (b && b.ip && String(b.ip).trim()) ? getCustomerGroupKey(b.ip) : '未记录';
+        if (ka !== kb) {
+            if (ka === '未记录') return 1;
+            if (kb === '未记录') return -1;
+            var ia = order.indexOf(ka), ib = order.indexOf(kb);
+            if (ia >= 0 && ib >= 0 && ia !== ib) return ia - ib;
+            return String(ka).localeCompare(String(kb), 'zh');
+        }
+        return String((a && a.name) || '').toLowerCase().localeCompare(String((b && b.name) || '').toLowerCase(), 'zh');
+    });
+    return list.slice(0, limit || 10);
+}
+
+// 角色档案选择器：支持多选（多个角色用顿号拼进输入框）
+var rolePickerSelected = new Set();
+// 搜索关键字与输入框内容解耦：选中后会重写输入框，若继续用输入框过滤会把候选筛没，导致无法连续多选
+var rolePickerKeyword = '';
+
+// 取输入框里最后一个分隔符之后的片段作为搜索词，方便「钟离、胡」继续搜「胡」
+function rolePickerKeywordFromInput() {
+    var roleEl = document.getElementById('characterName');
+    var raw = roleEl ? String(roleEl.value || '') : '';
+    var parts = String(raw).split(/[、，,;；\/|]+/);
+    return String(parts[parts.length - 1] || '').trim();
+}
+
+// 打开选择器时，以输入框当前值为准还原勾选状态
+function syncRolePickerSelectionFromInput() {
+    rolePickerSelected.clear();
+    var roleEl = document.getElementById('characterName');
+    var raw = roleEl ? String(roleEl.value || '').trim() : '';
+    parseHistoryRoleNames(raw).forEach(function (p) { if (p.name) rolePickerSelected.add(p.name); });
+}
+
+// 把勾选结果写回输入框（多个用顿号连接），并在原作（IP）为空时自动带出
+function applyRolePickerSelection() {
+    var roleEl = document.getElementById('characterName');
+    if (!roleEl) return;
+    var names = [];
+    rolePickerSelected.forEach(function (n) { names.push(n); });
+    // 保留手输但还没成为选项的尾片段，避免被勾选结果覆盖
+    var tail = rolePickerKeywordFromInput();
+    if (tail && names.indexOf(tail) < 0) names.push(tail);
+    roleEl.value = names.join('、');
+    var ipEl = document.getElementById('projectOrigin');
+    if (ipEl && !String(ipEl.value || '').trim() && names.length) {
+        var rec = findRoleProfileByName(names[0]);
+        if (rec && rec.ip) ipEl.value = rec.ip;
+    }
+    onProjectFieldInput('角色', roleEl.value);
+}
+
+// 角色档案匹配下拉：输入/聚焦/点「+」都会列出档案；点选为多选切换，不会立即关闭
+function showRoleMatches(forceAll) {
+    // 取消待执行的隐藏：点击「+」按钮会先触发 input 的 blur，避免随后把刚打开的列表又关掉
+    cancelHideRoleMatch();
+    var roleEl = document.getElementById('characterName');
+    var wrap = document.getElementById('roleMatchWrap');
+    var listEl = document.getElementById('roleMatchList');
+    if (!roleEl || !wrap || !listEl) return;
+    // 首次打开（原本隐藏）时同步一次勾选；已打开则保留用户本次的勾选
+    if (wrap.classList.contains('d-none')) syncRolePickerSelectionFromInput();
+    if (forceAll) rolePickerKeyword = '';
+    // 用独立的关键字过滤（不读输入框，输入框已被勾选结果重写）
+    var keyword = rolePickerKeyword || '';
+    var matches = getRoleMatchList(keyword, keyword ? 10 : 50);
+    var footHtml = '<li class="role-pick-footer">'
+        + '<button type="button" class="btn btn-compact" onclick="hideRoleMatchList()">完成</button>'
+        + '<span class="role-pick-tip">可多选</span></li>';
+    if (matches.length === 0) {
+        var noProfile = (!Array.isArray(roleProfiles) || roleProfiles.length === 0);
+        if (keyword) {
+            var kwEsc = keyword.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            listEl.innerHTML = '<li class="project-origin-match-item project-origin-match-add" role="button" tabindex="0" onclick="archiveRoleFromCalc()">'
+                + '<span style="color:var(--accent, #4f7cff);font-weight:600;">＋ 新建「' + kwEsc + '」并选中</span>'
+                + '</li>' + footHtml;
+        } else {
+            listEl.innerHTML = '<li class="project-origin-match-empty" style="cursor:default;padding:8px 10px;font-size:12px;color:var(--text-light,#6b7280);">'
+                + (noProfile ? '还没有角色档案，可在「设置 → 角色档案」建档' : '没有匹配的角色')
+                + '</li>' + footHtml;
+        }
+        wrap.classList.remove('d-none');
+        return;
+    }
+    listEl.innerHTML = matches.map(function (r) {
+        var nameEsc = (r.name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        var ipEsc = (r.ip || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        var picked = rolePickerSelected.has(r.name);
+        return '<li class="project-origin-match-item role-pick-item' + (picked ? ' is-selected' : '') + '" role="button" tabindex="0" data-role-name="' + nameEsc + '">'
+            + '<span class="role-pick-check">' + (picked ? '✓' : '') + '</span>'
+            + '<span class="role-pick-name">' + nameEsc + '</span>'
+            + (ipEsc ? '<span class="role-pick-ip">' + ipEsc + '</span>' : '')
+            + '</li>';
+    }).join('') + footHtml;
+    wrap.classList.remove('d-none');
+    listEl.querySelectorAll('.role-pick-item').forEach(function (li) {
+        li.addEventListener('click', function () {
+            var name = li.getAttribute('data-role-name') || '';
+            name = name.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+            if (rolePickerSelected.has(name)) rolePickerSelected.delete(name);
+            else rolePickerSelected.add(name);
+            applyRolePickerSelection();
+            showRoleMatches(false); // 原地刷新勾选状态，保持下拉打开
+        });
+    });
+}
+
+// 取消待执行的隐藏（下拉内部 mousedown 时调用，避免点选项就被 blur 关掉）
+function cancelHideRoleMatch() {
+    if (hideRoleMatchTimer) { clearTimeout(hideRoleMatchTimer); hideRoleMatchTimer = null; }
+}
+
+// 输入新角色后自动入档：把输入框里尚未建档的角色写进角色档案（带原作/IP，多角色自动拆分）
+function autoArchiveRoleFromCalc() {
+    var roleEl = document.getElementById('characterName');
+    var raw = roleEl ? String(roleEl.value || '').trim() : '';
+    if (!raw) return;
+    var roles = parseHistoryRoleNames(raw);
+    if (!roles.length) return;
+    var ipEl = document.getElementById('projectOrigin');
+    var ipp = parseHistoryIpPair(ipEl ? String(ipEl.value || '') : '');
+    var created = 0;
+    roles.forEach(function (p) {
+        if (!p.name) return;
+        if (findRoleProfileByName(p.name)) return;
+        var payload = { name: p.name };
+        if (p.nameEn) payload.nameEn = p.nameEn;
+        if (ipp.ip) payload.ip = ipp.ip;
+        if (ipp.ipEn) payload.ipEn = ipp.ipEn;
+        if (upsertRoleProfile(payload)) created++;
+    });
+    if (!created) return;
+    saveRoleProfiles();
+    if (typeof renderRoleList === 'function') renderRoleList();
+    if (typeof renderRoleHistoryPrompt === 'function') renderRoleHistoryPrompt();
+    showToast('已自动入档 ' + created + ' 个新角色', 'ok');
+}
+
+// 「+」按钮：打开/关闭完整档案列表（忽略输入框内容，列出全部，可多选）
+function toggleRolePicker() {
+    var wrap = document.getElementById('roleMatchWrap');
+    if (wrap && !wrap.classList.contains('d-none')) { hideRoleMatchList(); return; }
+    var roleEl = document.getElementById('characterName');
+    if (roleEl) roleEl.focus();
+    showRoleMatches(true);
+}
+
+// 下拉中的「＋ 新建「XXX」并选中」：把输入的角色入档并加入当前多选
+function archiveRoleFromCalc() {
+    var roleEl = document.getElementById('characterName');
+    var raw = roleEl ? String(roleEl.value || '').trim() : '';
+    if (!raw) { showToast('请先填写角色名', 'warn'); return; }
+    var roles = parseHistoryRoleNames(raw);
+    if (!roles.length) { showToast('角色名无法识别', 'warn'); return; }
+    var ipEl = document.getElementById('projectOrigin');
+    var ipp = parseHistoryIpPair(ipEl ? String(ipEl.value || '') : '');
+
+    var createdNames = [];
+    roles.forEach(function (p) {
+        if (!p.name) return;
+        rolePickerSelected.add(p.name);      // 无论新旧都加入本次多选
+        if (findRoleProfileByName(p.name)) return;
+        var payload = { name: p.name };
+        if (p.nameEn) payload.nameEn = p.nameEn;
+        if (ipp.ip) payload.ip = ipp.ip;
+        if (ipp.ipEn) payload.ipEn = ipp.ipEn;
+        if (upsertRoleProfile(payload)) createdNames.push(p.name);
+    });
+    if (createdNames.length) {
+        saveRoleProfiles();
+        if (typeof renderRoleList === 'function') renderRoleList();
+        showToast('已入档：' + createdNames.join('、'), 'ok');
+    }
+    applyRolePickerSelection();
+    showRoleMatches(false); // 刷新列表（新角色已出现且为勾选态），保持打开
+}
+
+var roleMatchDebounceTimer = null;
+// 输入时刷新搜索关键字（只取最后一段，支持「钟离、胡」继续搜「胡」），再延迟渲染
+function debouncedShowRoleMatches() {
+    rolePickerKeyword = rolePickerKeywordFromInput();
+    if (roleMatchDebounceTimer) clearTimeout(roleMatchDebounceTimer);
+    roleMatchDebounceTimer = setTimeout(function () { showRoleMatches(false); }, 200);
+}
+
+var hideRoleMatchTimer = null;
+function scheduleHideRoleMatchList() {
+    if (hideRoleMatchTimer) clearTimeout(hideRoleMatchTimer);
+    hideRoleMatchTimer = setTimeout(hideRoleMatchList, 150);
+}
+function hideRoleMatchList() {
+    if (hideRoleMatchTimer) clearTimeout(hideRoleMatchTimer);
+    hideRoleMatchTimer = null;
+    var wrap = document.getElementById('roleMatchWrap');
     if (wrap) wrap.classList.add('d-none');
 }
 
@@ -21568,6 +23431,10 @@ function editHistoryItem(id) {
         customTag: quote.customTag || '',
         tags: Array.isArray(quote.tags) ? JSON.parse(JSON.stringify(quote.tags)) : []
     };
+    // 编辑历史订单：同步初始化会话合并选择，避免残留上一订单/上一会话的选择污染本单重新生成
+    _pendingModuleMergeChoice = (quote.moduleMergeChoice === 'no') ? 'no' : null;
+    // 刷新本机存档：把当前订单的选择写回 localStorage，使刷新页面后指纹匹配、选择可复原
+    _saveMergeChoiceToLocal(_pendingModuleMergeChoice);
 }
 
 // 从数据添加其他费用（用于编辑历史记录）
@@ -21909,6 +23776,10 @@ function loadQuoteFromHistory(id) {
             customTag: quote.customTag || '',
             tags: Array.isArray(quote.tags) ? JSON.parse(JSON.stringify(quote.tags)) : []
         };
+        // 编辑历史订单：以该订单存储的合并选择为准，避免残留上一订单的选择
+        _pendingModuleMergeChoice = (quote.moduleMergeChoice === 'no') ? 'no' : null;
+        // 刷新本机存档：使刷新页面后指纹匹配，选择得以复原（含未保存到历史的改动）
+        _saveMergeChoiceToLocal(_pendingModuleMergeChoice);
         
         // 为兼容旧版本历史数据，确保productPrices和giftPrices中的每个项目都有sides和productId字段
         if (quoteData.productPrices) {
@@ -22177,6 +24048,17 @@ function exportHistoryToExcel(preFilteredData) {
         const clientId = item.clientId || '';
         
         if (item.productPrices && item.productPrices.length > 0) {
+            // 显示序号按模块顺序（组一→组二→…）连续重编，与报价小票口径一致；
+            // 历史订单的 modules 快照在 item.modules 上（导出时 orderModules 未必是这张单的）
+            var _expSeqOf = (function (mods) {
+                return function (it) {
+                    var mid = (it && it.moduleId) ? String(it.moduleId) : '';
+                    if (!mid) return 999999;
+                    var m = (mods || []).find(function (x) { return x && String(x.id) === mid; });
+                    return (m && m.seq != null && isFinite(Number(m.seq))) ? Number(m.seq) : 999999;
+                };
+            })(Array.isArray(item.modules) && item.modules.length ? item.modules : (Array.isArray(quoteData && quoteData.modules) ? quoteData.modules : []));
+            var _expIdxMap = buildModuleOrderedIndexMap(item.productPrices, { seqOf: _expSeqOf });
             item.productPrices.forEach((product, index) => {
                 // 格式化工艺信息
                 let processInfo = '';
@@ -22234,7 +24116,7 @@ function exportHistoryToExcel(preFilteredData) {
                 const detailRow = {
                     '报价时间': timestamp,
                     '单主ID': clientId,
-                    '序号': product.productIndex || (index + 1),
+                    '序号': displayProductIndex(product, _expIdxMap) || (index + 1),
                     '制品名称': product.product || '',
                     '分类': product.category || '其他',
                     '价格类型': priceTypeText,
@@ -23145,7 +25027,16 @@ function mgBuildProjectSummary(item) {
         else if (p.name === '角色') rolePart = p.value;
     });
     var titleText = titlePart ? escapeText(titlePart) : '';
-    var rightPart = [ipPart, rolePart].filter(Boolean).map(escapeText).join(' - ');
+    // 角色名单独处理：已建档则输出高亮 chip（点击弹角色信息），未建档保持纯文本
+    var rightTextParts = [];
+    if (ipPart) rightTextParts.push(escapeText(ipPart));
+    if (rolePart) {
+        var roleHtml = (typeof buildScheduleTodoCharacterHtml === 'function')
+            ? buildScheduleTodoCharacterHtml(rolePart)
+            : escapeText(rolePart);
+        rightTextParts.push(roleHtml);
+    }
+    var rightPart = rightTextParts.join(' - ');
     var extraSummary = extraParts.map(function (p) { return escapeText(p.value); }).join(' · ');
 
     // 后续内容 = [原作 - 角色, 附加字段].filter(Boolean).join(' · ')
@@ -23626,6 +25517,9 @@ function renderProjectInfoFields() {
     // 先把 projectOriginMatchWrap 从当前 DOM 中取出来（如果存在），避免重复插入
     var matchWrap = document.getElementById('projectOriginMatchWrap');
     if (matchWrap && matchWrap.parentNode) matchWrap.parentNode.removeChild(matchWrap);
+    // 角色档案匹配下拉同样取出复用，避免重复插入
+    var roleMatchWrapEl = document.getElementById('roleMatchWrap');
+    if (roleMatchWrapEl && roleMatchWrapEl.parentNode) roleMatchWrapEl.parentNode.removeChild(roleMatchWrapEl);
 
     // 保存已有的内置字段值，防止重渲染时丢值
     var savedBuiltin = {};
@@ -23639,6 +25533,7 @@ function renderProjectInfoFields() {
     var visibleHtml = '';
     var colsPerRow = 3;
     var hasOriginVisible = false;
+    var hasRoleVisible = false;
     for (var start = 0; start < visibleFields.length; start += colsPerRow) {
         var row = visibleFields.slice(start, start + colsPerRow);
         visibleHtml += '<div class="form-row project-info-grid" style="width:100%;">';
@@ -23660,14 +25555,25 @@ function renderProjectInfoFields() {
             var extraHandlers;
             if (field === '原作（IP）') {
                 extraHandlers = 'oninput="debouncedShowProjectOriginMatches(); onProjectFieldInput(&quot;原作（IP）&quot;, this.value)" onblur="scheduleHideProjectOriginMatchList()"';
+            } else if (field === '角色') {
+                extraHandlers = 'oninput="debouncedShowRoleMatches(); onProjectFieldInput(&quot;角色&quot;, this.value)"'
+                    + ' onfocus="showRoleMatches(true)" onblur="scheduleHideRoleMatchList()"'
+                    + ' onchange="autoArchiveRoleFromCalc()"';
             } else {
                 extraHandlers = 'oninput="onProjectFieldInput(&quot;' + field.replace(/"/g, '&quot;') + '&quot;, this.value)"';
             }
             var escField = escapeHtml(field);
             var escValue = (escapeHtml(currentValue) || '').replace(/"/g, '&quot;');
+            var inputHtml = (field === '角色')
+                // 角色：输入框 + 「选择」按钮，可从角色档案里挑
+                ? '<div class="role-input-row" style="display:flex;gap:6px;align-items:stretch;">'
+                    + '<input type="text" id="' + inputId + '" value="' + escValue + '" placeholder="输入或选择角色（可多选）" ' + extraHandlers + ' style="flex:1;min-width:0;">'
+                    + '<button type="button" class="btn btn-compact role-pick-btn" title="从角色档案选择（可多选）" onclick="toggleRolePicker()">+</button>'
+                + '</div>'
+                : '<input type="text" id="' + inputId + '" value="' + escValue + '" placeholder="请输入' + escField + '" ' + extraHandlers + '>';
             var fieldHtml = '<div class="form-group flex-1">'
                 + '<label for="' + inputId + '">' + escField + '</label>'
-                + '<input type="text" id="' + inputId + '" value="' + escValue + '" placeholder="请输入' + escField + '" ' + extraHandlers + '>'
+                + inputHtml
                 + '</div>';
             if (field === '原作（IP）') {
                 hasOriginVisible = true;
@@ -23681,6 +25587,18 @@ function renderProjectInfoFields() {
                     // 确保带 d-none
                     if (wrapHtml.indexOf('d-none') < 0) wrapHtml = wrapHtml.replace('class="', 'class="d-none ');
                     visibleHtml += wrapHtml;
+                }
+                visibleHtml += '</div>';
+            } else if (field === '角色') {
+                hasRoleVisible = true;
+                visibleHtml += '<div class="project-origin-input-wrap" style="position:relative;display:block;flex:1;">';
+                visibleHtml += fieldHtml;
+                if (roleMatchWrapEl) {
+                    var roleWrapHtml = roleMatchWrapEl.outerHTML
+                        .replace(/\sstyle="display:\s*none;?"/gi, '')
+                        .replace(/\sstyle="[^"]*d-none[^"]*"/gi, '');
+                    if (roleWrapHtml.indexOf('d-none') < 0) roleWrapHtml = roleWrapHtml.replace('class="', 'class="d-none ');
+                    visibleHtml += roleWrapHtml;
                 }
                 visibleHtml += '</div>';
             } else {
@@ -23706,6 +25624,11 @@ function renderProjectInfoFields() {
     if (!document.getElementById('projectOriginMatchWrap') && matchWrap) {
         var secWrap = container.parentNode;
         if (secWrap) secWrap.appendChild(matchWrap);
+    }
+    // 角色档案匹配下拉同理放回
+    if (!document.getElementById('roleMatchWrap') && roleMatchWrapEl) {
+        var secWrap2 = container.parentNode;
+        if (secWrap2) secWrap2.appendChild(roleMatchWrapEl);
     }
 }
 

@@ -2005,6 +2005,69 @@ html.theme-dark .btn-remark-full:active {
     background: var(--primary-light, rgba(0, 0, 0, 0.04));
     outline: none;
 }
+/* 角色档案匹配：空态提示不可点 */
+.project-origin-match-empty {
+    cursor: default !important;
+    border-bottom: none;
+    color: var(--text-light, #6b7280);
+}
+.project-origin-match-empty:hover {
+    background: transparent !important;
+}
+/* 角色档案选择器：输入框旁的「+」按钮 */
+.role-pick-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0 10px;
+    font-size: 14px;
+    line-height: 1;
+}
+/* 多选条目：勾选标记 + 名称 + IP */
+.role-pick-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.role-pick-check {
+    flex: 0 0 auto;
+    width: 14px;
+    font-size: 12px;
+    color: var(--accent, #4f7cff);
+    text-align: center;
+}
+.role-pick-name {
+    flex: 0 0 auto;
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.role-pick-ip {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-light, #6b7280);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.role-pick-item.is-selected {
+    background: var(--primary-light, rgba(0, 0, 0, 0.06));
+    font-weight: 600;
+}
+/* 底部：完成按钮 + 提示 */
+.role-pick-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-top: 1px solid var(--border-color);
+    background: var(--card-bg);
+}
+.role-pick-tip {
+    font-size: 11px;
+    color: var(--text-light, #6b7280);
+}
 
 /* 接单平台：清空键在框内（参考制品类型选择框） */
 .order-platform-input-wrap {
@@ -2230,13 +2293,15 @@ input:focus, select:focus {
 .icon-action-btn.move-to-top,
 .icon-action-btn.move-up,
 .icon-action-btn.move-down,
-.icon-action-btn.module-collapse-btn {
+.icon-action-btn.module-collapse-btn,
+.icon-action-btn.module-duplicate-btn {
     color: var(--text-color);
 }
 html.theme-dark .icon-action-btn.move-to-top,
 html.theme-dark .icon-action-btn.move-up,
 html.theme-dark .icon-action-btn.move-down,
-html.theme-dark .icon-action-btn.module-collapse-btn {
+html.theme-dark .icon-action-btn.module-collapse-btn,
+html.theme-dark .icon-action-btn.module-duplicate-btn {
     color: #e5e7eb;
 }
 
@@ -4276,7 +4341,7 @@ html.theme-dark .setting-hint strong {
     border: 0;
     border-right: 1px solid var(--border-color, #e8e8e8);
     background: transparent;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.15s, color 0.15s;
@@ -4288,6 +4353,11 @@ html.theme-dark .setting-hint strong {
     background: var(--primary-color);
     color: #fff;
     font-weight: 500;
+}
+html.theme-dark .coefficient-settings .platform-fee-round-seg button.is-active {
+    background: #3a3a3a;
+    color: #fff;
+    border-color: #555;
 }
 
 /* 平台手续费：「取整/分段」设置按钮（点开面板） */
@@ -4317,6 +4387,15 @@ html.theme-dark .setting-hint strong {
     background: var(--primary-color);
     color: #fff;
     border-color: var(--primary-color);
+}
+/* 暗色模式：primary-color 为浅色，激活态按钮需用深色背景+浅色文字 */
+html.theme-dark .coefficient-settings .platform-fee-settings-btn.is-active {
+    background: #3a3a3a;
+    color: #fff;
+    border-color: #555;
+}
+html.theme-dark .coefficient-settings .platform-fee-settings-btn.is-open {
+    background: rgba(255, 255, 255, 0.06);
 }
 
 /* 平台手续费：取整/分段设置面板 */
@@ -7899,6 +7978,37 @@ input:checked + .toggle-slider:before {
     font-weight: 600;
 }
 
+/* 排单页 Todo 卡片：企划摘要里「已建档角色」的高亮 chip */
+.schedule-todo-role-chip {
+    position: relative;
+    display: inline-block;
+    color: var(--accent, #4f7cff);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--accent, #4f7cff) 14%, transparent);
+    border-radius: 4px;
+    padding: 0 5px;
+    margin: 0 1px;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    text-underline-offset: 2px;
+}
+
+.schedule-todo-role-chip:hover {
+    background: color-mix(in srgb, var(--accent, #4f7cff) 26%, transparent);
+}
+
+/* 建档角标：右上角小圆点，作为「此角色已建档」的视觉提示 */
+.schedule-todo-role-chip .schedule-todo-role-chip-mark {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent, #4f7cff);
+}
+
 .schedule-todo-chips-wrap {
     display: flex;
     flex-wrap: wrap;
@@ -8458,7 +8568,7 @@ html.theme-dark .folder-time-btn.active {
 .schedule-section-title {
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--text-secondary, #666);
+    color: var(--text-light, #6b7280);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -8478,7 +8588,7 @@ html.theme-dark .folder-time-btn.active {
 }
 .form-label-sm {
     font-size: 0.65rem;
-    color: var(--text-secondary, #666);
+    color: var(--text-light, #6b7280);
     margin-bottom: 0.25rem;
     display: block;
 }
@@ -11880,6 +11990,10 @@ html.theme-dark .module-symbol {
     margin-left: 0.1rem;
     color: var(--danger, #e11d48);
 }
+.module-duplicate-btn {
+    flex-shrink: 0;
+    margin-left: 0.1rem;
+}
 .module-item-body {
     padding: 0.5rem 0.1rem;
 }
@@ -12407,7 +12521,7 @@ html.theme-dark .convert-menu {
     content: '▾';
     margin-left: auto;
     font-size: 10px;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     opacity: 0;
     transition: opacity 0.15s ease;
 }
@@ -12420,6 +12534,336 @@ html.theme-dark .convert-menu {
 .customer-group-body {
     padding-top: 2px;
 }
+/* 角色档案按IP分组：组标题（原作/IP名，支持长文本换行） */
+.customer-group-ip {
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--text-light, #6b7280);
+    min-width: 0;
+    word-break: break-all;
+    line-height: 1.4;
+}
+
+/* ===== 角色档案卡片（列表内）===== */
+.role-card-clickable {
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+.role-card-clickable:hover {
+    color: var(--accent, #4f7cff);
+}
+.role-card-title-en {
+    margin-left: 6px;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-light, #6b7280);
+    font-style: italic;
+}
+.role-card-ip-line {
+    margin-top: 2px;
+    padding-left: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.role-card-ip {
+    color: var(--text-light, #6b7280);
+    font-weight: 600;
+}
+.role-card-ip-en {
+    color: var(--text-light, #6b7280);
+    font-style: italic;
+}
+.role-card-alias-line {
+    margin-top: 3px;
+    padding-left: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.role-view-alias {
+    display: inline-block;
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent, #4f7cff) 12%, transparent);
+    color: var(--accent, #4f7cff);
+    white-space: nowrap;
+}
+.role-card-base-line {
+    margin-top: 4px;
+    padding-left: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    font-size: 11.5px;
+    color: var(--text-light, #6b7280);
+    line-height: 1.6;
+}
+.role-card-base-item {
+    white-space: nowrap;
+}
+.role-card-base-item i {
+    font-style: normal;
+    color: var(--text-light, #6b7280);
+    margin-right: 3px;
+}
+.role-card-base-more {
+    color: var(--text-light, #6b7280);
+    opacity: 0.8;
+}
+.role-card-quote-line {
+    margin-top: 3px;
+    padding-left: 20px;
+    font-size: 11.5px;
+    color: var(--text-light, #6b7280);
+    font-style: italic;
+    line-height: 1.5;
+    word-break: break-all;
+}
+.role-card-quote-more {
+    margin-left: 6px;
+    font-style: normal;
+    opacity: 0.75;
+}
+
+/* ===== 角色编辑弹窗：分组标题 / 基础资料栅格 / 自定义字段行 ===== */
+.modal-content-wide {
+    max-width: 680px;
+    width: calc(100vw - 32px);
+}
+/* 角色卡片视图（与编辑表单同一弹窗，卡片 ⇄ 编辑切换） */
+.role-card-view {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.role-card-view-head {
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-color, #e8e8e8);
+}
+.role-card-view-name {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-color, #333);
+    line-height: 1.3;
+    word-break: break-all;
+}
+.role-card-view-name-en {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-light, #6b7280);
+}
+.role-card-view-sub {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.role-view-chip {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-secondary, #f5f5f5);
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 12px;
+    color: var(--text-color, #333);
+}
+.role-card-view-ip {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color, #333);
+}
+.role-card-view-ip .ip-en {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-light, #6b7280);
+}
+.role-card-view-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--text-light, #6b7280);
+    margin-bottom: 7px;
+    padding-left: 8px;
+    border-left: 3px solid var(--accent, #4f7cff);
+    line-height: 1.2;
+}
+.role-card-view-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 9px 16px;
+}
+.role-card-view-item {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.role-card-view-item i {
+    font-style: normal;
+    flex: 0 0 auto;
+    color: var(--text-light, #6b7280);
+}
+.role-card-view-item span {
+    color: var(--text-color, #333);
+    word-break: break-all;
+}
+.role-card-view-text {
+    font-size: 13px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-color, #333);
+}
+.role-card-view-quote {
+    font-size: 13px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-color, #333);
+    border-left: 3px solid var(--accent, #4f7cff);
+    padding-left: 12px;
+}
+.role-card-view-empty {
+    padding: 22px 0;
+    text-align: center;
+    color: var(--text-light, #6b7280);
+    font-size: 13px;
+}
+@media (max-width: 768px) {
+    .role-card-view-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .role-card-view-name {
+        font-size: 17px;
+    }
+}
+.role-edit-group-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--text-light, #6b7280);
+    text-transform: uppercase;
+    margin: 14px 0 8px;
+    padding-left: 8px;
+    border-left: 3px solid var(--accent, #4f7cff);
+    line-height: 1.2;
+}
+.role-edit-group-title:first-child {
+    margin-top: 0;
+}
+.role-add-field-btn {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+}
+.role-base-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px 12px;
+}
+.role-base-grid .form-group {
+    margin-bottom: 0;
+}
+.role-edit-more-toggle {
+    margin: 14px 0 0;
+}
+.role-custom-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.role-custom-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 140px) 1fr 30px;
+    gap: 6px;
+    align-items: center;
+}
+.role-custom-row input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+.role-custom-del {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-light, #6b7280);
+    font-size: 16px;
+    line-height: 1;
+}
+.role-custom-del:hover {
+    background: color-mix(in srgb, #e5484d 14%, transparent);
+    color: #e5484d;
+}
+
+/* ===== 轻量提示 toast ===== */
+.toast-host {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%);
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+}
+.toast-item {
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: var(--card-bg, #ffffff);
+    color: var(--text-color, #e5e5e5);
+    border: 1px solid var(--border-color, #3f3f46);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    font-size: 12.5px;
+    line-height: 1.5;
+    max-width: min(420px, calc(100vw - 32px));
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast-item.toast-in {
+    opacity: 1;
+    transform: translateY(0);
+}
+.toast-item.toast-warn {
+    border-color: color-mix(in srgb, #e5a00d 55%, transparent);
+}
+.toast-item.toast-ok {
+    border-color: color-mix(in srgb, #2da44e 55%, transparent);
+}
+
+@media (max-width: 768px) {
+    .role-base-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 /* 档位编辑行：三列栅格对齐（阈值/折扣/删除），名称自动生成不占列 */
 .customer-auto-tier-row {
     display: grid;
@@ -12532,7 +12976,7 @@ html.theme-dark .convert-menu {
 }
 .customer-card-contact {
     font-size: 12px;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
 }
 .customer-card-stats {
     font-size: 12px;
@@ -12540,9 +12984,18 @@ html.theme-dark .convert-menu {
     font-weight: 400;
     letter-spacing: 0.02em;
 }
+/* 角色档案卡片：设定/描述行 */
+.role-card-desc {
+    margin-top: 4px;
+    padding-left: 20px;
+    font-size: 12px;
+    color: var(--text-light, #6b7280);
+    line-height: 1.5;
+    word-break: break-all;
+}
 .customer-card-note {
     font-size: 12px;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     line-height: 1.4;
     word-break: break-all;
     margin-left: 2px;
@@ -12570,7 +13023,7 @@ html.theme-dark .convert-menu {
     align-items: center;
     justify-content: center;
     background: transparent;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     cursor: pointer;
     transition: all 0.15s ease;
 }
@@ -12605,11 +13058,11 @@ html.theme-dark .convert-menu {
 }
 .customer-badge-validity {
     font-size: 11px;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     margin-left: 4px;
 }
 .customer-empty {
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
 }
 
 /* 单主折扣统一规则：档位编辑区折叠按钮 */
@@ -12651,7 +13104,7 @@ html.theme-dark .convert-menu {
     border-radius: 6px;
     font-size: 12px;
     font-weight: 600;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     cursor: pointer;
     text-align: center;
     line-height: 1;
@@ -12676,7 +13129,7 @@ html.theme-dark .convert-menu {
     border: 0;
     background: transparent;
     cursor: pointer;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     border-right: 1px solid var(--border-color, #e8e8e8);
     transition: background 0.15s, color 0.15s;
     line-height: 1.6;
@@ -12688,6 +13141,12 @@ html.theme-dark .convert-menu {
     background: var(--primary-color);
     color: #fff;
     font-weight: 500;
+}
+/* 暗色模式：primary-color 为浅色，激活态按钮需用深色背景+浅色文字（与强调按钮一致） */
+html.theme-dark .customer-sort-segmented button.is-active {
+    background: #3a3a3a;
+    color: #fff;
+    border-color: #555;
 }
 
 /* Switch 风格 segmented（带滑动指示器） */
@@ -12712,7 +13171,7 @@ html.theme-dark .convert-menu {
     z-index: 1;
     flex: 1;
     border-right: 0; /* switch 风格不要分隔线，thumb 作为视觉分隔 */
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
 }
 .customer-sort-segmented.seg-switch button.is-active {
     background: transparent;
@@ -12758,6 +13217,16 @@ html.theme-dark .convert-menu {
     border: 1px solid var(--border-color, #e8e8e8);
     border-radius: 10px;
     margin-bottom: 8px;
+}
+.role-history-check input,
+.role-history-selectall input {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+/* 历史建档行：忽略/建档是主要操作，常驻显示（客户卡片的 hover 显隐仅适用于 .customer-card） */
+.customer-archive-row .customer-card-actions {
+    opacity: 1;
 }
 
 /* 专属优惠统一规则卡片 */
@@ -12819,7 +13288,7 @@ html.theme-dark .convert-menu {
 }
 .inline-switch .switch-label {
     font-size: 12px;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
 }
 .inline-switch input:checked ~ .switch-label {
     color: var(--primary-color);
@@ -12857,7 +13326,7 @@ html.theme-dark .convert-menu {
     padding: 4px 12px;
     font-size: 13px;
     line-height: 1.4;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     cursor: pointer;
     border-radius: 6px;
     white-space: nowrap;
@@ -12901,7 +13370,7 @@ html.theme-dark .convert-menu {
     white-space: nowrap;
 }
 .customer-discount-meta {
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     font-size: 12px;
     white-space: nowrap;
     overflow: hidden;
@@ -12920,7 +13389,7 @@ html.theme-dark .convert-menu {
     gap: 4px;
     white-space: nowrap;
     font-size: 12px;
-    color: var(--text-secondary, #888);
+    color: var(--text-light, #6b7280);
     cursor: pointer;
     user-select: none;
 }
