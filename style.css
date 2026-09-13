@@ -48,6 +48,12 @@
     --desktop-nav-width: 80px;
     /* 小票默认字体（作为后备，主题类会覆盖此值） */
     --receipt-font-family: 'Courier New', 'Monaco', 'Consolas', 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Courier', monospace;
+
+    /* 轻量滚动条：尺寸 / 滑块色 / 悬浮色 / 轨道色（全局统一，局部隐藏用例可用类选择器覆盖） */
+    --sb-size: 6px;
+    --sb-thumb: rgba(0, 0, 0, 0.16);
+    --sb-thumb-hover: rgba(0, 0, 0, 0.32);
+    --sb-track: transparent;
 }
 
 /* 黑夜模式 */
@@ -68,6 +74,48 @@ html.theme-dark {
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
 
     --toggle-off-bg: #71717a;
+
+    /* 轻量滚动条（暗色） */
+    --sb-thumb: rgba(255, 255, 255, 0.22);
+    --sb-thumb-hover: rgba(255, 255, 255, 0.4);
+}
+
+/* ===== 全局轻量滚动条 =====
+   细轨 + 透明轨道 + 淡色滑块，鼠标移入容器才完全显现。
+   需要隐藏滚动条的元素（.settings-subpage-actions、.stats-quick-row 等）用类选择器覆盖，
+   优先级高于此处的通配符规则，不受影响。 */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+
+*::-webkit-scrollbar {
+    width: var(--sb-size);
+    height: var(--sb-size);
+}
+
+*::-webkit-scrollbar-track {
+    background: var(--sb-track);
+}
+
+*::-webkit-scrollbar-thumb {
+    background-color: var(--sb-thumb);
+    border-radius: 999px;
+    opacity: 0.35;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+    opacity: 1;
+}
+
+*::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:active {
+    background-color: var(--sb-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 html.theme-dark input,
@@ -2663,35 +2711,6 @@ html.theme-dark .icon-action-btn.module-duplicate-btn {
 #roleManageBody {
     overflow-y: auto;
     overflow-x: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
-}
-#roleManageBody::-webkit-scrollbar {
-    width: 4px;
-}
-#roleManageBody::-webkit-scrollbar-track {
-    background: transparent;
-}
-#roleManageBody::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-#roleManageBody:hover::-webkit-scrollbar-thumb {
-    opacity: 1;
-}
-#roleManageBody::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(0, 0, 0, 0.35);
-}
-html.theme-dark #roleManageBody {
-    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
-}
-html.theme-dark #roleManageBody::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.25);
-}
-html.theme-dark #roleManageBody::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.4);
 }
 
 .modal-content-compact {
@@ -2769,6 +2788,7 @@ html.theme-dark #roleManageBody::-webkit-scrollbar-thumb:hover {
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
 }
+
 
 /* 同系数组合并确认弹窗 */
 .module-merge-list {
@@ -10502,24 +10522,6 @@ html.theme-dark .settlement-preview {
     margin-left: auto;
 }
 
-.stats-mini-bars.scrollable::-webkit-scrollbar {
-    width: 6px;
-}
-
-.stats-mini-bars.scrollable::-webkit-scrollbar-track {
-    background: var(--bg-light);
-    border-radius: 3px;
-}
-
-.stats-mini-bars.scrollable::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 3px;
-}
-
-.stats-mini-bars.scrollable::-webkit-scrollbar-thumb:hover {
-    background: var(--text-light);
-}
-
 .stats-bar-head {
     display: grid;
     grid-template-columns: 88px repeat(4, minmax(0, 1fr));
@@ -12784,9 +12786,6 @@ html.theme-dark .convert-menu {
 .role-base-grid .form-group {
     margin-bottom: 0;
 }
-.role-edit-more-toggle {
-    margin: 14px 0 0;
-}
 .role-custom-list {
     display: flex;
     flex-direction: column;
@@ -13092,27 +13091,30 @@ html.theme-dark .convert-menu {
     top: 60px;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 1px;
     align-self: flex-start;
     flex: 0 0 auto;
 }
 .customer-index-btn {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
     border: 0;
     background: transparent;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
     color: var(--text-light, #6b7280);
+    opacity: 0.65;
     cursor: pointer;
     text-align: center;
     line-height: 1;
     padding: 0;
+    transition: opacity 0.15s, color 0.15s;
 }
 .customer-index-btn:hover {
-    background: var(--bg-secondary, #f5f5f5);
+    background: transparent;
     color: var(--primary-color);
+    opacity: 1;
 }
 .customer-sort-segmented {
     display: inline-flex;

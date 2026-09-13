@@ -2633,7 +2633,6 @@ const ROLE_BASE_FIELDS = [
     { key: 'weight',      label: '体重' },
     { key: 'bloodType',   label: '血型' },
     { key: 'constellation', label: '星座' },
-    { key: 'cv',          label: '声优' },
     { key: 'affiliation', label: '阵营' },
     { key: 'identity',    label: '身份' }
 ];
@@ -4313,18 +4312,6 @@ function openRoleEditModal(roleId, preferredMode) {
         });
     }
 
-    // 有「更多资料」内容时自动展开折叠区
-    var hasMore = ROLE_BASE_FIELDS.some(function (f) { return r && r[f.key] && String(r[f.key]).trim(); })
-        || (r && r.customFields && Object.keys(r.customFields).length > 0)
-        || (r && getRoleQuotes(r).length > 0)
-        || (r && r.aliases);
-    var moreBox = document.getElementById('roleEditMoreBox');
-    var moreBtn = document.getElementById('roleEditMoreBtn');
-    if (moreBox && moreBtn) {
-        if (hasMore) { moreBox.classList.remove('d-none'); moreBtn.textContent = '收起更多资料'; }
-        else { moreBox.classList.add('d-none'); moreBtn.textContent = '展开更多资料'; }
-    }
-
     modal.classList.remove('d-none');
     modal.setAttribute('aria-hidden', 'false');
     // 默认卡片视图（空档案无内容可看，直接进编辑），可传 preferredMode 强制指定
@@ -4461,14 +4448,6 @@ function addRoleCustomFieldRow(key, value) {
 function removeRoleCustomFieldRow(btn) {
     var row = btn && btn.closest ? btn.closest('.role-custom-row') : null;
     if (row && row.parentNode) row.parentNode.removeChild(row);
-}
-
-// 编辑弹窗：切换「更多资料」折叠区
-function toggleRoleMoreFields(btn) {
-    var box = document.getElementById('roleEditMoreBox');
-    if (!box) return;
-    var open = box.classList.toggle('d-none') === false;
-    if (btn) btn.textContent = open ? '收起更多资料' : '展开更多资料';
 }
 
 function deleteRoleProfile(id) {
@@ -16921,13 +16900,16 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260914-0358';
+const APP_VERSION = '20260914-0433';
 const APP_CHANGELOG = [
     {
         date: '2026-09-14',
         items: [
             '【角色档案-从历史建档】建档成功的提示改为轻提示（不再弹窗打断）；新增「全部忽略」，一键忽略后不再提示建档，并可在角色档案页「恢复忽略」找回',
             '【角色档案-从历史建档】每一行新增「编辑」：预填自动识别出的角色名 / 外文名 / 原作，可先改成完整档案再保存，保存即完成建档',
+            '【角色档案-编辑弹窗】移除「展开更多资料」折叠按钮，自定义资料与语录改为常驻显示，无需再点击展开',
+            '【角色档案】基础资料移除「声优」项，编辑表单与角色卡片均不再显示',
+            '【全局】所有滚动条统一为轻量样式：细轨（6px）、透明轨道、淡色滑块，鼠标移入容器才完全显现；保留设置项、待办 chips、统计快捷行等处的隐藏滚动条',
         ]
     },
     {

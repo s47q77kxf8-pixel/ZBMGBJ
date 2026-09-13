@@ -7,7 +7,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260914-0358">
+    <link rel="stylesheet" href="style.css?v=20260914-0433">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -3220,16 +3220,12 @@
                                 <div class="form-group"><label for="roleEdit_weight">体重</label><input type="text" id="roleEdit_weight" placeholder="如：65kg"></div>
                                 <div class="form-group"><label for="roleEdit_bloodType">血型</label><input type="text" id="roleEdit_bloodType" placeholder=""></div>
                                 <div class="form-group"><label for="roleEdit_constellation">星座</label><input type="text" id="roleEdit_constellation" placeholder=""></div>
-                                <div class="form-group"><label for="roleEdit_cv">声优</label><input type="text" id="roleEdit_cv" placeholder=""></div>
                                 <div class="form-group"><label for="roleEdit_affiliation">阵营</label><input type="text" id="roleEdit_affiliation" placeholder=""></div>
                                 <div class="form-group"><label for="roleEdit_identity">身份</label><input type="text" id="roleEdit_identity" placeholder=""></div>
                             </div>
 
-                            <!-- 更多资料（折叠区：自定义字段 + 语录） -->
-                            <div class="role-edit-more-toggle">
-                                <button type="button" class="btn secondary btn-compact" id="roleEditMoreBtn" onclick="toggleRoleMoreFields(this)">展开更多资料</button>
-                            </div>
-                            <div id="roleEditMoreBox" class="d-none">
+                            <!-- 更多资料：自定义字段 + 语录（常驻显示） -->
+                            <div id="roleEditMoreBox">
                                 <div class="role-edit-group-title">
                                     自定义资料
                                     <button type="button" class="btn secondary btn-compact role-add-field-btn" onclick="addRoleCustomFieldRow()">+ 添加一项</button>
@@ -3595,7 +3591,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260914-0358"></script>
+    <script src="script.js?v=20260914-0433"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {
