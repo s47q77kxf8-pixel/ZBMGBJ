@@ -1795,6 +1795,11 @@ function init() {
 
     // 加载本地存储的数据
     loadData();
+
+    // 云端模式：拉取角色档案 / 单主管理数据，实现跨设备共享
+    if (mgRoleCustCloudEnabled()) {
+        mgPullCloudRoleAndCustomerData();
+    }
     
     // 确保小票自定义设置中有主题字段
     if (!defaultSettings.receiptCustomization.theme) {
@@ -2485,6 +2490,7 @@ function saveCustomers() {
     } catch (error) {
         console.error('保存客户数据失败:', error);
     }
+    mgScheduleCloudPushCustomers();
 }
 function findCustomerByName(name) {
     if (!name) return null;
@@ -2551,6 +2557,7 @@ function saveRoleProfiles() {
     } catch (error) {
         console.error('保存角色档案失败:', error);
     }
+    mgScheduleCloudPushRoles();
 }
 function loadRoleIgnored() {
     try {
@@ -2621,6 +2628,152 @@ function upsertRoleProfile(profile) {
 }
 function removeRoleProfile(id) {
     roleProfiles = roleProfiles.filter(function (r) { return r && r.id !== id; });
+}
+
+// ===== 角色档案 / 单主管理 云端同步 =====
+// 复用通用键值表 artist_settings_items（artist_id, domain, item_id, payload, updated_at, deleted_at）
+// 通过 domain 区分数据类型：role_profiles / customers，无需新建数据表
+const MG_CLOUD_DOMAIN_ROLES = 'role_profiles';
+const MG_CLOUD_DOMAIN_CUSTOMERS = 'customers';
+
+// 仅当已登录且用户开启云端模式时才同步
+function mgRoleCustCloudEnabled() {
+    return mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1';
+}
+
+// 通用：把本地数组推送到云端（按 id upsert；本地已删除的条目在云端打软删除墓碑）
+async function mgCloudPushItems(domain, items) {
+    if (!mgRoleCustCloudEnabled()) return false;
+    const client = mgGetSupabaseClient();
+    if (!client) return false;
+    try {
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) return false;
+        const artistId = session.user.id;
+        const now = new Date().toISOString();
+        const rows = (items || []).filter(function (it) { return it && it.id != null; }).map(function (it) {
+            const clone = mgSafeClone(it, {});
+            clone.updatedAt = clone.updatedAt || clone.createdAt || now;
+            return {
+                artist_id: artistId,
+                domain: domain,
+                item_id: String(it.id),
+                payload: clone,
+                updated_at: now,
+                deleted_at: null
+            };
+        });
+        // 计算墓碑：云端存在但本地已删除的条目
+        let tombRows = [];
+        if (rows.length) {
+            const { data: existing, error: fe } = await client
+                .from('artist_settings_items')
+                .select('item_id, deleted_at')
+                .eq('artist_id', artistId)
+                .eq('domain', domain);
+            if (fe) {
+                const code = fe.code || '';
+                const msg = fe.message || '';
+                if (code === 'PGRST205' || String(msg).includes('relation') || String(msg).includes('does not exist')) return false;
+                console.warn('[cloud] 查询云端 ' + domain + ' 失败:', fe);
+                return false;
+            }
+            const liveIds = new Set(rows.map(function (r) { return r.item_id; }));
+            tombRows = (existing || [])
+                .filter(function (r) { return !liveIds.has(String(r.item_id)); })
+                .map(function (r) {
+                    return { artist_id: artistId, domain: domain, item_id: String(r.item_id), payload: null, updated_at: now, deleted_at: now };
+                });
+        }
+        const allRows = rows.concat(tombRows);
+        if (allRows.length) {
+            const { error } = await client
+                .from('artist_settings_items')
+                .upsert(allRows, { onConflict: 'artist_id,domain,item_id' });
+            if (error) { console.warn('[cloud] 推送 ' + domain + ' 失败:', error); return false; }
+        }
+        return true;
+    } catch (e) {
+        console.warn('[cloud] 推送 ' + domain + ' 异常:', e);
+        return false;
+    }
+}
+
+// 纯函数：把云端行合并进本地数组（无网络依赖，便于单元测试）
+// cloudRows: [{ item_id, payload, deleted_at, updated_at }]
+function mgMergeCloudItems(localArr, cloudRows) {
+    const map = new Map();
+    (localArr || []).forEach(function (it) { if (it && it.id != null) map.set(String(it.id), it); });
+    (cloudRows || []).forEach(function (r) {
+        const id = r.item_id;
+        if (r.deleted_at) { map.delete(String(id)); return; }
+        const p = r.payload;
+        if (!p || p.id == null) return;
+        const local = map.get(String(id));
+        if (!local) { map.set(String(id), p); return; }
+        const localTs = new Date(local.updatedAt || local.createdAt || 0).getTime();
+        const cloudTs = new Date(p.updatedAt || p.createdAt || 0).getTime();
+        if (isNaN(cloudTs) || cloudTs >= localTs) map.set(String(id), p);
+    });
+    return Array.from(map.values());
+}
+
+// 通用：从云端拉取并合并到本地（新者覆盖；墓碑删除本地条目）
+async function mgCloudPullItems(domain, localArr) {
+    if (!mgRoleCustCloudEnabled()) return null;
+    const client = mgGetSupabaseClient();
+    if (!client) return null;
+    try {
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) return null;
+        const artistId = session.user.id;
+        const { data, error } = await client
+            .from('artist_settings_items')
+            .select('item_id, payload, deleted_at, updated_at')
+            .eq('artist_id', artistId)
+            .eq('domain', domain);
+        if (error) {
+            const code = error.code || '';
+            const msg = error.message || '';
+            if (code === 'PGRST205' || String(msg).includes('relation') || String(msg).includes('does not exist')) return null;
+            console.warn('[cloud] 拉取云端 ' + domain + ' 失败:', error);
+            return null;
+        }
+        return mgMergeCloudItems(localArr, data || []);
+    } catch (e) {
+        console.warn('[cloud] 拉取云端 ' + domain + ' 异常:', e);
+        return null;
+    }
+}
+
+async function mgPushRoleProfilesToCloud() { return mgCloudPushItems(MG_CLOUD_DOMAIN_ROLES, roleProfiles); }
+async function mgPushCustomersToCloud() { return mgCloudPushItems(MG_CLOUD_DOMAIN_CUSTOMERS, customers); }
+
+// 拉取云端数据并合并到本地（按 id，新者覆盖；云端墓碑则删除本地），随后重渲染
+async function mgPullCloudRoleAndCustomerData() {
+    if (!mgRoleCustCloudEnabled()) return;
+    const roles = await mgCloudPullItems(MG_CLOUD_DOMAIN_ROLES, roleProfiles);
+    if (roles) { roleProfiles = roles; saveRoleProfiles(); }
+    const custs = await mgCloudPullItems(MG_CLOUD_DOMAIN_CUSTOMERS, customers);
+    if (custs) { customers = custs; saveCustomers(); }
+    if (typeof renderRoleList === 'function') renderRoleList();
+    if (typeof renderCustomerList === 'function') renderCustomerList();
+}
+
+// 防抖推送（写入本地后稍候同步到云端，避免频繁请求）
+function mgScheduleCloudPushCustomers() {
+    if (!mgRoleCustCloudEnabled()) return;
+    clearTimeout(window.__mgPushCustomersTimer);
+    window.__mgPushCustomersTimer = setTimeout(function () {
+        mgPushCustomersToCloud().catch(function (e) { console.warn('[cloud] 单主推送失败:', e); });
+    }, 800);
+}
+function mgScheduleCloudPushRoles() {
+    if (!mgRoleCustCloudEnabled()) return;
+    clearTimeout(window.__mgPushRolesTimer);
+    window.__mgPushRolesTimer = setTimeout(function () {
+        mgPushRoleProfilesToCloud().catch(function (e) { console.warn('[cloud] 角色推送失败:', e); });
+    }, 800);
 }
 
 // ===== 角色档案字段字典 =====
@@ -3132,8 +3285,8 @@ function customerCardHtml(c) {
             '</div>' +
         '</div>' +
         '<div class="customer-card-actions">' +
-            '<button class="btn customer-action-btn" title="编辑" aria-label="编辑" onclick="openCustomerEditModal(\'' + c.id + '\')">✎</button>' +
-            '<button class="btn customer-action-btn customer-action-btn-danger" title="删除" aria-label="删除" onclick="deleteCustomer(\'' + c.id + '\')">🗑</button>' +
+            '<button class="customer-action-btn" title="编辑" aria-label="编辑" onclick="openCustomerEditModal(\'' + c.id + '\')"><svg class="icon sm" aria-hidden="true"><use href="#i-edit"/></svg></button>' +
+            '<button class="customer-action-btn customer-action-btn-danger" title="删除" aria-label="删除" onclick="deleteCustomer(\'' + c.id + '\')"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"/></svg></button>' +
         '</div>' +
     '</div>';
 }
@@ -4157,8 +4310,8 @@ function roleCardHtml(r) {
             aliasLine +
         '</div>' +
         '<div class="customer-card-actions">' +
-            '<button class="btn customer-action-btn" title="编辑资料" aria-label="编辑资料" onclick="openRoleEditModal(\'' + escapeHtml(String(r.id)) + '\', \'edit\')">✎</button>' +
-            '<button class="btn customer-action-btn customer-action-btn-danger" title="删除" aria-label="删除" onclick="deleteRoleProfile(\'' + escapeHtml(String(r.id)) + '\')">🗑</button>' +
+            '<button class="customer-action-btn" title="编辑资料" aria-label="编辑资料" onclick="openRoleEditModal(\'' + escapeHtml(String(r.id)) + '\', \'edit\')"><svg class="icon sm" aria-hidden="true"><use href="#i-edit"/></svg></button>' +
+            '<button class="customer-action-btn customer-action-btn-danger" title="删除" aria-label="删除" onclick="deleteRoleProfile(\'' + escapeHtml(String(r.id)) + '\')"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"/></svg></button>' +
         '</div>' +
     '</div>';
 }
@@ -16900,7 +17053,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260914-0433';
+const APP_VERSION = '20260914-0901';
 const APP_CHANGELOG = [
     {
         date: '2026-09-14',
@@ -16910,6 +17063,8 @@ const APP_CHANGELOG = [
             '【角色档案-编辑弹窗】移除「展开更多资料」折叠按钮，自定义资料与语录改为常驻显示，无需再点击展开',
             '【角色档案】基础资料移除「声优」项，编辑表单与角色卡片均不再显示',
             '【全局】所有滚动条统一为轻量样式：细轨（6px）、透明轨道、淡色滑块，鼠标移入容器才完全显现；保留设置项、待办 chips、统计快捷行等处的隐藏滚动条',
+            '【角色档案/单主管理】删除、编辑按钮由表情包改为扁平化 SVG 图标（铅笔 / 垃圾桶），无边框、无背景，仅悬浮在卡片上显示',
+            '【角色档案/单主管理】数据接入云端共享：复用通用键值表存储，编辑/删除后自动同步，开启云端并在多设备登录后数据一致',
         ]
     },
     {
@@ -31357,7 +31512,16 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
         }
         
         localStorage.setItem('mg_cloud_migrated_v1', '1');
-        
+
+        // 首次同步也将角色档案 / 单主管理纳入云端（上传本地 + 合并云端，避免数据丢失）
+        try {
+            await mgPushRoleProfilesToCloud();
+            await mgPushCustomersToCloud();
+            await mgPullCloudRoleAndCustomerData();
+        } catch (e2) {
+            console.warn('[cloud] 首次同步角色档案/单主管理失败:', e2);
+        }
+
         if (typeof updateDisplay === 'function') updateDisplay();
         if (typeof renderScheduleCalendar === 'function') renderScheduleCalendar();
         
@@ -31624,6 +31788,15 @@ async function handleSyncCloud() {
         showGlobalToast(`✅ 已同步 ${synced} 条排单到云端`);
     } else {
         alert(`✅ 已同步 ${synced} 条排单到云端`);
+    }
+
+    // 同步角色档案 + 单主管理数据（跨设备共享）
+    try {
+        await mgPushRoleProfilesToCloud();
+        await mgPushCustomersToCloud();
+        await mgPullCloudRoleAndCustomerData();
+    } catch (e2) {
+        console.warn('[cloud] 角色档案/单主管理同步失败:', e2);
     }
     } finally {
         window.__mgCloudSyncBusy = false;

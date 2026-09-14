@@ -13009,7 +13009,7 @@ html.theme-dark .convert-menu {
 .customer-card:hover .customer-card-actions {
     opacity: 1;
 }
-/* 客户卡片：编辑/删除紧凑图标按钮（省空间） */
+/* 客户卡片：编辑/删除紧凑图标按钮（扁平化：无边框、无背景，仅图标） */
 .customer-card-actions .customer-action-btn {
     padding: 0;
     width: 28px;
@@ -13017,6 +13017,7 @@ html.theme-dark .convert-menu {
     min-width: 28px;
     font-size: 14px;
     line-height: 1;
+    border: none;
     border-radius: 6px;
     display: inline-flex;
     align-items: center;

@@ -29,7 +29,8 @@ const FNS = [
     'backfillRoleProfileFromQuote',
     'ignoreAllRolesFromHistory', 'restoreIgnoredRoles', 'renderRoleIgnoredBar',
     'openRoleArchiveModal', 'openRoleEditModal', 'setRoleEditValue', 'setRoleEditMode',
-    'closeRoleEditModal', 'saveRoleEdit', 'collectRoleCustomFields'
+    'closeRoleEditModal', 'saveRoleEdit', 'collectRoleCustomFields',
+    'mgMergeCloudItems'
 ];
 let code = '';
 FNS.forEach(f => { const s = extractFunc(f); if (!s) process.exit(1); code += s + '\n'; });
@@ -65,6 +66,19 @@ function getCustomerGroupKey(name) {
     return '#';
 }
 function escapeHtml(str){ return String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// 内存版 localStorage 桩，避免保存函数抛 ReferenceError 干扰测试结果
+var __lsStore = {};
+global.localStorage = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(__lsStore, k) ? __lsStore[k] : null; },
+    setItem: function (k, v) { __lsStore[k] = String(v); },
+    removeItem: function (k) { delete __lsStore[k]; }
+};
+
+// 云端推送调度桩：测试环境不加载完整云同步模块，saveRoleProfiles/saveCustomers 会调用它们，这里给空实现避免 ReferenceError
+function mgScheduleCloudPushRoles(){}
+function mgScheduleCloudPushCustomers(){}
+
 eval(code);
 
 let pass = 0, fail = 0;
@@ -492,6 +506,30 @@ assert('取消后恢复保存按钮文案', els['roleEditSaveBtn'].textContent =
 openRoleEditModal();
 assert('普通添加不联动历史建档', roleArchiveSourceName === null);
 assert('普通添加标题为添加角色', els['roleEditModalTitle'].textContent === '添加角色');
+
+// ===== 10. 云端拉取合并逻辑（mgMergeCloudItems 纯函数） =====
+// 本地：A(新)、B(旧)；云端：B(更新)、C(仅云端)、D(墓碑)
+const localArr = [
+    { id: 'A', name: 'A', updatedAt: '2026-09-10T00:00:00Z' },
+    { id: 'B', name: 'B-local', updatedAt: '2026-09-01T00:00:00Z' }
+];
+const cloudRows = [
+    { item_id: 'B', payload: { id: 'B', name: 'B-cloud', updatedAt: '2026-09-05T00:00:00Z' }, deleted_at: null, updated_at: '2026-09-05T00:00:00Z' },
+    { item_id: 'C', payload: { id: 'C', name: 'C', updatedAt: '2026-09-08T00:00:00Z' }, deleted_at: null, updated_at: '2026-09-08T00:00:00Z' },
+    { item_id: 'D', payload: null, deleted_at: '2026-09-09T00:00:00Z', updated_at: '2026-09-09T00:00:00Z' }
+];
+const merged = mgMergeCloudItems(localArr, cloudRows);
+assert('合并后本地独有项保留', merged.some(x => x.id === 'A'));
+assert('云端更新的项覆盖本地（B）', (merged.find(x => x.id === 'B') || {}).name === 'B-cloud');
+assert('云端独有项被加入（C）', merged.some(x => x.id === 'C'));
+assert('墓碑项不进入结果（D）', !merged.some(x => x.id === 'D'));
+assert('合并总数正确', merged.length === 3);
+
+// 本地更新更晚时不该被云端旧数据覆盖
+const localNew = [{ id: 'X', name: 'X-new', updatedAt: '2026-09-20T00:00:00Z' }];
+const cloudOld = [{ item_id: 'X', payload: { id: 'X', name: 'X-old', updatedAt: '2026-09-01T00:00:00Z' }, deleted_at: null, updated_at: '2026-09-01T00:00:00Z' }];
+const merged2 = mgMergeCloudItems(localNew, cloudOld);
+assert('本地更新更晚时保留本地', (merged2.find(x => x.id === 'X') || {}).name === 'X-new');
 
 console.log('\n结果: ' + pass + ' 通过, ' + fail + ' 失败');
 process.exit(fail ? 1 : 0);
