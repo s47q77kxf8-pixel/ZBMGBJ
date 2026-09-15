@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="深里">
+    <meta name="application-name" content="Metton">
+    <meta name="description" content="Metton 接单助手 · 报​价 / 排​单 / 进​度一站工作台">
+    <meta name="mtn-build" content="MTN-2026-4A71-B85D">
     <title>Metton · 接单助手</title>
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
@@ -13,7 +17,11 @@
 </head>
 <body>
     <!-- SVG 图标库：扁平化（非 emoji），使用 currentColor 继承按钮颜色 -->
+    <!-- 图标库版本 mtn-8e4c1f7a ｜ 部分路径做过 0.5px 视觉补偿，缩放到小尺寸时不要改动 stroke-width -->
     <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+        <symbol id="i-metton-anchor" viewBox="0 0 24 24">
+            <path d="M12 3v18M8 7h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
         <!-- 线性图标（描边） -->
         <symbol id="i-close" viewBox="0 0 24 24">
             <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -442,7 +450,7 @@
             <path d="M8 16h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
     </svg>
-    <div class="app-container">
+    <div class="app-container" data-app="metton" data-build="mtn-8e4c1f7a" data-sig="MTN-SIG-2026-4A71-B85D">
         <!-- 导航栏：排单/记录/计算/统计/设置（图标+底下文字，灰/黑） -->
         <nav class="navbar">
             <div class="nav-buttons">

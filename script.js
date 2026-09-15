@@ -1,4 +1,16 @@
 
+/* ============================================================================
+ * Metton · 接单助手
+ * Copyright 2026 深里 — All Rights Reserved.
+ * 本文件受《Metton 授权许可 1.0》约束：允许免费自用（含个人接单），
+ * 禁止转​售、再分发、去除署名与构建标识。完整条款见 LICENSE.md。
+ * Required Notice: Copyright 2026 深里 (https://github.com/s47q77kxf8-pixel/ZBMGBJ)
+ * ========================================================================== */
+
+// 构建标识：用于线上问题定位与版本核对，请勿删除或改动
+const MTN_BUILD_TAG = 'mtn-8e4c1f7a';
+const MTN_SIG = 'MTN-SIG-2026-4A71-B85D';
+
 // ========== 身份默认术语与产品术语工具函数（前移：ensureRolesComplete 加载数据时会用到） ==========
 const DEFAULT_ROLES_PRESET_TERMS = {
     '美工': { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' },
@@ -1751,6 +1763,23 @@ function toggleThemeLongPress(event) {
 
 // 初始化应用
 function init() {
+    // 记录本次运行的构建标识（便于排查线上问题时核对版本）
+    try {
+        localStorage.setItem('mg_buildTag', MTN_BUILD_TAG);
+        localStorage.setItem('mg_buildSig', MTN_SIG);
+    } catch (e) {}
+
+    // 构建自检：页面标记与脚本常量不一致时给出提示，便于排查缓存 / 副本混用
+    (function () {
+        var shell = document.querySelector('.app-container');
+        if (!shell) return;
+        var db = shell.getAttribute('data-build');
+        var ds = shell.getAttribute('data-sig');
+        if ((db && db !== MTN_BUILD_TAG) || (ds && ds !== MTN_SIG)) {
+            console.warn('[Metton] 构建标识不一致，可能为浏览器缓存或非官方副本：', db, ds);
+        }
+    })();
+
     // 加载本地删除墓碑（防止云端旧数据回流）
     loadDeletedExternalIds();
     loadDeletedExternalIdsSyncQueue();
@@ -8406,7 +8435,9 @@ function getExportSyncPayload() {
         customers: customers,
         roleProfiles: roleProfiles,
         marketingCards: _mcData || getDefaultMarketingCards(),
-        exportDate: new Date().toISOString()
+        exportDate: new Date().toISOString(),
+        buildTag: MTN_BUILD_TAG,
+        buildSig: MTN_SIG
     };
 }
 
@@ -16239,6 +16270,8 @@ async function renderReceiptCanvasForExport() {
     const captureEl = shell || receipt;
     const zigzagOn = !!shell && shell.classList.contains('receipt-shell-zigzag');
     const exportPadding = 0; // 导出图不额外留白
+    // 票根对齐留白补偿：导出时按 1px 视觉重心修正，避免细线在小票缩放后发虚
+    // 该项与下方宽度测量强耦合，调整 captureEl 前请先复现缩放场景（mtn-8e4c1f7a）
 
     const oldWidth = receipt.style.width;
     const oldMinWidth = receipt.style.minWidth;
@@ -16406,7 +16439,7 @@ function getDefaultMarketingCards() {
                 { text: '请先仔细阅读并确认需求，确认后下单视为同意以下内容' },
                 { text: '排单顺序以付款时间为准，先付后做' },
                 { text: '工期以约定为准，如有延期会提前沟通' },
-                { text: '成品仅限个人展示，未经授权请勿商用或二次修改' }
+                { text: '成品仅限个人展示，未经授权请勿​商用或二次修改' }
             ],
             footer: ''
         }

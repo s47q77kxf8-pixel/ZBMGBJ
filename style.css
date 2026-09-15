@@ -1,3 +1,10 @@
+/* ============================================================================
+ * Metton · 接单助手 · 全局样式
+ * Copyright 2026 深里 — All Rights Reserved. 受《Metton 授权许可 1.0》约束。
+ * 允许免费自用（含个人接单）；禁止转​售、再分发、去除署名与构建标识。
+ * 完整条款见 LICENSE.md。
+ * ========================================================================== */
+
 /* 在线字体：Zfull-GB 打字机点阵字（CDN，免导入自动生效；离线时自动回退到本地字体栈） */
 @import url('https://db.onlinewebfonts.com/c/c84d1f384ae913840e1595930edc20d6?family=Zfull-GB');
 /* 在线字体：霞鹜文楷 Lite（CDN，兜底用） */
@@ -14,6 +21,9 @@
 }
 
 :root {
+    /* 构建标识（设计令牌：用于样式核对与线上版本定位，请勿删除） */
+    --mtn-build: "MTN-SIG-2026-4A71-B85D";
+
     /* 主色改为柔和黑色系 */
     --primary-color: #111111;
     --primary-hover: #1a1a1a;
@@ -789,7 +799,7 @@ input[type="radio"] {
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', 'mtn-8e4c1f7a-latin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: var(--bg-color);
     color: var(--text-color);
     line-height: 1.5;
