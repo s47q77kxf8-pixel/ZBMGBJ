@@ -2834,6 +2834,14 @@ function getRoleBaseInfo(rec) {
     if (!rec) return [];
     var out = [];
     ROLE_BASE_FIELDS.forEach(function (f) {
+        if (f.key === 'constellation') {
+            // 未单独存星座时，按生日自动推算（历史数据 / 仅填生日也生效）
+            var cv = rec.constellation ? String(rec.constellation).trim() : '';
+            if (!cv && rec.birthday) cv = getConstellationFromBirthday(rec.birthday);
+            if (!cv) return;
+            out.push({ key: f.key, label: f.label, value: formatConstellation(cv) });
+            return;
+        }
         var v = rec[f.key];
         if (v == null) return;
         v = String(v).trim();
@@ -2852,6 +2860,86 @@ function getRoleBaseInfo(rec) {
         });
     }
     return out;
+}
+
+// ===== 星座中英文对照 =====
+// 顺序按星座日期区间：白羊 → 双鱼
+const CONSTELLATION_ZH_EN = [
+    ['白羊座', 'Aries'], ['金牛座', 'Taurus'], ['双子座', 'Gemini'], ['巨蟹座', 'Cancer'],
+    ['狮子座', 'Leo'], ['处女座', 'Virgo'], ['天秤座', 'Libra'], ['天蝎座', 'Scorpio'],
+    ['射手座', 'Sagittarius'], ['摩羯座', 'Capricorn'], ['水瓶座', 'Aquarius'], ['双鱼座', 'Pisces']
+];
+
+// 识别星座写法：中文或英文命中其一即可（中文允许省略「座」字），返回 { zh, en, both }
+function getConstellationPair(v) {
+    var s = (v == null ? '' : String(v).trim());
+    if (!s) return null;
+    var low = s.toLowerCase();
+    for (var i = 0; i < CONSTELLATION_ZH_EN.length; i++) {
+        var zh = CONSTELLATION_ZH_EN[i][0];
+        var en = CONSTELLATION_ZH_EN[i][1];
+        var zhShort = zh.replace('座', '');
+        var hasZh = low.indexOf(zh) >= 0 || low.indexOf(zhShort) >= 0;
+        var hasEn = low.indexOf(en.toLowerCase()) >= 0;
+        if (hasZh || hasEn) return { zh: zh, en: en, both: hasZh && hasEn };
+    }
+    return null;
+}
+
+// 星座统一展示为中英文对照：
+//   '摩羯座' → '摩羯座 Capricorn'；'capricorn' → '摩羯座 Capricorn'；已是双语则保留（顺序/大小写不标准时统一）
+function formatConstellation(v) {
+    var s = (v == null ? '' : String(v).trim());
+    if (!s) return '';
+    var p = getConstellationPair(s);
+    if (!p) return s;
+    var std = p.zh + ' ' + p.en;
+    if (p.both) {
+        if (s.replace(/\s+/g, ' ').toLowerCase() === std.toLowerCase()) return s;
+        return std;
+    }
+    return std;
+}
+
+// 由生日推算星座（中文名）。支持多种常见写法：
+//   • 中文：12月31日 / 12月31 / 12-31 / 12.31
+//   • 含年：1998年12月31日 / 1998-12-31 / 2024/3/5
+//   • 英文：Dec 31 / December 31 / 31 Dec
+// 解析不出月日时返回 ''（不误判）
+function getConstellationFromBirthday(s) {
+    if (!s) return '';
+    s = String(s).trim();
+    if (!s) return '';
+    var m = null, d = null;
+    // 先尝试「年-月-日」四位年格式（避免把年份前两位误当天数）
+    var ymd = s.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+    if (ymd) { m = +ymd[2]; d = +ymd[3]; }
+    else {
+        var md = s.match(/(\d{1,2})\D+(\d{1,2})/);
+        if (md) { m = +md[1]; d = +md[2]; }
+    }
+    if (m == null || d == null) {
+        // 英文月份名：Dec 31 / 31 Dec
+        var months = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12,
+            january:1, february:2, march:3, april:4, may:5, june:6, july:7, august:8, september:9, october:10, november:11, december:12 };
+        var en1 = s.match(/([a-z]+)\s*(\d{1,2})/i);
+        if (en1 && months[String(en1[1]).toLowerCase()]) { m = months[String(en1[1]).toLowerCase()]; d = +en1[2]; }
+        else {
+            var en2 = s.match(/(\d{1,2})\s*([a-z]+)/i);
+            if (en2 && months[String(en2[2]).toLowerCase()]) { d = +en2[1]; m = months[String(en2[2]).toLowerCase()]; }
+        }
+    }
+    if (m == null || d == null || m < 1 || m > 12 || d < 1 || d > 31) return '';
+    // 星座边界（按结束日期排序；落在 12/22 之后归摩羯座，处理跨年）
+    var bounds = [
+        [1,19,'摩羯座'],[2,18,'水瓶座'],[3,20,'双鱼座'],[4,19,'白羊座'],[5,20,'金牛座'],
+        [6,21,'双子座'],[7,22,'巨蟹座'],[8,22,'狮子座'],[9,22,'处女座'],[10,23,'天秤座'],
+        [11,22,'天蝎座'],[12,21,'射手座']
+    ];
+    for (var i = 0; i < bounds.length; i++) {
+        if (m < bounds[i][0] || (m === bounds[i][0] && d <= bounds[i][1])) return bounds[i][2];
+    }
+    return '摩羯座';
 }
 
 // 取角色的语录列表（兼容字符串/数组两种历史写法）
@@ -4479,6 +4567,20 @@ function openRoleEditModal(roleId, preferredMode) {
     ROLE_BASE_FIELDS.forEach(function (f) {
         setRoleEditValue('roleEdit_' + f.key, r ? r[f.key] : '');
     });
+    // 星座：生日可自动推算时，留空则预填，并标记为自动值（便于生日变更时联动刷新）
+    (function () {
+        var bEl = document.getElementById('roleEdit_birthday');
+        var cEl = document.getElementById('roleEdit_constellation');
+        if (bEl && cEl) {
+            var auto = getConstellationFromBirthday(bEl.value);
+            if (!cEl.value.trim() && auto) {
+                cEl.value = formatConstellation(auto);
+                cEl.setAttribute('data-auto', '1');
+            } else {
+                cEl.setAttribute('data-auto', '0');
+            }
+        }
+    })();
     // 语录（数组 → 每行一条）
     setRoleEditValue('roleEditQuotes', r ? getRoleQuotes(r).join('\n') : '');
     document.getElementById('roleEditDescription').value = r ? (r.description || '') : '';
@@ -4529,6 +4631,26 @@ function openRoleArchiveModal(name) {
 function setRoleEditValue(id, value) {
     var el = document.getElementById(id);
     if (el) el.value = value == null ? '' : String(value);
+}
+
+// 编辑弹窗：生日输入时自动带出星座（仅当星座为空、或此前由生日自动生成，避免覆盖手动填写）
+function onBirthdayInput() {
+    var bEl = document.getElementById('roleEdit_birthday');
+    var cEl = document.getElementById('roleEdit_constellation');
+    if (!bEl || !cEl) return;
+    var c = getConstellationFromBirthday(bEl.value);
+    if (!c) return; // 解析不出月日则不动作
+    var isAuto = cEl.getAttribute('data-auto') === '1';
+    if (cEl.value.trim() === '' || isAuto) {
+        cEl.value = formatConstellation(c);
+        cEl.setAttribute('data-auto', '1');
+    }
+}
+
+// 星座被手动修改时，标记为手动值，生日再变也不再覆盖
+function onConstellationInput() {
+    var cEl = document.getElementById('roleEdit_constellation');
+    if (cEl) cEl.setAttribute('data-auto', '0');
 }
 
 function closeRoleEditModal() {
@@ -17118,8 +17240,20 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260915-1945';
+const APP_VERSION = '20260916-0351';
 const APP_CHANGELOG = [
+    {
+        date: '2026-09-16',
+        items: [
+            '【角色档案】星座改为中英文对照显示：按生日自动匹配时直接带出「摩羯座 Capricorn」形式；已存的中/英文星座在卡片与编辑框里也会自动补全另一种语言'
+        ]
+    },
+    {
+        date: '2026-09-15',
+        items: [
+            '【角色档案】星座支持按生日自动匹配：编辑时填生日自动带出星座（可手动覆盖）；卡片查看时若未单独填星座，也按生日现算，历史数据同样生效',
+        ]
+    },
     {
         date: '2026-09-14',
         items: [

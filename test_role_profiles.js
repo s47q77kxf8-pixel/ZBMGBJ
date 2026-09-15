@@ -30,7 +30,8 @@ const FNS = [
     'ignoreAllRolesFromHistory', 'restoreIgnoredRoles', 'renderRoleIgnoredBar',
     'openRoleArchiveModal', 'openRoleEditModal', 'setRoleEditValue', 'setRoleEditMode',
     'closeRoleEditModal', 'saveRoleEdit', 'collectRoleCustomFields',
-    'mgMergeCloudItems'
+    'mgMergeCloudItems', 'getConstellationFromBirthday',
+    'getConstellationPair', 'formatConstellation'
 ];
 let code = '';
 FNS.forEach(f => { const s = extractFunc(f); if (!s) process.exit(1); code += s + '\n'; });
@@ -43,6 +44,7 @@ function extractBlock(startMarker, endMarker) {
     return src.slice(i, j + endMarker.length);
 }
 code += extractBlock('const ROLE_BASE_FIELDS = [', '];\n') + '\n';
+code += extractBlock('const CONSTELLATION_ZH_EN = [', '];\n') + '\n';
 code += extractBlock('var ROLE_MERGE_TEXT_FIELDS = [', '];\n') + '\n';
 // 注意：不能按第一个 ';' 截断，map 回调体内也有分号，须取到行尾
 (function () {
@@ -385,6 +387,33 @@ assert('基础资料不含声优项', !bi.some(x => x.label === '声优'));
 assert('旧数据的声优不再渲染', !getRoleBaseInfo({ name: '钟离', cv: '前野智昭' }).some(x => x.label === '声优'));
 assert('阵营/身份仍正常', getRoleBaseInfo({ name: '钟离', affiliation: '璃月', identity: '岩神' }).length === 2);
 assert('空值字段被剔除', getRoleBaseInfo({ name: 'X', height: '  ' }).length === 0);
+
+// 生日→星座推导
+assert('生日→星座 中文', getConstellationFromBirthday('12月31日') === '摩羯座');
+assert('生日→星座 含年', getConstellationFromBirthday('1998-12-31') === '摩羯座');
+assert('生日→星座 1月1日', getConstellationFromBirthday('1月1日') === '摩羯座');
+assert('生日→星座 3月15日', getConstellationFromBirthday('3月15日') === '双鱼座');
+assert('生日→星座 7月23日', getConstellationFromBirthday('7月23日') === '狮子座');
+assert('生日→星座 英文 Dec 31', getConstellationFromBirthday('Dec 31') === '摩羯座');
+assert('生日→星座 英文 31 Dec', getConstellationFromBirthday('31 Dec') === '摩羯座');
+assert('生日→星座 解析失败返回空', getConstellationFromBirthday('未知') === '');
+assert('卡片按生日自动显示星座（中英对照）', getRoleBaseInfo({ name: 'X', birthday: '3月15日' }).some(function (x) { return x.key === 'constellation' && x.value === '双鱼座 Pisces'; }));
+assert('已存星座优先于生日推导（中英对照）', getRoleBaseInfo({ name: 'X', birthday: '3月15日', constellation: '白羊座' }).some(function (x) { return x.value === '白羊座 Aries'; }));
+assert('无生日且无星座时不出该项', getRoleBaseInfo({ name: 'X' }).every(function (x) { return x.key !== 'constellation'; }));
+// 星座中英文对照
+assert('纯中文补英文', formatConstellation('摩羯座') === '摩羯座 Capricorn');
+assert('纯英文补中文', formatConstellation('capricorn') === '摩羯座 Capricorn');
+assert('省略「座」也能识别', formatConstellation('双鱼') === '双鱼座 Pisces');
+assert('已是双语保持幂等', formatConstellation('摩羯座 Capricorn') === '摩羯座 Capricorn');
+assert('双语顺序不同时统一', formatConstellation('Capricorn 摩羯座') === '摩羯座 Capricorn');
+var CONSTELLATION_ZH_LIST = ['白羊座', '金牛座', '双子座', '巨蟹座', '狮子座', '处女座', '天秤座', '天蝎座', '射手座', '摩羯座', '水瓶座', '双鱼座'];
+var CONSTELLATION_EN_LIST = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'];
+assert('十二星座中英互转全覆盖', CONSTELLATION_ZH_LIST.every(function (zh, i) {
+    return formatConstellation(zh) === zh + ' ' + CONSTELLATION_EN_LIST[i]
+        && formatConstellation(CONSTELLATION_EN_LIST[i]) === zh + ' ' + CONSTELLATION_EN_LIST[i];
+}));
+assert('非星座原样返回', formatConstellation('未知') === '未知');
+assert('空值返回空', formatConstellation('') === '' && formatConstellation(null) === '');
 
 // roleCardHtml（列表卡片：只显示名字/IP/别名三行，资料/设定/语录进编辑弹窗）
 let card = roleCardHtml(full);
