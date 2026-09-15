@@ -100,6 +100,7 @@ image-processor-worker.js
 .verify_*.js
 .receipt_dom_dump.js
 .receipt_smoke_test.js
+.settlement_amount_test.js
 _repro2.js
 _*.txt
 orig_index_tmp.html
