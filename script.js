@@ -8088,6 +8088,39 @@ function getRecordGrossReceivableAmount(item) {
     return platFee > 0 ? (agreed + platFee) : agreed;
 }
 
+// 结算单「合计实收」口径，与结算页预览、小票「合计实收」保持一致：
+//   normal          → 已收定金 + 本次收款
+//   waste_fee       → 废稿费（应收）
+//   cancel_with_fee → 跑单费（应收）
+// 其余类型（退全款撤单等）沿用 settlement.amount，保持原口径不变；无金额信息时返回 null，交由调用方回退到应收额。
+// ⚠️ 不要用 settlement.amount 当「实收」：撤单/废稿的费用由定金抵扣时，本次收款会是 0，
+//    例如废稿费 90、已收定金 760 → 本次收款 0、合计实收 90；直接用 amount 会把这类单显示成 ¥0。
+function getSettlementActualAmount(item) {
+    if (!item || !item.settlement) return null;
+    var st = item.settlement;
+    if (st.type === 'normal') {
+        if (st.amount == null) return null;
+        return (Number(item.depositReceived) || 0) + (Number(st.amount) || 0);
+    }
+    if (st.type === 'waste_fee') {
+        var wf = st.wasteFee || {};
+        var wfFee = (wf.feeAmount != null && isFinite(wf.feeAmount)) ? Number(wf.feeAmount)
+            : (wf.totalReceivable != null && isFinite(wf.totalReceivable)) ? Number(wf.totalReceivable)
+            : (wf.totalWasteReceivable != null && isFinite(wf.totalWasteReceivable)) ? Number(wf.totalWasteReceivable)
+            : null;
+        if (wfFee != null) return wfFee;
+        if (st.amount == null) return null;
+        return (Number(st.amount) || 0) + (Number(item.depositReceived) || 0);
+    }
+    if (st.type === 'cancel_with_fee') {
+        var cf = st.cancelFee || {};
+        if (cf.feeAmount != null && isFinite(cf.feeAmount)) return Number(cf.feeAmount);
+        if (st.amount == null) return null;
+        return (Number(st.amount) || 0) + (Number(item.depositReceived) || 0);
+    }
+    return st.amount != null ? (Number(st.amount) || 0) : null;
+}
+
 // 定金标签：收齐全款显示「已全款」（绿色），仅收部分显示「已收定」（默认绿色系tag）
 // 返回 null 表示没有已收定金，否则返回 { text: '已全款' | '已收定', cssClass: string }
 function getDepositTagInfo(item) {
@@ -8303,11 +8336,9 @@ function applyRecordFilters() {
             : (receivableAmount || 0) + (platformFeeAmt || 0);
 
         var actualAmount = receivableAmount; // net actual
-        if (item && item.settlement && item.settlement.amount != null) {
-            actualAmount = (item.settlement.type === 'normal' && item.depositReceived != null)
-                ? Number(item.depositReceived) + Number(item.settlement.amount)
-                : Number(item.settlement.amount);
-        }
+        // 结算单以「合计实收」为准：撤单/废稿的费用由定金抵扣，settlement.amount 只是本次收款（可能为 0）
+        var _recordSettledActual = getSettlementActualAmount(item);
+        if (_recordSettledActual != null) actualAmount = _recordSettledActual;
         var expectedCount = item && item.expectedProductCount ? Number(item.expectedProductCount) : 0;
         const hasSettlementWithDiff = item && item.settlement && (receivableAmount == null || Math.abs((actualAmount || 0) - (receivableAmount || 0)) > 0.001);
         const hasPlatformFee = (platformFeeAmt || 0) > 0.001 && (grossReceivableAmount || 0) > 0;
@@ -8976,11 +9007,9 @@ function getStatsOrderStatus(item) {
 
 function getStatsAmount(item, amountBasis, giftMode) {
     if (!item) return 0;
-    if (item.settlement && item.settlement.amount != null) {
-        if (item.settlement.type === 'normal' && item.depositReceived != null)
-            return (Number(item.depositReceived) || 0) + (Number(item.settlement.amount) || 0);
-        return Number(item.settlement.amount) || 0;
-    }
+    // 结算单取「合计实收」口径（撤单/废稿费用由定金抵扣时，settlement.amount 只是本次收款，可能为 0）
+    var _statsSettledAmount = getSettlementActualAmount(item);
+    if (_statsSettledAmount != null) return _statsSettledAmount;
     if (amountBasis === 'totalProductsPrice') return Number(item.totalProductsPrice) || 0;
     return Number(item.agreedAmount != null ? item.agreedAmount : item.finalTotal) || 0;
 }
@@ -9355,7 +9384,10 @@ function getStatsDataset(historySource, filters) {
         if (item.settlement && isCancelSettlementType(item.settlement)) {
             cancelOrderCount++;
             pushOrderId({ orderIds: cancelOrderIds }, item.id);
-            cancelAmountTotal += (item.settlement.amount != null ? Number(item.settlement.amount) : 0) || 0;
+            // 撤单费合计：取「合计实收」口径（跑单费应收额），与「废稿费合计」对齐；
+            // 直接用 settlement.amount（本次收款）会因定金抵扣而少算甚至算成 0
+            var _cancelSettledAmount = getSettlementActualAmount(item);
+            cancelAmountTotal += (_cancelSettledAmount != null ? _cancelSettledAmount : ((item.settlement.amount != null ? Number(item.settlement.amount) : 0) || 0));
         }
         if (item.settlement && item.settlement.type === 'waste_fee') {
             wasteOrderCount++;
@@ -17086,7 +17118,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260914-0901';
+const APP_VERSION = '20260915-1945';
 const APP_CHANGELOG = [
     {
         date: '2026-09-14',
