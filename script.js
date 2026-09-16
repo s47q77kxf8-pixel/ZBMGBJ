@@ -3807,6 +3807,31 @@ function updateCustomerDiscountPreview() {
     el.textContent = parts.join('　');
 }
 
+// 统计历史订单中使用某单主名的笔数（精确匹配，去空格后比对）
+function countHistoryByClientId(name) {
+    var key = (name == null ? '' : String(name).trim());
+    if (!key) return 0;
+    return (history || []).filter(function (item) {
+        return item && item.clientId != null && String(item.clientId).trim() === key;
+    }).length;
+}
+
+// 把历史订单里的单主名从旧名改为新名：只改 clientId，平台（contact）/联系方式（contactInfo）
+// 等一律保持下单时的原值，避免篡改历史快照。返回实际修改的笔数
+function renameHistoryClientId(oldName, newName) {
+    var from = (oldName == null ? '' : String(oldName).trim());
+    var to = (newName == null ? '' : String(newName).trim());
+    if (!from || !to || from === to) return 0;
+    var n = 0;
+    (history || []).forEach(function (item) {
+        if (!item || item.clientId == null) return;
+        if (String(item.clientId).trim() !== from) return;
+        item.clientId = to;
+        n++;
+    });
+    return n;
+}
+
 function saveCustomerEdit() {
     const name = String(document.getElementById('customerEditName').value || '').trim();
     if (!name) { alert('请填写单主名。'); return; }
@@ -3822,13 +3847,25 @@ function saveCustomerEdit() {
         note: String(document.getElementById('customerEditNote').value || '').trim(),
         discount: getCustomerDiscountFromModal()
     };
+    var renamedCount = 0;
     if (customerEditingId) {
         const idx = customers.findIndex(function (c) { return c && c.id === customerEditingId; });
         if (idx >= 0) {
+            const oldName = String(customers[idx].name || '').trim();
             payload.id = customerEditingId;
             payload.createdAt = customers[idx].createdAt;
             customers[idx] = Object.assign({}, customers[idx], payload);
             customers[idx].updatedAt = new Date().toISOString();
+            // 改名时询问是否同步历史订单：只改单主名，平台/联系方式保持下单时的原值
+            if (oldName && oldName !== name) {
+                const affected = countHistoryByClientId(oldName);
+                if (affected > 0 && confirm('单主名由「' + oldName + '」改为「' + name + '」。\n\n'
+                    + '是否同步更新 ' + affected + ' 笔历史订单的单主名？\n'
+                    + '（平台与联系方式按你的要求保持下单时的原值，不会改动）')) {
+                    renamedCount = renameHistoryClientId(oldName, name);
+                    if (renamedCount > 0) saveData(); // 历史订单落盘 + 云端同步
+                }
+            }
         }
     } else {
         upsertCustomer(payload);
@@ -3838,7 +3875,14 @@ function saveCustomerEdit() {
     renderCustomerList();
     renderCustomerHistoryPrompt();
     renderCustomerHistoryArchive();
-    alert('单主「' + name + '」已保存。');
+    if (renamedCount > 0) {
+        try {
+            if (document.getElementById('recordContainer') && typeof applyRecordFilters === 'function') applyRecordFilters();
+        } catch (e) { /* 记录页未初始化 */ }
+        alert('单主「' + name + '」已保存，并同步更新了 ' + renamedCount + ' 笔历史订单的单主名。');
+    } else {
+        alert('单主「' + name + '」已保存。');
+    }
 }
 
 function deleteCustomer(id) {
@@ -17240,11 +17284,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260916-0351';
+const APP_VERSION = '20260916-1304';
 const APP_CHANGELOG = [
     {
         date: '2026-09-16',
         items: [
+            '【单主管理】改名时可一键同步历史订单：编辑单主改名后会提示「是否同步更新 N 笔历史订单的单主名」，确认即批量改；只改单主名，平台与联系方式保持下单时的原值不变',
             '【角色档案】星座改为中英文对照显示：按生日自动匹配时直接带出「摩羯座 Capricorn」形式；已存的中/英文星座在卡片与编辑框里也会自动补全另一种语言'
         ]
     },

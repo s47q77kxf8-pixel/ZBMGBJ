@@ -31,7 +31,8 @@ const FNS = [
     'openRoleArchiveModal', 'openRoleEditModal', 'setRoleEditValue', 'setRoleEditMode',
     'closeRoleEditModal', 'saveRoleEdit', 'collectRoleCustomFields',
     'mgMergeCloudItems', 'getConstellationFromBirthday',
-    'getConstellationPair', 'formatConstellation'
+    'getConstellationPair', 'formatConstellation',
+    'countHistoryByClientId', 'renameHistoryClientId'
 ];
 let code = '';
 FNS.forEach(f => { const s = extractFunc(f); if (!s) process.exit(1); code += s + '\n'; });
@@ -414,6 +415,23 @@ assert('十二星座中英互转全覆盖', CONSTELLATION_ZH_LIST.every(function
 }));
 assert('非星座原样返回', formatConstellation('未知') === '未知');
 assert('空值返回空', formatConstellation('') === '' && formatConstellation(null) === '');
+
+// 单主改名 → 历史订单同步（只改名称，平台/联系方式不动）
+history = [
+    { id: 1, clientId: '张三', contact: '米画师', contactInfo: 'MH001' },
+    { id: 2, clientId: '张三', contact: '微博', contactInfo: '' },
+    { id: 3, clientId: '李四', contact: '米画师', contactInfo: 'MH002' }
+];
+assert('按单主名统计历史笔数', countHistoryByClientId('张三') === 2);
+assert('空名统计为 0', countHistoryByClientId('') === 0 && countHistoryByClientId(null) === 0);
+assert('改名返回受影响笔数', renameHistoryClientId('张三', '张三丰') === 2);
+assert('历史单主名已更新', history[0].clientId === '张三丰' && history[1].clientId === '张三丰');
+assert('其他单主不受影响', history[2].clientId === '李四');
+assert('平台保持下单时原值', history[0].contact === '米画师' && history[0].contactInfo === 'MH001' && history[1].contact === '微博');
+assert('同步后旧名统计归零', countHistoryByClientId('张三') === 0 && countHistoryByClientId('张三丰') === 2);
+assert('同名/空名不改动', renameHistoryClientId('张三丰', '张三丰') === 0 && renameHistoryClientId('', 'X') === 0 && renameHistoryClientId('张三丰', '') === 0);
+assert('精确匹配不做模糊替换', renameHistoryClientId('张三', '王五') === 0 && history[1].clientId === '张三丰');
+history = [];
 
 // roleCardHtml（列表卡片：只显示名字/IP/别名三行，资料/设定/语录进编辑弹窗）
 let card = roleCardHtml(full);
