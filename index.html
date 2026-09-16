@@ -11,7 +11,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260916-1315">
+    <link rel="stylesheet" href="style.css?v=20260916-1325">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -917,6 +917,11 @@
                                         <div class="form-group">
                                             <label for="receiptTitleText">小票标题</label>
                                             <input type="text" id="receiptTitleText" placeholder="例如：LIST 或 个人作品报价单" onchange="updateReceiptCustomization('titleText', this.value)">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="receiptTitleFontSizeInline">标题字号 (px)</label>
+                                            <input type="number" id="receiptTitleFontSizeInline" value="18" min="10" max="48" step="1" onchange="updateReceiptFont('titleFontSize', this.value)">
+                                            <small class="text-gray">与下方字体设置里的标题字号联动</small>
                                         </div>
                                     </div>
                                     <div class="form-row">
@@ -3599,7 +3604,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260916-1315"></script>
+    <script src="script.js?v=20260916-1325"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

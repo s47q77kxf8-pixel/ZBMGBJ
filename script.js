@@ -6010,6 +6010,14 @@ function handleFontFamilyChange(value) {
     }
 }
 
+// 标题字号的两个输入框同步回显：小票标题旁的快捷项 + 字体设置区（两处改一处，另一处跟着变）
+function syncTitleFontSizeInputs(size) {
+    ['receiptTitleFontSize', 'receiptTitleFontSizeInline'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.value = size;
+    });
+}
+
 // 更新字体设置
 function updateReceiptFont(field, value) {
     if (!defaultSettings.receiptCustomization.fontSettings) {
@@ -6036,6 +6044,8 @@ function updateReceiptFont(field, value) {
         if (!isFinite(titleSize)) titleSize = 18;
         titleSize = Math.max(10, Math.min(48, titleSize));
         defaultSettings.receiptCustomization.fontSettings.titleFontSize = titleSize;
+        // 两个输入框（小票标题旁快捷项 / 字体设置区）同步回显为夹取后的值
+        syncTitleFontSizeInputs(titleSize);
     }
     
     saveData();
@@ -6110,10 +6120,10 @@ function loadFontSettings() {
     if (document.getElementById('receiptFontSize')) {
         document.getElementById('receiptFontSize').value = fontSettings.fontSize;
     }
-    if (document.getElementById('receiptTitleFontSize')) {
+    (function () {
         const tSize = Number(fontSettings.titleFontSize);
-        document.getElementById('receiptTitleFontSize').value = isFinite(tSize) && tSize > 0 ? tSize : 18;
-    }
+        syncTitleFontSizeInputs(isFinite(tSize) && tSize > 0 ? tSize : 18);
+    })();
     if (document.getElementById('receiptFontWeight')) {
         document.getElementById('receiptFontWeight').value = fontSettings.fontWeight;
     }
@@ -17284,11 +17294,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260916-1315';
+const APP_VERSION = '20260916-1325';
 const APP_CHANGELOG = [
     {
         date: '2026-09-16',
         items: [
+            '【小票设置】「小票标题」旁直接可调标题字号：与字体设置里的「标题字号」是同一项，改任意一处另一处同步；范围 10~48px',
             '【小票】结单小票的「结算结果」标题去掉两侧横线：字体变大时横线会折到下一行，现在只保留居中的「结算结果」四个字',
             '【单主管理】改名时可一键同步历史订单：编辑单主改名后会提示「是否同步更新 N 笔历史订单的单主名」，确认即批量改；只改单主名，平台与联系方式保持下单时的原值不变',
             '【角色档案】星座改为中英文对照显示：按生日自动匹配时直接带出「摩羯座 Capricorn」形式；已存的中/英文星座在卡片与编辑框里也会自动补全另一种语言'
