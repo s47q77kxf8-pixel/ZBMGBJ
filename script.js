@@ -15581,7 +15581,7 @@ function generateQuote() {
         var totalReceived = dep + actual;
         
         html += `<div class="receipt-settlement-block" style="margin-top:0.75rem;padding-top:0.5rem;border-top:1px dotted #ccc;">`;
-        html += `<div class="receipt-settlement-title" style="font-weight:bold;text-align:center;margin-bottom:0.25rem;">───────── 结算结果 ─────────</div>`;
+        html += `<div class="receipt-settlement-title" style="font-weight:bold;text-align:center;margin-bottom:0.25rem;">结算结果</div>`;
         html += `<div class="receipt-settlement-subtitle" style="font-size:0.8em;color:#888;text-align:center;margin-bottom:0.35rem;">（以下为结算结果，收费/退款以撤单·废稿·结算页确认为准）</div>`;
 
         // 结算类型与基础行
@@ -17284,11 +17284,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260916-1304';
+const APP_VERSION = '20260916-1315';
 const APP_CHANGELOG = [
     {
         date: '2026-09-16',
         items: [
+            '【小票】结单小票的「结算结果」标题去掉两侧横线：字体变大时横线会折到下一行，现在只保留居中的「结算结果」四个字',
             '【单主管理】改名时可一键同步历史订单：编辑单主改名后会提示「是否同步更新 N 笔历史订单的单主名」，确认即批量改；只改单主名，平台与联系方式保持下单时的原值不变',
             '【角色档案】星座改为中英文对照显示：按生日自动匹配时直接带出「摩羯座 Capricorn」形式；已存的中/英文星座在卡片与编辑框里也会自动补全另一种语言'
         ]
