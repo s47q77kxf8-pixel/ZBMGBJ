@@ -15773,14 +15773,14 @@ function generateQuote() {
                 }
                 html += `<div class="receipt-summary-row"><div class="receipt-summary-label"><strong>结算结果：</strong></div><div class="receipt-summary-value">`;
                 if (Math.abs(diff) < 0.005) {
-                    html += `已结清。`;
+                    html += `已结清`;
                 } else if (diff < 0) {
                     // 少收（有优惠）
                     var totalDiscount = discountTotal > 0 ? discountTotal : (receivable - totalReceived);
-                    html += `本次共减免 ${getCurrencySymbol()}${totalDiscount.toFixed(2)}。`;
+                    html += `本次共减免 ${getCurrencySymbol()}${totalDiscount.toFixed(2)}`;
                 } else {
                     // 多收
-                    html += `多收 ${getCurrencySymbol()}${diff.toFixed(2)}，应找零/退款给客户。`;
+                    html += `多收 ${getCurrencySymbol()}${diff.toFixed(2)}，应找零/退款给客户`;
                 }
                 html += `</div></div>`;
             } else if (st.type === 'waste_fee') {
@@ -17371,12 +17371,13 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260917-0345';
+const APP_VERSION = '20260917-1301';
 const APP_CHANGELOG = [
     {
         date: '2026-09-17',
         items: [
-            '【角色档案/单主管理-云端同步修复】修复多设备同时使用时角色档案/单主被整列清空的问题：墓碑只由本机显式删除产生，不再因"云端有但本机没同步到"而误删其他设备的条目；拉取时墓碑删除增加了时间戳判断作为兜底，并对待删墓碑做本地持久化，避免删除因未及时推送在下一次拉取时被"复活"'
+            '【角色档案/单主管理-云端同步修复】修复多设备同时使用时角色档案/单主被整列清空的问题：墓碑只由本机显式删除产生，不再因"云端有但本机没同步到"而误删其他设备的条目；拉取时墓碑删除增加了时间戳判断作为兜底，并对待删墓碑做本地持久化，避免删除因未及时推送在下一次拉取时被"复活"',
+            '【小票】"结算结果"整块统一去掉结尾句号：已结清 / 本次共减免 / 多收应找零退款给客户 三行不再带句号，与该区块其它结果（跑单费、废稿费）保持一致'
         ]
     },
     {
