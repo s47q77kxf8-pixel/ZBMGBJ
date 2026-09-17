@@ -17371,8 +17371,14 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260917-1301';
+const APP_VERSION = '20260918-0530';
 const APP_CHANGELOG = [
+    {
+        date: '2026-09-18',
+        items: [
+            '【历史订单-企划备注云端同步修复】修复"历史订单企划备注莫名消失"：记录页编辑备注只改内存、不打时间戳也不上云，叠加 smartMergeHistory 在"时间戳相等时用云端覆盖本地"的整条替换逻辑，导致本地刚改的备注在下次云端合并时被云端旧副本冲掉。修复：① smartMergeHistory 平手时保留本地；② 关闭备注弹窗时打新鲜时间戳并通过 mgCloudUpsertOrder 把订单（含备注）同步到云端'
+        ]
+    },
     {
         date: '2026-09-17',
         items: [
@@ -26434,6 +26440,15 @@ function closeOrderRemarkModal() {
             var item = history.find(function (h) { return h.id === currentRemarkRecordId; });
             if (item) {
                 item.orderRemark = el.value;
+                // 打新鲜时间戳并同步到云端：否则下次云端合并（smartMergeHistory）时，
+                // 云端旧副本时间戳与本地平手/更新，会整条覆盖掉刚改的企划备注
+                item.mg_updated_at = Date.now();
+                if (typeof markOrderUnsynced === 'function') markOrderUnsynced(item.id);
+                if (typeof mgCloudUpsertOrder === 'function') {
+                    mgCloudUpsertOrder(item, 0, null, 'remark').catch(function (err) {
+                        console.warn('企划备注同步到云端失败（本地已保存）:', err);
+                    });
+                }
             }
             currentRemarkRecordId = null;
         } else {
@@ -31049,10 +31064,12 @@ function smartMergeHistory(localHistory, cloudHistory) {
         if (localItem && cloudItem) {
             const localTs = localItem.mg_updated_at || 0;
             const cloudTs = cloudItem.mg_updated_at || 0;
-            
-            if (localTs > cloudTs) {
+
+            // 平手时保留本地：本地刚修改的条目（如刚编辑的企划备注）时间戳与云端相等，
+            // 若此时用云端覆盖本地会把本地编辑整条冲掉，导致"备注莫名消失"
+            if (localTs >= cloudTs) {
                 result.push(localItem);
-                mergeLog.push({ id: id, action: 'kept-local', reason: 'newer' });
+                mergeLog.push({ id: id, action: 'kept-local', reason: localTs > cloudTs ? 'newer' : 'tie-keep-local' });
             } else {
                 result.push(cloudItem);
                 mergeLog.push({ id: id, action: 'used-cloud', reason: 'newer' });
