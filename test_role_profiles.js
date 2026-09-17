@@ -30,7 +30,7 @@ const FNS = [
     'ignoreAllRolesFromHistory', 'restoreIgnoredRoles', 'renderRoleIgnoredBar',
     'openRoleArchiveModal', 'openRoleEditModal', 'setRoleEditValue', 'setRoleEditMode',
     'closeRoleEditModal', 'saveRoleEdit', 'collectRoleCustomFields',
-    'mgMergeCloudItems', 'getConstellationFromBirthday',
+    'mgMergeCloudItems', 'mgComputeTombstoneRows', 'getConstellationFromBirthday',
     'getConstellationPair', 'formatConstellation',
     'countHistoryByClientId', 'renameHistoryClientId'
 ];
@@ -81,6 +81,11 @@ global.localStorage = {
 // 云端推送调度桩：测试环境不加载完整云同步模块，saveRoleProfiles/saveCustomers 会调用它们，这里给空实现避免 ReferenceError
 function mgScheduleCloudPushRoles(){}
 function mgScheduleCloudPushCustomers(){}
+// 待同步墓碑桩：removeRoleProfile/removeCustomer 会调用 mgMarkDeleted，单测不验证墓碑持久化，给空实现避免 ReferenceError
+function mgMarkDeleted(){}
+// 云端 domain 常量（脚本里是模块级 const，未随函数抽取，测试桩里补定义，避免 ReferenceError）
+const MG_CLOUD_DOMAIN_ROLES = 'role_profiles';
+const MG_CLOUD_DOMAIN_CUSTOMERS = 'customers';
 
 eval(code);
 
@@ -577,6 +582,45 @@ const localNew = [{ id: 'X', name: 'X-new', updatedAt: '2026-09-20T00:00:00Z' }]
 const cloudOld = [{ item_id: 'X', payload: { id: 'X', name: 'X-old', updatedAt: '2026-09-01T00:00:00Z' }, deleted_at: null, updated_at: '2026-09-01T00:00:00Z' }];
 const merged2 = mgMergeCloudItems(localNew, cloudOld);
 assert('本地更新更晚时保留本地', (merged2.find(x => x.id === 'X') || {}).name === 'X-new');
+
+// 合并防御兜底：墓碑比本地条目更旧时不该误删新数据
+const localNewer = [{ id: 'A', name: 'A', updatedAt: '2026-09-20T00:00:00Z' }];
+const tombOlder = [{ item_id: 'A', payload: null, deleted_at: '2026-09-10T00:00:00Z', updated_at: '2026-09-10T00:00:00Z' }];
+const merged3 = mgMergeCloudItems(localNewer, tombOlder);
+assert('旧墓碑不误删更新的本地条目', merged3.length === 1 && merged3[0].id === 'A');
+
+// 墓碑比本地条目更新时正常删除
+const localOlder = [{ id: 'A', name: 'A', updatedAt: '2026-09-01T00:00:00Z' }];
+const tombNewer = [{ item_id: 'A', payload: null, deleted_at: '2026-09-10T00:00:00Z', updated_at: '2026-09-10T00:00:00Z' }];
+const merged4 = mgMergeCloudItems(localOlder, tombNewer);
+assert('新墓碑正常删除本地条目', merged4.length === 0);
+
+// ===== 11. 墓碑选取逻辑（多设备数据丢失根因的回归断言）=====
+// 场景：设备B本地只有自己建的 X；云端有 A(设备A建的)、X、Y。本机没显式删任何东西。
+// 旧逻辑会把云端有但本机没有的 A、Y 全打墓碑→误删设备A档案。新逻辑：delIds 为空→不打任何墓碑。
+const existingRows = [
+    { item_id: 'A', deleted_at: null },
+    { item_id: 'X', deleted_at: null },
+    { item_id: 'Y', deleted_at: null }
+];
+const tEmpty = mgComputeTombstoneRows('role_profiles', 'artist1', existingRows, new Set(), '2026-09-15T00:00:00Z');
+assert('本机没删除任何条目时不打墓碑（多设备根因修复）', tEmpty.rows.length === 0 && tEmpty.stale.length === 0);
+
+// 本机显式删除 X（X 存在于云端）→ 只给 X 打墓碑，不碰 A/Y
+const tDel = mgComputeTombstoneRows('role_profiles', 'artist1', existingRows, new Set(['X']), '2026-09-15T00:00:00Z');
+assert('显式删除且云端存在→只给该 id 打墓碑', tDel.rows.length === 1 && tDel.rows[0].item_id === 'X' && tDel.rows[0].deleted_at != null);
+assert('显式删除不影响其他设备条目', !tDel.rows.some(r => r.item_id === 'A') && !tDel.rows.some(r => r.item_id === 'Y'));
+assert('显式删除无 stale', tDel.stale.length === 0);
+
+// 本机显式删除一个从未上云的本地重复（如去重删掉的 dup）→ 视为 stale，不打墓碑也不残留
+const tStale = mgComputeTombstoneRows('role_profiles', 'artist1', existingRows, new Set(['Z']), '2026-09-15T00:00:00Z');
+assert('删除从未上云的 id 不产生墓碑', tStale.rows.length === 0);
+assert('删除从未上云的 id 标记为 stale 可丢弃', tStale.stale.length === 1 && tStale.stale[0] === 'Z');
+
+// 混合：删 X(存在) 与 Z(不存在) → X 打墓碑，Z 进 stale
+const tMix = mgComputeTombstoneRows('role_profiles', 'artist1', existingRows, new Set(['X', 'Z']), '2026-09-15T00:00:00Z');
+assert('混合删除：存在者打墓碑', tMix.rows.length === 1 && tMix.rows[0].item_id === 'X');
+assert('混合删除：不存在者进 stale', tMix.stale.length === 1 && tMix.stale[0] === 'Z');
 
 console.log('\n结果: ' + pass + ' 通过, ' + fail + ' 失败');
 process.exit(fail ? 1 : 0);

@@ -2554,6 +2554,7 @@ function upsertCustomer(customer) {
 }
 function removeCustomer(id) {
     customers = customers.filter(function (c) { return c && c.id !== id; });
+    mgMarkDeleted(MG_CLOUD_DOMAIN_CUSTOMERS, id); // 记录待同步墓碑，所有本地移除（删除/去重合并）统一走这里
 }
 
 // 下单成功保存后回写/建档客户：命中已有客户仅填空值（不覆盖已填）；未建档则用本单信息创建档案
@@ -2657,6 +2658,7 @@ function upsertRoleProfile(profile) {
 }
 function removeRoleProfile(id) {
     roleProfiles = roleProfiles.filter(function (r) { return r && r.id !== id; });
+    mgMarkDeleted(MG_CLOUD_DOMAIN_ROLES, id); // 记录待同步墓碑，所有本地移除（删除/去重合并）统一走这里
 }
 
 // ===== 角色档案 / 单主管理 云端同步 =====
@@ -2670,7 +2672,65 @@ function mgRoleCustCloudEnabled() {
     return mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1';
 }
 
-// 通用：把本地数组推送到云端（按 id upsert；本地已删除的条目在云端打软删除墓碑）
+// ===== 本机显式删除待同步墓碑 =====
+// 关键修复：墓碑只应来自"本机显式删除"，绝不能来自"云端有但本机没同步到"——
+// 否则多设备下会把其他设备创建的档案误删（角色档案/单主莫名消失的根因）。
+// 该集合会持久化到 localStorage，避免删除因未及时推送、在下一次拉取时被云端的旧数据"复活"。
+const MG_DELETED_IDS_KEY = 'mgDeletedIds';
+let mgDeletedIds = { role_profiles: new Set(), customers: new Set() };
+function mgLoadDeletedIds() {
+    try {
+        const raw = localStorage.getItem(MG_DELETED_IDS_KEY);
+        const obj = raw ? JSON.parse(raw) : {};
+        mgDeletedIds = {
+            role_profiles: new Set(Array.isArray(obj.role_profiles) ? obj.role_profiles : []),
+            customers: new Set(Array.isArray(obj.customers) ? obj.customers : [])
+        };
+    } catch (e) {
+        mgDeletedIds = { role_profiles: new Set(), customers: new Set() };
+    }
+    return mgDeletedIds;
+}
+function mgPersistDeletedIds() {
+    try {
+        const obj = {
+            role_profiles: Array.from(mgDeletedIds.role_profiles || []),
+            customers: Array.from(mgDeletedIds.customers || [])
+        };
+        localStorage.setItem(MG_DELETED_IDS_KEY, JSON.stringify(obj));
+    } catch (e) {
+        console.warn('[cloud] 持久化待删墓碑失败:', e);
+    }
+}
+function mgGetDeletedIds(domain) {
+    if (!mgDeletedIds[domain]) mgDeletedIds[domain] = new Set();
+    return mgDeletedIds[domain];
+}
+function mgMarkDeleted(domain, id) {
+    mgGetDeletedIds(domain).add(String(id));
+    mgPersistDeletedIds();
+}
+// 纯函数：根据本机显式删除的 id 与云端现有条目，计算需要打的墓碑行。
+// 关键：只对在云端确实存在过的"本机显式删除 id"打墓碑，绝不因"云端有但本机没有"
+// 就打墓碑——后者正是多设备下把其他设备档案误删的根因。
+// 返回 { rows: 墓碑行数组, stale: 从未上云、可安全丢弃的待删 id 列表 }。
+function mgComputeTombstoneRows(domain, artistId, existingRows, delIds, now) {
+    const existIds = new Set((existingRows || []).map(function (r) { return String(r.item_id); }));
+    const kept = [];
+    const stale = [];
+    Array.from(delIds).forEach(function (id) {
+        if (!existIds.has(String(id))) stale.push(String(id)); // 从未上云，无需墓碑
+        else kept.push(String(id));
+    });
+    const rows = kept.map(function (id) {
+        return { artist_id: artistId, domain: domain, item_id: String(id), payload: null, updated_at: now, deleted_at: now };
+    });
+    return { rows: rows, stale: stale };
+}
+// 启动时加载（必须在首次推送前执行）
+mgLoadDeletedIds();
+
+// 通用：把本地数组推送到云端（按 id upsert；仅对"本机显式删除"的 id 在云端打软删除墓碑）
 async function mgCloudPushItems(domain, items) {
     if (!mgRoleCustCloudEnabled()) return false;
     const client = mgGetSupabaseClient();
@@ -2692,9 +2752,12 @@ async function mgCloudPushItems(domain, items) {
                 deleted_at: null
             };
         });
-        // 计算墓碑：云端存在但本地已删除的条目
+        // 墓碑只来自本机显式删除（mgMarkDeleted 记录），绝不对"云端有但本机没有"的
+        // 其他设备条目打墓碑——这是角色档案/单主多设备莫名消失的根因。
+        const delIds = mgGetDeletedIds(domain);
         let tombRows = [];
-        if (rows.length) {
+        let pendingDirty = false;
+        if (rows.length || delIds.size) {
             const { data: existing, error: fe } = await client
                 .from('artist_settings_items')
                 .select('item_id, deleted_at')
@@ -2707,12 +2770,11 @@ async function mgCloudPushItems(domain, items) {
                 console.warn('[cloud] 查询云端 ' + domain + ' 失败:', fe);
                 return false;
             }
-            const liveIds = new Set(rows.map(function (r) { return r.item_id; }));
-            tombRows = (existing || [])
-                .filter(function (r) { return !liveIds.has(String(r.item_id)); })
-                .map(function (r) {
-                    return { artist_id: artistId, domain: domain, item_id: String(r.item_id), payload: null, updated_at: now, deleted_at: now };
-                });
+            // 只对本机显式删除且云端确实存在的条目打墓碑；其余待删 id 视为从未上云，丢弃
+            const t = mgComputeTombstoneRows(domain, artistId, existing || [], delIds, now);
+            tombRows = t.rows;
+            t.stale.forEach(function (id) { delIds.delete(String(id)); });
+            if (t.stale.length) pendingDirty = true;
         }
         const allRows = rows.concat(tombRows);
         if (allRows.length) {
@@ -2721,6 +2783,12 @@ async function mgCloudPushItems(domain, items) {
                 .upsert(allRows, { onConflict: 'artist_id,domain,item_id' });
             if (error) { console.warn('[cloud] 推送 ' + domain + ' 失败:', error); return false; }
         }
+        // 推送成功后：已落库的墓碑实际清除；stale 已在上文清掉。仅在有变动时持久化。
+        if (tombRows.length) {
+            tombRows.forEach(function (r) { delIds.delete(String(r.item_id)); });
+            pendingDirty = true;
+        }
+        if (pendingDirty) mgPersistDeletedIds();
         return true;
     } catch (e) {
         console.warn('[cloud] 推送 ' + domain + ' 异常:', e);
@@ -2735,7 +2803,16 @@ function mgMergeCloudItems(localArr, cloudRows) {
     (localArr || []).forEach(function (it) { if (it && it.id != null) map.set(String(it.id), it); });
     (cloudRows || []).forEach(function (r) {
         const id = r.item_id;
-        if (r.deleted_at) { map.delete(String(id)); return; }
+        if (r.deleted_at) {
+            // 墓碑：仅当本地条目比墓碑更旧（或无时间戳）时才删除，
+            // 避免旧墓碑误删之后被重新编辑/新建的本地数据（防御性兜底）
+            const local = map.get(String(id));
+            if (!local) return;
+            const localTs = new Date(local.updatedAt || local.createdAt || 0).getTime();
+            const tombTs = new Date(r.deleted_at || 0).getTime();
+            if (!(localTs > tombTs)) map.delete(String(id));
+            return;
+        }
         const p = r.payload;
         if (!p || p.id == null) return;
         const local = map.get(String(id));
@@ -3889,7 +3966,7 @@ function deleteCustomer(id) {
     const c = customers.find(function (x) { return x && x.id === id; });
     if (!c) return;
     if (!confirm('确定删除单主「' + c.name + '」？删除仅移除单主档案，不影响历史订单。')) return;
-    removeCustomer(id);
+    removeCustomer(id); // 底层统一记录待同步墓碑，防止下次拉取复活
     saveCustomers();
     renderCustomerList();
     renderCustomerHistoryPrompt();
@@ -4802,7 +4879,7 @@ function deleteRoleProfile(id) {
     const r = roleProfiles.find(function (x) { return x && x.id === id; });
     if (!r) return;
     if (!confirm('确定删除角色「' + r.name + '」？删除仅移除角色档案，不影响历史订单。')) return;
-    removeRoleProfile(id);
+    removeRoleProfile(id); // 底层统一记录待同步墓碑，防止下次拉取复活
     saveRoleProfiles();
     renderRoleList();
     renderRoleHistoryPrompt();
@@ -17294,8 +17371,14 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260916-1325';
+const APP_VERSION = '20260917-0345';
 const APP_CHANGELOG = [
+    {
+        date: '2026-09-17',
+        items: [
+            '【角色档案/单主管理-云端同步修复】修复多设备同时使用时角色档案/单主被整列清空的问题：墓碑只由本机显式删除产生，不再因"云端有但本机没同步到"而误删其他设备的条目；拉取时墓碑删除增加了时间戳判断作为兜底，并对待删墓碑做本地持久化，避免删除因未及时推送在下一次拉取时被"复活"'
+        ]
+    },
     {
         date: '2026-09-16',
         items: [
