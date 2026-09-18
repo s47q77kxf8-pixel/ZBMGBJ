@@ -41,6 +41,7 @@ let statsFocusedOrderIds = null; // 统计页“查看企划”后，记录页�
 let statsFocusedLabel = ''; // 统计页“查看企划”后的筛选说明
 let templates = []; // 存储模板列表
 let receiptTemplates = []; // 小票模板列表（localStorage 'receiptTemplates'）：保存整套小票自定义，用于核对稿费/结稿互动等场景切换
+let receiptCustomizationPanelOpen = false; // 小票设置面板是否打开：打开期间暂停“按阶段自动套用模板”，保证编辑文案时预览实时可见
 let customers = []; // 客户档案列表（localStorage 'customers'）
 let roleProfiles = []; // 角色档案列表（localStorage 'roleProfiles'）：记录约稿角色名/原作IP/设定/备注
 let roleIgnoredNames = []; // 忽略的历史角色名（localStorage 'roleIgnoredNames'），不再提示建档
@@ -5531,10 +5532,12 @@ function toggleReceiptCustomizationPanel() {
 
         modal.classList.remove('d-none');
         if (drawer) drawer.classList.add('customization-open');
+        receiptCustomizationPanelOpen = true;
         loadReceiptCustomizationToForm();
     } else {
         modal.classList.add('d-none');
         if (drawer) drawer.classList.remove('customization-open');
+        receiptCustomizationPanelOpen = false;
     }
 }
 
@@ -5544,6 +5547,7 @@ function closeReceiptCustomizationPanel() {
     const drawer = document.getElementById('receiptDrawer');
     if (modal) modal.classList.add('d-none');
     if (drawer) drawer.classList.remove('customization-open');
+    receiptCustomizationPanelOpen = false;
 }
 
 // 切换小票设置标签页
@@ -5641,12 +5645,10 @@ function loadSelectedReceiptTemplate() {
     if (typeof defaultSettings.receiptCustomization.updatedAt === 'number') {
         defaultSettings.receiptCustomization.updatedAt = Date.now();
     }
-    // 若当前正查看某订单（有 id），手动加载即视为“采用此模板为该阶段默认”，避免被阶段默认覆盖
-    if (quoteData && quoteData.id != null) {
-        const phase = (quoteData.settlement && quoteData.settlement.type) ? 'settle' : 'quote';
-        receiptTemplates.forEach(function (t) { if (t.defaultFor === phase && t.id !== tpl.id) t.defaultFor = ''; });
-        tpl.defaultFor = phase;
-    }
+    // 加载即“采用此模板为该阶段默认”，与按阶段自动套用保持一致
+    const phase = (quoteData && quoteData.settlement && quoteData.settlement.type) ? 'settle' : 'quote';
+    receiptTemplates.forEach(function (t) { if (t.defaultFor === phase && t.id !== tpl.id) t.defaultFor = ''; });
+    tpl.defaultFor = phase;
     saveData();
     if (typeof loadReceiptCustomizationToForm === 'function') loadReceiptCustomizationToForm();
     if (typeof debouncedRefreshReceipt === 'function') debouncedRefreshReceipt();
@@ -5739,7 +5741,8 @@ function renderReceiptQuickTemplateSelect(currentId) {
     sel.innerHTML = '';
     const ph = document.createElement('option');
     ph.value = '';
-    ph.textContent = '模板';
+    ph.textContent = '默认';
+    ph.title = '不使用模板，按当前自定义外观';
     sel.appendChild(ph);
     receiptTemplates.forEach(function (t) {
         let label = t.name;
@@ -5750,8 +5753,15 @@ function renderReceiptQuickTemplateSelect(currentId) {
         opt.textContent = label;
         sel.appendChild(opt);
     });
-    if (currentId != null && sel.querySelector('option[value="' + currentId + '"]')) {
-        sel.value = String(currentId);
+    // 选中项：显式传入 > 当前阶段的默认模板 > 占位“默认”
+    let pick = currentId;
+    if (pick == null) {
+        const phase = (quoteData && quoteData.settlement && quoteData.settlement.type) ? 'settle' : 'quote';
+        const def = receiptTemplates.find(function (t) { return t.defaultFor === phase; });
+        if (def) pick = def.id;
+    }
+    if (pick != null && sel.querySelector('option[value="' + pick + '"]')) {
+        sel.value = String(pick);
     }
 }
 
@@ -5764,12 +5774,10 @@ function quickSwitchReceiptTemplate(id) {
     if (typeof defaultSettings.receiptCustomization.updatedAt === 'number') {
         defaultSettings.receiptCustomization.updatedAt = Date.now();
     }
-    // 若当前正查看某订单（有 id），快速切换即视为“采用此模板为该阶段默认”，避免被阶段默认覆盖
-    if (quoteData && quoteData.id != null) {
-        const phase = (quoteData.settlement && quoteData.settlement.type) ? 'settle' : 'quote';
-        receiptTemplates.forEach(function (t) { if (t.defaultFor === phase && String(t.id) !== String(tpl.id)) t.defaultFor = ''; });
-        tpl.defaultFor = phase;
-    }
+    // 快速切换即“采用此模板为该阶段默认”，与按阶段自动套用保持一致
+    const phase = (quoteData && quoteData.settlement && quoteData.settlement.type) ? 'settle' : 'quote';
+    receiptTemplates.forEach(function (t) { if (t.defaultFor === phase && String(t.id) !== String(tpl.id)) t.defaultFor = ''; });
+    tpl.defaultFor = phase;
     saveData();
     if (typeof loadReceiptCustomizationToForm === 'function') loadReceiptCustomizationToForm();
     if (typeof debouncedRefreshReceipt === 'function') debouncedRefreshReceipt();
@@ -14200,12 +14208,11 @@ function generateQuote() {
         return;
     }
 
-    // 按阶段自动套用小票模板：仅在已有订单上下文（quoteData.id 存在）时替换 customization，
-    // 新单 composing 仍用当前设置，避免在小票设置里改文案被模板覆盖。渲染后由 finally 还原。
+    // 按阶段自动套用小票模板：有对应阶段默认模板时替换 customization，渲染后由 finally 还原。
+    // 小票设置面板打开期间暂停套用，保证编辑文案时预览实时可见。
     const _rcSaved = defaultSettings.receiptCustomization;
     const _rcIsSettled = !!(quoteData && quoteData.settlement && quoteData.settlement.type);
-    const _rcIsOrder = !!(quoteData && quoteData.id != null);
-    const _rcEff = _rcIsOrder ? resolveReceiptCustomizationForCurrentPhase(_rcIsSettled) : _rcSaved;
+    const _rcEff = receiptCustomizationPanelOpen ? _rcSaved : resolveReceiptCustomizationForCurrentPhase(_rcIsSettled);
     const _rcSwapped = (_rcEff !== _rcSaved);
     if (_rcSwapped) defaultSettings.receiptCustomization = _rcEff;
     try {
@@ -17611,11 +17618,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260918-2320';
+const APP_VERSION = '20260918-2335';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
         items: [
+            '【小票-模板切换优化】工具条"模板"下拉的占位项由"模板"改为"默认"（表示不使用模板、按当前自定义外观）；打开小票时下拉自动选中"当前阶段的默认模板"；设了"报价默认"后新单/进行中报价小票也会自动套用；小票设置面板打开期间暂停自动套用，保证编辑文案的实时预览',
             '【小票-工具条适配】小票抽屉工具条下拉进一步收窄（max-width 96/移动 84），并改回单行不换行：标题 + 两个下拉 + 三个图标稳定在一行，不再超出容器',
             '【小票-模板快速切换】小票抽屉工具条新增"模板"下拉，在首页（报价小票页）即可一键切换小票模板，无需进设置；订单上下文里快速切换会同时把该模板设为当前阶段默认，避免被阶段默认覆盖',
             '【小票-模板功能】新增"小票模板"（镜像计算报价的保存为模板）：把整套小票自定义（标题、头部/尾部文本、主题、图片等）存为命名模板，核对稿费与结稿互动可分别保存、一键切换；并支持"设为报价默认/结单默认"，生成小票时按订单是否已结单自动套用对应模板（仅在已存订单上下文时自动套用，新单 composing 仍用当前设置，避免编辑预览被覆盖）。模板随 localStorage 与手动跨端同步（导出/导入）持久化',
