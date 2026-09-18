@@ -11,7 +11,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260918-0530">
+    <link rel="stylesheet" href="style.css?v=20260918-1310">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -876,6 +876,7 @@
                                 <button class="tab-btn active" onclick="switchReceiptTab('settings')">设置</button>
                                 <button class="tab-btn" onclick="switchReceiptTab('theme')">主题</button>
                                 <button class="tab-btn" onclick="switchReceiptTab('font')">字体</button>
+                                <button class="tab-btn" onclick="switchReceiptTab('template')">模板</button>
                             </div>
                             <div class="tab-content active" id="settings-tab">
                                 <!-- 小票头部设置 -->
@@ -1371,6 +1372,35 @@
                                             <div id="importedFontsList" class="imported-fonts-list"></div>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                            <!-- 小票模板 -->
+                            <div class="tab-content" id="template-tab">
+                                <div class="section">
+                                    <h3>小票模板</h3>
+                                    <p class="text-gray">把当前小票外观（标题、头部/尾部文本、主题、图片等）存成模板，核对稿费与结稿互动可分别保存、一键切换。</p>
+                                    <div class="form-row">
+                                        <div class="form-group" style="flex:1;">
+                                            <label for="receiptTemplateName">模板名称</label>
+                                            <input type="text" id="receiptTemplateName" placeholder="例如：核对稿费 / 结稿互动">
+                                        </div>
+                                        <div class="form-group" style="align-self:flex-end;">
+                                            <button class="btn btn-sm" onclick="saveReceiptTemplate()">保存为模板</button>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group" style="flex:1;">
+                                            <label for="receiptTemplateSelect">已存模板</label>
+                                            <select id="receiptTemplateSelect" onchange="onReceiptTemplateSelectChange()"></select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row" style="gap:0.5rem; flex-wrap:wrap;">
+                                        <button class="btn btn-sm" onclick="loadSelectedReceiptTemplate()">加载此模板</button>
+                                        <button class="btn btn-sm btn--danger" onclick="deleteReceiptTemplate()">删除</button>
+                                        <button class="btn btn-sm" onclick="setReceiptTemplateDefault('quote')">设为报价默认</button>
+                                        <button class="btn btn-sm" onclick="setReceiptTemplateDefault('settle')">设为结单默认</button>
+                                    </div>
+                                    <p class="text-gray">提示：设为「报价默认 / 结单默认」后，生成小票时会按订单是否已结单自动套用对应模板；不选则手动加载。</p>
                                 </div>
                             </div>
                         </div>
@@ -3604,7 +3634,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260918-0530"></script>
+    <script src="script.js?v=20260918-1310"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

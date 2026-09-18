@@ -40,6 +40,7 @@ let selectedHistoryIds = new Set(); // 存储选中的历史记录ID
 let statsFocusedOrderIds = null; // 统计页“查看企划”后，记录页仅显示这些企划
 let statsFocusedLabel = ''; // 统计页“查看企划”后的筛选说明
 let templates = []; // 存储模板列表
+let receiptTemplates = []; // 小票模板列表（localStorage 'receiptTemplates'）：保存整套小票自定义，用于核对稿费/结稿互动等场景切换
 let customers = []; // 客户档案列表（localStorage 'customers'）
 let roleProfiles = []; // 角色档案列表（localStorage 'roleProfiles'）：记录约稿角色名/原作IP/设定/备注
 let roleIgnoredNames = []; // 忽略的历史角色名（localStorage 'roleIgnoredNames'），不再提示建档
@@ -2201,6 +2202,19 @@ function loadData() {
         }
     } catch (e) {
         templates = [];
+    }
+
+    // 单独加载小票模板，避免受其他键 parse 失败影响
+    try {
+        const savedReceiptTemplates = localStorage.getItem('receiptTemplates');
+        if (savedReceiptTemplates) {
+            const parsedRT = JSON.parse(savedReceiptTemplates);
+            receiptTemplates = Array.isArray(parsedRT) ? parsedRT : [];
+        } else {
+            receiptTemplates = [];
+        }
+    } catch (e) {
+        receiptTemplates = [];
     }
 
     try {
@@ -5314,6 +5328,12 @@ function doSaveData() {
     } catch (e) {
         console.error('保存模板失败:', e);
     }
+    try {
+        const rtData = Array.isArray(receiptTemplates) ? receiptTemplates : [];
+        localStorage.setItem('receiptTemplates', JSON.stringify(rtData));
+    } catch (e) {
+        console.error('保存小票模板失败:', e);
+    }
     
     // 如果启用了云端模式，自动同步设置到云端
     // 合并模式下也会自动同步（因为已经智能合并过了）
@@ -5347,6 +5367,7 @@ function exportSettings() {
             productSettings: productSettings,
             processSettings: processSettings,
             templates: templates,
+            receiptTemplates: receiptTemplates,
             exportDate: new Date().toISOString()
         };
         
@@ -5545,7 +5566,7 @@ function switchReceiptTab(tabName) {
     
     // 激活对应的标签按钮
     const targetBtn = Array.from(document.querySelectorAll('.tab-btn')).find(btn => {
-        return btn.textContent.trim() === (tabName === 'settings' ? '设置' : tabName === 'theme' ? '主题' : '字体');
+        return btn.textContent.trim() === (tabName === 'settings' ? '设置' : tabName === 'theme' ? '主题' : tabName === 'font' ? '字体' : '模板');
     });
     if (targetBtn) {
         targetBtn.classList.add('active');
@@ -5564,6 +5585,147 @@ function switchReceiptTab(tabName) {
     if (tabName === 'font') {
         loadFontSettings();
     }
+    // 如果是模板标签页，刷新模板下拉
+    if (tabName === 'template') {
+        renderReceiptTemplateList();
+    }
+}
+
+// ========== 小票模板管理（镜像计算报价 templates） ==========
+// 保存当前小票自定义为命名模板；同名则更新；模板含“默认用于”标记（quote/settle/空）
+function saveReceiptTemplate() {
+    const nameEl = document.getElementById('receiptTemplateName');
+    const name = nameEl ? nameEl.value.trim() : '';
+    if (!name) {
+        alert('请输入模板名称！');
+        return;
+    }
+    const existingIndex = receiptTemplates.findIndex(function (t) { return t.name === name; });
+    const tpl = {
+        id: existingIndex !== -1 ? receiptTemplates[existingIndex].id : Date.now(),
+        name: name,
+        customization: JSON.parse(JSON.stringify(defaultSettings.receiptCustomization)),
+        defaultFor: existingIndex !== -1 ? (receiptTemplates[existingIndex].defaultFor || '') : '',
+        mg_updated_at: Date.now()
+    };
+    if (existingIndex !== -1) {
+        receiptTemplates[existingIndex] = tpl;
+        alert('模板已更新！');
+    } else {
+        receiptTemplates.push(tpl);
+        alert('模板已保存！');
+    }
+    saveReceiptTemplates();
+    saveData();
+    renderReceiptTemplateList();
+    if (nameEl) nameEl.value = '';
+}
+
+// 加载选中的小票模板：把模板的 customization 覆盖回当前小票自定义，并重渲表单与预览
+function loadSelectedReceiptTemplate() {
+    const sel = document.getElementById('receiptTemplateSelect');
+    if (!sel) return;
+    const id = parseInt(sel.value, 10);
+    if (!id) {
+        alert('请先选择一个模板！');
+        return;
+    }
+    const tpl = receiptTemplates.find(function (t) { return t.id === id; });
+    if (!tpl || !tpl.customization) {
+        alert('未找到该模板！');
+        return;
+    }
+    if (!confirm('加载模板将替换当前的小票自定义设置，是否继续？')) return;
+    defaultSettings.receiptCustomization = JSON.parse(JSON.stringify(tpl.customization));
+    if (typeof defaultSettings.receiptCustomization.updatedAt === 'number') {
+        defaultSettings.receiptCustomization.updatedAt = Date.now();
+    }
+    // 若当前正查看某订单（有 id），手动加载即视为“采用此模板为该阶段默认”，避免被阶段默认覆盖
+    if (quoteData && quoteData.id != null) {
+        const phase = (quoteData.settlement && quoteData.settlement.type) ? 'settle' : 'quote';
+        receiptTemplates.forEach(function (t) { if (t.defaultFor === phase && t.id !== tpl.id) t.defaultFor = ''; });
+        tpl.defaultFor = phase;
+    }
+    saveData();
+    if (typeof loadReceiptCustomizationToForm === 'function') loadReceiptCustomizationToForm();
+    if (typeof debouncedRefreshReceipt === 'function') debouncedRefreshReceipt();
+    renderReceiptTemplateList();
+    alert('模板已加载！');
+}
+
+// 删除选中的小票模板
+function deleteReceiptTemplate() {
+    const sel = document.getElementById('receiptTemplateSelect');
+    if (!sel) return;
+    const id = parseInt(sel.value, 10);
+    if (!id) {
+        alert('请先选择一个模板！');
+        return;
+    }
+    const tpl = receiptTemplates.find(function (t) { return t.id === id; });
+    if (!tpl) return;
+    if (!confirm('确定删除小票模板「' + tpl.name + '」？')) return;
+    receiptTemplates = receiptTemplates.filter(function (t) { return t.id !== id; });
+    saveReceiptTemplates();
+    saveData();
+    renderReceiptTemplateList();
+}
+
+// 设置/取消模板的阶段默认（kind: 'quote' 报价默认 / 'settle' 结单默认）
+function setReceiptTemplateDefault(kind) {
+    const sel = document.getElementById('receiptTemplateSelect');
+    if (!sel) return;
+    const id = parseInt(sel.value, 10);
+    if (!id) {
+        alert('请先选择一个模板！');
+        return;
+    }
+    const tpl = receiptTemplates.find(function (t) { return t.id === id; });
+    if (!tpl) return;
+    // 清除其它同类默认，再设置当前（重复点击同一 kind 则取消）
+    receiptTemplates.forEach(function (t) {
+        if (t.defaultFor === kind && t.id !== id) t.defaultFor = '';
+    });
+    tpl.defaultFor = (tpl.defaultFor === kind) ? '' : kind;
+    saveReceiptTemplates();
+    saveData();
+    renderReceiptTemplateList();
+    const label = tpl.defaultFor === 'quote' ? '报价默认' : (tpl.defaultFor === 'settle' ? '结单默认' : '已取消默认');
+    alert('「' + tpl.name + '」' + label);
+}
+
+// 渲染模板下拉列表（标注默认用于）
+function renderReceiptTemplateList() {
+    const sel = document.getElementById('receiptTemplateSelect');
+    if (!sel) return;
+    sel.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '— 选择模板 —';
+    sel.appendChild(placeholder);
+    receiptTemplates.forEach(function (t) {
+        let label = t.name;
+        if (t.defaultFor === 'quote') label += '（报价默认）';
+        else if (t.defaultFor === 'settle') label += '（结单默认）';
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = label;
+        sel.appendChild(opt);
+    });
+}
+
+function onReceiptTemplateSelectChange() {
+    // 预留：选择变化时可做提示，目前无需处理
+}
+
+// 按阶段解析应使用的 customization：有对应阶段默认模板则返回其深拷贝，否则返回当前小票自定义
+function resolveReceiptCustomizationForCurrentPhase(isSettled) {
+    const kind = isSettled ? 'settle' : 'quote';
+    const tpl = receiptTemplates.find(function (t) { return t.defaultFor === kind && t.customization; });
+    if (tpl) {
+        return JSON.parse(JSON.stringify(tpl.customization));
+    }
+    return defaultSettings.receiptCustomization;
 }
 
 // 将颜色统一为 #rrggbb 六位十六进制格式（用于保存与展示 #000000 格式）
@@ -8716,6 +8878,7 @@ function getExportSyncPayload() {
         productSettings: productSettings,
         processSettings: processSettings,
         templates: templates,
+        receiptTemplates: receiptTemplates,
         customers: customers,
         roleProfiles: roleProfiles,
         marketingCards: _mcData || getDefaultMarketingCards(),
@@ -8844,7 +9007,7 @@ function importSyncDataFromClipboard() {
                 return;
             }
             const hasHistory = Array.isArray(data.quoteHistory);
-            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null || data.roleProfiles != null || data.marketingCards != null;
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.receiptTemplates != null || data.customers != null || data.roleProfiles != null || data.marketingCards != null;
             if (!hasHistory && !hasSettings) {
                 alert('剪贴板中未包含可导入的数据（需要 quoteHistory 或设置项）');
                 return;
@@ -9000,6 +9163,18 @@ function applyRecordImportOverwrite() {
             }
         });
     }
+    if (data.receiptTemplates != null) {
+        receiptTemplates = Array.isArray(data.receiptTemplates) ? data.receiptTemplates : [];
+        // 确保所有导入的小票模板都有时间戳与合法 customization
+        receiptTemplates.forEach(tpl => {
+            if (!tpl.mg_updated_at) {
+                tpl.mg_updated_at = Date.now();
+            }
+            if (!tpl.customization || typeof tpl.customization !== 'object') {
+                tpl.customization = JSON.parse(JSON.stringify(defaultSettings.receiptCustomization));
+            }
+        });
+    }
     if (Array.isArray(data.customers)) {
         // 覆盖导入：直接替换客户档案（与设置覆盖策略一致）
         customers = data.customers.map(c => Object.assign({}, c));
@@ -9111,7 +9286,7 @@ function handleRecordSyncImport(event) {
                 return;
             }
             const hasHistory = Array.isArray(data.quoteHistory);
-            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.customers != null || data.roleProfiles != null || data.marketingCards != null;
+            const hasSettings = data.calculatorSettings != null || data.productSettings != null || data.processSettings != null || data.templates != null || data.receiptTemplates != null || data.customers != null || data.roleProfiles != null || data.marketingCards != null;
             if (!hasHistory && !hasSettings) {
                 alert('文件中未包含可导入的数据（需要 quoteHistory 或设置项）');
                 input.value = '';
@@ -13975,7 +14150,17 @@ function generateQuote() {
         container.innerHTML = '<p>请先在计算页完成计算</p>';
         return;
     }
-    
+
+    // 按阶段自动套用小票模板：仅在已有订单上下文（quoteData.id 存在）时替换 customization，
+    // 新单 composing 仍用当前设置，避免在小票设置里改文案被模板覆盖。渲染后由 finally 还原。
+    const _rcSaved = defaultSettings.receiptCustomization;
+    const _rcIsSettled = !!(quoteData && quoteData.settlement && quoteData.settlement.type);
+    const _rcIsOrder = !!(quoteData && quoteData.id != null);
+    const _rcEff = _rcIsOrder ? resolveReceiptCustomizationForCurrentPhase(_rcIsSettled) : _rcSaved;
+    const _rcSwapped = (_rcEff !== _rcSaved);
+    if (_rcSwapped) defaultSettings.receiptCustomization = _rcEff;
+    try {
+
     // 格式化日期
     const formatDate = (dateString) => {
         const date = new Date(dateString);
@@ -15845,6 +16030,9 @@ function generateQuote() {
     
     // 手机上自动缩放小票以适应屏幕宽度（保持 400px 内部排版不变）
     adjustReceiptScale();
+    } finally {
+        if (_rcSwapped) defaultSettings.receiptCustomization = _rcSaved;
+    }
 }
 
 // 冻结来源调试：在控制台执行 inspectQuoteFreezeSource() 查看当前小票字段来源（snapshot / fallback）
@@ -17371,11 +17559,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260918-0530';
+const APP_VERSION = '20260918-1310';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
         items: [
+            '【小票-模板功能】新增"小票模板"（镜像计算报价的保存为模板）：把整套小票自定义（标题、头部/尾部文本、主题、图片等）存为命名模板，核对稿费与结稿互动可分别保存、一键切换；并支持"设为报价默认/结单默认"，生成小票时按订单是否已结单自动套用对应模板（仅在已存订单上下文时自动套用，新单 composing 仍用当前设置，避免编辑预览被覆盖）。模板随 localStorage 与手动跨端同步（导出/导入）持久化',
             '【历史订单-企划备注云端同步修复】修复"历史订单企划备注莫名消失"：记录页编辑备注只改内存、不打时间戳也不上云，叠加 smartMergeHistory 在"时间戳相等时用云端覆盖本地"的整条替换逻辑，导致本地刚改的备注在下次云端合并时被云端旧副本冲掉。修复：① smartMergeHistory 平手时保留本地；② 关闭备注弹窗时打新鲜时间戳并通过 mgCloudUpsertOrder 把订单（含备注）同步到云端'
         ]
     },
