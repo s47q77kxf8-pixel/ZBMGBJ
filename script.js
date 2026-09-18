@@ -5621,8 +5621,9 @@ function saveReceiptTemplate() {
     }
     saveReceiptTemplates();
     saveData();
-    renderReceiptTemplateList();
-    renderReceiptQuickTemplateSelect();
+    // 保存后实时选中刚保存/更新的模板，两个下拉同步显示
+    renderReceiptTemplateList(tpl.id);
+    renderReceiptQuickTemplateSelect(tpl.id);
     if (nameEl) nameEl.value = '';
 }
 
@@ -5701,7 +5702,7 @@ function setReceiptTemplateDefault(kind) {
 }
 
 // 渲染模板下拉列表（标注默认用于）
-function renderReceiptTemplateList() {
+function renderReceiptTemplateList(selectId) {
     const sel = document.getElementById('receiptTemplateSelect');
     if (!sel) return;
     sel.innerHTML = '';
@@ -5718,6 +5719,10 @@ function renderReceiptTemplateList() {
         opt.textContent = label;
         sel.appendChild(opt);
     });
+    // 指定则选中（如刚保存的模板），实现保存后实时显示
+    if (selectId != null && sel.querySelector('option[value="' + selectId + '"]')) {
+        sel.value = String(selectId);
+    }
 }
 
 function onReceiptTemplateSelectChange() {
@@ -17618,11 +17623,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260918-2335';
+const APP_VERSION = '20260918-2345';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
         items: [
+            '【小票-模板保存回显】"保存为模板"后，"已存模板"下拉与首页快速切换下拉都会实时选中刚保存/更新的模板，便于立即加载或设为默认',
             '【小票-模板切换优化】工具条"模板"下拉的占位项由"模板"改为"默认"（表示不使用模板、按当前自定义外观）；打开小票时下拉自动选中"当前阶段的默认模板"；设了"报价默认"后新单/进行中报价小票也会自动套用；小票设置面板打开期间暂停自动套用，保证编辑文案的实时预览',
             '【小票-工具条适配】小票抽屉工具条下拉进一步收窄（max-width 96/移动 84），并改回单行不换行：标题 + 两个下拉 + 三个图标稳定在一行，不再超出容器',
             '【小票-模板快速切换】小票抽屉工具条新增"模板"下拉，在首页（报价小票页）即可一键切换小票模板，无需进设置；订单上下文里快速切换会同时把该模板设为当前阶段默认，避免被阶段默认覆盖',
