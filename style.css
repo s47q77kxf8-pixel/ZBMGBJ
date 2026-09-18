@@ -11357,17 +11357,17 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
     display: flex;
     gap: 0.4rem;
     align-items: center;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     justify-content: flex-end;
     flex: 1;
     min-width: 0;
 }
 
 .receipt-drawer-toolbar-actions select {
-    width: 120px;
-    max-width: 120px;
+    width: auto;
+    max-width: 130px;
     min-width: 0;
-    flex: 0 0 120px;
+    flex: 1 1 76px;
 }
 
 .receipt-drawer-toolbar-actions .btn {
@@ -11386,12 +11386,12 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
     }
 
     .receipt-drawer-toolbar-actions select {
-        width: 108px;
-        max-width: 108px;
-        flex-basis: 108px;
+        width: auto;
+        max-width: 112px;
+        flex: 1 1 64px;
         font-size: 0.88rem;
         padding-left: 0.5rem;
-        padding-right: 1.4rem;
+        padding-right: 1.2rem;
     }
 }
 
