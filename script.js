@@ -5618,6 +5618,7 @@ function saveReceiptTemplate() {
     saveReceiptTemplates();
     saveData();
     renderReceiptTemplateList();
+    renderReceiptQuickTemplateSelect();
     if (nameEl) nameEl.value = '';
 }
 
@@ -5650,6 +5651,7 @@ function loadSelectedReceiptTemplate() {
     if (typeof loadReceiptCustomizationToForm === 'function') loadReceiptCustomizationToForm();
     if (typeof debouncedRefreshReceipt === 'function') debouncedRefreshReceipt();
     renderReceiptTemplateList();
+    renderReceiptQuickTemplateSelect(tpl.id);
     alert('模板已加载！');
 }
 
@@ -5669,6 +5671,7 @@ function deleteReceiptTemplate() {
     saveReceiptTemplates();
     saveData();
     renderReceiptTemplateList();
+    renderReceiptQuickTemplateSelect();
 }
 
 // 设置/取消模板的阶段默认（kind: 'quote' 报价默认 / 'settle' 结单默认）
@@ -5690,6 +5693,7 @@ function setReceiptTemplateDefault(kind) {
     saveReceiptTemplates();
     saveData();
     renderReceiptTemplateList();
+    renderReceiptQuickTemplateSelect();
     const label = tpl.defaultFor === 'quote' ? '报价默认' : (tpl.defaultFor === 'settle' ? '结单默认' : '已取消默认');
     alert('「' + tpl.name + '」' + label);
 }
@@ -5726,6 +5730,51 @@ function resolveReceiptCustomizationForCurrentPhase(isSettled) {
         return JSON.parse(JSON.stringify(tpl.customization));
     }
     return defaultSettings.receiptCustomization;
+}
+
+// 渲染小票抽屉工具条里的“模板快速切换”下拉（标注默认用于；可选 currentId 高亮）
+function renderReceiptQuickTemplateSelect(currentId) {
+    const sel = document.getElementById('receiptTemplateQuickSelect');
+    if (!sel) return;
+    sel.innerHTML = '';
+    const ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = '模板';
+    sel.appendChild(ph);
+    receiptTemplates.forEach(function (t) {
+        let label = t.name;
+        if (t.defaultFor === 'quote') label += '（报价默认）';
+        else if (t.defaultFor === 'settle') label += '（结单默认）';
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = label;
+        sel.appendChild(opt);
+    });
+    if (currentId != null && sel.querySelector('option[value="' + currentId + '"]')) {
+        sel.value = String(currentId);
+    }
+}
+
+// 小票抽屉工具条：快速切换模板（无确认弹窗，即点即用；订单上下文里同时设为该阶段默认）
+function quickSwitchReceiptTemplate(id) {
+    if (!id) return;
+    const tpl = receiptTemplates.find(function (t) { return String(t.id) === String(id); });
+    if (!tpl || !tpl.customization) return;
+    defaultSettings.receiptCustomization = JSON.parse(JSON.stringify(tpl.customization));
+    if (typeof defaultSettings.receiptCustomization.updatedAt === 'number') {
+        defaultSettings.receiptCustomization.updatedAt = Date.now();
+    }
+    // 若当前正查看某订单（有 id），快速切换即视为“采用此模板为该阶段默认”，避免被阶段默认覆盖
+    if (quoteData && quoteData.id != null) {
+        const phase = (quoteData.settlement && quoteData.settlement.type) ? 'settle' : 'quote';
+        receiptTemplates.forEach(function (t) { if (t.defaultFor === phase && String(t.id) !== String(tpl.id)) t.defaultFor = ''; });
+        tpl.defaultFor = phase;
+    }
+    saveData();
+    if (typeof loadReceiptCustomizationToForm === 'function') loadReceiptCustomizationToForm();
+    if (typeof debouncedRefreshReceipt === 'function') debouncedRefreshReceipt();
+    renderReceiptTemplateList();
+    renderReceiptQuickTemplateSelect(tpl.id);
 }
 
 // 将颜色统一为 #rrggbb 六位十六进制格式（用于保存与展示 #000000 格式）
@@ -16443,6 +16492,9 @@ function openReceiptDrawer() {
     syncReceiptDrawerContent();
     updateAgreedAmountBar();
 
+    // 填充工具条里的“模板快速切换”下拉
+    renderReceiptQuickTemplateSelect();
+
     // 打开抽屉后再次根据当前屏幕尺寸调整小票缩放
     adjustReceiptScale();
 
@@ -17559,11 +17611,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260918-1310';
+const APP_VERSION = '20260918-2255';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
         items: [
+            '【小票-模板快速切换】小票抽屉工具条新增"模板"下拉，在首页（报价小票页）即可一键切换小票模板，无需进设置；订单上下文里快速切换会同时把该模板设为当前阶段默认，避免被阶段默认覆盖',
             '【小票-模板功能】新增"小票模板"（镜像计算报价的保存为模板）：把整套小票自定义（标题、头部/尾部文本、主题、图片等）存为命名模板，核对稿费与结稿互动可分别保存、一键切换；并支持"设为报价默认/结单默认"，生成小票时按订单是否已结单自动套用对应模板（仅在已存订单上下文时自动套用，新单 composing 仍用当前设置，避免编辑预览被覆盖）。模板随 localStorage 与手动跨端同步（导出/导入）持久化',
             '【历史订单-企划备注云端同步修复】修复"历史订单企划备注莫名消失"：记录页编辑备注只改内存、不打时间戳也不上云，叠加 smartMergeHistory 在"时间戳相等时用云端覆盖本地"的整条替换逻辑，导致本地刚改的备注在下次云端合并时被云端旧副本冲掉。修复：① smartMergeHistory 平手时保留本地；② 关闭备注弹窗时打新鲜时间戳并通过 mgCloudUpsertOrder 把订单（含备注）同步到云端'
         ]

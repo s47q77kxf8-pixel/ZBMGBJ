@@ -11,7 +11,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260918-1310">
+    <link rel="stylesheet" href="style.css?v=20260918-2255">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -827,6 +827,7 @@
                                     <span class="receipt-drawer-subtitle">小票</span>
                                 </div>
                                 <div class="receipt-drawer-toolbar-actions d-flex gap-2 items-center">
+                                    <select id="receiptTemplateQuickSelect" onchange="quickSwitchReceiptTemplate(this.value)" class="form-control mr-2" title="快速切换小票模板" aria-label="小票模板"></select>
                                     <select id="themeSelector" onchange="applyReceiptTheme(this.value)" class="form-control mr-2">
                                         <option value="classic">经典</option>
                                         <option value="modern">现代</option>
@@ -3634,7 +3635,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260918-1310"></script>
+    <script src="script.js?v=20260918-2255"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {
