@@ -17623,7 +17623,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260918-2345';
+const APP_VERSION = '20260919-2358';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -30115,7 +30115,7 @@ function updateGiftForm(giftId) {
                             </div>
                         </div>
                         ${additionalConfigs.map((config, index) => {
-                            const configKey = `gift_config_${giftId}_${index}`;
+                            const configKey = `config_${giftId}_${index}`;
                             const currentValue = gift.additionalConfigs && gift.additionalConfigs[configKey] ? gift.additionalConfigs[configKey] : 0;
                             return `
                                 <div class="incremental-config-item">
