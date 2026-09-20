@@ -11,7 +11,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260919-2358">
+    <link rel="stylesheet" href="style.css?v=20260920-4700">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -1842,7 +1842,7 @@
             </div>
             <!-- 我的页（原设置页） -->
             <div id="settings" class="page">
-                <button type="button" class="btn secondary w-full" onclick="openLoginPage(event)" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-radius:14px;">
+                <button type="button" class="btn secondary w-full" onclick="openLoginPage(event)" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-radius:14px;margin-bottom:1rem;">
                     <span style="display:flex;align-items:center;gap:12px;">
                         <span style="width:44px;height:44px;border-radius:999px;background:rgba(0,0,0,0.04);display:flex;align-items:center;justify-content:center;">
                             <svg class="icon" aria-hidden="true" style="width:22px;height:22px;"><use href="#i-user"></use></svg>
@@ -2753,27 +2753,32 @@
                     </div>
                 </div>
                 <!-- 角色档案编辑弹窗 -->
-                <!-- 接单物料子页面 -->
+                <!-- 接单物料子页面（电脑端：设置左 + 右侧独立预览面板；手机端：右下角「预览」唤起底部抽屉） -->
                 <div id="settingsSubPage-marketingCards" class="settings-sub-page d-none">
-                    <div class="section">
+                    <div class="section mc-section-wide">
                         <div class="settings-subpage-header mb-4">
                             <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
                             <h2>接单物料</h2>
                             <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn secondary btn-compact mc-preview-toggle" onclick="toggleMcPreviewDrawer()">预览</button>
                                 <button class="btn btn-compact" onclick="saveMarketingCardSetting()">保存</button>
                             </div>
                         </div>
                         <div class="setting-hint text-gray" style="margin-bottom: 8px;">
-                            编辑自介表 / 价目表 / 下单需知内容，实时预览后保存为图片，用于发布展示。
+                            编辑自介表 / 价目表 / 下单需知内容，实时预览后保存为图片。电脑端预览在右侧面板（可收起）；手机端点右下角「预览」查看。
                         </div>
                         <div class="marketing-card-tabs d-flex items-center gap-2" style="margin-bottom:12px;">
                             <button class="btn btn-compact marketing-card-tab-btn active" data-mc-tab="businessCard" onclick="switchMarketingCardTab('businessCard')">自介表</button>
                             <button class="btn secondary btn-compact marketing-card-tab-btn" data-mc-tab="priceList" onclick="switchMarketingCardTab('priceList')">价目表</button>
                             <button class="btn secondary btn-compact marketing-card-tab-btn" data-mc-tab="orderInfo" onclick="switchMarketingCardTab('orderInfo')">下单需知</button>
                         </div>
-                        <div id="marketingCardFormArea"></div>
-                        <div id="marketingCardPreviewArea" style="margin-top:12px;"></div>
+                        <div class="mc-layout">
+                            <div id="marketingCardFormArea" class="mc-layout-form"></div>
+                            <div id="marketingCardPreviewArea" class="mc-layout-preview"></div>
+                        </div>
                     </div>
+                    <button id="mcPreviewFab" class="mc-preview-fab" onclick="toggleMcPreviewDrawer()">预览</button>
+                    <div id="mcPreviewBackdrop" class="mc-preview-backdrop d-none" onclick="toggleMcPreviewDrawer(false)"></div>
                 </div>
 <!-- 角色档案弹窗（顶层：排单页 Todo 点击角色名也要能弹出，不能放在设置子页面里） -->
 
@@ -3635,7 +3640,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260919-2358"></script>
+    <script src="script.js?v=20260920-4700"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {
