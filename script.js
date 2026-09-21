@@ -2882,10 +2882,29 @@ async function mgPushCustomersToCloud() { return mgCloudPushItems(MG_CLOUD_DOMAI
 // 拉取云端数据并合并到本地（按 id，新者覆盖；云端墓碑则删除本地），随后重渲染
 async function mgPullCloudRoleAndCustomerData() {
     if (!mgRoleCustCloudEnabled()) return;
+    // 自愈护栏：本机明明有数据、云端却把它合并到 0 条，说明云端这批行被异常墓碑了。
+    // 这种情况下保留本机数据并回推一次，避免整片单主/角色档案消失
+    // （正常删除不会命中：删一条剩多条、或本机本来就是 0 条，都不会触发）。
     const roles = await mgCloudPullItems(MG_CLOUD_DOMAIN_ROLES, roleProfiles);
-    if (roles) { roleProfiles = roles; saveRoleProfiles(); }
+    if (roles) {
+        if (roleProfiles.length > 0 && roles.length === 0) {
+            if (typeof showGlobalToast === 'function') showGlobalToast('⚠️ 云端角色档案缺失，已用本机数据回填');
+            mgPushRoleProfilesToCloud().catch(function (e) { console.warn('[cloud] 角色档案回填失败:', e); });
+        } else {
+            roleProfiles = roles;
+            saveRoleProfiles();
+        }
+    }
     const custs = await mgCloudPullItems(MG_CLOUD_DOMAIN_CUSTOMERS, customers);
-    if (custs) { customers = custs; saveCustomers(); }
+    if (custs) {
+        if (customers.length > 0 && custs.length === 0) {
+            if (typeof showGlobalToast === 'function') showGlobalToast('⚠️ 云端单主数据缺失，已用本机数据回填');
+            mgPushCustomersToCloud().catch(function (e) { console.warn('[cloud] 单主数据回填失败:', e); });
+        } else {
+            customers = custs;
+            saveCustomers();
+        }
+    }
     if (typeof renderRoleList === 'function') renderRoleList();
     if (typeof renderCustomerList === 'function') renderCustomerList();
 }
@@ -19232,7 +19251,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260921-2326';
+const APP_VERSION = '20260922-0300';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -34979,8 +34998,14 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
     }
 
     const activeKeySet = new Set(activeRowsDedup.map(function (r) { return r.domain + '::' + r.item_id; }));
+    // ⚠️ 墓碑只能打在「本函数自己管理的设置域」上。
+    // artist_settings_items 是共用表，单主（customers）与角色档案（role_profiles）也存这里。
+    // 旧逻辑只看「云端有、本次没上传」就一律打墓碑（且 payload 置 null），
+    // 等于每次同步设置都会把单主/角色档案整片软删除，下一次拉取再把本地清空 —— 单主丢失的根因。
+    const settingsDomains = new Set(Object.keys(state.itemsByDomain || {}));
     const tombstoneRows = (existingItems || [])
         .filter(function (row) {
+            if (!settingsDomains.has(String(row.domain))) return false;
             const key = String(row.domain) + '::' + String(row.item_id);
             return !activeKeySet.has(key);
         })
