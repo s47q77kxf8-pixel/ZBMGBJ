@@ -101,6 +101,18 @@ image-processor-worker.js
 .receipt_dom_dump.js
 .receipt_smoke_test.js
 .settlement_amount_test.js
+
+# 本地回归测试脚本：一律不进仓库（本地保留即可跑）
+.orderremark_merge_test.js
+.price_list_generation_test.js
+.receipt_template_test.js
+.presettag_sync_test.js
+.module_move_test.js
+.cloud_domain_tombstone_test.js
+.float_order_test.js
+.gift_config_key_test.js
+test_role_profiles.js
+
 _repro2.js
 _*.txt
 orig_index_tmp.html
