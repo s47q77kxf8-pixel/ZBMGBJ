@@ -12894,8 +12894,12 @@ function convertProductToGift(productId, targetModuleId) {
 
     gifts.push(gift);
     
-    // 移除制品元素并渲染赠品
-    const el = document.querySelector(`.product-item[data-id="${productId}"]`);
+    // 移除制品元素并渲染赠品。
+    // 定位必须限定在原制品组的容器内：制品与赠品的 id 各自独立计数，容易撞号，
+    // 用全局选择器可能命中同号的赠品卡片，导致误删卡片/原卡片残留。
+    var _srcContainer = getProductMountContainer(product);
+    const el = (_srcContainer && _srcContainer.querySelector('.product-item[data-id="' + productId + '"]'))
+        || document.querySelector('.product-item[data-id="' + productId + '"]');
     if (el) el.remove();
     renderGift(gift);
     
@@ -12940,8 +12944,10 @@ function convertGiftToProduct(giftId, targetModuleId) {
 
     products.push(product);
     
-    // 移除赠品元素并渲染制品
-    const el = document.querySelector(`.product-item[data-id="${giftId}"]`);
+    // 移除赠品元素并渲染制品（同样限定在原赠品组的容器内查找，避免与同号制品卡片混淆）
+    var _srcContainer = getGiftMountContainer(gift);
+    const el = (_srcContainer && _srcContainer.querySelector('.product-item[data-id="' + giftId + '"]'))
+        || document.querySelector('.product-item[data-id="' + giftId + '"]');
     if (el) el.remove();
     renderProduct(product);
     
@@ -13040,21 +13046,40 @@ function showConvertMenu(itemType, itemId, btnEl) {
     menu.style.zIndex = '9999';
     setTimeout(function () { document.addEventListener('click', closeConvertMenu); }, 0);
 }
-// 将制品/赠品移动到同类型的其它组（不改类型，仅改 moduleId 并重新渲染）
+// 将制品/赠品移动到同类型的其它组（不改类型，仅改 moduleId 并迁移卡片）
 function moveItemToModule(itemType, itemId, targetModuleId) {
     var target = findOrderModule(targetModuleId);
     if (!target) return;
-    if (itemType === 'product') {
-        var product = products.find(function (p) { return p.id === itemId; });
-        if (!product) return;
-        product.moduleId = targetModuleId;
-        renderProduct(product);
+    var isProduct = itemType === 'product';
+    var list = isProduct ? products : gifts;
+    var item = list.find(function (x) { return String(x.id) === String(itemId); });
+    if (!item) return;
+
+    // 1) 先在「原组」的容器里定位卡片（此时 item.moduleId 仍是旧值）
+    var oldContainer = isProduct ? getProductMountContainer(item) : getGiftMountContainer(item);
+    var oldEl = oldContainer ? oldContainer.querySelector('.product-item[data-id="' + itemId + '"]') : null;
+    if (!oldEl) oldEl = document.querySelector('.product-item[data-id="' + itemId + '"]');
+
+    // 2) 改归属组
+    item.moduleId = targetModuleId;
+    var newContainer = isProduct ? getProductMountContainer(item) : getGiftMountContainer(item);
+
+    // 3) 迁移卡片：必须把旧节点从原组摘走再挂到新组。
+    //    若只调用 renderProduct/renderGift 追加一张新卡片，会出现两个问题：
+    //    ① 原组残留一张卡片（表现为「原制品组信息还在」）；
+    //    ② 卡片内 productTypeSelect-<id> / formOptions-<id> / processOptions-<id> 等 DOM id 重复，
+    //       随后 updateProductForm / updateProcessOptions / createSearchableSelect 里的 getElementById
+    //       命中残留的旧节点，新组那张卡的表单区一片空白（表现为「制品信息丢失」）。
+    if (oldEl && newContainer) {
+        newContainer.appendChild(oldEl);
     } else {
-        var gift = gifts.find(function (g) { return g.id === itemId; });
-        if (!gift) return;
-        gift.moduleId = targetModuleId;
-        renderGift(gift);
+        if (oldEl && oldEl.parentNode) oldEl.parentNode.removeChild(oldEl);
+        if (isProduct) renderProduct(item); else renderGift(item);
     }
+
+    if (typeof syncExpectedProductCountFromProducts === 'function') syncExpectedProductCountFromProducts();
+    // 换组会改变所属组级系数，报价需随之重算（仅刷新显示，不关抽屉/不弹窗）
+    if (typeof calculatePrice === 'function') calculatePrice(undefined, undefined, undefined, true);
 }
 function closeConvertMenu() {
     var m = document.getElementById('convertMenu');
@@ -19207,7 +19232,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260921-2318';
+const APP_VERSION = '20260921-2326';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
