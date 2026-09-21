@@ -12465,17 +12465,66 @@ html.theme-dark .convert-menu {
 .mc-double-tag {
     font-size: 12px;
 }
-/* 设置区大类行强调：跟随网站主题色，与普通条目行区分 */
+/* 设置区大类行：白底无边框，层级靠子行缩进表达（见 mcPriceRowInputsHtml 的 margin-left） */
 .mc-price-cat-row {
-    background: var(--primary-light, rgba(124, 111, 240, 0.1));
-    border-left: 3px solid var(--primary-color, #7c6ff0);
+    background: transparent;
     border-radius: 6px;
-    padding: 4px 6px 4px 8px;
+    padding: 4px 6px;
 }
 
 .mc-price-cat-row .mc-price-item-name-input {
     font-weight: 600;
     color: var(--primary-color, #7c6ff0);
+}
+
+/* 预览说明行（加减价说明）：备注色小字 */
+.mc-price-note-line .mc-price-item-name {
+    color: #888;
+    font-size: 12px;
+}
+
+html.theme-dark .mc-price-note-line .mc-price-item-name {
+    color: #a1a1aa;
+}
+
+/* 浮动价格模块：标题条 + 方框分组 + ▲说明 */
+.mc-float-title {
+    margin: 14px 0 6px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 2px;
+}
+
+.mc-float-title .mc-price-item-name {
+    color: #fff;
+}
+
+.mc-float-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 2px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+.mc-float-box {
+    width: 11px;
+    height: 11px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    flex: 0 0 auto;
+}
+
+.mc-float-note-mark {
+    color: #888;
+    font-size: 11px;
+    margin-right: 2px;
+    flex: 0 0 auto;
 }
 .mc-price-ask {
     color: #999;
@@ -12713,6 +12762,8 @@ html.theme-dark .convert-menu {
     overflow: hidden;
     /* 默认思源黑体（未安装时回退苹方/雅黑） */
     font-family: 'Source Han Sans SC', '思源黑体', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    /* 卡片为白底，文字固定深色（不随深色主题变浅） */
+    color: #333;
 }
 
 .mc-card-layer {
@@ -12814,6 +12865,12 @@ html.theme-dark .convert-menu {
 
 .mc-price-item .mc-price-item-name {
     flex: 1 1 auto;
+    min-width: 0;      /* 名称过长时优先换行，不挤压右侧价格 */
+}
+
+/* 价格永不压缩：内容多长就占多宽，由左侧名称换行让位（否则长名称会把价格挤到裁切） */
+.mc-price-item .mc-price-item-price {
+    flex: 0 0 auto;
 }
 
 /* 价目表分类标题行 */
@@ -12943,7 +13000,13 @@ html.theme-dark .convert-menu {
     border-radius: 10px;
     padding: 12px;
     margin-top: 12px;
-    background: var(--bg-secondary, #fafafa);
+}
+
+/* 「外观」「内容」两个模块底色跟随卡片色（浅色主题 = 纯白，暗色主题 = 深色卡面）。
+   注意：这两个盒子同时带 .mc-collapse，而 .mc-collapse 的 background 在文件更靠后、
+   优先级相同，会覆盖本规则 → 因此这里必须用双类选择器提高优先级。 */
+.mc-appearance-box.mc-collapse {
+    background: var(--card-bg, #fff);
 }
 
 .mc-appearance-head {
@@ -13076,7 +13139,10 @@ html.theme-dark .convert-menu {
     border: 1px solid var(--border-color, #e5e5ea);
     border-radius: 10px;
     padding: 0 10px;
-    background: var(--bg-secondary, #fafafa);
+    /* 折叠块之间的纵向间距（价格条目 ↔ 浮动价格等） */
+    margin-top: 12px;
+    /* 折叠块底色跟随卡片色（浅色主题 = 纯白，暗色主题 = 深色卡面） */
+    background: var(--card-bg, #fff);
 }
 
 .mc-collapse-head {

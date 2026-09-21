@@ -131,6 +131,7 @@ function makeSandboxGen(mcData, products) {
         }),
         mcMergeSamePriceRows: run('mcMergeSamePriceRows', { mcMergeRowsSegment: run('mcMergeRowsSegment', {}) }),
         mcProductSignature: run('mcProductSignature', { productSettings: products }),
+        mcCollectFloatRows: run('mcCollectFloatRows', { getCoefficientValue: (o) => (o && o.value) || 1 }),
         document: { getElementById: () => null },   // 不在表单上下文 → 沿用已存选项
         confirm: () => true,                        // 允许覆盖
         alert: () => {},

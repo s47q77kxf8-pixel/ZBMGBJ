@@ -9258,8 +9258,8 @@ function applyRecordImportOverwrite() {
         roleProfiles = data.roleProfiles.map(r => Object.assign({}, r));
     }
     if (data.marketingCards != null) {
-        // 覆盖导入：接单物料配置与设置一致，直接替换
-        _mcData = Object.assign(getDefaultMarketingCards(), data.marketingCards);
+        // 覆盖导入：接单物料配置与设置一致，直接替换（归一化补齐字段并迁移浮动价格模块）
+        _mcData = normalizeMarketingCards(Object.assign(getDefaultMarketingCards(), data.marketingCards));
     }
     saveData();
     applyRecordFilters();
@@ -9336,7 +9336,7 @@ function applyRecordImportMerge() {
     }
     if (data.marketingCards != null) {
         // 合并导入：接单物料配置按设置类处理，直接替换（卡片内容以导入端为准）
-        _mcData = Object.assign(getDefaultMarketingCards(), data.marketingCards);
+        _mcData = normalizeMarketingCards(Object.assign(getDefaultMarketingCards(), data.marketingCards));
     }
     saveData();
     applyRecordFilters();
@@ -17002,6 +17002,8 @@ function getDefaultMarketingCards() {
             titleEn: '',         // 英文标题（可留空，预览中显示在中文下方）
             note: '',
             items: [{ name: '', price: '' }, { name: '', price: '' }, { name: '', price: '' }],
+            // 浮动价格独立模块（标题行 isFloatTitle + 分组行 isFloatGroup + 明细行），与 items 各自独立增删/排序/生成
+            floatItems: [],
             mergeSame: true,     // 生成时同价合并
             groupCategory: true, // 生成时按分类分组（默认开）
             showCurrency: false, // 生成时显示货币符号
@@ -17024,6 +17026,64 @@ function getDefaultMarketingCards() {
     };
 }
 
+// 接单物料数据归一化：补齐新增字段 + 老数据结构迁移
+// 迁移：老数据把「浮动价格」块混在 priceList.items 里，现拆为独立模块 priceList.floatItems
+function normalizeMarketingCards(mc) {
+    if (!mc || typeof mc !== 'object') return mc;
+    // 合并默认结构，防缺字段（老数据自动补齐新增字段）
+    const def = getDefaultMarketingCards();
+    if (typeof mc.appearanceGlobal !== 'boolean') mc.appearanceGlobal = true;
+    ['businessCard', 'priceList', 'orderInfo'].forEach(function (k) {
+        if (!mc[k] || typeof mc[k] !== 'object') {
+            mc[k] = def[k];
+        } else {
+            mc[k] = Object.assign({}, def[k], mc[k]);
+        }
+        if (k === 'businessCard' && !Array.isArray(mc[k].fields)) {
+            mc[k].fields = [];
+        }
+        if (k === 'priceList') {
+            if (typeof mc[k].mergeSame !== 'boolean') mc[k].mergeSame = true;
+            if (typeof mc[k].groupCategory !== 'boolean') mc[k].groupCategory = false;
+            if (typeof mc[k].showCurrency !== 'boolean') mc[k].showCurrency = false;
+            if (typeof mc[k].autoSync !== 'boolean') mc[k].autoSync = false;
+            if (typeof mc[k].lastProductSignature !== 'string') mc[k].lastProductSignature = '';
+            if (!Array.isArray(mc[k].floatItems)) mc[k].floatItems = [];
+            // 老数据迁移：浮动价格块（从「浮动价格」标题行起连续到尾部）移入 floatItems
+            if (Array.isArray(mc[k].items) && mc[k].floatItems.length === 0) {
+                const _arr = mc[k].items;
+                let _fStart = -1;
+                for (let _i = 0; _i < _arr.length; _i++) {
+                    const _it = _arr[_i];
+                    if (_it && (_it.isFloatTitle || _it.isFloatGroup)) { _fStart = _i; break; }
+                }
+                if (_fStart >= 0) {
+                    mc[k].floatItems = _arr.slice(_fStart);
+                    mc[k].items = _arr.slice(0, _fStart);
+                }
+            }
+        }
+        if (mc[k].appearance && typeof mc[k].appearance === 'object') {
+            mc[k].appearance = Object.assign(getDefaultMcAppearance(), mc[k].appearance);
+            // 老字段迁移：doubleColor（原单双标签色）→ noteColor（备注色）
+            if (!mc[k].appearance.noteColor && mc[k].appearance.doubleColor) {
+                mc[k].appearance.noteColor = mc[k].appearance.doubleColor;
+            }
+        }
+        if (k === 'priceList' && Array.isArray(mc[k].items)) {
+            mc[k].items = mc[k].items.filter(function (it) { return it && typeof it === 'object'; });
+            if (mc[k].items.length === 0) mc[k].items = [{ name: '', price: '' }];
+        }
+        if (k === 'priceList' && Array.isArray(mc[k].floatItems)) {
+            mc[k].floatItems = mc[k].floatItems.filter(function (it) { return it && typeof it === 'object'; });
+        }
+        if (k === 'orderInfo' && Array.isArray(mc[k].lines)) {
+            mc[k].lines = mc[k].lines.filter(function (ln) { return ln && typeof ln === 'object'; });
+        }
+    });
+    return mc;
+}
+
 function loadMarketingCards() {
     if (_mcData) return _mcData;
     try {
@@ -17034,41 +17094,7 @@ function loadMarketingCards() {
         _mcData = null;
     }
     if (!_mcData) _mcData = getDefaultMarketingCards();
-    // 合并默认结构，防缺字段（老数据自动补齐新增字段）
-    const def = getDefaultMarketingCards();
-    if (typeof _mcData.appearanceGlobal !== 'boolean') _mcData.appearanceGlobal = true;
-    ['businessCard', 'priceList', 'orderInfo'].forEach(function (k) {
-        if (!_mcData[k] || typeof _mcData[k] !== 'object') {
-            _mcData[k] = def[k];
-        } else {
-            _mcData[k] = Object.assign({}, def[k], _mcData[k]);
-        }
-        if (k === 'businessCard' && !Array.isArray(_mcData[k].fields)) {
-            _mcData[k].fields = [];
-        }
-        if (k === 'priceList') {
-            if (typeof _mcData[k].mergeSame !== 'boolean') _mcData[k].mergeSame = true;
-            if (typeof _mcData[k].groupCategory !== 'boolean') _mcData[k].groupCategory = false;
-            if (typeof _mcData[k].showCurrency !== 'boolean') _mcData[k].showCurrency = false;
-            if (typeof _mcData[k].autoSync !== 'boolean') _mcData[k].autoSync = false;
-            if (typeof _mcData[k].lastProductSignature !== 'string') _mcData[k].lastProductSignature = '';
-        }
-        if (_mcData[k].appearance && typeof _mcData[k].appearance === 'object') {
-            _mcData[k].appearance = Object.assign(getDefaultMcAppearance(), _mcData[k].appearance);
-            // 老字段迁移：doubleColor（原单双标签色）→ noteColor（备注色）
-            if (!_mcData[k].appearance.noteColor && _mcData[k].appearance.doubleColor) {
-                _mcData[k].appearance.noteColor = _mcData[k].appearance.doubleColor;
-            }
-        }
-        if (k === 'priceList' && Array.isArray(_mcData[k].items)) {
-            _mcData[k].items = _mcData[k].items.filter(function (it) { return it && typeof it === 'object'; });
-            if (_mcData[k].items.length === 0) _mcData[k].items = [{ name: '', price: '' }];
-        }
-        if (k === 'orderInfo' && Array.isArray(_mcData[k].lines)) {
-            _mcData[k].lines = _mcData[k].lines.filter(function (ln) { return ln && typeof ln === 'object'; });
-        }
-    });
-    return _mcData;
+    return normalizeMarketingCards(_mcData);
 }
 
 function saveMarketingCards() {
@@ -17178,40 +17204,19 @@ function collectMarketingCardForm(tab) {
         const note = document.getElementById('mcPriceNote'); if (note) cfg.note = note.value;
         const mergeEl = document.getElementById('mcMergeSame'); if (mergeEl) cfg.mergeSame = mergeEl.checked;
         const catEl = document.getElementById('mcGroupCategory'); if (catEl) cfg.groupCategory = catEl.checked;
-        const rows = document.querySelectorAll('#mcPriceItems .mc-price-item-row');
-        cfg.items = [];
-        rows.forEach(function (row) {
-            const nameEl = row.querySelector('.mc-price-item-name-input');
-            const name = nameEl ? nameEl.value : '';
-            if (row.classList.contains('mc-price-cat-row')) {
-                cfg.items.push({ name: name, price: '', isCategory: true });
-                return;
-            }
-            if (row.classList.contains('mc-price-row-config')) {
-                const it = {
-                    name: name, mode: 'config',
-                    base: (row.querySelector('.mc-price-base-input') || {}).value || '',
-                    baseConfig: (row.querySelector('.mc-price-basecfg-input') || {}).value || '',
-                    inc: (row.querySelector('.mc-price-inc-input') || {}).value || ''
-                };
-                it.price = mcComposeItemPrice(it);
-                cfg.items.push(it);
-                return;
-            }
-            if (row.classList.contains('mc-price-row-nodes')) {
-                const it = {
-                    name: name, mode: 'nodes',
-                    base: (row.querySelector('.mc-price-base-input') || {}).value || '',
-                    detail: (row.querySelector('.mc-price-detail-input') || {}).value || ''
-                };
-                it.price = mcComposeItemPrice(it);
-                cfg.items.push(it);
-                return;
-            }
-            const priceEl = row.querySelector('.mc-price-item-price-input');
-            cfg.items.push({ name: name, price: priceEl ? priceEl.value : '' });
-        });
-        if (cfg.items.length === 0) cfg.items = [{ name: '', price: '' }];
+        // 两个独立模块分别收集：价格条目 / 浮动价格
+        const itemsBox = document.getElementById('mcPriceItems');
+        if (itemsBox) {
+            const arr = [];
+            itemsBox.querySelectorAll('.mc-price-item-row').forEach(function (row) { arr.push(mcParsePriceRow(row)); });
+            cfg.items = arr.length ? arr : [{ name: '', price: '' }];
+        }
+        const floatBox = document.getElementById('mcFloatItems');
+        if (floatBox) {
+            const arr = [];
+            floatBox.querySelectorAll('.mc-price-item-row').forEach(function (row) { arr.push(mcParsePriceRow(row)); });
+            cfg.floatItems = arr;
+        }
     } else if (tab === 'orderInfo') {
         const title = document.getElementById('mcOrderTitle'); if (title) cfg.title = title.value;
         const titleEn = document.getElementById('mcOrderTitleEn'); if (titleEn) cfg.titleEn = titleEn.value;
@@ -17323,6 +17328,58 @@ function toggleMcAppearance() {
     if (arrow) arrow.textContent = collapsed ? '▸' : '▾';
 }
 
+// 价格条目 / 浮动价格 行的表单输入 HTML（两个模块共用同一套行渲染）
+function mcPriceRowInputsHtml(items) {
+    // 层级缩进（每级 16px），替代原来的左侧强调竖线：
+    //   模块标题（isFloatTitle）/ 普通分类行 → 顶层 0；分组（isFloatGroup）→ 固定 1 级；
+    //   其余内容行跟随当前 depth。分组之间互为同级，不会逐个累加。
+    let depth = 0;
+    return (Array.isArray(items) ? items : []).map(function (it) {
+        if (it && it.isCategory) {
+            const level = it.isFloatGroup ? 1 : 0;
+            depth = level + 1;
+            const cls = 'mc-price-cat-row' + (it.isFloatTitle ? ' mc-price-float-title-row' : '') + (it.isFloatGroup ? ' mc-price-float-group-row' : '');
+            const ph = it.isFloatTitle ? '模块标题（如：浮动价格）' : (it.isFloatGroup ? '分组名（如：加急）' : '分类名（如：吧唧类）');
+            return '<div class="mc-price-item-row ' + cls + ' d-flex gap-2" style="margin-left:' + (level * 16) + 'px;margin-bottom:6px;align-items:center;">' +
+                '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml(it.name || '') + '" placeholder="' + ph + '" oninput="onMcFormInput()" style="flex:1;">' +
+                '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
+            '</div>';
+        }
+        const indent = 'margin-left:' + (depth * 16) + 'px;';
+        if (it && it.isNote) {
+            // 说明行（加减价说明）：整行单输入框
+            return '<div class="mc-price-item-row mc-price-note-row d-flex gap-2" style="' + indent + 'margin-bottom:6px;align-items:center;">' +
+                '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml((it && it.name) || '') + '" placeholder="说明文字" oninput="onMcFormInput()" style="flex:1;">' +
+                '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
+            '</div>';
+        }
+        if (it && it.mode === 'config') {
+            // 基础+递增：基础配置｜基础价｜递增项 三个独立块（基础配置在前）
+            return '<div class="mc-price-item-row mc-price-row-config d-flex gap-2" style="' + indent + 'margin-bottom:6px;align-items:center;">' +
+                '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml((it && it.name) || '') + '" placeholder="制品名称" oninput="onMcFormInput()" style="flex:1.2;">' +
+                '<input type="text" class="mc-price-basecfg-input" value="' + escapeHtml((it && it.baseConfig) || '') + '" placeholder="基础配置" oninput="onMcFormInput()" style="flex:1;min-width:0;">' +
+                '<input type="text" class="mc-price-base-input" value="' + escapeHtml((it && it.base) || '') + '" placeholder="基础价" oninput="onMcFormInput()" style="flex:0.9;min-width:0;">' +
+                '<input type="text" class="mc-price-inc-input" value="' + escapeHtml((it && it.inc) || '') + '" placeholder="递增项：名称+¥20/张" oninput="onMcFormInput()" style="flex:1.6;min-width:0;">' +
+                '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
+            '</div>';
+        }
+        if (it && it.mode === 'nodes') {
+            // 节点：总价｜分段明细 两个独立块
+            return '<div class="mc-price-item-row mc-price-row-nodes d-flex gap-2" style="' + indent + 'margin-bottom:6px;align-items:center;">' +
+                '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml((it && it.name) || '') + '" placeholder="制品名称" oninput="onMcFormInput()" style="flex:1.2;">' +
+                '<input type="text" class="mc-price-base-input" value="' + escapeHtml((it && it.base) || '') + '" placeholder="总价" oninput="onMcFormInput()" style="flex:0.9;min-width:0;">' +
+                '<input type="text" class="mc-price-detail-input" value="' + escapeHtml((it && it.detail) || '') + '" placeholder="分段：草稿30%·色稿40%" oninput="onMcFormInput()" style="flex:2.2;min-width:0;">' +
+                '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
+            '</div>';
+        }
+        return '<div class="mc-price-item-row d-flex gap-2" style="' + indent + 'margin-bottom:6px;align-items:center;">' +
+            '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml((it && it.name) || '') + '" placeholder="制品名称" oninput="onMcFormInput()" style="flex:1.6;">' +
+            '<input type="text" class="mc-price-item-price-input" value="' + escapeHtml((it && it.price) || '') + '" placeholder="价格（可写“起”）" oninput="onMcFormInput()" style="flex:1;">' +
+            '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
+        '</div>';
+    }).join('');
+}
+
 function renderMarketingCardForm(tab) {
     const area = document.getElementById('marketingCardFormArea');
     if (!area) return;
@@ -17404,8 +17461,12 @@ function renderMarketingCardForm(tab) {
         '</div>';
     } else if (tab === 'priceList') {
         const items = (Array.isArray(cfg.items) && cfg.items.length) ? cfg.items : [{ name: '', price: '' }];
-        let priceCollapsed = false;
-        try { priceCollapsed = localStorage.getItem('mcPriceItemsCollapsed') === '1'; } catch (_) {}
+        const floatItems = Array.isArray(cfg.floatItems) ? cfg.floatItems : [];
+        let priceCollapsed = false, floatCollapsed = false;
+        try {
+            priceCollapsed = localStorage.getItem('mcPriceItemsCollapsed') === '1';
+            floatCollapsed = localStorage.getItem('mcFloatItemsCollapsed') === '1';
+        } catch (_) {}
         let content = '<div class="form-row">' +
                 '<div class="form-group"><label for="mcPriceTitle">中文标题</label>' +
                 '<input type="text" id="mcPriceTitle" value="' + escapeHtml(cfg.title || '') + '" placeholder="价目表" oninput="onMcFormInput()"></div>' +
@@ -17418,55 +17479,34 @@ function renderMarketingCardForm(tab) {
                         '<span>价格条目（' + items.length + ' 行）</span>' +
                         '<span class="mc-collapse-arrow">' + (priceCollapsed ? '▸' : '▾') + '</span>' +
                     '</span>' +
-                    '<label class="checkbox-line" style="margin:0 0 0 auto;"><input type="checkbox" id="mcShowCurrency"' + (cfg.showCurrency === true ? ' checked' : '') + ' onchange="onMcGenOptionChange()"><span>货币符号</span></label>' +
-                    '<label class="inline-switch">' +
-                        '<input type="checkbox" id="mcAutoSync"' + (cfg.autoSync ? ' checked' : '') + ' onchange="onMcAutoSyncChange(this.checked)">' +
-                        '<span class="switch-track"><span class="switch-thumb"></span></span>' +
-                        '<span class="switch-label" id="mcAutoSyncLabel">' + (cfg.autoSync ? '自动同步' : '手动生成') + '</span>' +
-                    '</label>' +
                 '</div>' +
                 '<div class="mc-collapse-body" style="' + (priceCollapsed ? 'display:none;' : '') + '">' +
-                    '<div id="mcPriceItems">' +
-                        items.map(function (it, i) {
-                            if (it && it.isCategory) {
-                                return '<div class="mc-price-item-row mc-price-cat-row d-flex gap-2" style="margin-bottom:6px;align-items:center;">' +
-                                    '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml(it.name || '') + '" placeholder="分类名（如：吧唧类）" oninput="onMcFormInput()" style="flex:1;">' +
-                                    '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
-                                '</div>';
-                            }
-                            if (it && it.mode === 'config') {
-                                // 基础+递增：基础价｜基础配置｜递增项 三个独立块
-                                return '<div class="mc-price-item-row mc-price-row-config d-flex gap-2" style="margin-bottom:6px;align-items:center;">' +
-                                    '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml((it && it.name) || '') + '" placeholder="制品名称" oninput="onMcFormInput()" style="flex:1.2;">' +
-                                    '<input type="text" class="mc-price-base-input" value="' + escapeHtml((it && it.base) || '') + '" placeholder="基础价" oninput="onMcFormInput()" style="flex:0.9;min-width:0;">' +
-                                    '<input type="text" class="mc-price-basecfg-input" value="' + escapeHtml((it && it.baseConfig) || '') + '" placeholder="基础配置" oninput="onMcFormInput()" style="flex:1;min-width:0;">' +
-                                    '<input type="text" class="mc-price-inc-input" value="' + escapeHtml((it && it.inc) || '') + '" placeholder="递增项：名称+¥20/张" oninput="onMcFormInput()" style="flex:1.6;min-width:0;">' +
-                                    '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
-                                '</div>';
-                            }
-                            if (it && it.mode === 'nodes') {
-                                // 节点：总价｜分段明细 两个独立块
-                                return '<div class="mc-price-item-row mc-price-row-nodes d-flex gap-2" style="margin-bottom:6px;align-items:center;">' +
-                                    '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml((it && it.name) || '') + '" placeholder="制品名称" oninput="onMcFormInput()" style="flex:1.2;">' +
-                                    '<input type="text" class="mc-price-base-input" value="' + escapeHtml((it && it.base) || '') + '" placeholder="总价" oninput="onMcFormInput()" style="flex:0.9;min-width:0;">' +
-                                    '<input type="text" class="mc-price-detail-input" value="' + escapeHtml((it && it.detail) || '') + '" placeholder="分段：草稿30%·色稿40%" oninput="onMcFormInput()" style="flex:2.2;min-width:0;">' +
-                                    '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
-                                '</div>';
-                            }
-                            return '<div class="mc-price-item-row d-flex gap-2" style="margin-bottom:6px;align-items:center;">' +
-                                '<input type="text" class="mc-price-item-name-input" value="' + escapeHtml((it && it.name) || '') + '" placeholder="制品名称" oninput="onMcFormInput()" style="flex:1.6;">' +
-                                '<input type="text" class="mc-price-item-price-input" value="' + escapeHtml((it && it.price) || '') + '" placeholder="价格（可写“起”）" oninput="onMcFormInput()" style="flex:1;">' +
-                                '<button type="button" class="btn secondary small" onclick="removeMcPriceRow(this)" title="删除该行">×</button>' +
-                            '</div>';
-                        }).join('') +
-                    '</div>' +
+                    '<div id="mcPriceItems">' + mcPriceRowInputsHtml(items) + '</div>' +
                     '<div class="d-flex items-center gap-2" style="margin-top:2px;flex-wrap:wrap;">' +
                         '<button type="button" class="btn secondary btn-compact" onclick="addMcPriceRow()">+ 添加一行</button>' +
                         '<button type="button" class="btn secondary btn-compact" onclick="addMcPriceCategoryRow()">+ 分类行</button>' +
-                        '<button type="button" class="btn secondary btn-compact" onclick="insertMcSample()">' + (cfg.sampleBackup ? '恢复我的价目表' : '五模式示例') + '</button>' +
                         '<button type="button" class="btn btn-compact" onclick="generatePriceListFromProducts()">按制品设置生成</button>' +
                     '</div>' +
-                    '<small class="text-gray">同价自动合并、按分类分组；自动同步开启时制品变化即时更新；条目可自由编辑 / 拖拽排序</small>' +
+                    '<small class="text-gray">仅由「制品设置」生成：同价自动合并、按分类分组；自动同步开启时制品变化即时更新</small>' +
+                '</div>' +
+            '</div>' +
+            // ===== 模块二：浮动价格（独立模块，单独生成 / 编辑，互不影响） =====
+            '<div class="form-group mc-collapse' + (floatCollapsed ? ' collapsed' : '') + '" id="mcFloatCollapse">' +
+                '<div class="mc-collapse-head mc-appearance-head">' +
+                    '<span class="mc-appearance-toggle" onclick="toggleMcFloatItems()">' +
+                        '<span>浮动价格（' + floatItems.length + ' 行）</span>' +
+                        '<span class="mc-collapse-arrow">' + (floatCollapsed ? '▸' : '▾') + '</span>' +
+                    '</span>' +
+                    '<span class="text-gray" style="margin-left:auto;font-size:12px;">用途 / 加急 / 其他加价 / 其他 / 折扣 / 工艺 / 同模</span>' +
+                '</div>' +
+                '<div class="mc-collapse-body" style="' + (floatCollapsed ? 'display:none;' : '') + '">' +
+                    '<div id="mcFloatItems">' + mcPriceRowInputsHtml(floatItems) + '</div>' +
+                    '<div class="d-flex items-center gap-2" style="margin-top:2px;flex-wrap:wrap;">' +
+                        '<button type="button" class="btn secondary btn-compact" onclick="addMcFloatGroupRow()">+ 分组</button>' +
+                        '<button type="button" class="btn secondary btn-compact" onclick="addMcFloatItemRow()">+ 添加一行</button>' +
+                        '<button type="button" class="btn btn-compact" onclick="generateFloatListFromSettings()">按系数设置生成</button>' +
+                    '</div>' +
+                    '<small class="text-gray">按「加价（用途 / 加急 / 其他加价 / 每制品加费）→ 折扣 → 工艺 → 同模」顺序生成；与上方价格条目互不影响，可单独编辑 / 拖拽排序</small>' +
                 '</div>' +
             '</div>' +
             '<div class="form-row">' +
@@ -17475,7 +17515,18 @@ function renderMarketingCardForm(tab) {
             '</div>';
         html = '<div class="mc-form">' +
             buildMcAppearanceFormHtml(cfg, { accentId: 'mcPriceAccent', accentNote: '标题与分类标题的颜色', noteColorId: 'mcNoteColor', noteColorNote: '括号说明与底部备注颜色' }) +
-            buildMcContentBox(content) +
+            // 货币 / 自动同步开关挂在「内容」标题行右侧，同时作用于价格条目与浮动价格两个模块
+            buildMcContentBox(content,
+                '<label class="inline-switch" style="margin-left:auto;">' +
+                    '<input type="checkbox" id="mcShowCurrency"' + (cfg.showCurrency === true ? ' checked' : '') + ' onchange="onMcGenOptionChange(this.checked)">' +
+                    '<span class="switch-track"><span class="switch-thumb"></span></span>' +
+                    '<span class="switch-label">货币</span>' +
+                '</label>' +
+                '<label class="inline-switch">' +
+                    '<input type="checkbox" id="mcAutoSync"' + (cfg.autoSync ? ' checked' : '') + ' onchange="onMcAutoSyncChange(this.checked)">' +
+                    '<span class="switch-track"><span class="switch-thumb"></span></span>' +
+                    '<span class="switch-label" id="mcAutoSyncLabel">' + (cfg.autoSync ? '自动同步' : '手动生成') + '</span>' +
+                '</label>') +
         '</div>';
     } else if (tab === 'orderInfo') {
         const linesText = (Array.isArray(cfg.lines) ? cfg.lines : []).map(function (l) { return l.text || ''; }).join('\n');
@@ -17503,34 +17554,6 @@ function renderMarketingCardForm(tab) {
     updateMcBgPreviewUI();
 }
 
-// 五种计价模式示例：一键插入预览显示样式，再点一次恢复原价目表
-function insertMcSample() {
-    if (!_mcData) loadMarketingCards();
-    const cfg = _mcData.priceList;
-    if (cfg.sampleBackup) {
-        cfg.items = cfg.sampleBackup;
-        delete cfg.sampleBackup;
-        saveMarketingCards();
-        renderMarketingCardForm('priceList');
-        renderMarketingCardPreview('priceList');
-        showGlobalToast('已恢复你的价目表');
-        return;
-    }
-    cfg.sampleBackup = JSON.parse(JSON.stringify(cfg.items || []));
-    cfg.items = [
-        { name: '示例分类', price: '', isCategory: true },
-        { name: '吧唧（固定价格）', price: '¥50' },
-        { name: '背卡（单双面）', price: '单¥50 双¥80' },
-        { name: '立牌（基础+递增）', mode: 'config', base: '¥50起', baseConfig: '单面', inc: '双面/折+¥20/张·镂空/4面+¥40/面', price: '¥50起（单面·双面/折+¥20/张·镂空/4面+¥40/面）' },
-        { name: '头像（节点付款）', mode: 'nodes', base: '¥140', detail: '草稿30%·色稿40%·成图30%', price: '¥140（草稿30%·色稿40%·成图30%）' },
-        { name: '人设（按字数）', price: '¥30/字' }
-    ];
-    saveMarketingCards();
-    renderMarketingCardForm('priceList');
-    renderMarketingCardPreview('priceList');
-    showGlobalToast('已插入五模式示例；再点一次按钮恢复你的价目表');
-}
-
 function addMcPriceRow() {
     collectMarketingCardForm('priceList');
     _mcData.priceList.items.push({ name: '', price: '' });
@@ -17552,13 +17575,49 @@ function mcComposeItemPrice(it) {
     return it.price || '';
 }
 
-// 折叠/展开价格条目列表（状态记忆在 localStorage）
-function toggleMcPriceItems() {
+// 从一行 DOM 解析回价格条目对象（价格条目 / 浮动价格 两个模块共用）
+function mcParsePriceRow(row) {
+    const nameEl = row.querySelector('.mc-price-item-name-input');
+    const name = nameEl ? nameEl.value : '';
+    if (row.classList.contains('mc-price-cat-row')) {
+        const it = { name: name, price: '', isCategory: true };
+        if (row.classList.contains('mc-price-float-title-row')) it.isFloatTitle = true;
+        if (row.classList.contains('mc-price-float-group-row')) it.isFloatGroup = true;
+        return it;
+    }
+    if (row.classList.contains('mc-price-note-row')) {
+        return { name: name, price: '', isNote: true };
+    }
+    if (row.classList.contains('mc-price-row-config')) {
+        const it = {
+            name: name, mode: 'config',
+            base: (row.querySelector('.mc-price-base-input') || {}).value || '',
+            baseConfig: (row.querySelector('.mc-price-basecfg-input') || {}).value || '',
+            inc: (row.querySelector('.mc-price-inc-input') || {}).value || ''
+        };
+        it.price = mcComposeItemPrice(it);
+        return it;
+    }
+    if (row.classList.contains('mc-price-row-nodes')) {
+        const it = {
+            name: name, mode: 'nodes',
+            base: (row.querySelector('.mc-price-base-input') || {}).value || '',
+            detail: (row.querySelector('.mc-price-detail-input') || {}).value || ''
+        };
+        it.price = mcComposeItemPrice(it);
+        return it;
+    }
+    const priceEl = row.querySelector('.mc-price-item-price-input');
+    return { name: name, price: priceEl ? priceEl.value : '' };
+}
+
+// 折叠/展开某个模块区块（状态记忆在 localStorage）
+function toggleMcCollapse(boxId, storageKey) {
     let collapsed = false;
-    try { collapsed = localStorage.getItem('mcPriceItemsCollapsed') === '1'; } catch (_) {}
+    try { collapsed = localStorage.getItem(storageKey) === '1'; } catch (_) {}
     collapsed = !collapsed;
-    try { localStorage.setItem('mcPriceItemsCollapsed', collapsed ? '1' : '0'); } catch (_) {}
-    const box = document.getElementById('mcPriceCollapse');
+    try { localStorage.setItem(storageKey, collapsed ? '1' : '0'); } catch (_) {}
+    const box = document.getElementById(boxId);
     if (!box) return;
     const body = box.querySelector('.mc-collapse-body');
     const arrow = box.querySelector('.mc-collapse-arrow');
@@ -17566,8 +17625,14 @@ function toggleMcPriceItems() {
     if (arrow) arrow.textContent = collapsed ? '▸' : '▾';
 }
 
-// 内容模块（可折叠，与外观模块并列）
-function buildMcContentBox(innerHtml) {
+// 折叠/展开「价格条目」模块
+function toggleMcPriceItems() { toggleMcCollapse('mcPriceCollapse', 'mcPriceItemsCollapsed'); }
+
+// 折叠/展开「浮动价格」模块
+function toggleMcFloatItems() { toggleMcCollapse('mcFloatCollapse', 'mcFloatItemsCollapsed'); }
+
+// 内容模块（可折叠，与外观模块并列）；extraHead：标题行右侧附加控件（如货币/自动同步开关）
+function buildMcContentBox(innerHtml, extraHead) {
     let collapsed = false;
     try { collapsed = localStorage.getItem('mcContentCollapsed') === '1'; } catch (_) {}
     return '<div class="mc-appearance-box mc-collapse' + (collapsed ? ' collapsed' : '') + '" id="mcContentCollapse">' +
@@ -17576,6 +17641,7 @@ function buildMcContentBox(innerHtml) {
                 '<span>内容</span>' +
                 '<span class="mc-collapse-arrow">' + (collapsed ? '▸' : '▾') + '</span>' +
             '</span>' +
+            (extraHead || '') +
         '</div>' +
         '<div class="mc-collapse-body" style="' + (collapsed ? 'display:none;' : '') + '">' + innerHtml + '</div>' +
     '</div>';
@@ -17594,13 +17660,19 @@ function toggleMcContent() {
     if (arrow) arrow.textContent = collapsed ? '▸' : '▾';
 }
 
-// 生成选项（同价合并/按分类分组）勾选后立即按制品设置重新生成
+// 生成选项（货币符号）勾选后重建两个模块：符号同时影响价格条目与浮动价格的显示
 function onMcGenOptionChange() {
     if (!_mcData) loadMarketingCards();
     const c = document.getElementById('mcShowCurrency');
     if (c) _mcData.priceList.showCurrency = c.checked;
     saveMarketingCards();
-    generatePriceListFromProducts();
+    const cfg = _mcData.priceList;
+    const hasAny = (Array.isArray(cfg.items) && cfg.items.some(function (it) {
+        return it && String(it.name || '').trim() !== '';
+    })) || (Array.isArray(cfg.floatItems) && cfg.floatItems.length > 0);
+    if (hasAny && !confirm('切换货币显示将按制品 / 系数设置重新生成，覆盖当前价格条目与浮动价格，确定继续吗？')) return;
+    generatePriceListFromProducts(true);
+    generateFloatListFromSettings(true);
 }
 
 function addMcPriceCategoryRow() {
@@ -17611,16 +17683,37 @@ function addMcPriceCategoryRow() {
     renderMarketingCardPreview('priceList');
 }
 
+// 删除一行：按行所在容器判定属于「价格条目」还是「浮动价格」模块，各删各的
 function removeMcPriceRow(btn) {
     const row = btn && btn.closest ? btn.closest('.mc-price-item-row') : null;
     if (!row) return;
     collectMarketingCardForm('priceList');
-    if (_mcData.priceList.items.length <= 1) {
-        _mcData.priceList.items = [{ name: '', price: '' }];
-    } else {
-        const idx = Array.prototype.indexOf.call(row.parentNode.children, row);
-        if (idx >= 0) _mcData.priceList.items.splice(idx, 1);
-    }
+    const inFloat = !!(row.closest && row.closest('#mcFloatItems'));
+    const arr = inFloat ? _mcData.priceList.floatItems : _mcData.priceList.items;
+    if (!Array.isArray(arr)) return;
+    const idx = Array.prototype.indexOf.call(row.parentNode.children, row);
+    if (idx >= 0) arr.splice(idx, 1);
+    // 价格条目至少保留一行；浮动价格允许为空（未生成时就是空的）
+    if (!inFloat && arr.length === 0) _mcData.priceList.items = [{ name: '', price: '' }];
+    saveMarketingCards();
+    renderMarketingCardForm('priceList');
+    renderMarketingCardPreview('priceList');
+}
+
+// 浮动价格模块：新增分组行 / 普通明细行（与价格条目互不影响）
+function addMcFloatGroupRow() {
+    collectMarketingCardForm('priceList');
+    if (!Array.isArray(_mcData.priceList.floatItems)) _mcData.priceList.floatItems = [];
+    _mcData.priceList.floatItems.push({ name: '', price: '', isCategory: true, isFloatGroup: true });
+    saveMarketingCards();
+    renderMarketingCardForm('priceList');
+    renderMarketingCardPreview('priceList');
+}
+
+function addMcFloatItemRow() {
+    collectMarketingCardForm('priceList');
+    if (!Array.isArray(_mcData.priceList.floatItems)) _mcData.priceList.floatItems = [];
+    _mcData.priceList.floatItems.push({ name: '', price: '' });
     saveMarketingCards();
     renderMarketingCardForm('priceList');
     renderMarketingCardPreview('priceList');
@@ -17649,7 +17742,7 @@ function removeMcBizFieldRow(btn) {
 
 // 制品价格展示（按计价模式）：
 //   fixed=价格 | double=单价格 双价格（单/双标记渲染时染色）
-//   config=基础价起（基础配置 + 递增项明细，如 50起（立牌+底座·底座+30/个））
+//   config=基础价（基础配置 + 递增项明细，如 50（立牌+底座·底座+30/个）；2026-09-21 起不再带「起」字）
 //   nodes=总价（各节点实际金额，如 140（草稿¥42·色稿¥56·成图¥42）） | byChar=字价/单位
 // showCurrency=true 时跟随基础设置的货币符号（如 ¥50）
 function mcProductPriceDisplay(p, showCurrency) {
@@ -17660,8 +17753,9 @@ function mcProductPriceDisplay(p, showCurrency) {
     if (t === 'double') {
         const s = isFinite(Number(p.priceSingle)) ? String(p.priceSingle) : '';
         const d = isFinite(Number(p.priceDouble)) ? String(p.priceDouble) : '';
-        if (s && d) return '单' + sym + s + ' 双' + sym + d;
-        return (s || d) ? '单' + sym + (s || d) : '';
+        // 用词与计算页/小票一致：单面 / 双面
+        if (s && d) return '单面' + sym + s + ' 双面' + sym + d;
+        return (s || d) ? '单面' + sym + (s || d) : '';
     }
     if (t === 'config' && isFinite(Number(p.basePrice))) {
         const parts = [];
@@ -17673,9 +17767,10 @@ function mcProductPriceDisplay(p, showCurrency) {
             parts.push(String(a.name || '') + '+' + sym + a.price + (a.unit ? '/' + a.unit : ''));
         });
         return {
-            text: sym + p.basePrice + '起' + (parts.length ? '（' + parts.join('·') + '）' : ''),
+            // 2026-09-21 用户要求：不再带「起」字
+            text: sym + p.basePrice + (parts.length ? '（' + parts.join('·') + '）' : ''),
             mode: 'config',
-            base: sym + p.basePrice + '起',
+            base: sym + p.basePrice,
             baseConfig: base,
             inc: (Array.isArray(p.additionalConfigs) ? p.additionalConfigs : []).map(function (a) {
                 if (!a || !isFinite(Number(a.price))) return '';
@@ -17789,18 +17884,28 @@ function mcMergeSamePriceRows(rows) {
     return out;
 }
 
-// 制品设置特征串：用于自动同步时检测制品是否变化
+// 制品设置特征串：用于自动同步时检测制品/系数设置是否变化
 function mcProductSignature() {
-    return (Array.isArray(productSettings) ? productSettings : []).map(function (p) {
+    const sig = (Array.isArray(productSettings) ? productSettings : []).map(function (p) {
         if (!p) return '';
         return [p.name, p.category, p.priceType, p.price, p.priceSingle, p.priceDouble, p.basePrice, p.baseConfig,
             (p.additionalConfigs || []).map(function (a) { return (a && a.name) + '.' + (a && a.price) + '.' + (a && a.unit); }).join(','),
             (p.nodes || []).map(function (n) { return (n && n.name) + '.' + (n && n.percent); }).join(','),
             p.charPrice, p.charUnit].join('~');
     }).join('|');
+    // 系数设置（加价/折扣/每制品加费/同模优惠）也纳入检测
+    try {
+        if (typeof defaultSettings !== 'undefined' && defaultSettings) {
+            const d = defaultSettings;
+            sig += '~COEF~' + JSON.stringify([d.perItemExtraFees || [], d.usageCoefficients || {}, d.urgentCoefficients || {},
+                d.discountCoefficients || {}, d.extraPricingUp || [], d.extraPricingDown || [],
+                d.sameModelMode || '', d.sameModelMinusAmount || 0, d.sameModelCoefficients || {}]);
+        }
+    } catch (_) {}
+    return sig;
 }
 
-// 自动同步：开启后制品设置变化时（打开/渲染价目表时检测）自动重新生成，不弹确认
+// 自动同步：开启后制品/系数设置变化时（打开/渲染价目表时检测）自动重新生成，不弹确认
 function mcAutoSyncIfNeeded() {
     if (!_mcData) loadMarketingCards();
     const cfg = _mcData.priceList;
@@ -17808,10 +17913,103 @@ function mcAutoSyncIfNeeded() {
     const sig = mcProductSignature();
     if (sig === cfg.lastProductSignature) return;
     generatePriceListFromProducts(true);
+    generateFloatListFromSettings(true);
+}
+
+// 按系数/工艺/加费设置生成「浮动价格」模块行：标题条 + 方框分组 + 名称/系数行（无内容则不生成）
+function mcCollectFloatRows(showCurrency) {
+    const d = (typeof defaultSettings !== 'undefined' && defaultSettings) || {};
+    const sym = showCurrency ? (typeof getCurrencySymbol === 'function' ? getCurrencySymbol() : '¥') : '';
+    const cv = function (o) { return (typeof getCoefficientValue === 'function') ? getCoefficientValue(o) : ((o && o.value) || 1); };
+    const fmtMul = function (v) { return '*' + (Math.round((Number(v) || 1) * 100) / 100); };
+    const groupsOut = [];
+    const addGroup = function (name, parts) {
+        parts = (parts || []).filter(function (r) { return r && r.name && r.price !== ''; });
+        if (!parts.length) return;
+        // 不合并：每个选项独立一行、各自带系数/金额，避免「A / B *2」读成一种条件
+        groupsOut.push({ name: name, parts: parts.map(function (r) { return { name: r.name, price: r.price }; }) });
+    };
+    // 分组顺序（用户指定）：加价类（用途 / 加急 / 其他加价 / 其他）→ 折扣 → 工艺 → 同模
+    // 1) 用途（乘法系数）
+    addGroup('用途', Object.keys(d.usageCoefficients || {}).map(function (k) {
+        const o = d.usageCoefficients[k] || {};
+        return (String(o.name || '') === '无') ? null : { name: String(o.name || k), price: fmtMul(cv(o)) };
+    }));
+    // 2) 加急（乘法系数）
+    addGroup('加急', Object.keys(d.urgentCoefficients || {}).map(function (k) {
+        const o = d.urgentCoefficients[k] || {};
+        return (String(o.name || '') === '无') ? null : { name: String(o.name || k), price: fmtMul(cv(o)) };
+    }));
+    // 3) 其他加价（可扩展加价类 extraPricingUp）
+    var upParts = [];
+    (Array.isArray(d.extraPricingUp) ? d.extraPricingUp : []).forEach(function (e) {
+        Object.keys((e && e.options) || {}).forEach(function (k) {
+            const o = e.options[k] || {};
+            if (String(o.name || '') === '无') return;
+            upParts.push({ name: String(o.name || k), price: fmtMul(cv(o)) });
+        });
+    });
+    addGroup('其他加价', upParts);
+    // 4) 其他（每制品加费）
+    addGroup('其他', (Array.isArray(d.perItemExtraFees) ? d.perItemExtraFees : []).map(function (f) {
+        return (f && isFinite(Number(f.amount))) ? { name: String(f.name || ''), price: '+' + sym + f.amount } : null;
+    }));
+    // 5) 折扣（内置折扣系数 + 可扩展折扣类，合并为一个「折扣」分组）
+    var downParts = Object.keys(d.discountCoefficients || {}).map(function (k) {
+        const o = d.discountCoefficients[k] || {};
+        return (String(o.name || '') === '无') ? null : { name: String(o.name || k), price: fmtMul(cv(o)) };
+    });
+    (Array.isArray(d.extraPricingDown) ? d.extraPricingDown : []).forEach(function (e) {
+        Object.keys((e && e.options) || {}).forEach(function (k) {
+            const o = e.options[k] || {};
+            if (String(o.name || '') === '无') return;
+            downParts.push({ name: String(o.name || k), price: fmtMul(cv(o)) });
+        });
+    });
+    addGroup('折扣', downParts);
+    // 6) 工艺（工艺设置：按层/次加价）
+    addGroup('工艺', ((typeof processSettings !== 'undefined' && Array.isArray(processSettings)) ? processSettings : []).map(function (s) {
+        return (s && isFinite(Number(s.price))) ? { name: String(s.name || ''), price: '+' + sym + s.price } : null;
+    }));
+    // 7) 同模（系数档位或减金额）
+    if (d.sameModelMode === 'minus') {
+        if (Number(d.sameModelMinusAmount) > 0) addGroup('同模', [{ name: '同模', price: '-' + sym + d.sameModelMinusAmount + '/件' }]);
+    } else {
+        addGroup('同模', Object.keys(d.sameModelCoefficients || {}).map(function (k) {
+            const o = d.sameModelCoefficients[k] || {};
+            return { name: String(o.name || k), price: fmtMul(cv(o)) };
+        }));
+    }
+    if (!groupsOut.length) return [];
+    const rows = [{ name: '浮动价格', price: '', isCategory: true, isFloatTitle: true }];
+    groupsOut.forEach(function (g) {
+        rows.push({ name: g.name, price: '', isCategory: true, isFloatGroup: true });
+        g.parts.forEach(function (r) { rows.push({ name: r.name, price: r.price }); });
+    });
+    return rows;
 }
 
 // 一键生成：制品设置 → 价目表条目（生成后即普通可编辑行，可拖拽/改价/删行）
 // silent=true：自动同步模式，跳过覆盖确认，不重复弹提示
+// 生成行 → 落库条目（去掉生成期的临时字段）
+function mcGeneratedItems(rows) {
+    return (rows || []).map(function (r) {
+        const it = { name: r.name, price: r.price, isCategory: !!r.isCategory };
+        if (r.isNote) it.isNote = true;
+        if (r.isFloatTitle) it.isFloatTitle = true;
+        if (r.isFloatGroup) it.isFloatGroup = true;
+        if (r.mode) {
+            it.mode = r.mode;
+            it.base = r.base;
+            if (r.baseConfig) it.baseConfig = r.baseConfig;
+            if (r.inc) it.inc = r.inc;
+            if (r.detail) it.detail = r.detail;
+        }
+        return it;
+    });
+}
+
+// 一键生成「价格条目」模块（仅制品设置，不动浮动价格模块）
 function generatePriceListFromProducts(silent) {
     if (!_mcData) loadMarketingCards();
     if (!Array.isArray(productSettings) || productSettings.length === 0) {
@@ -17822,7 +18020,7 @@ function generatePriceListFromProducts(silent) {
     const hasContent = Array.isArray(cfg.items) && cfg.items.some(function (it) {
         return it && String(it.name || '').trim() !== '';
     });
-    if (!silent && hasContent && !confirm('按制品设置重新生成将覆盖当前价目表条目，确定继续吗？')) return;
+    if (!silent && hasContent && !confirm('按制品设置重新生成将覆盖当前「价格条目」，确定继续吗？')) return;
     // 读取表单上的生成选项（同价合并/按分类分组为默认行为，不可关闭）
     const curEl = document.getElementById('mcShowCurrency');
     if (curEl) cfg.showCurrency = curEl.checked;
@@ -17830,32 +18028,43 @@ function generatePriceListFromProducts(silent) {
     cfg.groupCategory = true;
     let rows = mcCollectProductRows(cfg.groupCategory, cfg.showCurrency === true);
     if (cfg.mergeSame !== false) rows = mcMergeSamePriceRows(rows);
-    cfg.items = rows.map(function (r) {
-        const it = { name: r.name, price: r.price, isCategory: !!r.isCategory };
-        if (r.mode) {
-            it.mode = r.mode;
-            it.base = r.base;
-            if (r.baseConfig) it.baseConfig = r.baseConfig;
-            if (r.inc) it.inc = r.inc;
-            if (r.detail) it.detail = r.detail;
-        }
-        return it;
-    });
+    cfg.items = mcGeneratedItems(rows);
     cfg.lastProductSignature = mcProductSignature();
     saveMarketingCards();
     renderMarketingCardForm('priceList');
     renderMarketingCardPreview('priceList');
-    showGlobalToast(silent ? '已自动同步制品设置' : '已按制品设置生成 ' + cfg.items.length + ' 行');
+    showGlobalToast(silent ? '已自动同步制品设置' : '已生成价格条目 ' + cfg.items.length + ' 行');
 }
 
-// 自动同步开关
+// 一键生成「浮动价格」模块（仅系数/工艺/加费设置，不覆盖价格条目）
+function generateFloatListFromSettings(silent) {
+    if (!_mcData) loadMarketingCards();
+    const cfg = _mcData.priceList;
+    const curEl = document.getElementById('mcShowCurrency');
+    if (curEl) cfg.showCurrency = curEl.checked;
+    const rows = mcCollectFloatRows(cfg.showCurrency === true);
+    if (!rows.length) {
+        if (!silent) alert('没有可生成的浮动价格：请先在设置里填好「用途 / 加急 / 其他加价 / 每制品加费 / 折扣 / 工艺 / 同模」系数');
+        return;
+    }
+    const hasContent = Array.isArray(cfg.floatItems) && cfg.floatItems.length > 0;
+    if (!silent && hasContent && !confirm('按系数设置重新生成将覆盖当前「浮动价格」，确定继续吗？')) return;
+    cfg.floatItems = mcGeneratedItems(rows);
+    saveMarketingCards();
+    renderMarketingCardForm('priceList');
+    renderMarketingCardPreview('priceList');
+    showGlobalToast(silent ? '已同步浮动价格' : '已按系数设置生成浮动价格 ' + cfg.floatItems.length + ' 行');
+}
+
+// 自动同步开关（同时作用于价格条目与浮动价格两个模块）
 function onMcAutoSyncChange(checked) {
     if (!_mcData) loadMarketingCards();
     _mcData.priceList.autoSync = !!checked;
     saveMarketingCards();
     if (checked) {
         generatePriceListFromProducts(true);
-        showGlobalToast('已开启自动同步：制品设置变化时价目表自动更新');
+        generateFloatListFromSettings(true);
+        showGlobalToast('已开启自动同步：制品 / 系数设置变化时两个模块自动更新');
     } else {
         showGlobalToast('已切换为手动生成');
     }
@@ -18038,8 +18247,9 @@ function mcStyledPriceHtml(price, accent, noteColor) {
     let noteInner = m && m[2] ? m[2] : '';
     const hasQi = /起/.test(main);
     if (hasQi) main = main.replace(/起/g, '');
+    // 兼容新旧数据：旧「单/双」与新「单面/双面」都统一渲染成「单面/双面」标签（勿重复加「面」）
     if (/单|双/.test(main)) {
-        main = main.replace(/(单|双)/g, '<span class="mc-double-tag">$1面</span>');
+        main = main.replace(/(单|双)面?/g, '<span class="mc-double-tag">$1面</span>');
     }
     if (noteInner) {
         const sep = noteInner.indexOf('·');
@@ -18058,6 +18268,76 @@ function mcStyledPriceHtml(price, accent, noteColor) {
     return leadHtml + main;
 }
 
+// 过滤可渲染的价格行（分类行与有名称的行）
+function mcFilterPriceRows(list) {
+    return (Array.isArray(list) ? list : []).filter(function (it) {
+        return it && (it.isCategory || String(it.name).trim() !== '');
+    });
+}
+
+// 预览里的价格行渲染：价格条目 / 浮动价格 两个模块共用（listId 决定拖拽、在线编辑、删除归属的列表）
+function mcPricePreviewRowsHtml(listId, items, ctx) {
+    const accent = ctx.accent;
+    const noteColor = ctx.noteColor;
+    const editable = ctx.editable;
+    const DL = ' data-list="' + listId + '" data-idx="';
+    return items.map(function (it, i) {
+        if (it.isCategory && it.isFloatTitle) {
+            // 浮动价格标题条：主题色底 + 白字
+            return '<div class="mc-float-title mc-edit-row" draggable="true"' + DL + i + '" style="background:' + accent + ';">' +
+                mcRowHandle() +
+                '<span class="mc-float-title-text"' + mcEditAttrs(editable, DL + i + '" data-field="name"') + '>' + escapeHtml(it.name || '浮动价格') + '</span>' +
+                mcRowTools(listId, i) +
+            '</div>';
+        }
+        if (it.isCategory && it.isFloatGroup) {
+            // 分组行：方框 + 名称
+            return '<div class="mc-float-group mc-edit-row" draggable="true"' + DL + i + '">' +
+                mcRowHandle() +
+                '<span class="mc-float-box"></span>' +
+                '<span class="mc-float-group-name"' + mcEditAttrs(editable, DL + i + '" data-field="name"') + '>' + escapeHtml(it.name) + '</span>' +
+                mcRowTools(listId, i) +
+            '</div>';
+        }
+        if (it.isCategory) {
+            const catName = String(it.name || '').trim() || '未命名分类';
+            return '<div class="mc-price-category mc-edit-row" draggable="true"' + DL + i + '" style="color:' + accent + ';">' +
+                mcRowHandle() +
+                '<span class="mc-price-category-name"' + mcEditAttrs(editable, DL + i + '" data-field="name"') + '>' + escapeHtml(catName) + '</span>' +
+                mcRowTools(listId, i) +
+            '</div>';
+        }
+        if (it.isNote) {
+            // 说明行：▲ + 备注色小字，整行文字可编辑
+            return '<div class="mc-price-item mc-price-note-line mc-edit-row" draggable="true"' + DL + i + '">' +
+                mcRowHandle() +
+                '<span class="mc-float-note-mark">▲</span>' +
+                '<span class="mc-price-item-name" style="' + (noteColor ? 'color:' + noteColor + ';' : '') + '"' + mcEditAttrs(editable, DL + i + '" data-field="name"') + '>' + escapeHtml(it.name) + '</span>' +
+                mcRowTools(listId, i) +
+            '</div>';
+        }
+        const price = String(it.price || '').trim();
+        let priceHtml;
+        if (price && it.mode === 'config') {
+            const dc = noteColor || accent;
+            priceHtml = (it.baseConfig ? '<span class="mc-double-tag" style="color:' + dc + ';">' + escapeHtml(it.baseConfig) + '</span> ' : '') +
+                escapeHtml(String(it.base || '').replace(/起/g, '')) +
+                (it.inc ? '<span class="mc-price-note-tag" style="color:' + (noteColor || '#888888') + ';">' + escapeHtml(it.inc) + '</span>' : '');
+        } else if (price && it.mode === 'nodes') {
+            priceHtml = escapeHtml(it.base || '') +
+                (it.detail ? '<span class="mc-price-note-tag" style="color:' + (noteColor || '#888888') + ';">' + escapeHtml(it.detail) + '</span>' : '');
+        } else {
+            priceHtml = mcStyledPriceHtml(price, accent, noteColor);
+        }
+        return '<div class="mc-price-item mc-edit-row" draggable="true"' + DL + i + '">' +
+            mcRowHandle() +
+            '<span class="mc-price-item-name"' + mcEditAttrs(editable, DL + i + '" data-field="name"') + '>' + escapeHtml(it.name) + '</span>' +
+            '<span class="mc-price-item-price' + (price ? '' : ' mc-price-ask') + '"' + mcEditAttrs(editable, DL + i + '" data-field="price"') + '>' + (price ? priceHtml : '询价') + '</span>' +
+            mcRowTools(listId, i) +
+        '</div>';
+    }).join('');
+}
+
 function buildPriceCardPreview(cfg, editable) {
     const accent = mcAccentColor(cfg);
     const title = String(cfg.title || '').trim() || '价目表';
@@ -18065,43 +18345,12 @@ function buildPriceCardPreview(cfg, editable) {
     const note = String(cfg.note || '').trim();
     const ap = cfg.appearance || {};
     const noteColor = (ap.noteColor && String(ap.noteColor).trim() !== '') ? ap.noteColor : '';
-    const items = (Array.isArray(cfg.items) ? cfg.items : []).filter(function (it) {
-        return it && (it.isCategory || String(it.name).trim() !== '');
-    });
-    let rows;
-    if (items.length) {
-        rows = items.map(function (it, i) {
-            if (it.isCategory) {
-                const catName = String(it.name || '').trim() || '未命名分类';
-                return '<div class="mc-price-category mc-edit-row" draggable="true" data-list="priceItems" data-idx="' + i + '" style="color:' + accent + ';">' +
-                    mcRowHandle() +
-                    '<span class="mc-price-category-name"' + mcEditAttrs(editable, ' data-list="priceItems" data-idx="' + i + '" data-field="name"') + '>' + escapeHtml(catName) + '</span>' +
-                    mcRowTools('priceItems', i) +
-                '</div>';
-            }
-            const price = String(it.price || '').trim();
-            let priceHtml;
-            if (price && it.mode === 'config') {
-                const dc = noteColor || accent;
-                priceHtml = (it.baseConfig ? '<span class="mc-double-tag" style="color:' + dc + ';">' + escapeHtml(it.baseConfig) + '</span> ' : '') +
-                    escapeHtml(String(it.base || '').replace(/起/g, '')) +
-                    (it.inc ? '<span class="mc-price-note-tag" style="color:' + (noteColor || '#888888') + ';">' + escapeHtml(it.inc) + '</span>' : '');
-            } else if (price && it.mode === 'nodes') {
-                priceHtml = escapeHtml(it.base || '') +
-                    (it.detail ? '<span class="mc-price-note-tag" style="color:' + (noteColor || '#888888') + ';">' + escapeHtml(it.detail) + '</span>' : '');
-            } else {
-                priceHtml = mcStyledPriceHtml(price, accent, noteColor);
-            }
-            return '<div class="mc-price-item mc-edit-row" draggable="true" data-list="priceItems" data-idx="' + i + '">' +
-                mcRowHandle() +
-                '<span class="mc-price-item-name"' + mcEditAttrs(editable, ' data-list="priceItems" data-idx="' + i + '" data-field="name"') + '>' + escapeHtml(it.name) + '</span>' +
-                '<span class="mc-price-item-price' + (price ? '' : ' mc-price-ask') + '"' + mcEditAttrs(editable, ' data-list="priceItems" data-idx="' + i + '" data-field="price"') + '>' + (price ? priceHtml : '询价') + '</span>' +
-                mcRowTools('priceItems', i) +
-            '</div>';
-        }).join('');
-    } else {
-        rows = '<div class="mc-price-empty">暂无内容，请添加条目或按制品设置生成</div>';
-    }
+    const items = mcFilterPriceRows(cfg.items);
+    const floatItems = mcFilterPriceRows(cfg.floatItems);
+    // 两个独立模块顺序拼接：价格条目在上，浮动价格在下
+    let rows = mcPricePreviewRowsHtml('priceItems', items, { accent: accent, noteColor: noteColor, editable: editable }) +
+        mcPricePreviewRowsHtml('floatItems', floatItems, { accent: accent, noteColor: noteColor, editable: editable });
+    if (!rows) rows = '<div class="mc-price-empty">暂无内容，请添加条目或按制品设置生成</div>';
     return '<div class="mc-price-card" style="width:400px;' + (ap.bgColor ? 'background:' + ap.bgColor + ';' : '') + '">' +
         mcCardLayersHtml(ap) +
         '<div class="mc-card-content">' +
@@ -18402,6 +18651,7 @@ function ensureMcPreviewAreaListeners(area) {
 function mcGetListData(listId) {
     if (!_mcData) loadMarketingCards();
     if (listId === 'priceItems') return _mcData.priceList.items;
+    if (listId === 'floatItems') return _mcData.priceList.floatItems;
     if (listId === 'orderLines') return _mcData.orderInfo.lines;
     if (listId === 'bizFields') return _mcData.businessCard.fields;
     return null;
@@ -18423,7 +18673,7 @@ function onMcPreviewEditCommit(e) {
         const arr = mcGetListData(listId);
         if (arr && isFinite(idx) && arr[idx]) {
             if (String(arr[idx][field] || '') !== text) { arr[idx][field] = text; changed = true; }
-            if (listId === 'priceItems' && field === 'price') {
+            if ((listId === 'priceItems' || listId === 'floatItems') && field === 'price') {
                 // 结构化行（基础+递增/节点）在线改价后转为普通文本行
                 const editItem = arr[idx];
                 if (editItem && editItem.mode) {
@@ -18956,7 +19206,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260920-4700';
+const APP_VERSION = '20260921-2233';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -21550,19 +21800,42 @@ var scheduleTodoPresetTags = [
 ];
 var scheduleTodoTagManageMode = false;
 
+// 预设标签行的云端 key：由「标签名」确定性派生，
+// 避免旧版随机 id 导致同名标签在云端反复新增（跨端重复、删除态命中不了）
+function mgPresetTagItemId(name) {
+    return 'tag_' + String(name == null ? '' : name).trim();
+}
+
+// 按标签名去重（忽略大小写），保留首次出现的那条
+function mgDedupePresetTags(list) {
+    var out = [];
+    var seen = {};
+    (list || []).forEach(function (t) {
+        if (!t) return;
+        var name = String(t.name || '').trim();
+        if (!name) return;
+        var k = name.toLowerCase();
+        if (seen[k]) return;
+        seen[k] = true;
+        out.push(t);
+    });
+    return out;
+}
+
 function loadScheduleTodoPresetTags() {
     try {
         var raw = localStorage.getItem('mg_schedule_todo_preset_tags');
         if (!raw) return;
         var parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return;
-        scheduleTodoPresetTags = parsed.map(function (t) {
+        var list = parsed.map(function (t) {
             if (!t) return null;
             return {
                 name: String((t.name || '')).trim(),
                 color: String(t.color || '#f59e0b')
             };
         }).filter(function (t) { return !!t && !!t.name; });
+        scheduleTodoPresetTags = mgDedupePresetTags(list);
         
         // 确保"追加单"标签存在于预设标签中
         const hasCrossOrderTag = scheduleTodoPresetTags.some(tag => tag.name === '追加单');
@@ -21573,10 +21846,26 @@ function loadScheduleTodoPresetTags() {
     } catch (e) {}
 }
 
-function saveScheduleTodoPresetTags() {
+function saveScheduleTodoPresetTags(skipCloudSync) {
     try {
         localStorage.setItem('mg_schedule_todo_preset_tags', JSON.stringify(scheduleTodoPresetTags));
     } catch (e) {}
+
+    // 预设标签变更后主动推送设置到云端，否则只在「保存设置/手动同步」时才会上传，
+    // 表现为跨设备看不到新增的自定义标签、删除的标签又会被云端拉回来
+    if (!skipCloudSync
+        && typeof mgIsCloudEnabled === 'function'
+        && mgIsCloudEnabled()
+        && localStorage.getItem('mg_cloud_enabled') === '1') {
+        clearTimeout(window._mgPresetTagSyncTimer);
+        window._mgPresetTagSyncTimer = setTimeout(function () {
+            if (typeof mgSyncSettingsToCloud === 'function') {
+                mgSyncSettingsToCloud(true).catch(function (err) {
+                    console.error('预设标签云端同步失败:', err);
+                });
+            }
+        }, 1500);
+    }
 }
 
 // 检测订单是否包含跨订单同模的制品
@@ -22366,36 +22655,7 @@ function openScheduleTodoTagModal(recordId) {
     
     // 强制重新加载预设标签并确保"追加单"标签存在
     try {
-        // 从本地存储加载
-        var raw = localStorage.getItem('mg_schedule_todo_preset_tags');
-        if (raw) {
-            try {
-                var parsed = JSON.parse(raw);
-                if (Array.isArray(parsed)) {
-                    scheduleTodoPresetTags = parsed.map(function (t) {
-                        if (!t) return null;
-                        return {
-                            name: String((t.name || '')).trim(),
-                            color: String(t.color || '#f59e0b')
-                        };
-                    }).filter(function (t) { return !!t && !!t.name; });
-                }
-            } catch (e) {
-                console.error('解析预设标签失败:', e);
-            }
-        }
-        
-        // 确保"追加单"标签存在
-        const hasCrossOrderTag = scheduleTodoPresetTags.some(tag => tag.name === '追加单');
-        if (!hasCrossOrderTag) {
-            scheduleTodoPresetTags.push({ name: '追加单', color: '#3b82f6' });
-            // 保存到本地存储
-            try {
-                localStorage.setItem('mg_schedule_todo_preset_tags', JSON.stringify(scheduleTodoPresetTags));
-            } catch (e) {
-                console.error('保存预设标签失败:', e);
-            }
-        }
+        loadScheduleTodoPresetTags();
     } catch (e) {
         console.error('处理预设标签失败:', e);
     }
@@ -33873,10 +34133,18 @@ function mgBuildSettingsV2LocalState() {
         return { item_id: stableId, payload: mgSafeClone(e, {}) };
     });
 
-    // 预设标签
+    // 预设标签：item_id 由标签名确定性派生，保证同一标签跨端、跨次上传复用同一行
+    var presetTagSeen = {};
     const presetTagItems = (Array.isArray(scheduleTodoPresetTags) ? scheduleTodoPresetTags : []).map(function (tag) {
-        const stableId = mgEnsureStableIdForItem(tag, 'tag');
-        return { item_id: stableId, payload: mgSafeClone(tag, {}) };
+        var name = String((tag && tag.name) || '').trim();
+        var payload = mgSafeClone(tag, {});
+        delete payload.id; // 清掉旧版随机 id，避免 payload 与 item_id 语义打架
+        return { item_id: mgPresetTagItemId(name), payload: payload };
+    }).filter(function (r) {
+        if (!r.payload || !String(r.payload.name || '').trim()) return false;
+        if (presetTagSeen[r.item_id]) return false;
+        presetTagSeen[r.item_id] = true;
+        return true;
     });
 
     return {
@@ -34403,35 +34671,37 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     }
 
     // 预设标签处理
+    // 注意：云端行的 item_id 是 'tag_<标签名>'，删除过滤必须用同样的 key 才能命中，
+    // 旧代码拿 name 去匹配 deletedSet，导致已删除的标签每次拉取都会「复活」
     const presetTagRows = grouped['schedule_todo_preset_tags'] || [];
     if (cloudPresetTags.length || !mergeMode) {
         const deletedSet = getDeletedSet('schedule_todo_preset_tags');
         const localFiltered = mergeMode
             ? (scheduleTodoPresetTags || []).filter(function (it) {
-                const k = it && it.name != null ? String(it.name) : '';
-                return !k || !deletedSet.has(k);
+                const k = it ? mgPresetTagItemId(it.name) : '';
+                return !k || k === 'tag_' || !deletedSet.has(k);
             })
             : (scheduleTodoPresetTags || []);
         
         if (mergeMode) {
             // 合并模式：保留云端预设标签，添加本地独有的预设标签
-            const cloudNames = new Set(cloudPresetTags.map(tag => tag.name));
-            const merged = [...cloudPresetTags];
-            localFiltered.forEach(localTag => {
-                if (localTag && localTag.name && !cloudNames.has(localTag.name)) {
-                    merged.push(localTag);
-                }
-            });
+            const merged = mgDedupePresetTags(cloudPresetTags.map(function (t) {
+                return { name: String((t && t.name) || '').trim(), color: String((t && t.color) || '#f59e0b') };
+            }).concat(localFiltered.map(function (t) {
+                return { name: String((t && t.name) || '').trim(), color: String((t && t.color) || '#f59e0b') };
+            })));
             scheduleTodoPresetTags.length = 0;
             scheduleTodoPresetTags.push(...merged);
         } else {
             // 非合并模式：直接使用云端预设标签
             scheduleTodoPresetTags.length = 0;
-            scheduleTodoPresetTags.push(...cloudPresetTags);
+            scheduleTodoPresetTags.push(...mgDedupePresetTags(cloudPresetTags.map(function (t) {
+                return { name: String((t && t.name) || '').trim(), color: String((t && t.color) || '#f59e0b') };
+            })));
         }
         
-        // 保存预设标签
-        saveScheduleTodoPresetTags();
+        // 保存预设标签（云端刚拉下来的，不需要再回传云端）
+        saveScheduleTodoPresetTags(true);
     }
     perfTimings.mark('otherSettingsMerge');
     
