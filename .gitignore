@@ -112,6 +112,10 @@ image-processor-worker.js
 .float_order_test.js
 .gift_config_key_test.js
 test_role_profiles.js
+.repro_role_disappear.js
+
+# 其它 IDE/工具本地工作区
+.zcode/
 
 _repro2.js
 _*.txt
