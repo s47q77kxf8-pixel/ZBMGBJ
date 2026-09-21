@@ -8851,17 +8851,18 @@ function applyRecordFilters() {
         if (item && item.parentOrderId) {
             var recParentExists = history.find(function (h) { return h.id === item.parentOrderId; });
             var recParentTitle = recParentExists ? escapeHtml(item.parentOrderTitle || '原单') : '原单已删除';
-            var recParentClickAttr = recParentExists ? ('onclick="event.stopPropagation(); jumpToParentOrder(' + item.parentOrderId + ')"') : '';
-            recordAppendLinkHtml = '<div class="append-order-link-row" ' + recParentClickAttr + '>'
-                + '<span>关联原单：' + recParentTitle + '</span>'
-                + '</div>';
+            // 只有「关联原单：…」文字本身可点跳转；行的其余空白点击仍走卡片默认行为
+            var recParentInner = recParentExists
+                ? '<span class="append-order-link-text" onclick="event.stopPropagation(); jumpToParentOrder(' + item.parentOrderId + ')">关联原单：' + recParentTitle + '</span>'
+                : '<span>关联原单：' + recParentTitle + '</span>';
+            recordAppendLinkHtml = '<div class="append-order-link-row">' + recParentInner + '</div>';
         } else if (item && item.appendOrderIds && item.appendOrderIds.length > 0) {
             var recValidAppendCount = item.appendOrderIds.filter(function (aid) {
                 return history.find(function (h) { return h.id === aid; });
             }).length;
             if (recValidAppendCount > 0) {
-                recordAppendLinkHtml = '<div class="append-order-count-row" onclick="event.stopPropagation(); openAppendOrdersInRecord(' + item.id + ')">'
-                    + '<span>关联追加单：' + recValidAppendCount + '个</span>'
+                recordAppendLinkHtml = '<div class="append-order-count-row">'
+                    + '<span class="append-order-link-text" onclick="event.stopPropagation(); openAppendOrdersInRecord(' + item.id + ')">关联追加单：' + recValidAppendCount + '个</span>'
                     + '</div>';
             }
         }
@@ -19206,7 +19207,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260921-2233';
+const APP_VERSION = '20260921-2318';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -21442,17 +21443,18 @@ async function renderScheduleTodoSection() {
         if (item && item.parentOrderId) {
             var parentExists = history.find(function (h) { return h.id === item.parentOrderId; });
             var parentTitle = parentExists ? escapeHtml(item.parentOrderTitle || '原单') : '原单已删除';
-            var parentClickAttr = parentExists ? ('onclick="event.stopPropagation(); jumpToParentOrder(' + item.parentOrderId + ')"') : '';
-            appendLinkHtml = '<div class="append-order-link-row append-order-link-row-schedule" ' + parentClickAttr + '>'
-                + '<span>关联原单：' + parentTitle + '</span>'
-                + '</div>';
+            // 只有「关联原单：…」文字本身可点跳转；行的其余空白点击仍走卡片默认行为
+            var parentInner = parentExists
+                ? '<span class="append-order-link-text" onclick="event.stopPropagation(); jumpToParentOrder(' + item.parentOrderId + ')">关联原单：' + parentTitle + '</span>'
+                : '<span>关联原单：' + parentTitle + '</span>';
+            appendLinkHtml = '<div class="append-order-link-row append-order-link-row-schedule">' + parentInner + '</div>';
         } else if (item && item.appendOrderIds && item.appendOrderIds.length > 0) {
             var validAppendCount = item.appendOrderIds.filter(function (aid) {
                 return history.find(function (h) { return h.id === aid; });
             }).length;
             if (validAppendCount > 0) {
-                appendLinkHtml = '<div class="append-order-count-row append-order-count-row-schedule" onclick="event.stopPropagation(); openAppendOrdersInRecord(' + item.id + ')">'
-                    + '<span>关联追加单：' + validAppendCount + '个</span>'
+                appendLinkHtml = '<div class="append-order-count-row append-order-count-row-schedule">'
+                    + '<span class="append-order-link-text" onclick="event.stopPropagation(); openAppendOrdersInRecord(' + item.id + ')">关联追加单：' + validAppendCount + '个</span>'
                     + '</div>';
             }
         }

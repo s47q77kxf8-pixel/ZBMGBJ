@@ -11729,12 +11729,15 @@ html.theme-dark #mg-cloud-skip-btn {
     font-size: 0.65rem;
     color: #2563eb;
     margin-top: 0.15rem;
-    cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.append-order-link-row:hover {
+/* 只有「关联原单/关联追加单」文字本身可点跳转 */
+.append-order-link-text {
+    cursor: pointer;
+}
+.append-order-link-text:hover {
     text-decoration: underline;
 }
 .append-order-link-row-schedule {
@@ -11757,11 +11760,7 @@ html.theme-dark #mg-cloud-skip-btn {
     gap: 0.3rem;
     font-size: 0.65rem;
     color: #2563eb;
-    cursor: pointer;
     white-space: nowrap;
-}
-.append-order-count-row:hover {
-    text-decoration: underline;
 }
 .append-order-count-row-schedule {
     padding-left: 0.7rem;
