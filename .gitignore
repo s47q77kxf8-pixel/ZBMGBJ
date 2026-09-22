@@ -128,3 +128,6 @@ orig_index_tmp.html
 
 # 本项目 IDE 工作区记忆（本地留存，不进仓库）
 .workbuddy/
+
+# 改名/批量改单主后的云端同步回归
+.rename_sync_test.js

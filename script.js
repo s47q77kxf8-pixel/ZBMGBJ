@@ -3938,17 +3938,49 @@ function countHistoryByClientId(name) {
 
 // 把历史订单里的单主名从旧名改为新名：只改 clientId，平台（contact）/联系方式（contactInfo）
 // 等一律保持下单时的原值，避免篡改历史快照。返回实际修改的笔数
+// 改了历史订单字段后必须走这里：打时间戳 + 标未同步 + 主动上推。
+// saveData() 只负责本地落盘、不负责同步订单；少了这三步，改名只在本机生效，
+// 其它设备拉取时拿到的还是云端旧整条（表现为「手机上部分订单仍是旧单主名」）。
+function mgSyncOrdersAfterFieldChange(items, source) {
+    var list = (items || []).filter(Boolean);
+    if (!list.length) return;
+    list.forEach(function (item) {
+        item.mg_updated_at = Date.now();
+        if (typeof markOrderUnsynced === 'function') markOrderUnsynced(item.id);
+    });
+    if (!(typeof mgIsCloudEnabled === 'function' && mgIsCloudEnabled()
+        && localStorage.getItem('mg_cloud_enabled') === '1'
+        && typeof mgCloudUpsertOrder === 'function')) return;
+    try {
+        if (typeof mgRunWithConcurrency === 'function') {
+            mgRunWithConcurrency(list, function (item) {
+                return mgCloudUpsertOrder(item, 0, null, source || 'field-change');
+            }).catch(function (err) { console.error('订单云端同步失败:', err); });
+        } else {
+            list.forEach(function (item) {
+                mgCloudUpsertOrder(item, 0, null, source || 'field-change')
+                    .catch(function (err) { console.error('订单云端同步失败:', err); });
+            });
+        }
+    } catch (e) {
+        console.error('订单云端同步异常:', e);
+    }
+}
+
 function renameHistoryClientId(oldName, newName) {
     var from = (oldName == null ? '' : String(oldName).trim());
     var to = (newName == null ? '' : String(newName).trim());
     if (!from || !to || from === to) return 0;
     var n = 0;
+    var changed = [];
     (history || []).forEach(function (item) {
         if (!item || item.clientId == null) return;
         if (String(item.clientId).trim() !== from) return;
         item.clientId = to;
+        changed.push(item);
         n++;
     });
+    if (n > 0) mgSyncOrdersAfterFieldChange(changed, 'rename-client');
     return n;
 }
 
@@ -19251,7 +19283,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260922-0300';
+const APP_VERSION = '20260923-0056';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -25411,12 +25443,15 @@ function confirmBatchChangeClient() {
     
     // 批量修改
     let modifiedCount = 0;
+    var _batchChanged = [];
     history.forEach(function (item) {
         if (selectedHistoryIds.has(Number(item && item.id))) {
             item.clientId = newClientId;
+            _batchChanged.push(item);
             modifiedCount++;
         }
     });
+    if (modifiedCount > 0) mgSyncOrdersAfterFieldChange(_batchChanged, 'batch-change-client');
     
     selectedHistoryIds.clear();
     saveData();
@@ -35677,6 +35712,57 @@ async function mgEnsureSyncPolicy() {
  * 一键上传所有数据到云端（智能同步模式）
  * 优先同步未同步的数据
  */
+// 跨设备数据不一致时的自愈入口：以本机为准，把企划 + 单主 + 角色档案整体回传云端。
+// 用于修「手机端和电脑端对不上」这类问题（例如改名只在本机生效、云端残留误墓碑）。
+// 与「上传」的区别：上传走智能合并（云端新者胜出，本地改动可能传不上去），
+// 这里明确以本机为准，逐条覆盖云端版本。
+async function mgForceReuploadAllOrders() {
+    if (typeof mgIsCloudEnabled !== 'function' || !mgIsCloudEnabled()) {
+        alert('请先登录');
+        return;
+    }
+    const orderCount = Array.isArray(history) ? history.length : 0;
+    if (!confirm('将以本机数据为准，重传 ' + orderCount + ' 条企划以及单主 / 角色档案，覆盖云端版本。\n\n'
+        + '用于修复手机端与电脑端数据不一致。确定继续？')) return;
+    if (window.__mgCloudSyncBusy) {
+        if (typeof showGlobalToast === 'function') showGlobalToast('正在同步中，请稍候...');
+        return;
+    }
+    window.__mgCloudSyncBusy = true;
+    try {
+        const client = mgGetSupabaseClient();
+        if (!client) return;
+        const { data: { session } } = await client.auth.getSession();
+        if (!session || !session.user) { alert('登录状态已失效，请重新登录'); return; }
+        const ctx = { client: client, artistId: session.user.id };
+        const report = typeof mgMakeProgressReporter === 'function'
+            ? mgMakeProgressReporter('重传企划', orderCount) : function () {};
+        let done = 0;
+        report(0, true);
+        await mgRunWithConcurrency(history.slice(), async function (item) {
+            await mgCloudUpsertOrder(item, 0, ctx, 'force-resync');
+            done++;
+            report(done, false);
+        }, 6);
+        report(done, true);
+        try {
+            await mgPushRoleProfilesToCloud();
+            await mgPushCustomersToCloud();
+        } catch (e) { console.warn('[cloud] 单主/角色档案重传失败:', e); }
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast('✅ 已以本机为准重传 ' + done + ' 条企划 + 单主 / 角色档案');
+        } else {
+            alert('✅ 已以本机为准重传 ' + done + ' 条企划');
+        }
+    } catch (err) {
+        console.error('强制重传失败:', err);
+        alert('重传失败：' + (err && err.message ? err.message : '未知错误'));
+    } finally {
+        window.__mgCloudSyncBusy = false;
+        if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus();
+    }
+}
+
 async function mgSyncAllToCloud() {
     if (!mgIsCloudEnabled()) {
         alert('请先登录');
@@ -35816,6 +35902,17 @@ async function mgSyncAllToCloud() {
         
         // 3. 上传合并后的设置到云端
         await mgSyncSettingsToCloud();
+        
+        // 4. 单主 / 角色档案：先以本机为准整体回传（顺带覆盖云端的历史误墓碑），
+        //    再拉一次把其它设备新增的合并回来。此前一键同步完全不碰这两个域，
+        //    是跨设备「单主管理/角色档案不一致」的直接原因。
+        try {
+            await mgPushRoleProfilesToCloud();
+            await mgPushCustomersToCloud();
+            await mgPullCloudRoleAndCustomerData();
+        } catch (e) {
+            console.warn('[cloud] 单主/角色档案同步失败:', e);
+        }
         
         // 更新同步状态
         updateCloudSyncStatus();
