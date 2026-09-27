@@ -14830,6 +14830,38 @@ html.theme-dark .inline-switch input:checked + .switch-track {
 .case-tagfield-row .case-field-input { flex: 1; min-width: 0; }
 .case-tagfield-hidden .case-tagfield-eye { opacity: 0.55; }
 .case-tagfield-hidden .case-field-input { opacity: 0.45; }
+/* 企划信息排版图标（单行/多行、对齐） */
+.case-tag-icons {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex-shrink: 0;
+}
+.case-tag-icon {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-muted, #999);
+    cursor: pointer;
+    border-radius: 5px;
+    padding: 0;
+}
+.case-tag-icon.active {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.14);
+}
+html.theme-dark .case-tag-icon {
+    color: #8b8b94;
+}
+html.theme-dark .case-tag-icon.active {
+    color: #60a5fa;
+    background: rgba(59, 130, 246, 0.22);
+}
 /* ===== 暗色模式：案例功能控件跟随主题（选中态用站点蓝强调，与导出按钮一致） ===== */
 html.theme-dark .case-chip {
     background: #2f2f36;

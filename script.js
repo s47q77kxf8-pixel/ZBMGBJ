@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0649';
+const APP_VERSION = '20260928-0658';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36776,6 +36776,7 @@ function caseNewState() {
             ratio: '1:1', width: 1080, height: 1080,
             bg: { type: 'color', color: '#f7f5f0' },
             toggles: { title: true, year: true, userInfo: true, productInfo: true, customText: true },
+            tagLayout: { mode: 'multi', align: 'right' },
             mockupId: 'shadow',
             mockupScale: 1,
             textScale: 1,
@@ -36794,6 +36795,9 @@ function caseNormalizeState(st) {
     st.config = Object.assign({}, def.config, st.config || {});
     st.config.bg = Object.assign({}, def.config.bg, st.config.bg || {});
     st.config.toggles = Object.assign({}, def.config.toggles, st.config.toggles || {});
+    st.config.tagLayout = Object.assign({ mode: 'multi', align: 'right' }, st.config.tagLayout || {});
+    if (['left', 'center', 'right', 'justify'].indexOf(st.config.tagLayout.align) < 0) st.config.tagLayout.align = 'right';
+    if (st.config.tagLayout.mode !== 'single') st.config.tagLayout.mode = 'multi';
     st.config.watermark = Object.assign({}, def.config.watermark, st.config.watermark || {});
     st.fields = Object.assign({}, def.fields, st.fields || {});
     if (!st.fields.custom || typeof st.fields.custom !== 'object') st.fields.custom = {};
@@ -37491,23 +37495,48 @@ function buildCaseCanvasHtml(st, page) {
         const sep = /[：:]$/.test(String(e.label)) ? '' : ' ';
         return escapeHtml(e.label) + sep + escapeHtml(e.value);
     };
+    // 右下角企划信息：多行（每行=字段名+值一组，可左/中/右/两端对齐）或单行（合并一行，溢出自动缩小）
+    const tagMode = (cfg.tagLayout && cfg.tagLayout.mode === 'single') ? 'single' : 'multi';
+    const tagAlign = (cfg.tagLayout && ['left', 'center', 'right', 'justify'].indexOf(cfg.tagLayout.align) >= 0) ? cfg.tagLayout.align : 'right';
     if (projEls.length) {
-        const flowEls = [];
-        const absEls = [];
-        projEls.forEach(function (e) {
-            if (rowPos(e)) absEls.push(e); else flowEls.push(e);
-        });
-        if (flowEls.length) {
-            let spans = '';
-            flowEls.forEach(function (e) {
-                spans += '<span data-case-el="' + e.key + '" style="display:inline-block;font-size:' + rowFs(e) + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;margin-right:' + Math.round(tagGap * 0.5) + 'px;">' + rowHtml(e) + '</span>';
+        if (tagMode === 'single') {
+            // 单行：全部行合并为一行，超宽自动缩小字号；可整行拖动（project）
+            const pLayout = tLayout['project'];
+            const baseFs = Math.max(9, Math.round(tagFs * (pLayout && pLayout.fsScale ? pLayout.fsScale : 1)));
+            const pos = (pLayout && pLayout.x != null && pLayout.y != null)
+                ? 'left:' + Math.round(pLayout.x * W) + 'px;top:' + Math.round(pLayout.y * H) + 'px;'
+                : 'right:' + pad + 'px;bottom:' + pad + 'px;';
+            let inner = '';
+            projEls.forEach(function (e, i) {
+                if (i) inner += '<span style="display:inline-block;width:' + Math.max(8, Math.round(tagGap * 0.9)) + 'px;"></span>';
+                inner += '<span style="display:inline-block;">' + rowHtml(e) + '</span>';
             });
-            textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + maxTagW + 'px;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:flex-end;gap:' + Math.round(tagGap * 0.5) + 'px;">' + spans + '</div>';
+            textHtml += '<div data-case-el="project" data-case-fit="' + baseFs + '" data-case-fit-min="' + Math.max(8, Math.round(baseFs * 0.4)) + '" style="position:absolute;' + pos + 'width:' + maxTagW + 'px;font-size:' + baseFs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;text-align:right;">' + inner + '</div>';
+        } else {
+            const flowEls = [];
+            const absEls = [];
+            projEls.forEach(function (e) {
+                if (rowPos(e)) absEls.push(e); else flowEls.push(e);
+            });
+            if (flowEls.length) {
+                let rowsHtml = '';
+                flowEls.forEach(function (e) {
+                    const fs2 = rowFs(e);
+                    if (tagAlign === 'justify' && e.value != null) {
+                        // 两端对齐：字段名靠左、值靠右（同行撑开）
+                        rowsHtml += '<div data-case-el="' + e.key + '" style="display:flex;justify-content:space-between;align-items:baseline;font-size:' + fs2 + 'px;line-height:1.5;color:' + txtColor + ';white-space:nowrap;">'
+                            + '<span>' + escapeHtml(e.label) + '</span><span>' + escapeHtml(e.value) + '</span></div>';
+                    } else {
+                        rowsHtml += '<div data-case-el="' + e.key + '" style="font-size:' + fs2 + 'px;line-height:1.5;color:' + txtColor + ';white-space:nowrap;text-align:' + tagAlign + ';">' + rowHtml(e) + '</div>';
+                    }
+                });
+                textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + maxTagW + 'px;">' + rowsHtml + '</div>';
+            }
+            absEls.forEach(function (e) {
+                const t = rowPos(e);
+                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;font-size:' + rowFs(e) + 'px;line-height:1.35;color:' + txtColor + ';white-space:nowrap;">' + rowHtml(e) + '</div>';
+            });
         }
-        absEls.forEach(function (e) {
-            const t = rowPos(e);
-            textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;font-size:' + rowFs(e) + 'px;line-height:1.35;color:' + txtColor + ';white-space:nowrap;">' + rowHtml(e) + '</div>';
-        });
     }
     const bgStyle = cfg.bg.type === 'color' ? (cfg.bg.color || '#ffffff') : 'transparent';
     let bgHtml = '';
@@ -37720,7 +37749,7 @@ function caseRenderSelPanel() {
             + '</div>'
             + '<div class="case-form-hint" style="margin:6px 0 0;">拖动移动整行（字段名+值一起移动）</div>';
     } else {
-        const names = { title: '案例类型', year: '设计年份', user: '用户信息 @ID', project: '企划信息标签（组）' };
+        const names = { title: '案例类型', year: '设计年份', user: '用户信息 @ID', project: '企划信息' };
         const L = (_caseState.config.layout && _caseState.config.layout.texts) || {};
         const rec = L[key] || { fsScale: 1 };
         html = '<div class="case-sel-title">已选中：' + (names[key] || '') + '</div>'
@@ -38177,10 +38206,23 @@ function renderCaseForm() {
     if (cfg.toggles.userInfo) {
         html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.user || '')) + '" placeholder="用户信息，如 @yourid（可修改，留空不显示）" oninput="setCaseField(\'user\', this.value)">';
     }
-    // 企划信息（组开关 + 各字段独立眼睛 + 自定义文字项）
+    // 企划信息（组开关 + 各字段独立眼睛 + 排版图标：单行/多行、左/中/右/两端）
+    const tagMode = (cfg.tagLayout && cfg.tagLayout.mode === 'single') ? 'single' : 'multi';
+    const tagAlign = (cfg.tagLayout && cfg.tagLayout.align) || 'right';
+    const tagIcon = function (kind, active, fn, title) {
+        return '<button type="button" class="case-tag-icon' + (active ? ' active' : '') + '" onclick="' + fn + '" title="' + title + '">' + caseTagIconSvg(kind) + '</button>';
+    };
     html += '<div class="case-tagfield-row' + (cfg.toggles.productInfo ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'productInfo\', ' + (!cfg.toggles.productInfo) + ')" title="' + (cfg.toggles.productInfo ? '点击隐藏整组' : '点击显示整组') + '">' + caseEyeSvg(!cfg.toggles.productInfo) + '</button>'
         + '<span class="case-tagfield-label">企划信息</span>'
+        + '<span class="case-tag-icons">'
+        + tagIcon('single', tagMode === 'single', "setCaseTagMode('single')", '单行显示（溢出自动缩小）')
+        + tagIcon('multi', tagMode === 'multi', "setCaseTagMode('multi')", '多行显示（每行一组）')
+        + tagIcon('left', tagAlign === 'left', "setCaseTagAlign('left')", '左对齐')
+        + tagIcon('center', tagAlign === 'center', "setCaseTagAlign('center')", '居中')
+        + tagIcon('right', tagAlign === 'right', "setCaseTagAlign('right')", '右对齐')
+        + tagIcon('justify', tagAlign === 'justify', "setCaseTagAlign('justify')", '两端对齐（字段名靠左、值靠右）')
+        + '</span>'
         + '</div>';
     if (cfg.toggles.productInfo) {
         const roleCfg = caseCurrentRole();
@@ -38202,7 +38244,7 @@ function renderCaseForm() {
             + '<input type="text" class="case-field-input case-ct-label" style="flex:0 0 32%;min-width:0;" value="' + escapeHtml(caseFieldLabelText(st, '制品')) + '" oninput="caseSetFieldLabel(\'制品\', this.value)" title="字段名（可改，显示在值前面）">'
             + '<input type="text" class="case-field-input" style="flex:1;min-width:0;" value="' + escapeHtml(String(st.fields.products || '')) + '" placeholder="制品名，多个用、分隔" oninput="setCaseField(\'products\', this.value)">'
             + '</div>';
-        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；点眼睛图标可隐藏/显示单项；编辑模式下点选标签可单独拖动、调字号</div>';
+        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；点眼睛图标可隐藏/显示单项；标题右侧图标可切换单行/多行及对齐（两端对齐=字段名靠左、值靠右）；编辑模式下点选可拖动、调字号</div>';
     }
     html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">文字大小</span>'
         + '<input type="range" min="0.6" max="1.8" step="0.05" value="' + (Number(cfg.textScale) || 1) + '" oninput="setCaseTextScale(this.value)">'
@@ -38531,8 +38573,52 @@ function setCaseMockup(id) {
 }
 function setCaseField(key, value) {
     const st = _caseState; if (!st) return;
-    st.fields[key] = value;
+    if (key === 'products') {
+        const oldList = caseSplitProducts(st.fields.products);
+        st.fields[key] = value;
+        // 分页（制品组）联动：制品名改写时按顺序配对重命名，分图页/页签自动跟随
+        const newList = caseSplitProducts(value);
+        if (st.groups && st.groups.length && newList.length) {
+            const removed = oldList.filter(function (x) { return newList.indexOf(x) < 0; });
+            const used = st.groups.map(function (g) { return g.label; });
+            const added = newList.filter(function (x) { return used.indexOf(x) < 0 && removed.indexOf(x) < 0; });
+            removed.forEach(function (oldName, i) {
+                if (i >= added.length) return;
+                const g = st.groups.find(function (g2) { return g2.label === oldName; });
+                if (g) g.label = added[i];
+            });
+        }
+    } else {
+        st.fields[key] = value;
+    }
     renderCasePreview();
+}
+// 制品串拆分（、，,／等分隔符）
+function caseSplitProducts(text) {
+    return String(text || '').split(/[、，,／/]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+// 企划信息排版：单行/多行、对齐（图标在「企划信息」标题右侧）
+function setCaseTagMode(m) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'right' };
+    st.config.tagLayout.mode = m === 'single' ? 'single' : 'multi';
+    renderCaseForm(); renderCasePreview();
+}
+function setCaseTagAlign(a) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'right' };
+    st.config.tagLayout.align = ['left', 'center', 'right', 'justify'].indexOf(a) >= 0 ? a : 'right';
+    renderCaseForm(); renderCasePreview();
+}
+function caseTagIconSvg(kind) {
+    const s = 'width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"';
+    if (kind === 'multi') return '<svg ' + s + '><path d="M2 4h12M2 8h12M2 12h12"/></svg>';
+    if (kind === 'single') return '<svg ' + s + '><path d="M2 8h12"/></svg>';
+    if (kind === 'left') return '<svg ' + s + '><path d="M2 4h9M2 8h12M2 12h7"/></svg>';
+    if (kind === 'center') return '<svg ' + s + '><path d="M4 4h8M2 8h12M5 12h6"/></svg>';
+    if (kind === 'right') return '<svg ' + s + '><path d="M5 4h9M2 8h12M7 12h7"/></svg>';
+    if (kind === 'justify') return '<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" stroke="none"><rect x="1.5" y="5.5" width="4.5" height="5" rx="1"/><rect x="10" y="5.5" width="4.5" height="5" rx="1"/></svg>';
+    return '';
 }
 function setCaseProjectField(name, value) {
     const st = _caseState; if (!st) return;
