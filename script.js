@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0705';
+const APP_VERSION = '20260928-0712';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -38221,8 +38221,7 @@ function renderCaseForm() {
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'productInfo\', ' + (!cfg.toggles.productInfo) + ')" title="' + (cfg.toggles.productInfo ? '点击隐藏整组' : '点击显示整组') + '">' + caseEyeSvg(!cfg.toggles.productInfo) + '</button>'
         + '<span class="case-tagfield-label">企划信息</span>'
         + '<span class="case-tag-icons">'
-        + tagIcon('single', tagMode === 'single', "setCaseTagMode('single')", '单行显示（溢出自动缩小）')
-        + tagIcon('multi', tagMode === 'multi', "setCaseTagMode('multi')", '多行显示（每行一组）')
+        + tagIcon('single', tagMode === 'single', "setCaseTagMode('" + (tagMode === 'single' ? 'multi' : 'single') + "')", tagMode === 'single' ? '单行显示（点击切回多行）' : '切为单行显示（溢出自动缩小）')
         + tagIcon('left', tagAlign === 'left', "setCaseTagAlign('left')", '左对齐')
         + tagIcon('center', tagAlign === 'center', "setCaseTagAlign('center')", '居中')
         + tagIcon('right', tagAlign === 'right', "setCaseTagAlign('right')", '右对齐')
@@ -38634,7 +38633,8 @@ function caseTagIconSvg(kind) {
     if (kind === 'left') return '<svg ' + s + '><path d="M2 4h9M2 8h12M2 12h7"/></svg>';
     if (kind === 'center') return '<svg ' + s + '><path d="M4 4h8M2 8h12M5 12h6"/></svg>';
     if (kind === 'right') return '<svg ' + s + '><path d="M5 4h9M2 8h12M7 12h7"/></svg>';
-    if (kind === 'justify') return '<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" stroke="none"><rect x="1.5" y="5.5" width="4.5" height="5" rx="1"/><rect x="10" y="5.5" width="4.5" height="5" rx="1"/></svg>';
+    // 两端对齐：三行等长、撑满左右两端
+    if (kind === 'justify') return '<svg ' + s + '><path d="M2 4h12M2 8h12M2 12h12"/></svg>';
     return '';
 }
 function setCaseProjectField(name, value) {
