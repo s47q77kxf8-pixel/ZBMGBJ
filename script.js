@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0550';
+const APP_VERSION = '20260928-0610';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37399,10 +37399,15 @@ function buildCaseCanvasHtml(st, page) {
         const by = Math.min(Math.max(Math.round(cy - bh / 2), area.y), area.y + area.h - bh);
         const drawSlot = { x: bx, y: by, w: bw, h: bh };
         const c = _caseImgCache[imgId];
-        // 槽位框即旋转后的可视占位（不旋转）；制品图以 100% 铺满槽位、整体随 ifx.rot 旋转
+        // 槽位框 = 旋转后的可视占位（排版已按互换比例分配）；
+        // ±90° 时图层盒按「宽高互换」取槽位反向尺寸并居中，旋转 90° 后正好盖满槽位且不变形
+        const swapped = Math.abs(((slotRot % 180) + 180) % 180) === 90;
+        const lw = swapped ? drawSlot.h : drawSlot.w;
+        const lh = swapped ? drawSlot.w : drawSlot.h;
+        const lx = Math.round((drawSlot.w - lw) / 2), ly = Math.round((drawSlot.h - lh) / 2);
         const rotCss = slotRot ? 'transform:rotate(' + slotRot + 'deg);' : '';
         const layer = function (src, cls) {
-            return '<img ' + (cls ? 'class="' + cls + '" ' : '') + 'src="' + src + '" style="position:absolute;left:0;top:0;width:100%;height:100%;' + rotCss + '">';
+            return '<img ' + (cls ? 'class="' + cls + '" ' : '') + 'src="' + src + '" style="position:absolute;left:' + lx + 'px;top:' + ly + 'px;width:' + lw + 'px;height:' + lh + 'px;' + rotCss + '">';
         };
         let inner = '';
         if (!c) {
