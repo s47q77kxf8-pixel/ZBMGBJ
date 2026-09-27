@@ -14818,9 +14818,8 @@ html.theme-dark .inline-switch input:checked + .switch-track {
     width: 34px;
     height: 38px;
     flex-shrink: 0;
-    border: 1px solid var(--border-color, #ddd);
-    border-radius: 8px;
-    background: var(--card-bg, #fff);
+    border: none;
+    background: transparent;
     cursor: pointer;
     color: var(--text-color, #222);
 }
@@ -14853,8 +14852,7 @@ html.theme-dark #caseEditLayoutBtn.case-edit-on {
     color: #fff !important;
 }
 html.theme-dark .case-tagfield-eye {
-    background: #2f2f36;
-    border-color: #3f3f46;
+    background: transparent;
     color: #e5e5e5;
 }
 html.theme-dark .case-field-input,

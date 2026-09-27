@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0610';
+const APP_VERSION = '20260928-0625';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36775,14 +36775,14 @@ function caseNewState() {
         config: {
             ratio: '1:1', width: 1080, height: 1080,
             bg: { type: 'color', color: '#f7f5f0' },
-            toggles: { title: true, userInfo: true, productInfo: true, customText: true },
+            toggles: { title: true, year: true, userInfo: true, productInfo: true, customText: true },
             mockupId: 'shadow',
             mockupScale: 1,
             textScale: 1,
             layout: null,
             watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1 }
         },
-        fields: { title: 'Preview', year: String(new Date().getFullYear()), projectName: '', ip: '', character: '', products: '', custom: {}, customTexts: [] },
+        fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', projectName: '', ip: '', character: '', products: '', custom: {}, customTexts: [] },
         images: [],
         groups: [],
         exportImgId: '', exportThumbId: '', exportFormat: 'png',
@@ -37130,10 +37130,10 @@ function caseCanvasTextColor(bg) {
 }
 // 用户信息：直接取「基础设置」中的用户ID，显示为 @ID（通用，不带身份前缀）
 function caseInfoLines(st) {
-    const artist = (typeof defaultSettings !== 'undefined' && defaultSettings && defaultSettings.artistInfo) || {};
-    const name = String(artist.id || '').trim();
-    if (!name) return [];
-    return ['@' + name];
+    // 用户信息：默认按「基础设置」用户ID 生成（@ID），可在案例内容中修改；留空则不显示
+    const line = String((st && st.fields && st.fields.user) || '').trim();
+    if (!line) return [];
+    return [line];
 }
 // 企划字段名可编辑（按案例覆盖；默认取「基础设置 → 身份与企划字段」的字段名）
 function caseFieldLabelText(st, name) {
@@ -37447,8 +37447,8 @@ function buildCaseCanvasHtml(st, page) {
             textHtml += '<div data-case-el="ct:' + it.id + '" style="position:absolute;left:' + pad + 'px;top:' + (pad + lines * titleLh + i * Math.round(tagLh * 1.15)) + 'px;font-size:' + cfs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(String(it.text).trim()) + '</div>';
         });
     }
-    // 设计年份（右上角）
-    const yearText = cfg.toggles.title ? String(st.fields.year || '').trim() : '';
+    // 设计年份（右上角，独立开关）
+    const yearText = (cfg.toggles.year !== false) ? String(st.fields.year || '').trim() : '';
     if (yearText) {
         const yl = elStyle('year', infoFs, 'top:' + pad + 'px;right:' + pad + 'px;');
         textHtml += '<div data-case-el="year" style="position:absolute;' + yl.pos + 'font-size:' + yl.fs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(yearText) + '</div>';
@@ -38126,16 +38126,23 @@ function renderCaseForm() {
         + '<span class="case-tagfield-label">案例类型（左上角）</span>'
         + '</div>';
     if (cfg.toggles.title) {
-        html += '<textarea class="case-field-input case-field-mb" rows="2" placeholder="案例类型，可两行" oninput="setCaseField(\'title\', this.value)">' + escapeHtml(String(st.fields.title || '')) + '</textarea>';
-        html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.year || '')) + '" placeholder="设计年份（显示在右上角，可留空）" oninput="setCaseField(\'year\', this.value)">';
+        html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.title || '')) + '" placeholder="案例类型（左上角，单行）" oninput="setCaseField(\'title\', this.value)">';
     }
-    // 用户信息（取自「基础设置」中的用户ID）
+    // 设计年份（右上角，独立显示/隐藏）
+    html += '<div class="case-tagfield-row' + (cfg.toggles.year !== false ? '' : ' case-tagfield-hidden') + '">'
+        + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'year\', ' + (cfg.toggles.year === false) + ')" title="' + (cfg.toggles.year !== false ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(cfg.toggles.year === false) + '</button>'
+        + '<span class="case-tagfield-label">设计年份（右上角）</span>'
+        + '</div>';
+    if (cfg.toggles.year !== false) {
+        html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.year || '')) + '" placeholder="设计年份（可留空）" oninput="setCaseField(\'year\', this.value)">';
+    }
+    // 用户信息（默认按「基础设置」用户ID 生成，可修改；留空不显示）
     html += '<div class="case-tagfield-row' + (cfg.toggles.userInfo ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'userInfo\', ' + (!cfg.toggles.userInfo) + ')" title="' + (cfg.toggles.userInfo ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(!cfg.toggles.userInfo) + '</button>'
         + '<span class="case-tagfield-label">用户信息 @ID（左下角）</span>'
         + '</div>';
     if (cfg.toggles.userInfo) {
-        html += '<div class="case-form-hint" style="margin:0 0 9px;">显示为「基础设置」中的用户ID</div>';
+        html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.user || '')) + '" placeholder="用户信息，如 @yourid（可修改，留空不显示）" oninput="setCaseField(\'user\', this.value)">';
     }
     // 企划信息（组开关 + 各字段独立眼睛 + 自定义文字项）
     html += '<div class="case-tagfield-row' + (cfg.toggles.productInfo ? '' : ' case-tagfield-hidden') + '">'
@@ -38161,26 +38168,7 @@ function renderCaseForm() {
             + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'制品\')" title="' + (prodHidden ? '点击显示该标签' : '点击隐藏该标签') + '">' + caseEyeSvg(prodHidden) + '</button>'
             + '<input type="text" class="case-field-input" value="' + escapeHtml(String(st.fields.products || '')) + '" placeholder="制品名" oninput="setCaseField(\'products\', this.value)">'
             + '</div>';
-        // 自定义文字项（任意条，随企划标签一起显示在右下角）
-        const cts = st.fields.customTexts || [];
-        cts.forEach(function (item) {
-            const hidden = !!projHidden[item.id];
-            const ctParent = item.parent || 'project';
-            const ctParentName = { root: '独立', title: '案例类型', user: '用户信息', project: '企划信息' }[ctParent] || '企划信息';
-            html += '<div class="case-tagfield-row case-tagfield-sub' + (hidden ? ' case-tagfield-hidden' : '') + '" data-ct-id="' + item.id + '">'
-                + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'' + item.id + '\')" title="' + (hidden ? '点击显示该标签' : '点击隐藏该标签') + '">' + caseEyeSvg(hidden) + '</button>'
-                + '<input type="text" class="case-field-input" value="' + escapeHtml(String(item.text || '')) + '" placeholder="自定义文字内容" oninput="caseUpdateCustomText(\'' + item.id + '\', this.value)">'
-                + '<select class="case-field-input case-ct-parent" onchange="caseSetCustomTextParent(\'' + item.id + '\', this.value)" title="所属层级">'
-                + '<option value="root"' + (ctParent === 'root' ? ' selected' : '') + '>独立</option>'
-                + '<option value="title"' + (ctParent === 'title' ? ' selected' : '') + '>案例类型</option>'
-                + '<option value="user"' + (ctParent === 'user' ? ' selected' : '') + '>用户信息</option>'
-                + '<option value="project"' + (ctParent === 'project' ? ' selected' : '') + '>企划信息</option>'
-                + '</select>'
-                + '<button type="button" class="case-tagfield-del" onclick="caseRemoveCustomText(\'' + item.id + '\')" title="删除该文字项">×</button>'
-                + '</div>';
-        });
-        html += '<button type="button" class="btn secondary btn-compact" onclick="caseAddCustomText()" style="margin-top:2px;">+ 添加自定义文字</button>';
-        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；点眼睛图标可隐藏/显示单项；编辑模式下点选标签可单独拖动、调字号；「所属层级」可切换归属</div>';
+        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；点眼睛图标可隐藏/显示单项；编辑模式下点选标签可单独拖动、调字号</div>';
     }
     html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">文字大小</span>'
         + '<input type="range" min="0.6" max="1.8" step="0.05" value="' + (Number(cfg.textScale) || 1) + '" oninput="setCaseTextScale(this.value)">'
