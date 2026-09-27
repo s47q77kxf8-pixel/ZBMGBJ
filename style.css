@@ -14862,6 +14862,34 @@ html.theme-dark .case-tag-icon.active {
     color: #60a5fa;
     background: rgba(59, 130, 246, 0.22);
 }
+/* 企划信息行：字段名/值单元格框（眼睛内嵌） */
+.case-cellbox {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    padding: 0 4px;
+}
+.case-cellbox .case-cell-input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+}
+.case-cellbox .case-tagfield-eye-in {
+    width: 28px;
+    height: 30px;
+    flex-shrink: 0;
+}
+.case-cell-off {
+    opacity: 0.45;
+}
+html.theme-dark .case-cellbox {
+    background: #1f1f23;
+    border-color: #3f3f46;
+}
 /* ===== 暗色模式：案例功能控件跟随主题（选中态用站点蓝强调，与导出按钮一致） ===== */
 html.theme-dark .case-chip {
     background: #2f2f36;

@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0658';
+const APP_VERSION = '20260928-0705';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37185,15 +37185,17 @@ function caseProjectElements(st, page) {
     const flds = (role && role.fields && role.fields.length) ? role.fields : [{ name: '企划名' }, { name: '原作（IP）' }, { name: '角色' }];
     flds.forEach(function (f) {
         const name = (f && f.name) || '';
-        if (!name || hidden[name]) return;
+        if (!name) return;
+        const labHid = !!hidden['lab:' + name], valHid = !!hidden[name];
+        if (labHid && valHid) return;
         const val = String(caseProjectFieldValue(st, name) || '').trim();
         if (!val) return;
-        rows.push({ key: 'row:' + name, name: name, label: caseFieldLabelText(st, name), value: val });
+        rows.push({ key: 'row:' + name, name: name, label: labHid ? '' : caseFieldLabelText(st, name), value: valHid ? '' : val });
     });
     let pd = String((st.fields && st.fields.products) || '').trim();
     if (page && page.kind === 'group' && page.label) pd = page.label;
-    if (!hidden['制品'] && pd) {
-        rows.push({ key: 'row:制品', name: '制品', label: caseFieldLabelText(st, '制品'), value: pd });
+    if (pd && !(hidden['制品'] && hidden['lab:制品'])) {
+        rows.push({ key: 'row:制品', name: '制品', label: hidden['lab:制品'] ? '' : caseFieldLabelText(st, '制品'), value: hidden['制品'] ? '' : pd });
     }
     // 自定义文字（隶属企划信息的）
     (st.fields.customTexts || []).forEach(function (it) {
@@ -37492,8 +37494,11 @@ function buildCaseCanvasHtml(st, page) {
     };
     const rowHtml = function (e) {
         if (e.value == null) return escapeHtml(e.text);
-        const sep = /[：:]$/.test(String(e.label)) ? '' : ' ';
-        return escapeHtml(e.label) + sep + escapeHtml(e.value);
+        const lab = String(e.label || ''), val = String(e.value || '');
+        if (!lab) return escapeHtml(val);
+        if (!val) return escapeHtml(lab);
+        const sep = /[：:]$/.test(lab) ? '' : ' ';
+        return escapeHtml(lab) + sep + escapeHtml(val);
     };
     // 右下角企划信息：多行（每行=字段名+值一组，可左/中/右/两端对齐）或单行（合并一行，溢出自动缩小）
     const tagMode = (cfg.tagLayout && cfg.tagLayout.mode === 'single') ? 'single' : 'multi';
@@ -37825,7 +37830,7 @@ function caseResetTag(name) {
         const pr = L.texts.project;
         if (pr) {
             [name, 'row:' + name, 'pl:' + name].forEach(function (k) { if (pr.itemFs) delete pr.itemFs[k]; });
-            if (pr.hidden) delete pr.hidden[name];
+            if (pr.hidden) { delete pr.hidden[name]; delete pr.hidden['lab:' + name]; }
         }
         // 旧版按元素存的位置/字号一并清理
         delete L.texts['row:' + name];
@@ -38228,23 +38233,35 @@ function renderCaseForm() {
         const roleCfg = caseCurrentRole();
         const projFlds = (roleCfg && roleCfg.fields && roleCfg.fields.length) ? roleCfg.fields : [{ name: '企划名' }, { name: '原作（IP）' }, { name: '角色' }];
         const projHidden = caseTagHiddenMap(st);
+        // 每行两个单元格（字段名框 / 值框），各自内嵌眼睛：可单独隐藏字段名或值
+        const caseCellBox = function (hidKey, hidden, inputHtml, boxStyle) {
+            return '<div class="case-cellbox' + (hidden ? ' case-cell-off' : '') + '"' + (boxStyle ? ' style="' + boxStyle + '"' : '') + '>'
+                + '<button type="button" class="case-tagfield-eye case-tagfield-eye-in" onclick="caseToggleTagHidden(\'' + escapeHtml(hidKey) + '\')" title="' + (hidden ? '点击显示' : '点击隐藏') + '">' + caseEyeSvg(hidden) + '</button>'
+                + inputHtml + '</div>';
+        };
         projFlds.forEach(function (f) {
             const name = (f && f.name) || '';
             if (!name) return;
-            const hidden = !!projHidden[name];
-            html += '<div class="case-tagfield-row case-tagfield-sub' + (hidden ? ' case-tagfield-hidden' : '') + '">'
-                + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'' + escapeHtml(name) + '\')" title="' + (hidden ? '点击显示该标签' : '点击隐藏该标签') + '">' + caseEyeSvg(hidden) + '</button>'
-                + '<input type="text" class="case-field-input case-ct-label" style="flex:0 0 32%;min-width:0;" value="' + escapeHtml(caseFieldLabelText(st, name)) + '" oninput="caseSetFieldLabel(\'' + escapeHtml(name) + '\', this.value)" title="字段名（可改，显示在值前面）">'
-                + '<input type="text" class="case-field-input" style="flex:1;min-width:0;" value="' + escapeHtml(String(caseProjectFieldValue(st, name) || '')) + '" oninput="setCaseProjectField(\'' + escapeHtml(name) + '\', this.value)">'
+            const labHid = !!projHidden['lab:' + name];
+            const valHid = !!projHidden[name];
+            html += '<div class="case-tagfield-row case-tagfield-sub' + (labHid && valHid ? ' case-tagfield-hidden' : '') + '">'
+                + caseCellBox('lab:' + name, labHid,
+                    '<input type="text" class="case-field-input case-cell-input" value="' + escapeHtml(caseFieldLabelText(st, name)) + '" oninput="caseSetFieldLabel(\'' + escapeHtml(name) + '\', this.value)" title="字段名（可改，显示在值前面）">',
+                    'flex:0 0 34%;min-width:0;')
+                + caseCellBox(name, valHid,
+                    '<input type="text" class="case-field-input case-cell-input" value="' + escapeHtml(String(caseProjectFieldValue(st, name) || '')) + '" oninput="setCaseProjectField(\'' + escapeHtml(name) + '\', this.value)">')
                 + '</div>';
         });
-        const prodHidden = !!projHidden['制品'];
-        html += '<div class="case-tagfield-row case-tagfield-sub' + (prodHidden ? ' case-tagfield-hidden' : '') + '">'
-            + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'制品\')" title="' + (prodHidden ? '点击显示该行' : '点击隐藏该行') + '">' + caseEyeSvg(prodHidden) + '</button>'
-            + '<input type="text" class="case-field-input case-ct-label" style="flex:0 0 32%;min-width:0;" value="' + escapeHtml(caseFieldLabelText(st, '制品')) + '" oninput="caseSetFieldLabel(\'制品\', this.value)" title="字段名（可改，显示在值前面）">'
-            + '<input type="text" class="case-field-input" style="flex:1;min-width:0;" value="' + escapeHtml(String(st.fields.products || '')) + '" placeholder="制品名，多个用、分隔" oninput="setCaseField(\'products\', this.value)">'
+        const prodLabHid = !!projHidden['lab:制品'];
+        const prodValHid = !!projHidden['制品'];
+        html += '<div class="case-tagfield-row case-tagfield-sub' + (prodLabHid && prodValHid ? ' case-tagfield-hidden' : '') + '">'
+            + caseCellBox('lab:制品', prodLabHid,
+                '<input type="text" class="case-field-input case-cell-input" value="' + escapeHtml(caseFieldLabelText(st, '制品')) + '" oninput="caseSetFieldLabel(\'制品\', this.value)" title="字段名（可改，显示在值前面）">',
+                'flex:0 0 34%;min-width:0;')
+            + caseCellBox('制品', prodValHid,
+                '<input type="text" class="case-field-input case-cell-input" value="' + escapeHtml(String(st.fields.products || '')) + '" placeholder="制品名，多个用、分隔" oninput="setCaseField(\'products\', this.value)">')
             + '</div>';
-        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；点眼睛图标可隐藏/显示单项；标题右侧图标可切换单行/多行及对齐（两端对齐=字段名靠左、值靠右）；编辑模式下点选可拖动、调字号</div>';
+        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；框内眼睛可单独隐藏字段名或值（两个都隐藏=整行不显示）；标题右侧图标可切换单行/多行及对齐（两端对齐=字段名靠左、值靠右）；编辑模式下点选可拖动、调字号</div>';
     }
     html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">文字大小</span>'
         + '<input type="range" min="0.6" max="1.8" step="0.05" value="' + (Number(cfg.textScale) || 1) + '" oninput="setCaseTextScale(this.value)">'
