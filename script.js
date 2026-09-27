@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0625';
+const APP_VERSION = '20260928-0635';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37168,12 +37168,11 @@ function caseSetProjectFieldValue(st, name, value) {
     st.fields.custom[name] = value;
 }
 // 企划信息标签：按「基础设置 → 身份与企划字段」的配置顺序生成；末尾固定显示制品（制品页=该制品）
-// 返回 [{name, text}]，name 用于单标签隐藏/字号控制
-// 企划信息元素：按「基础设置 → 身份与企划字段」的配置顺序生成
-// 每个字段拆成「字段名」+「值」两个独立文字元素（可分别拖动/单独调字号）；无胶囊底
-// 返回 [{ key, text }]，key = 'pl:字段名'（字段名元素）/ 'pv:字段名'（值元素）
+// 每行 = 「字段名+值」一组（整行拖动/选中/调字号）；无胶囊底
+// 返回 [{ key:'row:字段名', name, label, value }]（自定义文字项为 { key:'ct:…', text }）
 function caseProjectElements(st, page) {
-    const els = [];
+    // 每行 = 字段名+值 一组（拖动/选中/调字号以行为单位），key 形如 row:字段名
+    const rows = [];
     const hidden = caseTagHiddenMap(st);
     const role = caseCurrentRole();
     const flds = (role && role.fields && role.fields.length) ? role.fields : [{ name: '企划名' }, { name: '原作（IP）' }, { name: '角色' }];
@@ -37182,23 +37181,21 @@ function caseProjectElements(st, page) {
         if (!name || hidden[name]) return;
         const val = String(caseProjectFieldValue(st, name) || '').trim();
         if (!val) return;
-        els.push({ key: 'pl:' + name, text: caseFieldLabelText(st, name) });
-        els.push({ key: 'pv:' + name, text: val });
+        rows.push({ key: 'row:' + name, name: name, label: caseFieldLabelText(st, name), value: val });
     });
     let pd = String((st.fields && st.fields.products) || '').trim();
     if (page && page.kind === 'group' && page.label) pd = page.label;
     if (!hidden['制品'] && pd) {
-        els.push({ key: 'pl:制品', text: caseFieldLabelText(st, '制品') });
-        els.push({ key: 'pv:制品', text: pd });
+        rows.push({ key: 'row:制品', name: '制品', label: caseFieldLabelText(st, '制品'), value: pd });
     }
     // 自定义文字（隶属企划信息的）
     (st.fields.customTexts || []).forEach(function (it) {
         if (!it || it.parent !== 'project') return;
         const txt = String(it.text || '').trim();
         if (!txt || hidden[it.id]) return;
-        els.push({ key: 'ct:' + it.id, text: txt });
+        rows.push({ key: 'ct:' + it.id, text: txt });
     });
-    return els;
+    return rows;
 }
 // 企划标签的隐藏/单标签字号映射（存于 layout.texts.project，随布局方案保存）
 function caseTagHiddenMap(st) {
@@ -37305,10 +37302,6 @@ function buildCaseCanvasHtml(st, page) {
         const t = tLayout[key];
         return Math.max(9, Math.round(base * (t && t.fsScale ? t.fsScale : 1)));
     };
-    const hasPos = function (key) {
-        const t = tLayout[key];
-        return !!(t && t.x != null && t.y != null);
-    };
     // 自定义文字按父级归类
     const ctList = (st.fields.customTexts || []);
     const ctHidden = caseTagHiddenMap(st);
@@ -37326,7 +37319,8 @@ function buildCaseCanvasHtml(st, page) {
     const titleLineCount = titleText ? titleText.split('\n').length : 0;
     const titleZoneH = titleTextOn && titleLineCount ? titleLineCount * titleLh + titleCts.length * Math.round(tagLh * 1.15) : 0;
     let tagTotalW = 0;
-    projEls.forEach(function (e) { tagTotalW += e.text.length * tagFs * 0.62 + tagFs * 1.2 + tagGap; });
+    const rowLen = function (e) { return (e.value != null) ? (String(e.label).length + 1 + String(e.value).length) : String(e.text || '').length; };
+    projEls.forEach(function (e) { tagTotalW += rowLen(e) * tagFs * 0.62 + tagFs * 1.2 + tagGap; });
     const tagRows = projEls.length ? Math.max(1, Math.ceil(tagTotalW / maxTagW)) : 0;
     const tagZoneH = tagRows ? tagRows * tagLh + (tagRows - 1) * Math.round(tagGap * 0.6) : 0;
     const userStackH = (infoOn && infoArr.length ? infoLh : 0) + userCts.length * Math.round(tagLh * 1.15) + rootCts.length * Math.round(tagLh * 1.15);
@@ -37475,25 +37469,39 @@ function buildCaseCanvasHtml(st, page) {
             yCur -= lh;
         }
     }
-    // 右下角企划信息（无胶囊底；字段名与值是独立元素；每个可拖动/单独调字号）
+    // 右下角企划信息（无胶囊底；每行 = 字段名+值 一组，整行可拖动/调字号）
+    const rowPos = function (e) {
+        const t = tLayout[e.key] || (e.name ? tLayout['pl:' + e.name] : null); // 兼容旧版按字段名存的位置
+        return (t && t.x != null && t.y != null) ? t : null;
+    };
+    const rowFs = function (e) {
+        const m = caseTagFsMap(st);
+        let s = (m[e.key] != null) ? m[e.key] : (e.name && m[e.name] != null) ? m[e.name] : null;
+        if (s == null) {
+            const t = tLayout[e.key] || (e.name ? tLayout['pl:' + e.name] : null);
+            s = (t && t.fsScale) ? t.fsScale : 1;
+        }
+        return Math.max(9, Math.round(tagFs * s));
+    };
+    const rowHtml = function (e) {
+        return (e.value != null) ? escapeHtml(e.label) + ' ' + escapeHtml(e.value) : escapeHtml(e.text);
+    };
     if (projEls.length) {
         const flowEls = [];
         const absEls = [];
         projEls.forEach(function (e) {
-            if (hasPos(e.key)) absEls.push(e); else flowEls.push(e);
+            if (rowPos(e)) absEls.push(e); else flowEls.push(e);
         });
         if (flowEls.length) {
             let spans = '';
             flowEls.forEach(function (e) {
-                const fs2 = elFs(e.key, tagFs);
-                spans += '<span data-case-el="' + e.key + '" style="display:inline-block;font-size:' + fs2 + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;margin-right:' + Math.round(tagGap * 0.5) + 'px;">' + escapeHtml(e.text) + '</span>';
+                spans += '<span data-case-el="' + e.key + '" style="display:inline-block;font-size:' + rowFs(e) + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;margin-right:' + Math.round(tagGap * 0.5) + 'px;">' + rowHtml(e) + '</span>';
             });
             textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + maxTagW + 'px;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:flex-end;gap:' + Math.round(tagGap * 0.5) + 'px;">' + spans + '</div>';
         }
         absEls.forEach(function (e) {
-            const t = tLayout[e.key];
-            const fs2 = elFs(e.key, tagFs);
-            textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;font-size:' + fs2 + 'px;line-height:1.35;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(e.text) + '</div>';
+            const t = rowPos(e);
+            textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;font-size:' + rowFs(e) + 'px;line-height:1.35;color:' + txtColor + ';white-space:nowrap;">' + rowHtml(e) + '</div>';
         });
     }
     const bgStyle = cfg.bg.type === 'color' ? (cfg.bg.color || '#ffffff') : 'transparent';
@@ -37693,6 +37701,19 @@ function caseRenderSelPanel() {
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetTag(\'' + escapeHtml(name) + '\')">恢复该标签默认</button>'
             + '</div>'
             + '<div class="case-form-hint" style="margin:6px 0 0;">拖动标签整体移动企划信息组</div>';
+    } else if (key.indexOf('row:') === 0) {
+        const name = key.slice(4);
+        const pr = (_caseState.config.layout && _caseState.config.layout.texts && _caseState.config.layout.texts.project) || {};
+        const fs = (pr.itemFs && pr.itemFs[name] != null) ? pr.itemFs[name] : 1;
+        html = '<div class="case-sel-title">已选中：标签「' + escapeHtml(name) + '」（字段名+值整行）</div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">字号</span>'
+            + '<input type="range" min="0.5" max="2.5" step="0.05" value="' + fs + '" oninput="setCaseTagFs(\'' + escapeHtml(name) + '\', this.value)">'
+            + '<span class="case-range-val" id="caseTagFsVal">' + Math.round(fs * 100) + '%</span></div>'
+            + '<div class="case-sel-ops">'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseToggleTagHidden(\'' + escapeHtml(name) + '\')">隐藏该行</button>'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseResetTag(\'' + escapeHtml(name) + '\')">恢复该行默认</button>'
+            + '</div>'
+            + '<div class="case-form-hint" style="margin:6px 0 0;">拖动移动整行（字段名+值一起移动）</div>';
     } else {
         const names = { title: '案例类型', year: '设计年份', user: '用户信息 @ID', project: '企划信息标签（组）' };
         const L = (_caseState.config.layout && _caseState.config.layout.texts) || {};
@@ -37766,9 +37787,16 @@ function caseHideTag(name) {
 function caseResetTag(name) {
     const st = _caseState; if (!st) return;
     const L = st.config.layout;
-    if (L && L.texts && L.texts.project) {
-        if (L.texts.project.itemFs) delete L.texts.project.itemFs[name];
-        if (L.texts.project.hidden) delete L.texts.project.hidden[name];
+    if (L && L.texts) {
+        const pr = L.texts.project;
+        if (pr) {
+            [name, 'row:' + name, 'pl:' + name].forEach(function (k) { if (pr.itemFs) delete pr.itemFs[k]; });
+            if (pr.hidden) delete pr.hidden[name];
+        }
+        // 旧版按元素存的位置/字号一并清理
+        delete L.texts['row:' + name];
+        delete L.texts['pl:' + name];
+        delete L.texts['pv:' + name];
     }
     caseSelectElement(null);
     renderCasePreview();
