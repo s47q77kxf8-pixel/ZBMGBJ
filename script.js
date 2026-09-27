@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0726';
+const APP_VERSION = '20260928-0735';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36774,7 +36774,8 @@ function caseNewState() {
         orderId: '', orderTitle: '',
         config: {
             ratio: '1:1', width: 1080, height: 1080,
-            bg: { type: 'color', color: '#f7f5f0' },
+            bg: { type: 'solid', color: '#f2f2f2', gradFrom: '#fafafa', gradTo: '#e5e5e5', imgId: '', imgHidden: false },
+            sizeLock: true,
             toggles: { title: true, year: true, userInfo: true, productInfo: true, customText: true },
             tagLayout: { mode: 'multi', align: 'right' },
             mockupId: 'shadow',
@@ -36794,6 +36795,11 @@ function caseNormalizeState(st) {
     const def = caseNewState();
     st.config = Object.assign({}, def.config, st.config || {});
     st.config.bg = Object.assign({}, def.config.bg, st.config.bg || {});
+    if (st.config.bg.type === 'color') st.config.bg.type = 'solid'; // 旧数据兼容
+    if (!st.config.bg.gradFrom) st.config.bg.gradFrom = def.config.bg.gradFrom;
+    if (!st.config.bg.gradTo) st.config.bg.gradTo = def.config.bg.gradTo;
+    st.config.bg.imgHidden = !!st.config.bg.imgHidden;
+    st.config.sizeLock = st.config.sizeLock !== false;
     st.config.toggles = Object.assign({}, def.config.toggles, st.config.toggles || {});
     st.config.tagLayout = Object.assign({ mode: 'multi', align: 'right', frame: false }, st.config.tagLayout || {});
     st.config.tagLayout.frame = !!st.config.tagLayout.frame;
@@ -37126,9 +37132,13 @@ function caseActiveMockup() {
 
 // ---------- 画布渲染 ----------
 function caseCanvasTextColor(bg) {
-    if (!bg || bg.type !== 'color' || !bg.color) return '#3a3a3a';
-    const hex = String(bg.color).replace('#', '');
-    if (hex.length < 6) return '#3a3a3a';
+    if (!bg) return '#3a3a3a';
+    if (bg.type === 'image' && bg.imgId && !bg.imgHidden) return '#f2f2f2';
+    let hex = '';
+    if (bg.type === 'gradient') hex = String(bg.gradTo || '#e5e5e5');
+    else hex = String(bg.color || '#f2f2f2');
+    hex = hex.replace('#', '');
+    if (hex.length !== 6) return '#3a3a3a';
     const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
     return lum >= 150 ? '#333333' : '#f2f2f2';
@@ -37566,7 +37576,12 @@ function buildCaseCanvasHtml(st, page) {
             });
         }
     }
-    const bgStyle = cfg.bg.type === 'color' ? (cfg.bg.color || '#ffffff') : 'transparent';
+    // 背景：纯色 / 两色斜角渐变 / 底图（隐藏时回退纯色）/ 透明
+    const bgc = cfg.bg;
+    let bgStyle = 'transparent';
+    if (bgc.type === 'solid' || bgc.type === 'color') bgStyle = (bgc.color || '#f2f2f2');
+    else if (bgc.type === 'gradient') bgStyle = 'linear-gradient(135deg,' + (bgc.gradFrom || '#fafafa') + ',' + (bgc.gradTo || '#e5e5e5') + ')';
+    else if (bgc.type === 'image' && bgc.imgId && bgc.imgHidden) bgStyle = (bgc.color || '#f2f2f2');
     let bgHtml = '';
     if (cfg.bg.type === 'image' && cfg.bg.imgId) {
         const bgc = _caseImgCache[cfg.bg.imgId];
@@ -38170,7 +38185,8 @@ function renderCaseForm() {
         + '<select id="caseOrderSelect" class="case-field-input" onchange="applyCaseOrder(this.value)">' + caseOrderOptionsHtml() + '</select>'
         + '<div class="case-form-hint">选择订单后自动带入 IP、角色与制品名；左上角案例类型可在下方自定义，不被订单标题覆盖</div>'
         + '</div>';
-    // 2 画布比例与尺寸
+    // 2 画布比例与尺寸（中间的锁：锁定=按比例等比修改，解锁=自由修改）
+    const sizeLocked = cfg.sizeLock !== false;
     html += '<div class="case-form-sec">'
         + '<label class="case-form-label">画布比例</label>'
         + '<div class="case-chips">'
@@ -38180,32 +38196,49 @@ function renderCaseForm() {
         + '</div>'
         + '<div class="case-size-row">'
         + '<input type="number" min="200" max="4000" value="' + cfg.width + '" onchange="setCaseSizeInput(\'w\', this.value)">'
-        + '<span class="case-size-x">×</span>'
+        + '<button type="button" class="case-size-lock' + (sizeLocked ? ' active' : '') + '" onclick="toggleCaseSizeLock()" title="' + (sizeLocked ? '已锁定比例（宽高联动）' : '未锁定（宽高自由修改）') + '">' + caseSizeLockSvg(sizeLocked) + '</button>'
         + '<input type="number" min="200" max="4000" value="' + cfg.height + '" onchange="setCaseSizeInput(\'h\', this.value)">'
         + '<span class="case-size-x">px</span>'
         + '</div>'
-        + '<div class="case-form-hint">比例指案例图整体宽高；制品图始终按原图比例等比缩放，不会被拉伸或裁切。手动改宽高会自动切为自定义比例。</div>'
+        + '<div class="case-form-hint">比例指案例图整体宽高；制品图始终按原图比例等比缩放，不会被拉伸或裁切。中间的锁：锁定=改一边另一边按比例联动，解锁=自由修改。</div>'
         + '</div>';
-    // 3 背景
+    // 3 背景：纯色（默认浅灰/深灰）、两色斜角渐变、底图（上传不丢失，可隐藏）
     html += '<div class="case-form-sec">'
         + '<label class="case-form-label">背景</label>'
-        + '<div class="case-swatch-row">';
-    CASE_BG_PRESETS.forEach(function (c) {
-        const active = cfg.bg.type === 'color' && String(cfg.bg.color || '').toLowerCase() === c.toLowerCase();
-        html += '<button type="button" class="case-swatch' + (active ? ' active' : '') + '" style="background:' + c + ';" onclick="setCaseBg(\'color\',\'' + c + '\')" title="' + c + '"></button>';
-    });
-    html += '<input type="color" class="case-color-input" value="' + (cfg.bg.type === 'color' ? escapeHtml(cfg.bg.color || '#ffffff') : '#ffffff') + '" onchange="setCaseBg(\'color\', this.value)" title="取色器">'
+        + '<div class="case-chips">'
+        + caseChipHtml('纯色', cfg.bg.type === 'solid' || cfg.bg.type === 'color', "setCaseBg('solid')")
+        + caseChipHtml('渐变', cfg.bg.type === 'gradient', "setCaseBg('gradient')")
+        + caseChipHtml('底图', cfg.bg.type === 'image', "setCaseBg('image')")
         + caseChipHtml('透明', cfg.bg.type === 'transparent', "setCaseBg('transparent')")
         + '</div>';
-    // 底图（预览背景图，随导出保存；可存入布局方案复用）
-    const bgImgCache = (cfg.bg.type === 'image' && cfg.bg.imgId) ? _caseImgCache[cfg.bg.imgId] : null;
+    if (cfg.bg.type === 'solid' || cfg.bg.type === 'color') {
+        html += '<div class="case-swatch-row">'
+            + '<button type="button" class="case-swatch' + (String(cfg.bg.color || '').toLowerCase() === '#f2f2f2' ? ' active' : '') + '" style="background:#f2f2f2;" onclick="setCaseBg(\'solid\',\'#f2f2f2\')" title="浅灰"></button>'
+            + '<button type="button" class="case-swatch' + (String(cfg.bg.color || '').toLowerCase() === '#3f3f46' ? ' active' : '') + '" style="background:#3f3f46;" onclick="setCaseBg(\'solid\',\'#3f3f46\')" title="深灰"></button>'
+            + '<input type="color" class="case-color-input" value="' + escapeHtml(cfg.bg.color || '#f2f2f2') + '" onchange="setCaseBg(\'solid\', this.value)" title="取色器">'
+            + '</div>';
+    } else if (cfg.bg.type === 'gradient') {
+        const gf = cfg.bg.gradFrom || '#fafafa', gt = cfg.bg.gradTo || '#e5e5e5';
+        html += '<div class="case-swatch-row" style="align-items:center;">'
+            + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">从</span>'
+            + '<input type="color" class="case-color-input" value="' + escapeHtml(gf) + '" onchange="setCaseGradColor(\'from\', this.value)" title="渐变起始色">'
+            + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">到</span>'
+            + '<input type="color" class="case-color-input" value="' + escapeHtml(gt) + '" onchange="setCaseGradColor(\'to\', this.value)" title="渐变结束色">'
+            + '<span style="width:34px;height:24px;border-radius:6px;border:1px solid var(--border-color,#ddd);background:linear-gradient(135deg,' + escapeHtml(gf) + ',' + escapeHtml(gt) + ');flex-shrink:0;" title="斜角渐变预览"></span>'
+            + '</div>'
+            + '<div class="case-form-hint" style="margin-top:6px;">两色斜角渐变（左上 → 右下）</div>';
+    }
+    // 底图（上传不丢失；可隐藏/显示，切到纯色/渐变时保留）
+    const bgImgCache = cfg.bg.imgId ? _caseImgCache[cfg.bg.imgId] : null;
+    const imgVisible = cfg.bg.type === 'image' && !cfg.bg.imgHidden;
     html += '<div style="display:flex;align-items:center;gap:10px;margin-top:10px;">'
-        + (bgImgCache ? '<img src="' + bgImgCache.dataUrl + '" style="width:44px;height:44px;object-fit:cover;border:1px solid var(--border-color,#ddd);border-radius:8px;">' : '')
+        + (bgImgCache ? '<img src="' + bgImgCache.dataUrl + '" style="width:44px;height:44px;object-fit:cover;border:1px solid var(--border-color,#ddd);border-radius:8px;' + (cfg.bg.type === 'image' && cfg.bg.imgHidden ? 'opacity:.4;' : '') + '">' : '')
         + '<button type="button" class="btn secondary btn-compact" onclick="document.getElementById(\'caseBgImageInput\').click()">上传底图</button>'
-        + (cfg.bg.type === 'image' ? '<button type="button" class="btn secondary btn-compact" onclick="caseClearBgImage()">清除底图</button>' : '')
+        + (bgImgCache ? '<button type="button" class="btn secondary btn-compact" onclick="toggleCaseBgImageHidden()">' + (imgVisible ? '隐藏底图' : '显示底图') + '</button>' : '')
+        + (bgImgCache ? '<button type="button" class="btn secondary btn-compact" onclick="caseClearBgImage()">清除底图</button>' : '')
         + '<input type="file" id="caseBgImageInput" accept="image/*" class="d-none">'
         + '</div>'
-        + '<div class="case-form-hint">底图等比铺满画布；开启预览区「调整布局」后，可把制品区和文字拖到底图对应位置，再保存为布局方案反复套用</div>'
+        + '<div class="case-form-hint">底图等比铺满画布，上传后不会丢失（切到纯色/渐变再切回来还在）；可临时隐藏。开启预览区「调整布局」后，可把制品区和文字拖到底图对应位置，再保存为布局方案反复套用</div>'
         + '</div>';
     // 4 案例内容（统一眼睛开关：👁 显示 / 🚫 隐藏，内容为空时同样不显示不占位）
     html += '<div class="case-form-sec">'
@@ -38410,6 +38443,11 @@ function renderCaseForm() {
     }
     html += '<div class="case-form-hint">水印绘制在画布最上层，随导出图一起保存；未开启或无内容时不占位</div>'
         + '</div>';
+    // 整体恢复默认（保留已上传的制品图与分组）
+    html += '<div class="case-form-sec" style="text-align:center;">'
+        + '<button type="button" class="btn secondary btn-compact" onclick="resetCaseDefaults()">↺ 整体恢复默认</button>'
+        + '<div class="case-form-hint" style="margin-top:6px;">将比例/背景/排版/文字内容等全部设置恢复为默认（已上传的制品图与分组保留）</div>'
+        + '</div>';
     area.innerHTML = html;
     // 上传控件：统一走 _caseUploadTarget 决定进入哪个制品组（-1=自由模式）
     const input = document.getElementById('caseImageInput');
@@ -38474,8 +38512,9 @@ async function caseHandleBgImageFile(file) {
 }
 function caseClearBgImage() {
     const st = _caseState; if (!st) return;
-    st.config.bg.type = 'color';
+    st.config.bg.type = 'solid';
     st.config.bg.imgId = '';
+    st.config.bg.imgHidden = false;
     renderCaseForm();
     renderCasePreview();
 }
@@ -38487,19 +38526,68 @@ function setCaseRatio(r) {
     else if (r === '3:4') { st.config.width = 1080; st.config.height = 1440; }
     renderCaseForm(); renderCasePreview();
 }
+// 画布尺寸比例锁：锁定=改一边另一边按当前宽高比联动
+function caseSizeLockSvg(locked) {
+    if (locked) return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>';
+    return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 4.8-1"/></svg>';
+}
+function toggleCaseSizeLock() {
+    const st = _caseState; if (!st) return;
+    st.config.sizeLock = st.config.sizeLock === false;
+    renderCaseForm();
+    showGlobalToast(st.config.sizeLock !== false ? '已锁定比例：宽高联动修改' : '已解锁：宽高自由修改');
+}
 function setCaseSizeInput(which, v) {
     const st = _caseState; if (!st) return;
     let n = parseInt(v, 10);
     if (!isFinite(n)) return;
     n = Math.min(4000, Math.max(200, n));
-    if (which === 'w') st.config.width = n; else st.config.height = n;
+    const locked = st.config.sizeLock !== false;
+    if (which === 'w') {
+        if (locked && st.config.width > 0) {
+            const h = Math.min(4000, Math.max(200, Math.round(n * st.config.height / st.config.width)));
+            st.config.height = h;
+        }
+        st.config.width = n;
+    } else {
+        if (locked && st.config.height > 0) {
+            const w = Math.min(4000, Math.max(200, Math.round(n * st.config.width / st.config.height)));
+            st.config.width = w;
+        }
+        st.config.height = n;
+    }
     st.config.ratio = 'custom';
     renderCaseForm(); renderCasePreview();
 }
 function setCaseBg(type, color) {
     const st = _caseState; if (!st) return;
+    // 切换背景模式：底图 id 保留（上传不丢失），可随时切回显示
     st.config.bg.type = type;
     if (color) st.config.bg.color = color;
+    if (type === 'image' && !st.config.bg.imgId) st.config.bg.imgHidden = false;
+    renderCaseForm(); renderCasePreview();
+}
+// 整体恢复默认：比例/背景/排版/文字内容等全部设置回到默认（制品图与分组保留）
+function resetCaseDefaults() {
+    const st = _caseState; if (!st) return;
+    if (!confirm('确定将整个案例恢复默认吗？\n比例、背景、排版、文字内容等设置会全部重置；已上传的制品图与分组会保留。')) return;
+    const def = caseNewState();
+    st.config = JSON.parse(JSON.stringify(def.config));
+    st.fields = JSON.parse(JSON.stringify(def.fields));
+    st._page = 0;
+    renderCaseForm(); renderCasePreview();
+    showGlobalToast('已恢复默认设置');
+}
+function setCaseGradColor(which, v) {
+    const st = _caseState; if (!st) return;
+    if (which === 'from') st.config.bg.gradFrom = String(v) || '#fafafa';
+    else st.config.bg.gradTo = String(v) || '#e5e5e5';
+    renderCasePreview();
+}
+function toggleCaseBgImageHidden() {
+    const st = _caseState; if (!st) return;
+    st.config.bg.imgHidden = !st.config.bg.imgHidden;
+    if (!st.config.bg.imgHidden) st.config.bg.type = 'image';
     renderCaseForm(); renderCasePreview();
 }
 function toggleCaseSection(key, on) {

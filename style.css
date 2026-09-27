@@ -14524,6 +14524,36 @@ html.theme-dark .inline-switch input:checked + .switch-track {
     color: var(--text-color, #222);
 }
 .case-size-x { color: var(--text-muted, #999); }
+/* 画布尺寸比例锁 */
+.case-size-lock {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 6px;
+    background: var(--card-bg, #fff);
+    color: var(--text-muted, #999);
+    cursor: pointer;
+    padding: 0;
+}
+.case-size-lock.active {
+    color: #3b82f6;
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.10);
+}
+html.theme-dark .case-size-lock {
+    background: #2f2f36;
+    border-color: #3f3f46;
+    color: #8b8b94;
+}
+html.theme-dark .case-size-lock.active {
+    color: #60a5fa;
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.20);
+}
 .case-toggle-row {
     display: flex;
     align-items: center;
