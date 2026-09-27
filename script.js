@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0645';
+const APP_VERSION = '20260928-0649';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -38156,15 +38156,15 @@ function renderCaseForm() {
     // 案例类型（左上角文案 + 设计年份）
     html += '<div class="case-tagfield-row' + (cfg.toggles.title ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'title\', ' + (!cfg.toggles.title) + ')" title="' + (cfg.toggles.title ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(!cfg.toggles.title) + '</button>'
-        + '<span class="case-tagfield-label">案例类型（左上角）</span>'
+        + '<span class="case-tagfield-label">案例类型</span>'
         + '</div>';
     if (cfg.toggles.title) {
-        html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.title || '')) + '" placeholder="案例类型（左上角，单行）" oninput="setCaseField(\'title\', this.value)">';
+        html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.title || '')) + '" placeholder="案例类型" oninput="setCaseField(\'title\', this.value)">';
     }
     // 设计年份（右上角，独立显示/隐藏）
     html += '<div class="case-tagfield-row' + (cfg.toggles.year !== false ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'year\', ' + (cfg.toggles.year === false) + ')" title="' + (cfg.toggles.year !== false ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(cfg.toggles.year === false) + '</button>'
-        + '<span class="case-tagfield-label">设计年份（右上角）</span>'
+        + '<span class="case-tagfield-label">设计年份</span>'
         + '</div>';
     if (cfg.toggles.year !== false) {
         html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.year || '')) + '" placeholder="设计年份（可留空）" oninput="setCaseField(\'year\', this.value)">';
@@ -38172,7 +38172,7 @@ function renderCaseForm() {
     // 用户信息（默认按「基础设置」用户ID 生成，可修改；留空不显示）
     html += '<div class="case-tagfield-row' + (cfg.toggles.userInfo ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'userInfo\', ' + (!cfg.toggles.userInfo) + ')" title="' + (cfg.toggles.userInfo ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(!cfg.toggles.userInfo) + '</button>'
-        + '<span class="case-tagfield-label">用户信息 @ID（左下角）</span>'
+        + '<span class="case-tagfield-label">用户信息 @ID</span>'
         + '</div>';
     if (cfg.toggles.userInfo) {
         html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.user || '')) + '" placeholder="用户信息，如 @yourid（可修改，留空不显示）" oninput="setCaseField(\'user\', this.value)">';
@@ -38180,7 +38180,7 @@ function renderCaseForm() {
     // 企划信息（组开关 + 各字段独立眼睛 + 自定义文字项）
     html += '<div class="case-tagfield-row' + (cfg.toggles.productInfo ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'productInfo\', ' + (!cfg.toggles.productInfo) + ')" title="' + (cfg.toggles.productInfo ? '点击隐藏整组' : '点击显示整组') + '">' + caseEyeSvg(!cfg.toggles.productInfo) + '</button>'
-        + '<span class="case-tagfield-label">企划信息（右下角标签）</span>'
+        + '<span class="case-tagfield-label">企划信息</span>'
         + '</div>';
     if (cfg.toggles.productInfo) {
         const roleCfg = caseCurrentRole();
