@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0635';
+const APP_VERSION = '20260928-0645';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37135,10 +37135,13 @@ function caseInfoLines(st) {
     if (!line) return [];
     return [line];
 }
-// 企划字段名可编辑（按案例覆盖；默认取「基础设置 → 身份与企划字段」的字段名）
+// 企划字段名可编辑（按案例覆盖；默认显示为「字段名：」带冒号，原作（IP）简写为「原作：」）
+const CASE_DEFAULT_LABELS = { '企划名': '企划名：', '原作（IP）': '原作：', '角色': '角色：', '制品': '制品：' };
 function caseFieldLabelText(st, name) {
     const cl = st && st.fields && st.fields.customLabels;
-    return String((cl && cl[name]) || name);
+    const ov = cl ? cl[name] : null;
+    if (ov != null && String(ov) !== '') return String(ov);
+    return CASE_DEFAULT_LABELS[name] || (String(name) + '：');
 }
 function caseSetFieldLabel(name, value) {
     const st = _caseState; if (!st) return;
@@ -37484,7 +37487,9 @@ function buildCaseCanvasHtml(st, page) {
         return Math.max(9, Math.round(tagFs * s));
     };
     const rowHtml = function (e) {
-        return (e.value != null) ? escapeHtml(e.label) + ' ' + escapeHtml(e.value) : escapeHtml(e.text);
+        if (e.value == null) return escapeHtml(e.text);
+        const sep = /[：:]$/.test(String(e.label)) ? '' : ' ';
+        return escapeHtml(e.label) + sep + escapeHtml(e.value);
     };
     if (projEls.length) {
         const flowEls = [];
@@ -38193,8 +38198,9 @@ function renderCaseForm() {
         });
         const prodHidden = !!projHidden['制品'];
         html += '<div class="case-tagfield-row case-tagfield-sub' + (prodHidden ? ' case-tagfield-hidden' : '') + '">'
-            + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'制品\')" title="' + (prodHidden ? '点击显示该标签' : '点击隐藏该标签') + '">' + caseEyeSvg(prodHidden) + '</button>'
-            + '<input type="text" class="case-field-input" value="' + escapeHtml(String(st.fields.products || '')) + '" placeholder="制品名" oninput="setCaseField(\'products\', this.value)">'
+            + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'制品\')" title="' + (prodHidden ? '点击显示该行' : '点击隐藏该行') + '">' + caseEyeSvg(prodHidden) + '</button>'
+            + '<input type="text" class="case-field-input case-ct-label" style="flex:0 0 32%;min-width:0;" value="' + escapeHtml(caseFieldLabelText(st, '制品')) + '" oninput="caseSetFieldLabel(\'制品\', this.value)" title="字段名（可改，显示在值前面）">'
+            + '<input type="text" class="case-field-input" style="flex:1;min-width:0;" value="' + escapeHtml(String(st.fields.products || '')) + '" placeholder="制品名，多个用、分隔" oninput="setCaseField(\'products\', this.value)">'
             + '</div>';
         html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；点眼睛图标可隐藏/显示单项；编辑模式下点选标签可单独拖动、调字号</div>';
     }
