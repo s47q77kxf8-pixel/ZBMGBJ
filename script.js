@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0712';
+const APP_VERSION = '20260928-0720';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36795,7 +36795,8 @@ function caseNormalizeState(st) {
     st.config = Object.assign({}, def.config, st.config || {});
     st.config.bg = Object.assign({}, def.config.bg, st.config.bg || {});
     st.config.toggles = Object.assign({}, def.config.toggles, st.config.toggles || {});
-    st.config.tagLayout = Object.assign({ mode: 'multi', align: 'right' }, st.config.tagLayout || {});
+    st.config.tagLayout = Object.assign({ mode: 'multi', align: 'right', frame: false }, st.config.tagLayout || {});
+    st.config.tagLayout.frame = !!st.config.tagLayout.frame;
     if (['left', 'center', 'right', 'justify'].indexOf(st.config.tagLayout.align) < 0) st.config.tagLayout.align = 'right';
     if (st.config.tagLayout.mode !== 'single') st.config.tagLayout.mode = 'multi';
     st.config.watermark = Object.assign({}, def.config.watermark, st.config.watermark || {});
@@ -37492,17 +37493,25 @@ function buildCaseCanvasHtml(st, page) {
         }
         return Math.max(9, Math.round(tagFs * s));
     };
-    const rowHtml = function (e) {
-        if (e.value == null) return escapeHtml(e.text);
-        const lab = String(e.label || ''), val = String(e.value || '');
-        if (!lab) return escapeHtml(val);
-        if (!val) return escapeHtml(lab);
-        const sep = /[：:]$/.test(lab) ? '' : ' ';
-        return escapeHtml(lab) + sep + escapeHtml(val);
-    };
     // 右下角企划信息：多行（每行=字段名+值一组，可左/中/右/两端对齐）或单行（合并一行，溢出自动缩小）
     const tagMode = (cfg.tagLayout && cfg.tagLayout.mode === 'single') ? 'single' : 'multi';
     const tagAlign = (cfg.tagLayout && ['left', 'center', 'right', 'justify'].indexOf(cfg.tagLayout.align) >= 0) ? cfg.tagLayout.align : 'right';
+    const tagFrame = !!(cfg.tagLayout && cfg.tagLayout.frame);
+    // 字段名与值之间的最小间距（不再用撑满剩余空间的 space-between，避免间距过大）
+    const cellGap = Math.max(6, Math.round(tagFs * 0.45));
+    const rowJustify = tagAlign === 'left' ? 'flex-start' : tagAlign === 'center' ? 'center' : 'flex-end';
+    // 底框：半透明底 + 圆角，始终压在制品上方（z-index 高于制品层）
+    const frameStyle = function (fs2) {
+        return tagFrame ? 'background:rgba(255,255,255,0.78);border-radius:' + Math.round(fs2 * 0.6) + 'px;padding:' + Math.round(fs2 * 0.28) + 'px ' + Math.round(fs2 * 0.55) + 'px;z-index:3;' : '';
+    };
+    // 每行：字段名 + 最小间距 + 值（单侧隐藏时只显示其一）
+    const rowCells = function (e) {
+        if (e.value == null) return '<span>' + escapeHtml(e.text) + '</span>';
+        const lab = String(e.label || ''), val = String(e.value || '');
+        if (!lab) return '<span>' + escapeHtml(val) + '</span>';
+        if (!val) return '<span>' + escapeHtml(lab) + '</span>';
+        return '<span>' + escapeHtml(lab) + '</span><span>' + escapeHtml(val) + '</span>';
+    };
     if (projEls.length) {
         if (tagMode === 'single') {
             // 单行：全部行合并为一行，超宽自动缩小字号；可整行拖动（project）
@@ -37514,9 +37523,9 @@ function buildCaseCanvasHtml(st, page) {
             let inner = '';
             projEls.forEach(function (e, i) {
                 if (i) inner += '<span style="display:inline-block;width:' + Math.max(8, Math.round(tagGap * 0.9)) + 'px;"></span>';
-                inner += '<span style="display:inline-block;">' + rowHtml(e) + '</span>';
+                inner += '<span style="display:inline-block;">' + rowCells(e) + '</span>';
             });
-            textHtml += '<div data-case-el="project" data-case-fit="' + baseFs + '" data-case-fit-min="' + Math.max(8, Math.round(baseFs * 0.4)) + '" style="position:absolute;' + pos + 'width:' + maxTagW + 'px;font-size:' + baseFs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;text-align:right;">' + inner + '</div>';
+            textHtml += '<div data-case-el="project" data-case-fit="' + baseFs + '" data-case-fit-min="' + Math.max(8, Math.round(baseFs * 0.4)) + '" style="position:absolute;' + pos + 'width:' + maxTagW + 'px;font-size:' + baseFs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;text-align:right;' + frameStyle(baseFs) + '">' + inner + '</div>';
         } else {
             const flowEls = [];
             const absEls = [];
@@ -37527,19 +37536,15 @@ function buildCaseCanvasHtml(st, page) {
                 let rowsHtml = '';
                 flowEls.forEach(function (e) {
                     const fs2 = rowFs(e);
-                    if (tagAlign === 'justify' && e.value != null) {
-                        // 两端对齐：字段名靠左、值靠右（同行撑开）
-                        rowsHtml += '<div data-case-el="' + e.key + '" style="display:flex;justify-content:space-between;align-items:baseline;font-size:' + fs2 + 'px;line-height:1.5;color:' + txtColor + ';white-space:nowrap;">'
-                            + '<span>' + escapeHtml(e.label) + '</span><span>' + escapeHtml(e.value) + '</span></div>';
-                    } else {
-                        rowsHtml += '<div data-case-el="' + e.key + '" style="font-size:' + fs2 + 'px;line-height:1.5;color:' + txtColor + ';white-space:nowrap;text-align:' + tagAlign + ';">' + rowHtml(e) + '</div>';
-                    }
+                    // 多行同样支持溢出自动缩小（data-case-fit → casePrepareCanvasEl）
+                    rowsHtml += '<div data-case-el="' + e.key + '" data-case-fit="' + fs2 + '" data-case-fit-min="' + Math.max(8, Math.round(fs2 * 0.4)) + '" style="display:flex;justify-content:' + rowJustify + ';align-items:baseline;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.45;color:' + txtColor + ';white-space:nowrap;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
                 });
-                textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + maxTagW + 'px;">' + rowsHtml + '</div>';
+                textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + maxTagW + 'px;z-index:3;">' + rowsHtml + '</div>';
             }
             absEls.forEach(function (e) {
                 const t = rowPos(e);
-                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;font-size:' + rowFs(e) + 'px;line-height:1.35;color:' + txtColor + ';white-space:nowrap;">' + rowHtml(e) + '</div>';
+                const fs2 = rowFs(e);
+                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;display:flex;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.35;color:' + txtColor + ';white-space:nowrap;z-index:3;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
             });
         }
     }
@@ -38225,7 +38230,8 @@ function renderCaseForm() {
         + tagIcon('left', tagAlign === 'left', "setCaseTagAlign('left')", '左对齐')
         + tagIcon('center', tagAlign === 'center', "setCaseTagAlign('center')", '居中')
         + tagIcon('right', tagAlign === 'right', "setCaseTagAlign('right')", '右对齐')
-        + tagIcon('justify', tagAlign === 'justify', "setCaseTagAlign('justify')", '两端对齐（字段名靠左、值靠右）')
+        + tagIcon('justify', tagAlign === 'justify', "setCaseTagAlign('justify')", '两端对齐（字段名与值按最小间距排布）')
+        + tagIcon('frame', !!(cfg.tagLayout && cfg.tagLayout.frame), "toggleCaseTagFrame()", '底框（企划信息加半透明底框，始终在制品上方）')
         + '</span>'
         + '</div>';
     if (cfg.toggles.productInfo) {
@@ -38623,7 +38629,16 @@ function setCaseTagMode(m) {
 function setCaseTagAlign(a) {
     const st = _caseState; if (!st) return;
     if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'right' };
+    // 对齐只在多行下生效：当前为单行时点对齐自动取消单行
+    st.config.tagLayout.mode = 'multi';
     st.config.tagLayout.align = ['left', 'center', 'right', 'justify'].indexOf(a) >= 0 ? a : 'right';
+    renderCaseForm(); renderCasePreview();
+}
+// 企划信息底框开关：加半透明底框，且整体始终压在制品上方
+function toggleCaseTagFrame(on) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'right' };
+    st.config.tagLayout.frame = on === undefined ? !st.config.tagLayout.frame : !!on;
     renderCaseForm(); renderCasePreview();
 }
 function caseTagIconSvg(kind) {
@@ -38635,6 +38650,8 @@ function caseTagIconSvg(kind) {
     if (kind === 'right') return '<svg ' + s + '><path d="M5 4h9M2 8h12M7 12h7"/></svg>';
     // 两端对齐：三行等长、撑满左右两端
     if (kind === 'justify') return '<svg ' + s + '><path d="M2 4h12M2 8h12M2 12h12"/></svg>';
+    // 底框：外框矩形
+    if (kind === 'frame') return '<svg ' + s + '><rect x="2" y="3" width="12" height="10" rx="2"/></svg>';
     return '';
 }
 function setCaseProjectField(name, value) {
