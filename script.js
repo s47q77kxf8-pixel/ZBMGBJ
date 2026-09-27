@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0720';
+const APP_VERSION = '20260928-0726';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37497,9 +37497,17 @@ function buildCaseCanvasHtml(st, page) {
     const tagMode = (cfg.tagLayout && cfg.tagLayout.mode === 'single') ? 'single' : 'multi';
     const tagAlign = (cfg.tagLayout && ['left', 'center', 'right', 'justify'].indexOf(cfg.tagLayout.align) >= 0) ? cfg.tagLayout.align : 'right';
     const tagFrame = !!(cfg.tagLayout && cfg.tagLayout.frame);
-    // 字段名与值之间的最小间距（不再用撑满剩余空间的 space-between，避免间距过大）
+    // 字段名与值之间的最小间距
     const cellGap = Math.max(6, Math.round(tagFs * 0.45));
     const rowJustify = tagAlign === 'left' ? 'flex-start' : tagAlign === 'center' ? 'center' : 'flex-end';
+    // 企划信息块宽度：按「最宽一行的内容宽 + 最小间距」自适应（不再铺满整个区域，避免两端间距过大）
+    const estW = function (s, fs2) {
+        let w = 0;
+        const str = String(s || '');
+        for (let k = 0; k < str.length; k++) w += str.charCodeAt(k) > 0x2e80 ? fs2 : fs2 * 0.55;
+        return w;
+    };
+    const framePadX = tagFrame ? Math.max(4, Math.round(tagFs * 0.55)) : 0;
     // 底框：半透明底 + 圆角，始终压在制品上方（z-index 高于制品层）
     const frameStyle = function (fs2) {
         return tagFrame ? 'background:rgba(255,255,255,0.78);border-radius:' + Math.round(fs2 * 0.6) + 'px;padding:' + Math.round(fs2 * 0.28) + 'px ' + Math.round(fs2 * 0.55) + 'px;z-index:3;' : '';
@@ -37533,13 +37541,23 @@ function buildCaseCanvasHtml(st, page) {
                 if (rowPos(e)) absEls.push(e); else flowEls.push(e);
             });
             if (flowEls.length) {
+                // 块宽 = 最宽一行（内容宽 + 最小间距），字段名贴左端、值贴右端，间距即为最小间距
+                let blockW = 0;
+                flowEls.forEach(function (e) {
+                    const fs2 = rowFs(e);
+                    const w = estW(e.label, fs2) + estW(e.value, fs2) + ((e.label && e.value) ? cellGap : 0);
+                    if (w > blockW) blockW = w;
+                });
+                blockW = Math.min(maxTagW, Math.max(90, Math.round(blockW) + framePadX * 2));
+                // 两端对齐：space-between（字段名靠左、值靠右）；其余按对齐方向排布
+                const jc = tagAlign === 'justify' ? 'space-between' : rowJustify;
                 let rowsHtml = '';
                 flowEls.forEach(function (e) {
                     const fs2 = rowFs(e);
                     // 多行同样支持溢出自动缩小（data-case-fit → casePrepareCanvasEl）
-                    rowsHtml += '<div data-case-el="' + e.key + '" data-case-fit="' + fs2 + '" data-case-fit-min="' + Math.max(8, Math.round(fs2 * 0.4)) + '" style="display:flex;justify-content:' + rowJustify + ';align-items:baseline;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.45;color:' + txtColor + ';white-space:nowrap;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
+                    rowsHtml += '<div data-case-el="' + e.key + '" data-case-fit="' + fs2 + '" data-case-fit-min="' + Math.max(8, Math.round(fs2 * 0.4)) + '" style="width:100%;display:flex;justify-content:' + jc + ';align-items:baseline;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.45;color:' + txtColor + ';white-space:nowrap;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
                 });
-                textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + maxTagW + 'px;z-index:3;">' + rowsHtml + '</div>';
+                textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + blockW + 'px;z-index:3;">' + rowsHtml + '</div>';
             }
             absEls.forEach(function (e) {
                 const t = rowPos(e);
