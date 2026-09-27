@@ -1011,6 +1011,8 @@ function showSettingsSubPage(pageName) {
             renderMarketingCards();
             // 桌面端默认展开右侧预览面板
             if (window.innerWidth >= 1000) toggleMcPreviewDrawer(true);
+        } else if (pageName === 'caseLibrary') {
+            renderCaseLibrary();
         }
     }
 }
@@ -2507,6 +2509,10 @@ function loadData() {
         }
         // 忽略列表：已跳过不再提示建档的历史角色
         loadRoleIgnored();
+        // 案例库：独立 key（仅本地，不参与云端同步）
+        loadCaseLibrary();
+        // 布局方案（预览排版预设）
+        loadCaseLayoutPresets();
         // 接单物料配置：独立 key
         const savedMarketingCards = localStorage.getItem('marketingCards');
         if (savedMarketingCards) {
@@ -19283,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260923-0056';
+const APP_VERSION = '20260928-0550';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -22786,6 +22792,11 @@ function scheduleTodoCardAction(action) {
     if (action === 'unlink_append') {
         closeScheduleTodoCardModal();
         unlinkAppendOrder(id);
+        return;
+    }
+    if (action === 'gen_case') {
+        closeScheduleTodoCardModal();
+        openCaseGenerator({ orderId: id });
         return;
     }
 
@@ -36230,4 +36241,2763 @@ function forceShowDevFeatures() {
     } catch (_) {
         // ignore
     }
+}
+
+
+// ==================================================================
+// ===== 案例生成与案例库 =====
+// ==================================================================
+// 概述：
+// - 从订单一键生成案例展示图，保存到本机案例库并关联订单（不参与云端同步）。
+// - 案例元数据存 localStorage 'caseLibrary'；图片本体（制品图/水印图/成品图/缩略图）
+//   存 IndexedDB 'mettonCaseDB'，IndexedDB 不可用时降级存 localStorage。
+// - 画布比例（1:1 / 3:4 / 自定义）指案例图整体宽高；制品 PNG 始终按原图比例
+//   等比缩放、居中，不拉伸、不裁切、保留透明。
+// - 预览与导出共用 buildCaseCanvasHtml()，保证所见即所得；切换配置纯 DOM 更新，
+//   实时生效，html2canvas 只在导出/保存时调用。
+
+let caseLibrary = [];
+let _caseState = null;
+const _caseImgCache = {};    // imgId -> { dataUrl, w, h }
+const _caseFxCache = {};     // key -> { url, bear }（制品装饰层预烘焙：投影/描边/扩张描边）
+let _caseDbPromise = null;
+let _caseViewId = null;
+let _caseViewPages = [];
+let _caseViewRender = null;
+let _caseViewPageIdx = 0;
+let _lastBuild = null;        // 最近一次画布构建（制品区盒/尺寸，编辑拖拽用）
+let _caseEditMode = false;    // 调整布局模式
+let _caseSelEl = null;        // 当前选中的文字元素
+let _casePreviewScale = 1;    // 预览缩放比例（拖拽位移折算用）
+function caseViewPagesOf(c) {
+    return (Array.isArray(c.pages) && c.pages.length) ? c.pages : [{ kind: 'total', label: '总图', exportImgId: c.exportImgId, exportThumbId: c.exportThumbId }];
+}
+function caseViewShowPage(i) {
+    if (_caseViewRender) _caseViewRender(i);
+}
+
+const CASE_BG_PRESETS = ['#ffffff', '#f7f5f0', '#f2efe9', '#fdf0f0', '#eef4fb', '#eefaf1', '#fff8e6', '#e8e4f6', '#2b2b2b', '#1d2430'];
+
+// ---------- IndexedDB 图片仓 ----------
+function caseDbOpen() {
+    if (!window.indexedDB) return Promise.resolve(null);
+    if (_caseDbPromise) return _caseDbPromise;
+    _caseDbPromise = new Promise(function (resolve) {
+        let settled = false;
+        const done = function (v) { if (!settled) { settled = true; resolve(v); } };
+        try {
+            const req = indexedDB.open('mettonCaseDB', 1);
+            req.onupgradeneeded = function (e) {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('images')) db.createObjectStore('images');
+            };
+            req.onsuccess = function (e) { done(e.target.result); };
+            req.onerror = function () { done(null); };
+            req.onblocked = function () { done(null); };
+            setTimeout(function () { done(null); }, 3000);
+        } catch (_) { done(null); }
+    });
+    return _caseDbPromise;
+}
+async function caseImgPut(id, dataUrl) {
+    if (!id) return;
+    const db = await caseDbOpen();
+    if (db) {
+        await new Promise(function (resolve) {
+            try {
+                const tx = db.transaction('images', 'readwrite');
+                tx.objectStore('images').put(dataUrl, id);
+                tx.oncomplete = resolve;
+                tx.onerror = resolve;
+                tx.onabort = resolve;
+            } catch (_) { resolve(); }
+        });
+        return;
+    }
+    try { localStorage.setItem('caseImg_' + id, dataUrl); }
+    catch (e) { console.error('案例图片保存失败(降级):', e); showGlobalToast('本地空间不足，图片可能未完整保存'); }
+}
+async function caseImgGet(id) {
+    if (!id) return null;
+    const db = await caseDbOpen();
+    if (db) {
+        const v = await new Promise(function (resolve) {
+            try {
+                const tx = db.transaction('images', 'readonly');
+                const rq = tx.objectStore('images').get(id);
+                rq.onsuccess = function () { resolve(rq.result || null); };
+                rq.onerror = function () { resolve(null); };
+            } catch (_) { resolve(null); }
+        });
+        if (v) return v;
+    }
+    try { return localStorage.getItem('caseImg_' + id); } catch (_) { return null; }
+}
+async function caseImgDelete(id) {
+    if (!id) return;
+    const db = await caseDbOpen();
+    if (db) {
+        await new Promise(function (resolve) {
+            try {
+                const tx = db.transaction('images', 'readwrite');
+                tx.objectStore('images').delete(id);
+                tx.oncomplete = resolve;
+                tx.onerror = resolve;
+            } catch (_) { resolve(); }
+        });
+    }
+    try { localStorage.removeItem('caseImg_' + id); } catch (_) {}
+}
+
+// ---------- 图片加载 / 压缩 / 投影烘焙 ----------
+function caseLoadImageEl(dataUrl) {
+    return new Promise(function (resolve, reject) {
+        const img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { reject(new Error('图片加载失败')); };
+        img.src = dataUrl;
+    });
+}
+function caseReadFileAsDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function () { resolve(String(reader.result || '')); };
+        reader.onerror = function () { reject(new Error('读取文件失败')); };
+        reader.readAsDataURL(file);
+    });
+}
+// 等比缩到最大边 maxEdge；mime 指定输出格式（浏览器不支持 webp 时上层需检测前缀回退）
+async function caseCompressDataUrl(dataUrl, maxEdge, mime, quality) {
+    const img = await caseLoadImageEl(dataUrl);
+    const ow = img.naturalWidth || 1, oh = img.naturalHeight || 1;
+    const s = Math.min(1, maxEdge / Math.max(ow, oh));
+    const w = Math.max(1, Math.round(ow * s)), h = Math.max(1, Math.round(oh * s));
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    return cv.toDataURL(mime, quality);
+}
+async function caseCompressCanvas(canvas, maxEdge, mime, quality) {
+    const s = Math.min(1, maxEdge / Math.max(canvas.width, canvas.height));
+    if (s >= 1 && mime !== 'image/jpeg') return canvas.toDataURL(mime, quality);
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(canvas.width * s));
+    cv.height = Math.max(1, Math.round(canvas.height * s));
+    const ctx = cv.getContext('2d');
+    if (mime === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    ctx.drawImage(canvas, 0, 0, cv.width, cv.height);
+    return cv.toDataURL(mime, quality);
+}
+// 制品图上传压缩：最大边 1600 保透明（优先 webp，回退 png）；jpeg 用 jpeg
+// 裁掉图片四周的透明边：让制品间距视觉一致（保留约 1% 余量防裁伤抗锯齿边缘）
+// 非透明图 / 已贴合图原样返回
+function caseTrimTransparent(dataUrl) {
+    return new Promise(function (resolve) {
+        const img = new Image();
+        img.onload = function () {
+            try {
+                const w = img.naturalWidth, h = img.naturalHeight;
+                const cv = document.createElement('canvas');
+                cv.width = w; cv.height = h;
+                const ctx = cv.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const data = ctx.getImageData(0, 0, w, h).data;
+                let minX = w, minY = h, maxX = -1, maxY = -1;
+                for (let yy = 0; yy < h; yy++) {
+                    for (let xx = 0; xx < w; xx++) {
+                        if (data[(yy * w + xx) * 4 + 3] > 8) {
+                            if (xx < minX) minX = xx;
+                            if (xx > maxX) maxX = xx;
+                            if (yy < minY) minY = yy;
+                            if (yy > maxY) maxY = yy;
+                        }
+                    }
+                }
+                // 无内容 / 无透明边（已贴合）→ 原样返回
+                if (maxX < 0 || (minX === 0 && minY === 0 && maxX === w - 1 && maxY === h - 1)) { resolve(dataUrl); return; }
+                const pad = Math.max(2, Math.round(Math.max(w, h) * 0.01));
+                const sx = Math.max(0, minX - pad), sy = Math.max(0, minY - pad);
+                const sw = Math.min(w - sx, maxX - minX + 1 + pad * 2), sh = Math.min(h - sy, maxY - minY + 1 + pad * 2);
+                const out = document.createElement('canvas');
+                out.width = sw; out.height = sh;
+                out.getContext('2d').drawImage(cv, sx, sy, sw, sh, 0, 0, sw, sh);
+                resolve(out.toDataURL('image/png'));
+            } catch (e) { resolve(dataUrl); }
+        };
+        img.onerror = function () { resolve(dataUrl); };
+        img.src = dataUrl;
+    });
+}
+async function caseCompressUploadData(dataUrl, srcType) {
+    const keepAlpha = /png|webp/i.test(srcType || '');
+    let out;
+    if (keepAlpha) {
+        out = await caseCompressDataUrl(dataUrl, 1600, 'image/webp', 0.9);
+        if (!out || out.indexOf('data:image/webp') !== 0) out = await caseCompressDataUrl(dataUrl, 1600, 'image/png');
+    } else {
+        out = await caseCompressDataUrl(dataUrl, 1600, 'image/jpeg', 0.88);
+    }
+    if (out && out.length > 1600 * 1024) {
+        out = await caseCompressDataUrl(dataUrl, 1000, keepAlpha ? 'image/webp' : 'image/jpeg', 0.82);
+        if (keepAlpha && out && out.indexOf('data:image/webp') !== 0) out = await caseCompressDataUrl(dataUrl, 1000, 'image/png');
+    }
+    return out;
+}
+// 制品装饰层预烘焙（轮廓投影 / 描边 / 扩张描边）：全部 canvas 生成，保证预览与导出一致
+// html2canvas 不支持 CSS filter 与描边运算，预烘焙才能得到随透明轮廓的效果
+// 有效参数：单品设置覆盖模板默认（shadow 未显式设置时跟随样机模板）
+function caseEffectiveFx(st, imgId) {
+    const fx = (st.config.imgFx && st.config.imgFx[imgId]) || {};
+    const useShadow = fx.shadow != null ? !!fx.shadow : caseActiveMockup().shadow;
+    const strokeW = Math.min(0.12, Math.max(0, Number(fx.strokeW) || 0));
+    const expandW = Math.min(0.2, Math.max(0, Number(fx.expandW) || 0));
+    const strokeColor = String(fx.strokeColor || '#ffffff');
+    const expandColor = String(fx.expandColor || '#ffffff');
+    const expandAcrylic = !!fx.expandAcrylic;
+    return {
+        shadow: useShadow, strokeW: strokeW, strokeColor: strokeColor, expandW: expandW, expandColor: expandColor, expandAcrylic: expandAcrylic,
+        enabled: useShadow || strokeW > 0 || expandW > 0,
+        key: imgId + '|' + (useShadow ? 1 : 0) + '|' + strokeW + '|' + strokeColor + '|' + expandW + '|' + expandColor + '|' + (expandAcrylic ? 1 : 0)
+    };
+}
+// hex → rgba（亚克力半透明填充用）
+function caseHexToRgba(hex, alpha) {
+    const h = String(hex || '#ffffff').replace('#', '');
+    if (h.length < 6) return 'rgba(255,255,255,' + alpha + ')';
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+// 彩色剪影：图片 → 单色形状（用于膨胀出描边）
+function caseSilhouette(img, w, h, color) {
+    const s = document.createElement('canvas');
+    s.width = w; s.height = h;
+    const sx = s.getContext('2d');
+    sx.drawImage(img, 0, 0, w, h);
+    sx.globalCompositeOperation = 'source-in';
+    sx.fillStyle = color;
+    sx.fillRect(0, 0, w, h);
+    return s;
+}
+// 膨胀：把剪影沿圆周多点偏移绘制，得到向外扩 r 像素的形状
+function caseDilate(ctx, src, ox, oy, r) {
+    const steps = Math.max(12, Math.min(28, Math.round(r / 2)));
+    for (let i = 0; i < steps; i++) {
+        const a = (i / steps) * Math.PI * 2;
+        ctx.drawImage(src, ox + Math.cos(a) * r, oy + Math.sin(a) * r);
+    }
+    ctx.drawImage(src, ox, oy);
+}
+async function caseBakeFx(imgId) {
+    const st = _caseState; if (!st) return null;
+    const fx = caseEffectiveFx(st, imgId);
+    if (!fx.enabled) return null;
+    if (_caseFxCache[fx.key]) return _caseFxCache[fx.key];
+    const c = _caseImgCache[imgId];
+    if (!c) return null;
+    try {
+        const img = await caseLoadImageEl(c.dataUrl);
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return null;
+        const maxEdge = Math.max(w, h);
+        const strokeR = Math.round(maxEdge * fx.strokeW);
+        const expandR = Math.round(maxEdge * fx.expandW);
+        const blur = Math.round(maxEdge * 0.045);
+        const bear = strokeR + expandR + blur + 10;
+        const cv = document.createElement('canvas');
+        cv.width = w + bear * 2; cv.height = h + bear * 2;
+        const ctx = cv.getContext('2d');
+        const ox = bear, oy = bear;
+        // ① 轮廓投影（最底层）
+        if (fx.shadow) {
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.38)';
+            ctx.shadowBlur = blur;
+            ctx.shadowOffsetY = Math.round(maxEdge * 0.015);
+            ctx.drawImage(img, ox, oy, w, h);
+            ctx.restore();
+        }
+        // ② 扩张描边（最外圈：普通=实色环；亚克力=半透明磨砂环）
+        if (expandR > 0) {
+            if (fx.expandAcrylic) {
+                const outerR = strokeR + expandR;
+                const black = caseSilhouette(img, w, h, '#000');
+                // 外扩环形状（去掉描边与本体）
+                const ring = document.createElement('canvas');
+                ring.width = cv.width; ring.height = cv.height;
+                const rctx = ring.getContext('2d');
+                caseDilate(rctx, caseSilhouette(img, w, h, '#000'), ox, oy, outerR);
+                rctx.globalCompositeOperation = 'destination-out';
+                if (strokeR > 0) caseDilate(rctx, black, ox, oy, strokeR);
+                rctx.drawImage(img, ox, oy, w, h);
+                // 半透明乳白填充（可调色调）
+                rctx.globalCompositeOperation = 'source-in';
+                rctx.fillStyle = caseHexToRgba(fx.expandColor, 0.45);
+                rctx.fillRect(0, 0, ring.width, ring.height);
+                ctx.drawImage(ring, 0, 0);
+            } else {
+                caseDilate(ctx, caseSilhouette(img, w, h, fx.expandColor), ox, oy, strokeR + expandR);
+                ctx.save();
+                ctx.globalCompositeOperation = 'destination-out';
+                if (strokeR > 0) caseDilate(ctx, caseSilhouette(img, w, h, '#000'), ox, oy, strokeR);
+                ctx.drawImage(img, ox, oy, w, h);
+                ctx.restore();
+            }
+        }
+        // ③ 描边（贴边色环）
+        if (strokeR > 0) {
+            caseDilate(ctx, caseSilhouette(img, w, h, fx.strokeColor), ox, oy, strokeR);
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.drawImage(img, ox, oy, w, h);
+            ctx.restore();
+        }
+        // 抠掉本体：只留装饰（制品本体由渲染层绘制在最上）
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.drawImage(img, ox, oy, w, h);
+        ctx.restore();
+        // 亚克力高光覆盖层（绘制在制品图之上：薄雾 + 斜向高光带，模拟亚克力板反光）
+        let overUrl = null;
+        if (fx.expandAcrylic && expandR > 0) {
+            const outerR2 = strokeR + expandR;
+            const ov = document.createElement('canvas');
+            ov.width = cv.width; ov.height = cv.height;
+            const octx = ov.getContext('2d');
+            caseDilate(octx, caseSilhouette(img, w, h, '#000'), ox, oy, outerR2);
+            octx.globalCompositeOperation = 'source-atop';
+            // 奶白薄雾盖在图案上，模拟亚克力印刷的通透感
+            octx.fillStyle = 'rgba(255,255,255,0.10)';
+            octx.fillRect(0, 0, ov.width, ov.height);
+            // 斜向高光带 × 2
+            const band1 = Math.round((ov.width + ov.height) * 0.09);
+            const g1 = octx.createLinearGradient(0, -band1, 0, band1);
+            g1.addColorStop(0, 'rgba(255,255,255,0)');
+            g1.addColorStop(0.5, 'rgba(255,255,255,0.30)');
+            g1.addColorStop(1, 'rgba(255,255,255,0)');
+            octx.save();
+            octx.translate(ov.width / 2, ov.height / 2);
+            octx.rotate(-Math.PI / 5);
+            octx.fillStyle = g1;
+            octx.fillRect(-ov.width, -band1 / 2, ov.width * 2, band1);
+            const band2 = Math.round(band1 * 0.4);
+            const g2 = octx.createLinearGradient(0, band1 * 1.6 - band2, 0, band1 * 1.6 + band2);
+            g2.addColorStop(0, 'rgba(255,255,255,0)');
+            g2.addColorStop(0.5, 'rgba(255,255,255,0.20)');
+            g2.addColorStop(1, 'rgba(255,255,255,0)');
+            octx.fillStyle = g2;
+            octx.fillRect(-ov.width, band1 * 1.6 - band2 / 2, ov.width * 2, band2);
+            octx.restore();
+            overUrl = ov.toDataURL('image/png');
+        }
+        const rec = { url: cv.toDataURL('image/png'), bear: bear, overUrl: overUrl };
+        _caseFxCache[fx.key] = rec;
+        return rec;
+    } catch (e) { console.error('制品装饰层烘焙失败:', e); return null; }
+}
+async function caseEnsureImagesLoaded(imgIds) {
+    let changed = false;
+    for (const id of (imgIds || [])) {
+        if (!id || _caseImgCache[id]) continue;
+        const dataUrl = await caseImgGet(id);
+        if (!dataUrl) continue;
+        try {
+            const img = await caseLoadImageEl(dataUrl);
+            _caseImgCache[id] = { dataUrl: dataUrl, w: img.naturalWidth || 1, h: img.naturalHeight || 1 };
+            changed = true;
+        } catch (_) {}
+    }
+    return changed;
+}
+async function caseEnsureShadows(imgIds) {
+    let changed = false;
+    for (const id of (imgIds || [])) {
+        if (!id || !_caseImgCache[id]) continue;
+        const fx = caseEffectiveFx(_caseState, id);
+        if (!fx.enabled || _caseFxCache[fx.key]) continue;
+        const r = await caseBakeFx(id);
+        if (r) changed = true;
+    }
+    return changed;
+}
+
+// ---------- 数据层 ----------
+// 案例类型首行（画廊标题/导出文件名用；类型支持两行自定义）
+function caseDisplayType(st) {
+    const t = String((st && st.fields && st.fields.title) || '').trim();
+    const first = t.split('\n').map(function (s) { return s.trim(); }).filter(Boolean)[0];
+    return first || '未命名案例';
+}
+// 自由布局结构清洗（百分比坐标，非法值丢弃；全空返回 null = 自动排版）
+function caseNormalizeLayout(layout) {
+    if (!layout || typeof layout !== 'object') return null;
+    const pct = function (v) {
+        const n = Number(v);
+        return isFinite(n) ? Math.min(1.5, Math.max(-0.5, Math.round(n * 10000) / 10000)) : null;
+    };
+    const out = { productArea: null, productAreaGroup: null, items: null, texts: null };
+    if (layout.productArea && typeof layout.productArea === 'object') {
+        const a = { x: pct(layout.productArea.x), y: pct(layout.productArea.y), w: pct(layout.productArea.w), h: pct(layout.productArea.h) };
+        if (a.x != null && a.y != null && a.w != null && a.h != null && a.w > 0 && a.h > 0) out.productArea = a;
+    }
+    // 分图制品区（分图页独立设置，一键按总图百分比缩放）
+    if (layout.productAreaGroup && typeof layout.productAreaGroup === 'object') {
+        const a = { x: pct(layout.productAreaGroup.x), y: pct(layout.productAreaGroup.y), w: pct(layout.productAreaGroup.w), h: pct(layout.productAreaGroup.h) };
+        if (a.x != null && a.y != null && a.w != null && a.h != null && a.w > 0 && a.h > 0) out.productAreaGroup = a;
+    }
+    if (layout.items && typeof layout.items === 'object') {
+        const items = {};
+        Object.keys(layout.items).forEach(function (k) {
+            const b = layout.items[k];
+            if (!b || typeof b !== 'object') return;
+            let rec = null;
+            if (b.cx != null && b.cy != null) {
+                // 位置自由布局（中心点）；缩放/旋转按图片存储于 imgFx
+                rec = { cx: pct(b.cx), cy: pct(b.cy) };
+            } else if (b.x != null && b.y != null && b.w != null && b.h != null) {
+                // 旧格式（盒）迁移为中心点
+                rec = { cx: pct(b.x + b.w / 2), cy: pct(b.y + b.h / 2) };
+            }
+            if (rec && rec.cx != null && rec.cy != null) items[k] = rec;
+        });
+        if (Object.keys(items).length) out.items = items;
+    }
+    if (layout.texts && typeof layout.texts === 'object') {
+        const texts = {};
+        ['title', 'year', 'user', 'project'].forEach(function (key) {
+            const t = layout.texts[key];
+            if (!t || typeof t !== 'object') return;
+            const rec = { x: pct(t.x), y: pct(t.y), fsScale: Math.min(2.5, Math.max(0.4, Number(t.fsScale) || 1)) };
+            // 企划信息组：允许未拖动位置（x/y 为空）但保留了单标签隐藏/字号
+            if (key === 'project') {
+                if (t.hidden && typeof t.hidden === 'object') {
+                    const hd = {};
+                    Object.keys(t.hidden).forEach(function (k) { if (k && t.hidden[k]) hd[k] = true; });
+                    if (Object.keys(hd).length) rec.hidden = hd;
+                }
+                if (t.itemFs && typeof t.itemFs === 'object') {
+                    const ifs = {};
+                    Object.keys(t.itemFs).forEach(function (k) {
+                        if (!k) return;
+                        const n = Number(t.itemFs[k]);
+                        if (isFinite(n) && n > 0) ifs[k] = Math.min(2.5, Math.max(0.4, n));
+                    });
+                    if (Object.keys(ifs).length) rec.itemFs = ifs;
+                }
+                if (rec.x == null || rec.y == null) {
+                    // 未自定义位置：仅保留 hidden/itemFs（渲染时位置走默认）
+                    if (rec.hidden || rec.itemFs) texts[key] = rec;
+                    return;
+                }
+                texts[key] = rec;
+                return;
+            }
+            if (rec.x == null || rec.y == null) return;
+            texts[key] = rec;
+        });
+        if (Object.keys(texts).length) out.texts = texts;
+    }
+    return (out.productArea || out.productAreaGroup || out.items || out.texts) ? out : null;
+}
+// ===== 布局方案（localStorage 'caseLayoutPresets'，保存整体布局+底图，跨案例套用） =====
+let _caseLayoutPresets = [];
+function loadCaseLayoutPresets() {
+    try {
+        _caseLayoutPresets = JSON.parse(localStorage.getItem('caseLayoutPresets') || '[]');
+        if (!Array.isArray(_caseLayoutPresets)) _caseLayoutPresets = [];
+    } catch (e) { _caseLayoutPresets = []; }
+    return _caseLayoutPresets;
+}
+function saveCaseLayoutPresets() {
+    try { localStorage.setItem('caseLayoutPresets', JSON.stringify(_caseLayoutPresets)); }
+    catch (e) { console.error('布局方案保存失败:', e); showGlobalToast('布局方案保存失败（本地存储空间不足）'); }
+}
+function saveCaseLayoutPreset() {
+    const st = _caseState; if (!st) return;
+    const nameInput = document.getElementById('caseLayoutPresetName');
+    const name = String((nameInput && nameInput.value) || '').trim() || ('方案 ' + (_caseLayoutPresets.length + 1));
+    _caseLayoutPresets.unshift({
+        id: 'lp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        name: name,
+        bg: JSON.parse(JSON.stringify(st.config.bg || {})),
+        layout: st.config.layout ? JSON.parse(JSON.stringify(st.config.layout)) : null,
+        createdAt: new Date().toISOString()
+    });
+    saveCaseLayoutPresets();
+    if (nameInput) nameInput.value = '';
+    renderCaseForm();
+    showGlobalToast('布局方案「' + name + '」已保存');
+}
+function applyCaseLayoutPreset(id) {
+    const st = _caseState; if (!st) return;
+    const p = _caseLayoutPresets.find(function (x) { return x && x.id === id; });
+    if (!p) return;
+    st.config.layout = p.layout ? caseNormalizeLayout(JSON.parse(JSON.stringify(p.layout))) : null;
+    st.config.bg = JSON.parse(JSON.stringify(p.bg || { type: 'color', color: '#ffffff' }));
+    renderCaseForm();
+    renderCasePreview();
+    if (st.config.bg && st.config.bg.type === 'image' && st.config.bg.imgId) {
+        caseEnsureImagesLoaded([st.config.bg.imgId]).then(function (changed) {
+            if (changed && _caseState) renderCasePreview();
+        });
+    }
+    showGlobalToast('已应用布局方案「' + p.name + '」');
+}
+function deleteCaseLayoutPreset(id) {
+    if (!confirm('删除该布局方案？')) return;
+    _caseLayoutPresets = _caseLayoutPresets.filter(function (x) { return x && x.id !== id; });
+    saveCaseLayoutPresets();
+    renderCaseForm();
+}
+function loadCaseLibrary() {
+    try {
+        const raw = localStorage.getItem('caseLibrary');
+        caseLibrary = raw ? (JSON.parse(raw) || []) : [];
+        if (!Array.isArray(caseLibrary)) caseLibrary = [];
+    } catch (e) {
+        console.error('加载案例库失败:', e);
+        caseLibrary = [];
+    }
+    return caseLibrary;
+}
+function saveCaseLibrary() {
+    try { localStorage.setItem('caseLibrary', JSON.stringify(caseLibrary)); }
+    catch (e) {
+        console.error('保存案例库失败:', e);
+        showGlobalToast('案例库保存失败（本地存储空间不足）');
+    }
+}
+function caseNewState() {
+    const artist = (defaultSettings && defaultSettings.artistInfo) || {};
+    const name = artist.id || '';
+    return {
+        id: null,
+        orderId: '', orderTitle: '',
+        config: {
+            ratio: '1:1', width: 1080, height: 1080,
+            bg: { type: 'color', color: '#f7f5f0' },
+            toggles: { title: true, userInfo: true, productInfo: true, customText: true },
+            mockupId: 'shadow',
+            mockupScale: 1,
+            textScale: 1,
+            layout: null,
+            watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1 }
+        },
+        fields: { title: 'Preview', year: String(new Date().getFullYear()), projectName: '', ip: '', character: '', products: '', custom: {}, customTexts: [] },
+        images: [],
+        groups: [],
+        exportImgId: '', exportThumbId: '', exportFormat: 'png',
+        createdAt: null, updatedAt: null
+    };
+}
+function caseNormalizeState(st) {
+    const def = caseNewState();
+    st.config = Object.assign({}, def.config, st.config || {});
+    st.config.bg = Object.assign({}, def.config.bg, st.config.bg || {});
+    st.config.toggles = Object.assign({}, def.config.toggles, st.config.toggles || {});
+    st.config.watermark = Object.assign({}, def.config.watermark, st.config.watermark || {});
+    st.fields = Object.assign({}, def.fields, st.fields || {});
+    if (!st.fields.custom || typeof st.fields.custom !== 'object') st.fields.custom = {};
+    if (!Array.isArray(st.fields.customTexts)) st.fields.customTexts = [];
+    if (!st.fields.customLabels || typeof st.fields.customLabels !== 'object') st.fields.customLabels = {};
+    st.fields.customTexts = st.fields.customTexts.filter(function (it) { return it && it.id; }).map(function (it) {
+        it.parent = it.parent || 'project';
+        return it;
+    });
+    st.images = Array.isArray(st.images) ? st.images : [];
+    st.groups = Array.isArray(st.groups) ? st.groups.filter(function (g) { return g && g.label; }) : [];
+    st.pages = Array.isArray(st.pages) ? st.pages : [];
+    st.config.width = Math.min(4000, Math.max(200, parseInt(st.config.width, 10) || 1080));
+    st.config.height = Math.min(4000, Math.max(200, parseInt(st.config.height, 10) || 1080));
+    st.config.mockupScale = Math.min(1, Math.max(0.4, Number(st.config.mockupScale) || 1));
+    st.config.textScale = Math.min(1.8, Math.max(0.6, Number(st.config.textScale) || 1));
+    st.config.layout = caseNormalizeLayout(st.config.layout);
+    // 单品装饰/变换清洗
+    if (!st.config.imgFx || typeof st.config.imgFx !== 'object') st.config.imgFx = {};
+    const fxIn = st.config.imgFx, fxOut = {};
+    Object.keys(fxIn).forEach(function (k) {
+        const f = fxIn[k];
+        if (!f || typeof f !== 'object') return;
+        const o = {};
+        if (f.shadow === true || f.shadow === false) o.shadow = f.shadow;
+        if (f.scale != null) o.scale = Math.min(2.5, Math.max(0.3, Number(f.scale) || 1));
+        if (f.rot != null) o.rot = Math.min(180, Math.max(-180, Number(f.rot) || 0));
+        if (f.strokeW != null) o.strokeW = Math.min(0.1, Math.max(0, Number(f.strokeW) || 0));
+        if (f.expandW != null) o.expandW = Math.min(0.15, Math.max(0, Number(f.expandW) || 0));
+        if (f.strokeColor) o.strokeColor = String(f.strokeColor);
+        if (f.expandColor) o.expandColor = String(f.expandColor);
+        if (f.expandAcrylic === true) o.expandAcrylic = true;
+        if (Object.keys(o).length) fxOut[k] = o;
+    });
+    st.config.imgFx = fxOut;
+    st.orderId = st.orderId || '';
+    st.orderTitle = st.orderTitle || '';
+    st.exportImgId = st.exportImgId || '';
+    st.exportThumbId = st.exportThumbId || '';
+    st.exportFormat = st.exportFormat || 'png';
+    return st;
+}
+function caseRecordFromState(st) {
+    return {
+        id: st.id, orderId: st.orderId || '', orderTitle: st.orderTitle || '',
+        config: JSON.parse(JSON.stringify(st.config)),
+        fields: JSON.parse(JSON.stringify(st.fields)),
+        images: (st.images || []).slice(),
+        groups: JSON.parse(JSON.stringify(st.groups || [])),
+        pages: Array.isArray(st.pages) ? JSON.parse(JSON.stringify(st.pages)) : [],
+        exportImgId: st.exportImgId || '', exportThumbId: st.exportThumbId || '', exportFormat: st.exportFormat || 'png',
+        createdAt: st.createdAt || null, updatedAt: st.updatedAt || null
+    };
+}
+
+// ---------- 订单带入 ----------
+function caseOrderOptionsHtml() {
+    const st = _caseState;
+    let html = '<option value="">不关联订单</option>';
+    (history || []).forEach(function (o) {
+        if (!o) return;
+        const t = String(o.projectName || '').trim() || '（无标题订单）';
+        const d = o.timestamp ? String(o.timestamp).slice(0, 10) : '';
+        const sel = st && st.orderId != null && String(st.orderId) === String(o.id) ? ' selected' : '';
+        html += '<option value="' + escapeHtml(String(o.id)) + '"' + sel + '>' + escapeHtml(t + (d ? '（' + d + '）' : '')) + '</option>';
+    });
+    return html;
+}
+// 制品名解析：真实订单存 pp.product（制品名）/pp.productId/pp.quantity；兼容旧的 pp.type
+function caseProductLabel(pp) {
+    if (!pp) return '';
+    const ps = (productSettings || []).find(function (p) { return p && String(p.id) === String(pp.productId != null ? pp.productId : pp.type); });
+    return String(pp.product || (ps && ps.name) || '').trim() || String(pp.moduleName || '').trim() || '';
+}
+function caseProductsTextFromOrder(order) {
+    const names = [];
+    const push = function (pp, gift) {
+        const name = caseProductLabel(pp);
+        if (!name) return;
+        const label = name + (gift ? '（赠）' : '');
+        if (names.indexOf(label) < 0) names.push(label);
+    };
+    (order.productPrices || []).forEach(function (pp) { push(pp, false); });
+    (order.giftPrices || []).forEach(function (pp) { push(pp, true); });
+    return names.join('、');
+}
+// 按订单制品自动分组（相同制品合并为一组，count 累加数量）
+function caseBuildGroupsFromOrder(order) {
+    const groups = [];
+    (order.productPrices || []).forEach(function (pp) {
+        const label = caseProductLabel(pp);
+        if (!label) return;
+        const qty = Math.max(1, parseInt(pp.quantity, 10) || 1);
+        const g = groups.find(function (x) { return x.label === label; });
+        if (g) g.count += qty;
+        else groups.push({ label: label, count: qty, images: [] });
+    });
+    return groups;
+}
+async function applyCaseOrder(orderId) {
+    const st = _caseState;
+    if (!st) return;
+    if (!orderId) { st.orderId = ''; st.orderTitle = ''; st.groups = []; st._page = 0; renderCaseForm(); return; }
+    const order = (history || []).find(function (o) { return o && String(o.id) === String(orderId); });
+    if (!order) { showGlobalToast('未找到该订单'); return; }
+    st.orderId = order.id;
+    st.orderTitle = String(order.projectName || '').trim();
+    // 自动带入企划信息与制品信息；案例类型保持当前值（左上角两行文案，用户可自定义，不由订单标题覆盖）
+    st.fields.projectName = String(order.projectName || '').trim();
+    st.fields.ip = String(order.projectOrigin || '').trim();
+    st.fields.character = String(order.characterName || '').trim();
+    st.fields.products = caseProductsTextFromOrder(order);
+    // 订单的自定义企划字段（客户表单收集的），供企划信息标签按字段名取值
+    st.fields.custom = (function () {
+        const cpf = {};
+        Object.keys(order.customProjectFields || {}).forEach(function (k) {
+            const v = order.customProjectFields[k];
+            if (v != null && String(v).trim()) cpf[k] = String(v);
+        });
+        return cpf;
+    })();
+    // 按订单制品自动分组（相同制品合并）；已上传未归组的图收入第一组
+    const prevUploads = (st.images || []).slice();
+    st.groups = caseBuildGroupsFromOrder(order);
+    if (prevUploads.length && st.groups.length) {
+        st.groups[0].images = prevUploads.slice();
+        st.images = prevUploads.slice();
+    }
+    // 读取该订单此前上传过的制品图（取最近一条案例），按制品名对号入组
+    let adopted = false;
+    if (st.images.length === 0) {
+        const prev = caseLibrary
+            .filter(function (c) { return c && c.orderId != null && String(c.orderId) === String(orderId) && c.images && c.images.length; })
+            .sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
+        if (prev) {
+            adopted = true;
+            const taken = {};
+            if (Array.isArray(prev.groups) && prev.groups.length) {
+                prev.groups.forEach(function (pg) {
+                    const g = st.groups.find(function (ng) { return ng.label === pg.label; }) || st.groups[0];
+                    if (!g) return;
+                    (pg.images || []).forEach(function (id) {
+                        if (taken[id]) return;
+                        taken[id] = 1;
+                        g.images.push(id);
+                        st.images.push(id);
+                    });
+                });
+            } else {
+                (prev.images || []).forEach(function (id) {
+                    if (taken[id]) return;
+                    taken[id] = 1;
+                    if (st.groups[0]) st.groups[0].images.push(id);
+                    st.images.push(id);
+                });
+            }
+        }
+    }
+    st._page = 0;
+    renderCaseForm();
+    renderCasePreview();
+    await caseEnsureImagesLoaded(st.images.slice());
+    if (_caseState && caseActiveMockup().shadow) await caseEnsureShadows(_caseState.images.slice());
+    if (_caseState) renderCasePreview();
+    showGlobalToast(adopted ? '已按制品分组带入此前上传的制品图' : '已按订单制品分组，可分别上传各制品图');
+}
+
+// ---------- 样机模板 ----------
+// 自动制品区（未显式设置时）：按标题/底部文字占位计算
+function caseAutoAreaBox(st) {
+    const W = st.config.width, H = st.config.height;
+    const cfg = st.config;
+    const pad = Math.round(W * 0.055);
+    const tScale = Math.min(1.8, Math.max(0.6, Number(cfg.textScale) || 1));
+    const titleText = (cfg.toggles.title ? (st.fields.title || '') : '').trim();
+    const infoArr = cfg.toggles.userInfo ? caseInfoLines(st) : [];
+    const prodParts = cfg.toggles.productInfo ? caseProjectElements(st, null) : [];
+    const titleFs = Math.round(W * 0.032 * tScale);
+    const titleLh = Math.round(titleFs * 1.35);
+    const titleZoneH = titleText ? titleLh * 2 : 0;
+    const infoFs = Math.round(W * 0.018 * tScale);
+    const infoLh = Math.round(infoFs * 1.7);
+    const tagFs = Math.round(W * 0.017 * tScale);
+    const tagH = Math.round(tagFs * 2.1);
+    const tagGap = Math.round(W * 0.012);
+    const maxTagW = Math.round((W - pad * 2) * 0.62);
+    let tagRows = 0;
+    if (prodParts.length) {
+        const projHidden = caseTagHiddenMap(st);
+        const projItemFs = caseTagFsMap(st);
+        let rowW = 0;
+        tagRows = 1;
+        prodParts.forEach(function (t) {
+            if (projHidden[t.name]) return;
+            const ifs = tagFs * (projItemFs[t.name] || 1);
+            const w = t.text.length * ifs * 0.62 + ifs * 1.2;
+            if (rowW + w > maxTagW && rowW > 0) { tagRows++; rowW = w; }
+            else rowW += (rowW > 0 ? tagGap : 0) + w;
+        });
+    }
+    const infoH = infoArr.length ? infoLh : 0;
+    const tagZoneH = tagRows ? tagRows * tagH + (tagRows - 1) * tagGap : 0;
+    const bottomZoneH = Math.max(infoH, tagZoneH);
+    const gapY = Math.round(W * 0.025);
+    const topUsed = titleZoneH ? titleZoneH + gapY : 0;
+    const bottomUsed = bottomZoneH ? bottomZoneH + gapY : 0;
+    return {
+        x: pad,
+        y: pad + topUsed,
+        w: W - pad * 2,
+        h: Math.max(Math.round(H * 0.18), H - pad * 2 - topUsed - bottomUsed)
+    };
+}
+// 默认排版：按制品实际尺寸等比缩放 + 行装箱紧密排列（小间距、行内/整体居中、不超制品区）
+// 制品之间的相对大小保持上传原图的比例关系；模板只控制装饰风格，不再决定拼贴方式
+function casePackSlots(imgs, area, blocks) {
+    const slots = new Array(imgs ? imgs.length : 0);
+    const n = imgs ? imgs.length : 0;
+    if (n <= 0) return slots;
+    const gap = Math.max(10, Math.round(Math.min(area.w, area.h) * 0.04));
+    // 布局宽高比：有效宽高比钳制 0.25~4（仅防极端图拖垮排版；槽位严格等于图片比例，无 letterbox）
+    const aspects = [];
+    for (let i = 0; i < n; i++) {
+        const a = caseItemEffectiveAspect(imgs[i]);
+        aspects.push(Math.min(4, Math.max(0.25, a)));
+    }
+    // 单元划分：总图多分组 → 每组一个单元（组内不拆行）；其余 → 全部合成一个单元
+    const units = [];
+    if (blocks && blocks.length > 1) {
+        const placed = {};
+        blocks.forEach(function (idxs) {
+            const u = [];
+            (idxs || []).forEach(function (i) { if (i >= 0 && i < n && !placed[i]) { placed[i] = 1; u.push(i); } });
+            if (u.length) units.push(u);
+        });
+        const unplaced = [];
+        for (let i = 0; i < n; i++) if (!placed[i]) unplaced.push(i);
+        if (unplaced.length) units.push(unplaced);
+    } else {
+        const all = [];
+        for (let i = 0; i < n; i++) all.push(i);
+        units.push(all);
+    }
+    // 单元内布局：尝试列数 1..m，取「单元格最大」者
+    // （自动覆盖：4 方图→2×2、4 窄票→一排、5→3/2、11 椭圆→4/4/3）
+    function unitLayout(idxs, maxH) {
+        const m = idxs.length;
+        const avgA = idxs.reduce(function (acc, i) { return acc + aspects[i]; }, 0) / m;
+        let best = null;
+        for (let c = 1; c <= m; c++) {
+            const rows = Math.ceil(m / c);
+            const kH = (maxH - (rows - 1) * gap) / rows;
+            const kW = (area.w - (c - 1) * gap) / (c * avgA);
+            const k = Math.min(kH, kW);
+            if (k <= 0) continue;
+            if (!best || k > best.k) best = { c: c, rows: rows, k: k };
+        }
+        return best;
+    }
+    // 各单元铺满制品区宽后堆叠（多单元时总高超限整体等比缩小）；垂直居中；每行居中
+    function layoutAll(maxH) {
+        const unitLays = units.map(function (idxs) {
+            const best = unitLayout(idxs, maxH);
+            const rowImgGroups = [];
+            let p = 0;
+            for (let r = 0; r < best.rows; r++) {
+                const cnt = Math.min(best.c, idxs.length - p);
+                rowImgGroups.push(idxs.slice(p, p + cnt));
+                p += cnt;
+            }
+            const rowWs = rowImgGroups.map(function (g) {
+                return g.reduce(function (acc, i, j) { return acc + best.k * aspects[i] + (j ? gap : 0); }, 0);
+            });
+            const w = Math.max.apply(null, rowWs);
+            const h = best.rows * Math.round(best.k) + (best.rows - 1) * gap;
+            return { idxs: idxs, rowImgGroups: rowImgGroups, rowWs: rowWs, w: w, h: h, k: best.k };
+        });
+        const rawH = unitLays.reduce(function (acc, ul) { return acc + ul.h + gap; }, -gap);
+        const g2 = Math.min(1, maxH / Math.max(1, rawH));
+        const out = new Array(n);
+        let y = area.y + Math.max(0, Math.round((maxH - rawH * g2) / 2));
+        unitLays.forEach(function (ul) {
+            const uw = ul.w * g2, uh = ul.h * g2, kk = ul.k * g2, cg = Math.max(4, gap * g2);
+            const ux = area.x + Math.round((area.w - uw) / 2);
+            ul.rowImgGroups.forEach(function (g, ri) {
+                const rw = ul.rowWs[ri] * g2;
+                let x = ux + Math.round((uw - rw) / 2);
+                g.forEach(function (i, j) {
+                    const w = Math.max(12, Math.round(kk * aspects[i]));
+                    out[i] = { x: x, y: y + ri * (Math.round(kk) + cg), w: w, h: Math.max(12, Math.round(kk)) };
+                    x += w + cg;
+                });
+            });
+            y += uh + cg;
+        });
+        return { slots: out, height: rawH * g2 };
+    }
+    return layoutAll(area.h).slots;
+}
+// 图片有效宽高比：±90° 旋转的宽高互换（排版按旋转后的占位计算，才能与另一面等大）
+function caseItemEffectiveAspect(imgId) {
+    const c = _caseImgCache[imgId];
+    let a = c && c.w && c.h ? c.w / c.h : 1;
+    const f = _caseState && _caseState.config.imgFx && _caseState.config.imgFx[imgId];
+    const rot = Math.round(Number(f && f.rot) || 0);
+    if (((rot % 180) + 180) % 180 === 90) a = 1 / a;
+    return a;
+}
+const CASE_MOCKUPS = [
+    {
+        id: 'plain', name: '无装饰', mat: 'none', shadow: false,
+        desc: '制品图紧密排列，不加装饰',
+        diagram: '<div class="case-md-rect" style="left:16%;top:26%;width:38%;height:30%;"></div><div class="case-md-rect" style="left:58%;top:42%;width:28%;height:30%;"></div>'
+    },
+    {
+        id: 'shadow', name: '实物投影', mat: 'none', shadow: true,
+        desc: '按制品透明轮廓生成落影，模拟实物',
+        diagram: '<div class="case-md-round" style="left:22%;top:22%;width:44%;height:44%;"></div><div class="case-md-round" style="left:52%;top:42%;width:30%;height:30%;opacity:.85;"></div>'
+    }
+];
+function caseActiveMockup() {
+    const id = _caseState && _caseState.config && _caseState.config.mockupId;
+    return CASE_MOCKUPS.find(function (m) { return m.id === id; }) || CASE_MOCKUPS[0];
+}
+
+// ---------- 画布渲染 ----------
+function caseCanvasTextColor(bg) {
+    if (!bg || bg.type !== 'color' || !bg.color) return '#3a3a3a';
+    const hex = String(bg.color).replace('#', '');
+    if (hex.length < 6) return '#3a3a3a';
+    const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    return lum >= 150 ? '#333333' : '#f2f2f2';
+}
+// 用户信息：直接取「基础设置」中的用户ID，显示为 @ID（通用，不带身份前缀）
+function caseInfoLines(st) {
+    const artist = (typeof defaultSettings !== 'undefined' && defaultSettings && defaultSettings.artistInfo) || {};
+    const name = String(artist.id || '').trim();
+    if (!name) return [];
+    return ['@' + name];
+}
+// 企划字段名可编辑（按案例覆盖；默认取「基础设置 → 身份与企划字段」的字段名）
+function caseFieldLabelText(st, name) {
+    const cl = st && st.fields && st.fields.customLabels;
+    return String((cl && cl[name]) || name);
+}
+function caseSetFieldLabel(name, value) {
+    const st = _caseState; if (!st) return;
+    if (!st.fields.customLabels) st.fields.customLabels = {};
+    st.fields.customLabels[name] = value;
+    renderCasePreview();
+}
+// 当前身份（基础设置 → 身份与企划字段）
+function caseCurrentRole() {
+    const role = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.role) || '美工';
+    return (defaultSettings.roles || []).find(function (r) { return r && r.name === role; }) || null;
+}
+// 企划字段取值/赋值：内置字段名与小票一致（企划名/原作（IP）/角色），其余为自定义字段
+function caseProjectFieldValue(st, name) {
+    const f = st.fields || {};
+    if (name === '企划名') return f.projectName || '';
+    if (name === '原作（IP）') return f.ip || '';
+    if (name === '角色') return f.character || '';
+    return (f.custom && f.custom[name]) || '';
+}
+function caseSetProjectFieldValue(st, name, value) {
+    if (!st.fields) st.fields = {};
+    if (name === '企划名') { st.fields.projectName = value; return; }
+    if (name === '原作（IP）') { st.fields.ip = value; return; }
+    if (name === '角色') { st.fields.character = value; return; }
+    if (!st.fields.custom || typeof st.fields.custom !== 'object') st.fields.custom = {};
+    st.fields.custom[name] = value;
+}
+// 企划信息标签：按「基础设置 → 身份与企划字段」的配置顺序生成；末尾固定显示制品（制品页=该制品）
+// 返回 [{name, text}]，name 用于单标签隐藏/字号控制
+// 企划信息元素：按「基础设置 → 身份与企划字段」的配置顺序生成
+// 每个字段拆成「字段名」+「值」两个独立文字元素（可分别拖动/单独调字号）；无胶囊底
+// 返回 [{ key, text }]，key = 'pl:字段名'（字段名元素）/ 'pv:字段名'（值元素）
+function caseProjectElements(st, page) {
+    const els = [];
+    const hidden = caseTagHiddenMap(st);
+    const role = caseCurrentRole();
+    const flds = (role && role.fields && role.fields.length) ? role.fields : [{ name: '企划名' }, { name: '原作（IP）' }, { name: '角色' }];
+    flds.forEach(function (f) {
+        const name = (f && f.name) || '';
+        if (!name || hidden[name]) return;
+        const val = String(caseProjectFieldValue(st, name) || '').trim();
+        if (!val) return;
+        els.push({ key: 'pl:' + name, text: caseFieldLabelText(st, name) });
+        els.push({ key: 'pv:' + name, text: val });
+    });
+    let pd = String((st.fields && st.fields.products) || '').trim();
+    if (page && page.kind === 'group' && page.label) pd = page.label;
+    if (!hidden['制品'] && pd) {
+        els.push({ key: 'pl:制品', text: caseFieldLabelText(st, '制品') });
+        els.push({ key: 'pv:制品', text: pd });
+    }
+    // 自定义文字（隶属企划信息的）
+    (st.fields.customTexts || []).forEach(function (it) {
+        if (!it || it.parent !== 'project') return;
+        const txt = String(it.text || '').trim();
+        if (!txt || hidden[it.id]) return;
+        els.push({ key: 'ct:' + it.id, text: txt });
+    });
+    return els;
+}
+// 企划标签的隐藏/单标签字号映射（存于 layout.texts.project，随布局方案保存）
+function caseTagHiddenMap(st) {
+    const L = st && st.config && st.config.layout;
+    return (L && L.texts && L.texts.project && L.texts.project.hidden) || {};
+}
+function caseTagFsMap(st) {
+    const L = st && st.config && st.config.layout;
+    return (L && L.texts && L.texts.project && L.texts.project.itemFs) || {};
+}
+// 页面列表：1 张总图 + 每种制品 1 张（相同制品合并）；未关联订单仅总图
+function casePages(st) {
+    const pages = [];
+    const all = (st.images || []).slice();
+    const hasGroups = !!(st.groups && st.groups.length);
+    if (all.length || !hasGroups) pages.push({ kind: 'total', label: '总图', images: all });
+    (st.groups || []).forEach(function (g) {
+        if (!g.images || !g.images.length) return;
+        if (!st.orderId && st.groups.length === 1) return;
+        pages.push({ kind: 'group', label: g.label, images: g.images.slice() });
+    });
+    if (!pages.length) pages.push({ kind: 'total', label: '总图', images: [] });
+    return pages;
+}
+function caseCurrentPage(st) {
+    const pages = casePages(st);
+    let idx = parseInt(st && st._page, 10) || 0;
+    if (idx < 0 || idx >= pages.length) idx = 0;
+    return pages[idx];
+}
+function caseWatermarkHtml(st, W, H, color) {
+    const wm = st.config.watermark;
+    if (!wm || !wm.enabled) return '';
+    const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
+    let unitInner = '', unitW = 0, unitH = 0;
+    if (wm.type === 'image') {
+        const c = _caseImgCache[wm.imgId];
+        if (!c) return '';
+        const h = Math.round(W * 0.075 * scale);
+        const w = Math.max(1, Math.round(h * (c.w / c.h)));
+        unitInner = '<img src="' + c.dataUrl + '" style="width:' + w + 'px;height:' + h + 'px;">';
+        unitW = w; unitH = h;
+    } else {
+        const text = String(wm.text || '').trim();
+        if (!text) return '';
+        const fs = Math.round(W * 0.022 * scale);
+        unitInner = '<span class="case-wm-unit" style="font-size:' + fs + 'px;color:' + color + ';">' + escapeHtml(text) + '</span>';
+        unitW = Math.round(text.length * fs * 0.62 + fs * 0.4);
+        unitH = Math.round(fs * 1.5);
+    }
+    const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
+    if (wm.position === 'tile') {
+        const gapX = Math.round(unitW * 1.1), gapY = Math.round(unitH * 1.3);
+        const diag = Math.ceil(Math.sqrt(W * W + H * H));
+        const coverW = diag + unitW * 2, coverH = diag + unitH * 2;
+        const cols = Math.ceil(coverW / (unitW + gapX)) + 1;
+        const rows = Math.ceil(coverH / (unitH + gapY)) + 1;
+        if (cols * rows > 900) return ''; // 极端尺寸保护
+        let cells = '';
+        for (let r = 0; r < rows; r++) {
+            for (let cIdx = 0; cIdx < cols; cIdx++) {
+                cells += '<span style="display:inline-block;margin:' + Math.round(gapY / 2) + 'px ' + Math.round(gapX / 2) + 'px;">' + unitInner + '</span>';
+            }
+        }
+        return '<div class="case-watermark" style="opacity:' + opacity + ';">'
+            + '<div class="case-wm-tile" style="left:' + Math.round((W - coverW) / 2) + 'px;top:' + Math.round((H - coverH) / 2) + 'px;width:' + coverW + 'px;height:' + coverH + 'px;">' + cells + '</div>'
+            + '</div>';
+    }
+    const m = Math.round(W * 0.045);
+    let pos = '';
+    if (wm.position === 'tl') pos = 'left:' + m + 'px;top:' + m + 'px;';
+    else if (wm.position === 'tr') pos = 'right:' + m + 'px;top:' + m + 'px;';
+    else if (wm.position === 'bl') pos = 'left:' + m + 'px;bottom:' + m + 'px;';
+    else if (wm.position === 'br') pos = 'right:' + m + 'px;bottom:' + m + 'px;';
+    else pos = 'left:50%;top:50%;transform:translate(-50%,-50%);';
+    return '<div class="case-watermark" style="opacity:' + opacity + ';"><div style="position:absolute;' + pos + ';">' + unitInner + '</div></div>';
+}
+function buildCaseCanvasHtml(st, page) {
+    const W = st.config.width, H = st.config.height;
+    const cfg = st.config;
+    const pad = Math.round(W * 0.055);
+    const txtColor = caseCanvasTextColor(cfg.bg);
+    const layout = cfg.layout || null;
+    const tLayout = layout ? (layout.texts || {}) : {};
+    const titleText = (cfg.toggles.title ? (st.fields.title || '') : '').trim();
+    const titleTextOn = !!cfg.toggles.title && !!titleText;
+    const infoOn = !!cfg.toggles.userInfo;
+    const infoArr = infoOn ? caseInfoLines(st) : [];
+    const prodOn = !!cfg.toggles.productInfo;
+    // 当前页的制品图列表（总图=全部；制品页=该组的图）
+    const pageImages = (page && page.images) ? page.images : (st.images || []);
+    // 文字整体大小（可调，100% = 推荐基准）
+    const tScale = Math.min(1.8, Math.max(0.6, Number(cfg.textScale) || 1));
+    const titleFs = Math.round(W * 0.032 * tScale);
+    const titleLh = Math.round(titleFs * 1.35);
+    const infoFs = Math.round(W * 0.018 * tScale);
+    const infoLh = Math.round(infoFs * 1.7);
+    const tagFs = Math.round(W * 0.013 * tScale);
+    const tagLh = Math.round(tagFs * 1.75);
+    const tagGap = Math.round(W * 0.012);
+    const maxTagW = Math.round((W - pad * 2) * 0.7);
+    // 元素字号（每个元素可在调整布局模式单独缩放）
+    const elFs = function (key, base) {
+        const t = tLayout[key];
+        return Math.max(9, Math.round(base * (t && t.fsScale ? t.fsScale : 1)));
+    };
+    const hasPos = function (key) {
+        const t = tLayout[key];
+        return !!(t && t.x != null && t.y != null);
+    };
+    // 自定义文字按父级归类
+    const ctList = (st.fields.customTexts || []);
+    const ctHidden = caseTagHiddenMap(st);
+    const ctOf = function (parent) {
+        if (cfg.toggles.customText === false) return []; // 自定义文字总开关
+        return ctList.filter(function (it) {
+            return it && (it.parent || 'project') === parent && String(it.text || '').trim() && !ctHidden[it.id];
+        });
+    };
+    const titleCts = ctOf('title');
+    const userCts = ctOf('user');
+    const rootCts = ctOf('root');
+    const projEls = prodOn ? caseProjectElements(st, page) : [];
+    // ---------- 区域占位估算 ----------
+    const titleLineCount = titleText ? titleText.split('\n').length : 0;
+    const titleZoneH = titleTextOn && titleLineCount ? titleLineCount * titleLh + titleCts.length * Math.round(tagLh * 1.15) : 0;
+    let tagTotalW = 0;
+    projEls.forEach(function (e) { tagTotalW += e.text.length * tagFs * 0.62 + tagFs * 1.2 + tagGap; });
+    const tagRows = projEls.length ? Math.max(1, Math.ceil(tagTotalW / maxTagW)) : 0;
+    const tagZoneH = tagRows ? tagRows * tagLh + (tagRows - 1) * Math.round(tagGap * 0.6) : 0;
+    const userStackH = (infoOn && infoArr.length ? infoLh : 0) + userCts.length * Math.round(tagLh * 1.15) + rootCts.length * Math.round(tagLh * 1.15);
+    const bottomZoneH = Math.max(userStackH, tagZoneH);
+    const gapY = Math.round(W * 0.025);
+    const topUsed = titleZoneH ? titleZoneH + gapY : 0;
+    const bottomUsed = bottomZoneH ? bottomZoneH + gapY : 0;
+    // 制品区：分图默认 = 总图制品区 × 分图百分比（数值可调）；有独立显式区域则用之；否则自动
+    const isGroupPage = !!(page && page.kind === 'group');
+    let area;
+    if (isGroupPage && layout && layout.productAreaGroup) {
+        const a = layout.productAreaGroup;
+        area = { x: Math.round(a.x * W), y: Math.round(a.y * H), w: Math.round(a.w * W), h: Math.round(a.h * H) };
+    } else if (isGroupPage) {
+        const basePct = caseTotalAreaPercent(st);
+        const cw = basePct.w * 0.8, chh = basePct.h * 0.8;
+        area = { x: Math.round((basePct.x + basePct.w / 2 - cw / 2) * W), y: Math.round((basePct.y + basePct.h / 2 - chh / 2) * H), w: Math.round(cw * W), h: Math.round(chh * H) };
+    } else if (layout && layout.productArea) {
+        const a = layout.productArea;
+        area = { x: Math.round(a.x * W), y: Math.round(a.y * H), w: Math.round(a.w * W), h: Math.round(a.h * H) };
+    } else {
+        area = { x: pad, y: pad + topUsed, w: W - pad * 2, h: Math.max(Math.round(H * 0.18), H - pad * 2 - topUsed - bottomUsed) };
+        const msf = Math.min(1, Math.max(0.4, Number(cfg.mockupScale) || 1));
+        if (msf < 1) {
+            const nw = Math.round(area.w * msf), nh = Math.round(area.h * msf);
+            area = { x: area.x + Math.round((area.w - nw) / 2), y: area.y + Math.round((area.h - nh) / 2), w: nw, h: nh };
+        }
+    }
+    const mockup = caseActiveMockup();
+    // 总图：同组制品作为一个网格单元参与装箱（同组不拆行）；分图页单单元
+    let packBlocks = null;
+    if (!isGroupPage && st.groups && st.groups.length) {
+        packBlocks = [];
+        const placed = {};
+        st.groups.forEach(function (g) {
+            const idxs = [];
+            (g.images || []).forEach(function (id) {
+                const i = pageImages.indexOf(id);
+                if (i >= 0 && !placed[i]) { placed[i] = 1; idxs.push(i); }
+            });
+            if (idxs.length) packBlocks.push(idxs);
+        });
+        pageImages.forEach(function (id, i) { if (!placed[i]) packBlocks.push([i]); });
+    }
+    const slots = casePackSlots(pageImages, area, isGroupPage ? null : packBlocks);
+    // 记录本次构建的制品区、槽位与文字块区域（编辑拖拽/换父级判定使用）
+    const userStackH2 = (infoOn && infoArr.length ? infoLh : 0) + userCts.length * Math.round(tagLh * 1.15) + rootCts.length * Math.round(tagLh * 1.15);
+    const tagZoneH2 = tagRows ? tagRows * tagLh + (tagRows - 1) * Math.round(tagGap * 0.6) : tagLh;
+    _lastBuild = {
+        area: { x: area.x, y: area.y, w: area.w, h: area.h }, W: W, H: H, slots: slots,
+        zones: {
+            title: { x: pad, y: pad, w: W - pad * 2, h: Math.max(titleZoneH, Math.round(tagLh * 1.2)) },
+            user: { x: pad, y: H - pad - userStackH2, w: Math.round(W * 0.55), h: Math.max(userStackH2, Math.round(tagLh * 1.2)) },
+            project: { x: W - pad - maxTagW, y: H - pad - tagZoneH2, w: maxTagW, h: Math.max(tagZoneH2, Math.round(tagLh * 1.2)) }
+        }
+    }
+    // ---------- 制品层 ----------
+    let productsHtml = '';
+    for (let i = 0; i < pageImages.length; i++) {
+        const imgId = pageImages[i];
+        const slot = slots[i] || { x: area.x, y: area.y, w: area.w, h: area.h };
+        let slotRot = 0;
+        const ifx = (st.config.imgFx && st.config.imgFx[imgId]) || {};
+        const sc = Math.min(2.5, Math.max(0.3, Number(ifx.scale) || 1));
+        slotRot = Math.min(180, Math.max(-180, Number(ifx.rot) || 0));
+        const cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2;
+        const bw = Math.min(Math.max(Math.round(slot.w * sc), 24), area.w);
+        const bh = Math.min(Math.max(Math.round(slot.h * sc), 24), area.h);
+        const bx = Math.min(Math.max(Math.round(cx - bw / 2), area.x), area.x + area.w - bw);
+        const by = Math.min(Math.max(Math.round(cy - bh / 2), area.y), area.y + area.h - bh);
+        const drawSlot = { x: bx, y: by, w: bw, h: bh };
+        const c = _caseImgCache[imgId];
+        // 槽位框即旋转后的可视占位（不旋转）；制品图以 100% 铺满槽位、整体随 ifx.rot 旋转
+        const rotCss = slotRot ? 'transform:rotate(' + slotRot + 'deg);' : '';
+        const layer = function (src, cls) {
+            return '<img ' + (cls ? 'class="' + cls + '" ' : '') + 'src="' + src + '" style="position:absolute;left:0;top:0;width:100%;height:100%;' + rotCss + '">';
+        };
+        let inner = '';
+        if (!c) {
+            inner = '<div class="case-slot-loading" style="left:0;top:0;width:100%;height:100%;">…</div>';
+        } else {
+            const fxCfg = caseEffectiveFx(st, imgId);
+            if (fxCfg.enabled) {
+                const sh = _caseFxCache[fxCfg.key];
+                if (sh && sh.url) inner += layer(sh.url);
+                inner += layer(c.dataUrl, 'case-item-img');
+                if (sh && sh.overUrl) inner += layer(sh.overUrl);
+            } else {
+                inner += layer(c.dataUrl, 'case-item-img');
+            }
+        }
+        let slotStyle = 'left:' + drawSlot.x + 'px;top:' + drawSlot.y + 'px;width:' + drawSlot.w + 'px;height:' + drawSlot.h + 'px;';
+        productsHtml += '<div class="case-slot" data-slot-index="' + i + '" style="' + slotStyle + '">' + inner + '</div>';
+    }
+    // ---------- 文字元素（全部独立：可拖动、可单独调字号；未自定义位置的按默认流式排布） ----------
+    const elStyle = function (key, base, defPos) {
+        const t = tLayout[key];
+        const fs = elFs(key, base);
+        const pos = (t && t.x != null && t.y != null) ? 'left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;' : defPos;
+        return { fs: fs, pos: pos };
+    };
+    let textHtml = '';
+    // 案例类型（左上角，行数按文本）
+    if (titleText) {
+        const tl = elStyle('title', titleFs, 'left:' + pad + 'px;top:' + pad + 'px;');
+        const lines = titleText.split('\n').length;
+        textHtml += '<div class="case-title" data-case-el="title"' + (lines === 1 ? ' data-case-fit="' + tl.fs + '" data-case-fit-min="' + Math.round(tl.fs * 0.55) + '"' : '')
+            + ' style="' + tl.pos + 'width:' + (W - pad * 2) + 'px;height:' + (lines * titleLh) + 'px;font-size:' + tl.fs + 'px;color:' + txtColor + ';white-space:pre-line;">'
+            + escapeHtml(titleText) + '</div>';
+        // 案例类型的自定义子文字：标题下方逐行
+        titleCts.forEach(function (it, i) {
+            const cfs = elFs('ct:' + it.id, tagFs);
+            textHtml += '<div data-case-el="ct:' + it.id + '" style="position:absolute;left:' + pad + 'px;top:' + (pad + lines * titleLh + i * Math.round(tagLh * 1.15)) + 'px;font-size:' + cfs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(String(it.text).trim()) + '</div>';
+        });
+    }
+    // 设计年份（右上角）
+    const yearText = cfg.toggles.title ? String(st.fields.year || '').trim() : '';
+    if (yearText) {
+        const yl = elStyle('year', infoFs, 'top:' + pad + 'px;right:' + pad + 'px;');
+        textHtml += '<div data-case-el="year" style="position:absolute;' + yl.pos + 'font-size:' + yl.fs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(yearText) + '</div>';
+    }
+    // 底部左侧堆叠：自定义文字（独立/用户子级）+ @ID（自上而下，最底行贴住底边）
+    const stackEls = [];
+    rootCts.forEach(function (it) {
+        stackEls.push({ key: 'ct:' + it.id, text: String(it.text).trim(), base: tagFs });
+    });
+    userCts.forEach(function (it) {
+        stackEls.push({ key: 'ct:' + it.id, text: String(it.text).trim(), base: tagFs });
+    });
+    if (infoOn && infoArr.length) {
+        infoArr.forEach(function (line) { stackEls.push({ key: 'user', text: line, base: infoFs }); });
+    }
+    if (stackEls.length) {
+        let yCur = H - pad;
+        for (let i = stackEls.length - 1; i >= 0; i--) {
+            const e = stackEls[i];
+            const lh = Math.round(e.base * 1.75);
+            const stl = elStyle(e.key, e.base, 'left:' + pad + 'px;top:' + (yCur - lh) + 'px;');
+            const usedDef = stl.pos.indexOf('left:' + pad + 'px') === 0;
+            textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;' + stl.pos + 'width:' + (W - pad * 2) + 'px;font-size:' + stl.fs + 'px;line-height:' + lh + 'px;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(e.text) + '</div>';
+            yCur -= lh;
+        }
+    }
+    // 右下角企划信息（无胶囊底；字段名与值是独立元素；每个可拖动/单独调字号）
+    if (projEls.length) {
+        const flowEls = [];
+        const absEls = [];
+        projEls.forEach(function (e) {
+            if (hasPos(e.key)) absEls.push(e); else flowEls.push(e);
+        });
+        if (flowEls.length) {
+            let spans = '';
+            flowEls.forEach(function (e) {
+                const fs2 = elFs(e.key, tagFs);
+                spans += '<span data-case-el="' + e.key + '" style="display:inline-block;font-size:' + fs2 + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;margin-right:' + Math.round(tagGap * 0.5) + 'px;">' + escapeHtml(e.text) + '</span>';
+            });
+            textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + maxTagW + 'px;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:flex-end;gap:' + Math.round(tagGap * 0.5) + 'px;">' + spans + '</div>';
+        }
+        absEls.forEach(function (e) {
+            const t = tLayout[e.key];
+            const fs2 = elFs(e.key, tagFs);
+            textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;font-size:' + fs2 + 'px;line-height:1.35;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(e.text) + '</div>';
+        });
+    }
+    const bgStyle = cfg.bg.type === 'color' ? (cfg.bg.color || '#ffffff') : 'transparent';
+    let bgHtml = '';
+    if (cfg.bg.type === 'image' && cfg.bg.imgId) {
+        const bgc = _caseImgCache[cfg.bg.imgId];
+        if (bgc) {
+            const bs = Math.max(W / bgc.w, H / bgc.h);
+            const bw = Math.max(W, Math.round(bgc.w * bs)), bh = Math.max(H, Math.round(bgc.h * bs));
+            bgHtml = '<img src="' + bgc.dataUrl + '" style="position:absolute;left:' + Math.round((W - bw) / 2) + 'px;top:' + Math.round((H - bh) / 2) + 'px;width:' + bw + 'px;height:' + bh + 'px;">';
+        }
+    }
+    return '<div class="case-canvas" style="width:' + W + 'px;height:' + H + 'px;background:' + bgStyle + ';">'
+        + bgHtml + productsHtml + textHtml + caseWatermarkHtml(st, W, H, txtColor)
+        + '</div>';
+}
+// 文本字号适配：超出容器则逐级缩小字号，仍溢出截字加省略号
+function casePrepareCanvasEl(root) {
+    if (!root) return;
+    const els = root.querySelectorAll('[data-case-fit]');
+    Array.prototype.forEach.call(els, function (el) {
+        const minFs = parseInt(el.getAttribute('data-case-fit-min'), 10) || 12;
+        let fs = parseInt(el.getAttribute('data-case-fit'), 10);
+        if (!isFinite(fs)) return;
+        el.style.fontSize = fs + 'px';
+        let guard = 40;
+        while (guard-- > 0 && fs > minFs && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)) {
+            fs -= 2;
+            el.style.fontSize = fs + 'px';
+        }
+        if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) {
+            let txt = el.textContent || '';
+            while (txt.length > 1 && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)) {
+                txt = txt.slice(0, -2);
+                el.textContent = txt + '…';
+            }
+        }
+    });
+}
+
+// ---------- 预览 ----------
+function renderCasePreview() {
+    const wrap = document.getElementById('casePreviewCanvasWrap');
+    if (!wrap || !_caseState) return;
+    const st = _caseState;
+    const page = caseCurrentPage(st);
+    wrap.innerHTML = buildCaseCanvasHtml(st, page);
+    wrap.classList.toggle('transparent', st.config.bg.type === 'transparent');
+    casePrepareCanvasEl(wrap.firstElementChild);
+    fitCasePreview();
+    caseRenderPageChips(page);
+    // 编辑模式：虚线制品区 + 拖拽 + 选中面板
+    if (_caseEditMode) {
+        wrap.classList.add('case-editing');
+        caseRenderAreaOutline(wrap);
+        caseBindDragHandlers(wrap);
+    } else {
+        wrap.classList.remove('case-editing');
+    }
+    caseRenderSelPanel();
+    // 装饰层（投影/描边/扩张描边）与底图异步就绪补绘
+    if (caseActiveMockup().shadow || (st.config.imgFx && Object.keys(st.config.imgFx).length)) {
+        caseEnsureShadows((st.images || []).slice()).then(function (changed) {
+            if (changed && _caseState) renderCasePreview();
+        });
+    }
+    // 底图异步就绪补绘
+    if (st.config.bg && st.config.bg.type === 'image' && st.config.bg.imgId) {
+        caseEnsureImagesLoaded([st.config.bg.imgId]).then(function (changed) {
+            if (changed && _caseState) renderCasePreview();
+        });
+    }
+    // 图片 / 水印图异步就绪后各补绘一次
+    caseEnsureImagesLoaded((st.images || []).slice()).then(function (changed) {
+        if (changed && _caseState) renderCasePreview();
+    });
+    const wm = st.config.watermark;
+    if (wm && wm.enabled && wm.type === 'image' && wm.imgId) {
+        caseEnsureImagesLoaded([wm.imgId]).then(function (changed) {
+            if (changed && _caseState) renderCasePreview();
+        });
+    }
+}
+function fitCasePreview() {
+    const stage = document.getElementById('casePreviewStage');
+    const wrap = document.getElementById('casePreviewCanvasWrap');
+    if (!stage || !wrap || !_caseState) return;
+    const rect = stage.getBoundingClientRect();
+    const availW = Math.max(60, rect.width - 28);
+    const availH = Math.max(60, rect.height - 28);
+    const s = Math.min(availW / _caseState.config.width, availH / _caseState.config.height, 1);
+    _casePreviewScale = s;
+    wrap.style.width = Math.round(_caseState.config.width * s) + 'px';
+    wrap.style.height = Math.round(_caseState.config.height * s) + 'px';
+    const el = wrap.querySelector('.case-canvas');
+    if (el) el.style.transform = 'scale(' + s + ')';
+}
+window.addEventListener('resize', function () { fitCasePreview(); });
+
+// ===== 调整布局模式（预览区直接拖拽定位） =====
+function toggleCaseEditMode(force) {
+    _caseEditMode = force === undefined ? !_caseEditMode : !!force;
+    const btn = document.getElementById('caseEditLayoutBtn');
+    if (btn) btn.classList.toggle('case-edit-on', _caseEditMode);
+    if (!_caseEditMode) caseSelectElement(null);
+    renderCasePreview();
+    if (_caseEditMode) showGlobalToast('调整布局：拖动虚线框 / 文字 / 制品，点选文字可单独调字号');
+}
+function caseRenderAreaOutline(wrap) {
+    const canvas = wrap.querySelector('.case-canvas');
+    if (!canvas || !_lastBuild || !_caseState) return;
+    let ol = canvas.querySelector('.case-area-outline');
+    if (!ol) {
+        ol = document.createElement('div');
+        ol.className = 'case-area-outline';
+        ol.innerHTML = '<span class="case-area-grip">移动制品区</span><span class="case-area-handle" title="调整大小"></span>';
+        canvas.appendChild(ol);
+    }
+    const a = _lastBuild.area;
+    ol.style.left = a.x + 'px';
+    ol.style.top = a.y + 'px';
+    ol.style.width = a.w + 'px';
+    ol.style.height = a.h + 'px';
+}
+function caseSelectElement(key) {
+    _caseSelEl = key;
+    document.querySelectorAll('#casePreviewCanvasWrap [data-case-el]').forEach(function (el) {
+        el.classList.toggle('case-el-selected', el.getAttribute('data-case-el') === key);
+    });
+    // 单个企划标签的高亮
+    document.querySelectorAll('#casePreviewCanvasWrap [data-tag-name]').forEach(function (el) {
+        el.classList.toggle('case-el-selected', key === 'tag:' + el.getAttribute('data-tag-name'));
+    });
+    // 单个制品槽位的高亮
+    document.querySelectorAll('#casePreviewCanvasWrap .case-slot').forEach(function (el) {
+        el.classList.toggle('case-el-selected', key === 'item:' + el.getAttribute('data-slot-index'));
+    });
+    caseRenderSelPanel();
+}
+function caseRenderSelPanel() {
+    const box = document.getElementById('caseSelPanel');
+    if (!box) return;
+    if (!_caseEditMode || !_caseSelEl || !_caseState) { box.classList.add('d-none'); box.innerHTML = ''; return; }
+    const key = _caseSelEl;
+    let html = '';
+    if (key.indexOf('item:') === 0) {
+        const idx = parseInt(key.slice(5), 10) || 0;
+        const imgId = _caseState.images ? _caseState.images[idx] : null;
+        const fx = (imgId && _caseState.config.imgFx && _caseState.config.imgFx[imgId]) || {};
+        const effShadow = fx.shadow != null ? !!fx.shadow : caseActiveMockup().shadow;
+        const curScale = Math.round((Number(fx.scale) || 1) * 100);
+        const curRot = Math.round(Number(fx.rot) || 0);
+        const sw = Math.round((Number(fx.strokeW) || 0) * 100);
+        const ew = Math.round((Number(fx.expandW) || 0) * 100);
+        html = '<div class="case-sel-title">已选中：制品 ' + (idx + 1) + '</div>'
+            + '<div class="case-toggle-row"><span class="case-toggle-name">轮廓投影</span>'
+            + '<label class="custom-toggle"><input type="checkbox"' + (effShadow ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'shadow\', this.checked)"><span class="toggle-slider"></span></label></div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
+            + '<input type="range" min="0.3" max="2.5" step="0.05" value="' + curScale + '" oninput="setCaseItemScale(' + idx + ', this.value)">'
+            + '<span class="case-range-val" id="caseItemScaleVal">' + curScale + '%</span></div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">旋转</span>'
+            + '<input type="range" min="-180" max="180" step="5" value="' + curRot + '" oninput="setCaseItemRot(' + idx + ', this.value)">'
+            + '<span class="case-range-val" id="caseItemRotVal">' + curRot + '°</span></div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">快捷旋转</span>'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseQuickRotate(' + idx + ', -90)" title="逆时针旋转90°">↺ 90°</button>'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseQuickRotate(' + idx + ', 90)" title="顺时针旋转90°">↻ 90°</button></div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">描边</span>'
+            + '<input type="range" min="0" max="0.1" step="0.005" value="' + (Number(fx.strokeW) || 0) + '" oninput="setCaseItemFx(' + idx + ', \'strokeW\', this.value)">'
+            + '<span class="case-range-val" id="caseFxStrokeVal">' + sw + '%</span>'
+            + '<input type="color" class="case-color-input" value="' + escapeHtml(fx.strokeColor || '#ffffff') + '" oninput="setCaseItemFx(' + idx + ', \'strokeColor\', this.value)" title="描边颜色"></div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">扩张描边</span>'
+            + '<input type="range" min="0" max="0.15" step="0.005" value="' + (Number(fx.expandW) || 0) + '" oninput="setCaseItemFx(' + idx + ', \'expandW\', this.value)">'
+            + '<span class="case-range-val" id="caseFxExpandVal">' + ew + '%</span>'
+            + '<input type="color" class="case-color-input" value="' + escapeHtml(fx.expandColor || '#ffffff') + '" oninput="setCaseItemFx(' + idx + ', \'expandColor\', this.value)" title="扩张描边颜色"></div>'
+            + '<div class="case-toggle-row"><span class="case-toggle-name">亚克力质感</span>'
+            + '<label class="custom-toggle"><input type="checkbox"' + (fx.expandAcrylic ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'expandAcrylic\', this.checked)"><span class="toggle-slider"></span></label></div>'
+            + '<div class="case-sel-ops">'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseResetItemFx(' + idx + ')">恢复该制品默认</button>'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseResetLayout()">恢复默认布局</button>'
+            + '</div>'
+            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=贴边轮廓环；扩张描边=再向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=外圈变半透明磨砂并在图案上叠加反光高光，模拟亚克力制品；宽度按制品大小百分比</div>';
+    } else if (key.indexOf('tag:') === 0) {
+        const name = key.slice(4);
+        let displayName = name;
+        if (name.indexOf('ct_') === 0) {
+            const it = (_caseState.fields.customTexts || []).find(function (x) { return x && x.id === name; });
+            displayName = (it && String(it.text || '').trim()) ? String(it.text).slice(0, 14) : '自定义文字';
+        }
+        const pr = (_caseState.config.layout && _caseState.config.layout.texts && _caseState.config.layout.texts.project) || {};
+        const fs = (pr.itemFs && pr.itemFs[name]) || 1;
+        html = '<div class="case-sel-title">已选中：标签「' + escapeHtml(displayName) + '」</div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">字号</span>'
+            + '<input type="range" min="0.5" max="2.5" step="0.05" value="' + fs + '" oninput="setCaseTagFs(\'' + escapeHtml(name) + '\', this.value)">'
+            + '<span class="case-range-val" id="caseTagFsVal">' + Math.round(fs * 100) + '%</span></div>'
+            + '<div class="case-sel-ops">'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseHideTag(\'' + escapeHtml(name) + '\')">隐藏该标签</button>'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseResetTag(\'' + escapeHtml(name) + '\')">恢复该标签默认</button>'
+            + '</div>'
+            + '<div class="case-form-hint" style="margin:6px 0 0;">拖动标签整体移动企划信息组</div>';
+    } else {
+        const names = { title: '案例类型', year: '设计年份', user: '用户信息 @ID', project: '企划信息标签（组）' };
+        const L = (_caseState.config.layout && _caseState.config.layout.texts) || {};
+        const rec = L[key] || { fsScale: 1 };
+        html = '<div class="case-sel-title">已选中：' + (names[key] || '') + '</div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">字号</span>'
+            + '<input type="range" min="0.5" max="2.5" step="0.05" value="' + rec.fsScale + '" oninput="setCaseElFs(\'' + key + '\', this.value)">'
+            + '<span class="case-range-val" id="caseElFsVal">' + Math.round(rec.fsScale * 100) + '%</span></div>'
+            + (key === 'project' ? '<div class="case-form-hint" style="margin:4px 0 0;">拖动移动整组；点选其中某个标签可单独设置字号/隐藏</div>' : '')
+            + '<div class="case-sel-ops">'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseResetElement(\'' + key + '\')">恢复该元素默认</button>'
+            + '<button type="button" class="btn secondary btn-compact" onclick="caseResetLayout()">恢复默认布局</button>'
+            + '</div>';
+    }
+    box.classList.remove('d-none');
+    box.innerHTML = html;
+}
+function setCaseElFs(key, v) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.layout) st.config.layout = {};
+    if (!st.config.layout.texts) st.config.layout.texts = {};
+    const rec = st.config.layout.texts[key] || { fsScale: 1 };
+    rec.fsScale = Math.min(2.5, Math.max(0.4, parseFloat(v) || 1));
+    st.config.layout.texts[key] = rec;
+    const el = document.getElementById('caseElFsVal');
+    if (el) el.textContent = Math.round(rec.fsScale * 100) + '%';
+    renderCasePreview();
+}
+function caseResetElement(key) {
+    const st = _caseState; if (!st) return;
+    if (st.config.layout && st.config.layout.texts) {
+        if (key.indexOf('tag:') === 0) {
+            const name = key.slice(4);
+            const pr = st.config.layout.texts.project;
+            if (pr) {
+                if (pr.itemFs) delete pr.itemFs[name];
+                if (pr.hidden) delete pr.hidden[name];
+            }
+        } else {
+            delete st.config.layout.texts[key];
+        }
+    }
+    caseSelectElement(null);
+    renderCasePreview();
+}
+function setCaseTagFs(name, v) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.layout) st.config.layout = {};
+    if (!st.config.layout.texts) st.config.layout.texts = {};
+    const pr = st.config.layout.texts.project || { fsScale: 1 };
+    if (!pr.itemFs || typeof pr.itemFs !== 'object') pr.itemFs = {};
+    pr.itemFs[name] = Math.min(2.5, Math.max(0.4, parseFloat(v) || 1));
+    st.config.layout.texts.project = pr;
+    const el = document.getElementById('caseTagFsVal');
+    if (el) el.textContent = Math.round(pr.itemFs[name] * 100) + '%';
+    renderCasePreview();
+}
+function caseHideTag(name) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.layout) st.config.layout = {};
+    if (!st.config.layout.texts) st.config.layout.texts = {};
+    const pr = st.config.layout.texts.project || { fsScale: 1 };
+    if (!pr.hidden || typeof pr.hidden !== 'object') pr.hidden = {};
+    pr.hidden[name] = true;
+    st.config.layout.texts.project = pr;
+    caseSelectElement(null);
+    renderCaseForm();
+    renderCasePreview();
+    showGlobalToast('已隐藏标签「' + name + '」，可在表单中用眼睛图标恢复');
+}
+function caseResetTag(name) {
+    const st = _caseState; if (!st) return;
+    const L = st.config.layout;
+    if (L && L.texts && L.texts.project) {
+        if (L.texts.project.itemFs) delete L.texts.project.itemFs[name];
+        if (L.texts.project.hidden) delete L.texts.project.hidden[name];
+    }
+    caseSelectElement(null);
+    renderCasePreview();
+}
+function caseToggleTagHidden(name) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.layout) st.config.layout = {};
+    if (!st.config.layout.texts) st.config.layout.texts = {};
+    const pr = st.config.layout.texts.project || { fsScale: 1 };
+    if (!pr.hidden || typeof pr.hidden !== 'object') pr.hidden = {};
+    if (pr.hidden[name]) delete pr.hidden[name]; else pr.hidden[name] = true;
+    st.config.layout.texts.project = pr;
+    renderCaseForm();
+    renderCasePreview();
+}
+// ===== 自定义文字项（任意条，显示为右下角标签） =====
+function caseAddCustomText() {
+    const st = _caseState; if (!st) return;
+    if (!st.fields.customTexts) st.fields.customTexts = [];
+    st.fields.customTexts.push({ id: 'ct_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), text: '', parent: 'root' });
+    renderCaseForm();
+    const rows = document.querySelectorAll('#caseFormArea [data-ct-id]');
+    if (rows.length) {
+        const inp = rows[rows.length - 1].querySelector('input');
+        if (inp) inp.focus();
+    }
+}
+function caseUpdateCustomText(id, value) {
+    const st = _caseState; if (!st) return;
+    const it = (st.fields.customTexts || []).find(function (x) { return x && x.id === id; });
+    if (it) it.text = value;
+    renderCasePreview();
+}
+// 切换自定义文字的所属层级（独立 / 案例类型 / 用户信息 / 企划信息）
+function caseSetCustomTextParent(id, parent) {
+    const st = _caseState; if (!st) return;
+    const it = (st.fields.customTexts || []).find(function (x) { return x && x.id === id; });
+    if (!it) return;
+    if (['root', 'title', 'user', 'project'].indexOf(parent) < 0) return;
+    it.parent = parent;
+    // 清除自定义位置 → 自动放到新父级的默认位置
+    if (st.config.layout && st.config.layout.texts) delete st.config.layout.texts['ct:' + id];
+    renderCaseForm();
+    renderCasePreview();
+    showGlobalToast('已移至「' + ({ root: '独立文字块', title: '案例类型', user: '用户信息', project: '企划信息' }[parent] || parent) + '」');
+}
+function caseRemoveCustomText(id) {
+    const st = _caseState; if (!st) return;
+    st.fields.customTexts = (st.fields.customTexts || []).filter(function (x) { return x && x.id !== id; });
+    const L = st.config.layout;
+    if (L && L.texts && L.texts.project) {
+        if (L.texts.project.hidden) delete L.texts.project.hidden[id];
+        if (L.texts.project.itemFs) delete L.texts.project.itemFs[id];
+    }
+    renderCaseForm();
+    renderCasePreview();
+}
+function caseResetLayout() {
+    const st = _caseState; if (!st) return;
+    st.config.layout = null;
+    caseSelectElement(null);
+    renderCaseForm();
+    renderCasePreview();
+    showGlobalToast('已恢复默认布局');
+}
+function caseResetLayout() {
+    const st = _caseState; if (!st) return;
+    st.config.layout = null;
+    caseSelectElement(null);
+    renderCaseForm();
+    renderCasePreview();
+    showGlobalToast('已恢复默认布局');
+}
+// 总图制品区（百分比）：显式优先，否则自动计算
+function caseTotalAreaPercent(st) {
+    const W = st.config.width, H = st.config.height;
+    if (st.config.layout && st.config.layout.productArea) return st.config.layout.productArea;
+    const a = caseAutoAreaBox(st);
+    return { x: a.x / W, y: a.y / H, w: a.w / W, h: a.h / H };
+}
+// 分图制品区：按总图制品区的百分比（默认 80%），围绕中心缩放、居中；数值可调
+function caseGroupPctShown(st) {
+    const base = caseTotalAreaPercent(st);
+    const pag = st.config.layout && st.config.layout.productAreaGroup;
+    if (pag && base.w) return Math.round(pag.w / base.w * 100);
+    return 80;
+}
+function setCaseGroupAreaPct(f) {
+    const st = _caseState; if (!st) return;
+    const pct = Math.min(100, Math.max(10, Math.round((Number(f) || 0.8) * 100))) / 100;
+    if (!st.config.layout) st.config.layout = {};
+    const base = caseTotalAreaPercent(st);
+    const cx = base.x + base.w / 2, cy = base.y + base.h / 2;
+    const w = base.w * pct, h = base.h * pct;
+    st.config.layout.productAreaGroup = {
+        x: caseClampPct(cx - w / 2, 0, 1),
+        y: caseClampPct(cy - h / 2, 0, 1),
+        w: w, h: h
+    };
+    renderCaseForm();
+    renderCasePreview();
+    showGlobalToast('分图制品区已设为总图的 ' + Math.round(pct * 100) + '%');
+}
+// 元素当前盒（折算为画布设计像素）
+function caseElBox(el, canvas, scale) {
+    const c = canvas.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    return { x: (r.left - c.left) / scale, y: (r.top - c.top) / scale, w: r.width / scale, h: r.height / scale };
+}
+function caseClampPct(v, min, max) { return Math.min(max, Math.max(min, v)); }
+// 拖拽提交：位移写回布局（画布百分比），越界钳制
+function caseCommitDrag(kind, idx, startBox, dxPctX, dyPctY, canvasW, canvasH, startSlotBox) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.layout) st.config.layout = {};
+    const L = st.config.layout;
+    // 总图页写总图制品区；分图页写分图自己的制品区
+    const page = caseCurrentPage(st);
+    const isGroupPage = !!(page && page.kind === 'group');
+    const areaKey = isGroupPage ? 'productAreaGroup' : 'productArea';
+    if (kind === 'area') {
+        L[areaKey] = {
+            x: caseClampPct(startBox.x / canvasW + dxPctX, -0.4, 0.98),
+            y: caseClampPct(startBox.y / canvasH + dyPctY, -0.4, 0.98),
+            w: caseClampPct(startBox.w / canvasW, 0.1, 1.2),
+            h: caseClampPct(startBox.h / canvasH, 0.1, 1.2)
+        };
+        // 总图区内自定义制品跟随平移（分图页不涉及 items）
+        if (!isGroupPage && L.items) Object.keys(L.items).forEach(function (k) {
+            L.items[k].x = caseClampPct(L.items[k].x + dxPctX, -0.5, 1.2);
+            L.items[k].y = caseClampPct(L.items[k].y + dyPctY, -0.5, 1.2);
+        });
+        if (isGroupPage) renderCaseForm();
+    } else if (kind === 'areaResize') {
+        // 以中心为基准向四周缩放
+        const cx0 = startBox.x / canvasW + startBox.w / (2 * canvasW);
+        const cy0 = startBox.y / canvasH + startBox.h / (2 * canvasH);
+        const nw = Math.max(0.1, Math.min(1.2, startBox.w / canvasW + 2 * dxPctX));
+        const nh = Math.max(0.1, Math.min(1.2, startBox.h / canvasH + 2 * dyPctY));
+        L[areaKey] = {
+            x: caseClampPct(cx0 - nw / 2, -0.2, 1.0),
+            y: caseClampPct(cy0 - nh / 2, -0.2, 1.0),
+            w: nw, h: nh
+        };
+        if (isGroupPage) renderCaseForm();
+    } else if (kind === 'item') {
+        if (!L.items) L.items = {};
+        // 中心点 = 拖拽开始时槽位中心 + 位移（缩放/旋转按图片存储于 imgFx）
+        const sb = startSlotBox || startBox;
+        let cx = sb.x / canvasW + sb.w / (2 * canvasW) + dxPctX;
+        let cy = sb.y / canvasH + sb.h / (2 * canvasH) + dyPctY;
+        const a = _lastBuild ? _lastBuild.area : { x: 0, y: 0, w: canvasW, h: canvasH };
+        cx = caseClampPct(cx, a.x / canvasW, (a.x + a.w) / canvasW);
+        cy = caseClampPct(cy, a.y / canvasH, (a.y + a.h) / canvasH);
+        L.items[String(idx)] = { cx: cx, cy: cy };
+    } else if (kind === 'text') {
+        if (!L.texts) L.texts = {};
+        const prev = L.texts[idx] || { fsScale: 1 };
+        L.texts[idx] = {
+            x: caseClampPct(startBox.x / canvasW + dxPctX, -0.15, 0.98),
+            y: caseClampPct(startBox.y / canvasH + dyPctY, -0.05, 0.98),
+            fsScale: prev.fsScale || 1
+        };
+    }
+}
+function caseBindDragHandlers(wrap) {
+    const canvas = wrap.querySelector('.case-canvas');
+    if (!canvas || canvas.dataset.dragBound === '1') return;
+    canvas.dataset.dragBound = '1';
+    canvas.addEventListener('pointerdown', function (e) {
+        if (!_caseEditMode || !_caseState) return;
+        const target = e.target.closest('[data-case-el], .case-area-grip, .case-area-handle, .case-slot');
+        if (!target) return;
+        e.preventDefault();
+        const canvas2 = wrap.querySelector('.case-canvas');
+        const scale = _casePreviewScale || 1;
+        const W = _caseState.config.width, H = _caseState.config.height;
+        let kind, idx;
+        if (target.classList.contains('case-area-grip')) kind = 'area';
+        else if (target.classList.contains('case-area-handle')) kind = 'areaResize';
+        else if (target.classList.contains('case-slot')) { kind = 'item'; idx = parseInt(target.getAttribute('data-slot-index'), 10) || 0; }
+        else { kind = 'text'; idx = target.getAttribute('data-case-el'); }
+        const downTarget = target; // 点击选中用（区分点在具体标签上）
+        // 制品拖动以「图片实际渲染盒」为基准（contain 后的可见盒子），移动后视觉不跳变
+        let refEl = (kind === 'area' || kind === 'areaResize') ? target.closest('.case-area-outline') : target;
+        if (kind === 'item') {
+            const imgEl = target.querySelector('.case-item-img') || target.querySelector('img');
+            if (imgEl) refEl = imgEl;
+        }
+        const startBox = caseElBox(refEl, canvas2, scale);
+        const startSlotBox = kind === 'item' ? caseElBox(target, canvas2, scale) : null;
+        const startX = e.clientX, startY = e.clientY;
+        let moved = false, dx = 0, dy = 0;
+        function onMove(ev) {
+            dx = (ev.clientX - startX) / scale;
+            dy = (ev.clientY - startY) / scale;
+            if (!moved && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 4) moved = true;
+            if (!moved) return;
+            if (kind === 'area') {
+                const ol = canvas2.querySelector('.case-area-outline');
+                if (ol) { ol.style.left = (startBox.x + dx) + 'px'; ol.style.top = (startBox.y + dy) + 'px'; }
+            } else if (kind === 'areaResize') {
+                // 以中心为基准向四周缩放（预览同步）
+                const ol = canvas2.querySelector('.case-area-outline');
+                if (ol) {
+                    const nw = Math.max(40, startBox.w + 2 * dx);
+                    const nh = Math.max(40, startBox.h + 2 * dy);
+                    const cx0 = startBox.x + startBox.w / 2, cy0 = startBox.y + startBox.h / 2;
+                    ol.style.left = (cx0 - nw / 2) + 'px';
+                    ol.style.top = (cy0 - nh / 2) + 'px';
+                    ol.style.width = nw + 'px';
+                    ol.style.height = nh + 'px';
+                }
+            } else if (kind === 'item') {
+                // 移动用 left/top（保留旋转 transform 不被覆盖）
+                target.style.left = (startSlotBox.x + dx) + 'px';
+                target.style.top = (startSlotBox.y + dy) + 'px';
+            } else {
+                target.style.left = (startBox.x + dx) + 'px';
+                target.style.top = (startBox.y + dy) + 'px';
+                target.style.right = 'auto';
+                target.style.bottom = 'auto';
+            }
+        }
+        function onUp() {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            if (!moved) {
+                if (kind === 'text') {
+                    // 点在具体企划标签上 → 选中该标签；否则选中整组
+                    const tagSpan = downTarget.closest ? downTarget.closest('[data-tag-name]') : null;
+                    if (tagSpan) caseSelectElement('tag:' + tagSpan.getAttribute('data-tag-name'));
+                    else caseSelectElement(idx);
+                } else if (kind === 'item') {
+                    caseSelectElement('item:' + idx);
+                }
+                return;
+            }
+            caseCommitDrag(kind, idx, startBox, dx / W, dy / H, W, H, startSlotBox);
+            // 自定义文字：落点在哪个文字块区域内 → 归属该层级（并清除自定义位置）
+            if (kind === 'text' && idx.indexOf('ct:') === 0 && _lastBuild && _lastBuild.zones) {
+                const cxp = (startBox.x + startBox.w / 2 + dx) / W;
+                const cyp = (startBox.y + startBox.h / 2 + dy) / H;
+                let zone = null;
+                Object.keys(_lastBuild.zones).forEach(function (zk) {
+                    const z = _lastBuild.zones[zk];
+                    if (cxp >= z.x && cxp <= z.x + z.w && cyp >= z.y && cyp <= z.y + z.h) zone = zk;
+                });
+                if (zone && zone !== (_caseState.fields.customTexts.find(function (x) { return x && x.id === idx.slice(3); }) || {}).parent) {
+                    caseSetCustomTextParent(idx.slice(3), zone);
+                } else {
+                    renderCasePreview();
+                }
+            } else {
+                renderCasePreview();
+            }
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+    });
+}
+
+// 预览页签（总图 / 各制品图）：关联订单时始终显示；未上传图的制品组置灰占位
+function caseRenderPageChips(activePage) {
+    const box = document.getElementById('casePageChips');
+    if (!box || !_caseState) return;
+    const st = _caseState;
+    const hasGroups = !!(st.groups && st.groups.length);
+    if (!hasGroups) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    const pages = casePages(st);
+    const active = activePage || caseCurrentPage(st);
+    let html = '';
+    pages.forEach(function (p) {
+        const on = p.kind === active.kind && p.label === active.label;
+        html += '<button type="button" class="case-chip case-page-chip' + (on ? ' active' : '') + '" onclick="caseSetPage(\'' + p.kind + '\',\'' + escapeHtml(p.label || '') + '\')">' + escapeHtml(p.label || '') + '</button>';
+    });
+    st.groups.forEach(function (g) {
+        if (g.images && g.images.length) return;
+        html += '<button type="button" class="case-chip case-page-chip case-page-chip-empty" title="上传该制品的图后自动生成预览页">' + escapeHtml(g.label || '') + '</button>';
+    });
+    box.style.display = 'flex';
+    box.innerHTML = html;
+}
+function caseSetPage(kind, label) {
+    if (!_caseState) return;
+    const pages = casePages(_caseState);
+    const idx = pages.findIndex(function (p) { return p.kind === kind && (p.label || '') === (label || ''); });
+    _caseState._page = idx >= 0 ? idx : 0;
+    renderCasePreview();
+}
+
+// ---------- 表单 ----------
+function caseChipHtml(label, active, onclick) {
+    return '<button type="button" class="case-chip' + (active ? ' active' : '') + '" onclick="' + onclick + '">' + label + '</button>';
+}
+// 眼睛矢量图标（显示/隐藏）
+function caseEyeSvg(hidden) {
+    return '<svg class="icon" aria-hidden="true"><use href="#' + (hidden ? 'i-eye-off' : 'i-eye') + '"></use></svg>';
+}
+function renderCaseForm() {
+    const area = document.getElementById('caseFormArea');
+    if (!area || !_caseState) return;
+    const st = _caseState;
+    const cfg = st.config;
+    const wm = cfg.watermark;
+    let html = '';
+    // 1 关联订单
+    html += '<div class="case-form-sec">'
+        + '<label class="case-form-label">关联订单</label>'
+        + '<select id="caseOrderSelect" class="case-field-input" onchange="applyCaseOrder(this.value)">' + caseOrderOptionsHtml() + '</select>'
+        + '<div class="case-form-hint">选择订单后自动带入 IP、角色与制品名；左上角案例类型可在下方自定义，不被订单标题覆盖</div>'
+        + '</div>';
+    // 2 画布比例与尺寸
+    html += '<div class="case-form-sec">'
+        + '<label class="case-form-label">画布比例</label>'
+        + '<div class="case-chips">'
+        + caseChipHtml('1:1', cfg.ratio === '1:1', "setCaseRatio('1:1')")
+        + caseChipHtml('3:4', cfg.ratio === '3:4', "setCaseRatio('3:4')")
+        + caseChipHtml('自定义', cfg.ratio === 'custom', "setCaseRatio('custom')")
+        + '</div>'
+        + '<div class="case-size-row">'
+        + '<input type="number" min="200" max="4000" value="' + cfg.width + '" onchange="setCaseSizeInput(\'w\', this.value)">'
+        + '<span class="case-size-x">×</span>'
+        + '<input type="number" min="200" max="4000" value="' + cfg.height + '" onchange="setCaseSizeInput(\'h\', this.value)">'
+        + '<span class="case-size-x">px</span>'
+        + '</div>'
+        + '<div class="case-form-hint">比例指案例图整体宽高；制品图始终按原图比例等比缩放，不会被拉伸或裁切。手动改宽高会自动切为自定义比例。</div>'
+        + '</div>';
+    // 3 背景
+    html += '<div class="case-form-sec">'
+        + '<label class="case-form-label">背景</label>'
+        + '<div class="case-swatch-row">';
+    CASE_BG_PRESETS.forEach(function (c) {
+        const active = cfg.bg.type === 'color' && String(cfg.bg.color || '').toLowerCase() === c.toLowerCase();
+        html += '<button type="button" class="case-swatch' + (active ? ' active' : '') + '" style="background:' + c + ';" onclick="setCaseBg(\'color\',\'' + c + '\')" title="' + c + '"></button>';
+    });
+    html += '<input type="color" class="case-color-input" value="' + (cfg.bg.type === 'color' ? escapeHtml(cfg.bg.color || '#ffffff') : '#ffffff') + '" onchange="setCaseBg(\'color\', this.value)" title="取色器">'
+        + caseChipHtml('透明', cfg.bg.type === 'transparent', "setCaseBg('transparent')")
+        + '</div>';
+    // 底图（预览背景图，随导出保存；可存入布局方案复用）
+    const bgImgCache = (cfg.bg.type === 'image' && cfg.bg.imgId) ? _caseImgCache[cfg.bg.imgId] : null;
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-top:10px;">'
+        + (bgImgCache ? '<img src="' + bgImgCache.dataUrl + '" style="width:44px;height:44px;object-fit:cover;border:1px solid var(--border-color,#ddd);border-radius:8px;">' : '')
+        + '<button type="button" class="btn secondary btn-compact" onclick="document.getElementById(\'caseBgImageInput\').click()">上传底图</button>'
+        + (cfg.bg.type === 'image' ? '<button type="button" class="btn secondary btn-compact" onclick="caseClearBgImage()">清除底图</button>' : '')
+        + '<input type="file" id="caseBgImageInput" accept="image/*" class="d-none">'
+        + '</div>'
+        + '<div class="case-form-hint">底图等比铺满画布；开启预览区「调整布局」后，可把制品区和文字拖到底图对应位置，再保存为布局方案反复套用</div>'
+        + '</div>';
+    // 4 案例内容（统一眼睛开关：👁 显示 / 🚫 隐藏，内容为空时同样不显示不占位）
+    html += '<div class="case-form-sec">'
+        + '<label class="case-form-label">案例内容</label>';
+    // 案例类型（左上角文案 + 设计年份）
+    html += '<div class="case-tagfield-row' + (cfg.toggles.title ? '' : ' case-tagfield-hidden') + '">'
+        + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'title\', ' + (!cfg.toggles.title) + ')" title="' + (cfg.toggles.title ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(!cfg.toggles.title) + '</button>'
+        + '<span class="case-tagfield-label">案例类型（左上角）</span>'
+        + '</div>';
+    if (cfg.toggles.title) {
+        html += '<textarea class="case-field-input case-field-mb" rows="2" placeholder="案例类型，可两行" oninput="setCaseField(\'title\', this.value)">' + escapeHtml(String(st.fields.title || '')) + '</textarea>';
+        html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.year || '')) + '" placeholder="设计年份（显示在右上角，可留空）" oninput="setCaseField(\'year\', this.value)">';
+    }
+    // 用户信息（取自「基础设置」中的用户ID）
+    html += '<div class="case-tagfield-row' + (cfg.toggles.userInfo ? '' : ' case-tagfield-hidden') + '">'
+        + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'userInfo\', ' + (!cfg.toggles.userInfo) + ')" title="' + (cfg.toggles.userInfo ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(!cfg.toggles.userInfo) + '</button>'
+        + '<span class="case-tagfield-label">用户信息 @ID（左下角）</span>'
+        + '</div>';
+    if (cfg.toggles.userInfo) {
+        html += '<div class="case-form-hint" style="margin:0 0 9px;">显示为「基础设置」中的用户ID</div>';
+    }
+    // 企划信息（组开关 + 各字段独立眼睛 + 自定义文字项）
+    html += '<div class="case-tagfield-row' + (cfg.toggles.productInfo ? '' : ' case-tagfield-hidden') + '">'
+        + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'productInfo\', ' + (!cfg.toggles.productInfo) + ')" title="' + (cfg.toggles.productInfo ? '点击隐藏整组' : '点击显示整组') + '">' + caseEyeSvg(!cfg.toggles.productInfo) + '</button>'
+        + '<span class="case-tagfield-label">企划信息（右下角标签）</span>'
+        + '</div>';
+    if (cfg.toggles.productInfo) {
+        const roleCfg = caseCurrentRole();
+        const projFlds = (roleCfg && roleCfg.fields && roleCfg.fields.length) ? roleCfg.fields : [{ name: '企划名' }, { name: '原作（IP）' }, { name: '角色' }];
+        const projHidden = caseTagHiddenMap(st);
+        projFlds.forEach(function (f) {
+            const name = (f && f.name) || '';
+            if (!name) return;
+            const hidden = !!projHidden[name];
+            html += '<div class="case-tagfield-row case-tagfield-sub' + (hidden ? ' case-tagfield-hidden' : '') + '">'
+                + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'' + escapeHtml(name) + '\')" title="' + (hidden ? '点击显示该标签' : '点击隐藏该标签') + '">' + caseEyeSvg(hidden) + '</button>'
+                + '<input type="text" class="case-field-input case-ct-label" style="flex:0 0 32%;min-width:0;" value="' + escapeHtml(caseFieldLabelText(st, name)) + '" oninput="caseSetFieldLabel(\'' + escapeHtml(name) + '\', this.value)" title="字段名（可改，显示在值前面）">'
+                + '<input type="text" class="case-field-input" style="flex:1;min-width:0;" value="' + escapeHtml(String(caseProjectFieldValue(st, name) || '')) + '" oninput="setCaseProjectField(\'' + escapeHtml(name) + '\', this.value)">'
+                + '</div>';
+        });
+        const prodHidden = !!projHidden['制品'];
+        html += '<div class="case-tagfield-row case-tagfield-sub' + (prodHidden ? ' case-tagfield-hidden' : '') + '">'
+            + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'制品\')" title="' + (prodHidden ? '点击显示该标签' : '点击隐藏该标签') + '">' + caseEyeSvg(prodHidden) + '</button>'
+            + '<input type="text" class="case-field-input" value="' + escapeHtml(String(st.fields.products || '')) + '" placeholder="制品名" oninput="setCaseField(\'products\', this.value)">'
+            + '</div>';
+        // 自定义文字项（任意条，随企划标签一起显示在右下角）
+        const cts = st.fields.customTexts || [];
+        cts.forEach(function (item) {
+            const hidden = !!projHidden[item.id];
+            const ctParent = item.parent || 'project';
+            const ctParentName = { root: '独立', title: '案例类型', user: '用户信息', project: '企划信息' }[ctParent] || '企划信息';
+            html += '<div class="case-tagfield-row case-tagfield-sub' + (hidden ? ' case-tagfield-hidden' : '') + '" data-ct-id="' + item.id + '">'
+                + '<button type="button" class="case-tagfield-eye" onclick="caseToggleTagHidden(\'' + item.id + '\')" title="' + (hidden ? '点击显示该标签' : '点击隐藏该标签') + '">' + caseEyeSvg(hidden) + '</button>'
+                + '<input type="text" class="case-field-input" value="' + escapeHtml(String(item.text || '')) + '" placeholder="自定义文字内容" oninput="caseUpdateCustomText(\'' + item.id + '\', this.value)">'
+                + '<select class="case-field-input case-ct-parent" onchange="caseSetCustomTextParent(\'' + item.id + '\', this.value)" title="所属层级">'
+                + '<option value="root"' + (ctParent === 'root' ? ' selected' : '') + '>独立</option>'
+                + '<option value="title"' + (ctParent === 'title' ? ' selected' : '') + '>案例类型</option>'
+                + '<option value="user"' + (ctParent === 'user' ? ' selected' : '') + '>用户信息</option>'
+                + '<option value="project"' + (ctParent === 'project' ? ' selected' : '') + '>企划信息</option>'
+                + '</select>'
+                + '<button type="button" class="case-tagfield-del" onclick="caseRemoveCustomText(\'' + item.id + '\')" title="删除该文字项">×</button>'
+                + '</div>';
+        });
+        html += '<button type="button" class="btn secondary btn-compact" onclick="caseAddCustomText()" style="margin-top:2px;">+ 添加自定义文字</button>';
+        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；点眼睛图标可隐藏/显示单项；编辑模式下点选标签可单独拖动、调字号；「所属层级」可切换归属</div>';
+    }
+    html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">文字大小</span>'
+        + '<input type="range" min="0.6" max="1.8" step="0.05" value="' + (Number(cfg.textScale) || 1) + '" oninput="setCaseTextScale(this.value)">'
+        + '<span class="case-range-val" id="caseTextScaleVal">' + Math.round((Number(cfg.textScale) || 1) * 100) + '%</span></div>';
+    html += '<div class="case-form-hint">眼睛关闭或内容为空时，画布上对应内容不显示、不占位</div>'
+        + '</div>';
+    // 5 样机模板（无装饰 / 实物投影）+ 占位区域大小
+    html += '<div class="case-form-sec">'
+        + '<label class="case-form-label">样机模板</label>'
+        + '<div class="case-mockup-grid">'
+        + CASE_MOCKUPS.map(function (m) {
+            return '<div class="case-mockup-card' + (cfg.mockupId === m.id ? ' active' : '') + '" onclick="setCaseMockup(\'' + m.id + '\')" title="' + escapeHtml(m.desc) + '">'
+                + '<div class="case-mockup-diagram">' + m.diagram + '</div>'
+                + '<div class="case-mockup-name">' + escapeHtml(m.name) + '</div>'
+                + '</div>';
+        }).join('')
+        + '</div>'
+        + (cfg.layout && cfg.layout.productArea
+            ? '<div class="case-form-hint">已使用自定义制品区：在预览区拖动虚线框移动位置、拖动右下角圆点调整大小；「恢复默认布局」可回到自动排版</div>'
+            : '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">占位区域</span>'
+                + '<input type="range" min="0.4" max="1" step="0.05" value="' + (Number(cfg.mockupScale) || 1) + '" oninput="setCaseMockupScale(this.value)">'
+                + '<span class="case-range-val" id="caseMockupScaleVal">' + Math.round((Number(cfg.mockupScale) || 1) * 100) + '%</span></div>'
+                + '<div class="case-form-hint">上传的制品 PNG 会自动按占位区排列并叠加装饰；占位区域越小，制品整体越小、四周留白越多。开启预览区「调整布局」可自由定位制品区。</div>')
+        + (st.groups && st.groups.length
+            ? '<div class="case-size-row" style="margin-top:10px;"><span style="font-size:13px;font-weight:600;">分图制品区</span>'
+                + '<input type="number" min="10" max="100" step="5" value="' + caseGroupPctShown(st) + '" onchange="setCaseGroupAreaPct(this.value / 100)" title="所有分图页的制品区 = 总图制品区 × 此百分比">'
+                + '<span class="case-size-x">%</span></div>'
+                + '<div class="case-form-hint">一处设置，所有分图页生效（= 总图制品区 × 此百分比，围绕中心缩放）</div>'
+            : '')
+        + '</div>';
+    // 6 布局方案（保存/应用整体布局与底图）
+    html += '<div class="case-form-sec">'
+        + '<label class="case-form-label">布局方案</label>'
+        + '<div style="display:flex;gap:8px;">'
+        + '<input type="text" id="caseLayoutPresetName" class="case-field-input" placeholder="方案名称" style="flex:1;min-width:0;">'
+        + '<button type="button" class="btn secondary btn-compact" onclick="saveCaseLayoutPreset()" style="flex-shrink:0;">保存当前</button>'
+        + '</div>';
+    if (_caseLayoutPresets.length) {
+        html += '<div class="case-chips" style="margin-top:9px;">' + _caseLayoutPresets.map(function (p) {
+            return '<span class="case-preset-chip"><button type="button" class="case-chip" onclick="applyCaseLayoutPreset(\'' + p.id + '\')" title="应用该布局方案">' + escapeHtml(p.name) + '</button>'
+                + '<button type="button" class="case-preset-del" onclick="deleteCaseLayoutPreset(\'' + p.id + '\')" title="删除方案">×</button></span>';
+        }).join('') + '</div>';
+    } else {
+        html += '<div class="case-form-hint" style="margin-top:6px;">调整布局（含底图）后保存为方案，之后新建案例一键套用。</div>';
+    }
+    html += '</div>';
+    // 7 制品图（关联订单时按制品分组：自动生成 1 张总图 + 每种制品各 1 张预览图）
+    html += '<div class="case-form-sec">'
+        + '<label class="case-form-label">制品图</label>';
+    const hasGroups = !!(st.groups && st.groups.length);
+    if (hasGroups) {
+        html += '<div class="case-form-hint" style="margin:0 0 4px;">已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换</div>';
+        st.groups.forEach(function (g, gi) {
+            let thumbs = '';
+            (g.images || []).forEach(function (imgId) {
+                const c = _caseImgCache[imgId];
+                thumbs += '<div class="case-thumb">'
+                    + (c ? '<img src="' + c.dataUrl + '" alt="">' : '')
+                    + '<button type="button" class="case-thumb-del" onclick="caseRemoveImage(\'' + imgId + '\')" title="删除">×</button>'
+                    + '<div class="case-thumb-ops">'
+                    + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',-1,' + gi + ')" title="前移">◀</button>'
+                    + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',1,' + gi + ')" title="后移">▶</button>'
+                    + '</div></div>';
+            });
+            if (!(g.images || []).length) thumbs = '<div class="case-group-empty-tip">还没有上传该制品的图，可点击「上传」或拖图到此框</div>';
+            html += '<div class="case-group-block" data-case-group="' + gi + '">'
+                + '<div class="case-group-head">'
+                + '<span class="case-group-label">' + escapeHtml(g.label) + (g.count > 1 ? ' <em>×' + g.count + '</em>' : '') + '</span>'
+                + '<button type="button" class="btn secondary btn-compact" onclick="casePickUpload(' + gi + ')">上传</button>'
+                + '</div>'
+                + '<div class="case-thumbs">' + thumbs + '</div>'
+                + '</div>';
+        });
+        html += '<input type="file" id="caseImageInput" accept="image/png,image/jpeg,image/webp" multiple class="d-none">';
+    } else {
+        html += '<div class="case-upload-zone" id="caseUploadZone">点击或拖拽上传制品 PNG（可多选）<br>自动按样机占位区排列，等比缩放居中</div>'
+            + '<input type="file" id="caseImageInput" accept="image/png,image/jpeg,image/webp" multiple class="d-none">';
+        html += '<div class="case-thumbs">';
+        st.images.forEach(function (imgId) {
+            const c = _caseImgCache[imgId];
+            const src = c ? c.dataUrl : '';
+            html += '<div class="case-thumb">'
+                + (src ? '<img src="' + src + '" alt="">' : '')
+                + '<button type="button" class="case-thumb-del" onclick="caseRemoveImage(\'' + imgId + '\')" title="删除">×</button>'
+                + '<div class="case-thumb-ops">'
+                + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',-1)" title="前移">◀</button>'
+                + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',1)" title="后移">▶</button>'
+                + '</div></div>';
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+    // 8 水印
+    html += '<div class="case-form-sec">'
+        + '<div class="case-toggle-row"><span class="case-toggle-name">水印</span>'
+        + '<label class="custom-toggle"><input type="checkbox"' + (wm.enabled ? ' checked' : '') + ' onchange="setCaseWmEnabled(this.checked)"><span class="toggle-slider"></span></label></div>';
+    if (wm.enabled) {
+        html += '<div class="case-chips" style="margin-top:6px;">'
+            + caseChipHtml('文字', wm.type === 'text', "setCaseWmType('text')")
+            + caseChipHtml('图片', wm.type === 'image', "setCaseWmType('image')")
+            + '</div>';
+        if (wm.type === 'text') {
+            html += '<input type="text" class="case-field-input" style="margin-top:9px;" value="' + escapeHtml(String(wm.text || '')) + '" placeholder="水印文字，如 @昵称" oninput="setCaseWmText(this.value)">';
+        } else {
+            const wmc = _caseImgCache[wm.imgId];
+            html += '<div style="margin-top:9px;display:flex;align-items:center;gap:10px;">'
+                + (wmc ? '<img src="' + wmc.dataUrl + '" style="width:44px;height:44px;object-fit:contain;border:1px solid var(--border-color,#ddd);border-radius:8px;background:#f4f4f6;padding:3px;">' : '')
+                + '<button type="button" class="btn secondary btn-compact" onclick="document.getElementById(\'caseWmImageInput\').click()">上传水印图</button>'
+                + '<input type="file" id="caseWmImageInput" accept="image/*" class="d-none" onchange="caseHandleWmImageFile(this.files && this.files[0]); this.value=\'\';">'
+                + '</div>';
+        }
+        html += '<select class="case-field-input" style="margin-top:9px;" onchange="setCaseWmPos(this.value)">'
+            + [['br', '右下'], ['bl', '左下'], ['tr', '右上'], ['tl', '左上'], ['center', '居中'], ['tile', '平铺全图']].map(function (p) {
+                return '<option value="' + p[0] + '"' + (wm.position === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+            }).join('')
+            + '</select>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">透明度</span>'
+            + '<input type="range" min="0.05" max="1" step="0.05" value="' + (Number(wm.opacity) || 0.3) + '" oninput="setCaseWmOpacity(this.value)">'
+            + '<span class="case-range-val" id="caseWmOpacityVal">' + Math.round((Number(wm.opacity) || 0.3) * 100) + '%</span></div>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
+            + '<input type="range" min="0.5" max="3" step="0.1" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
+            + '<span class="case-range-val" id="caseWmScaleVal">' + (Number(wm.scale) || 1).toFixed(1) + '×</span></div>';
+    }
+    html += '<div class="case-form-hint">水印绘制在画布最上层，随导出图一起保存；未开启或无内容时不占位</div>'
+        + '</div>';
+    area.innerHTML = html;
+    // 上传控件：统一走 _caseUploadTarget 决定进入哪个制品组（-1=自由模式）
+    const input = document.getElementById('caseImageInput');
+    if (input) {
+        input.addEventListener('change', function () {
+            caseHandleImageFiles(input.files, _caseUploadTarget);
+            input.value = '';
+        });
+    }
+    // 自由模式上传区：点击 + 拖拽
+    const zone = document.getElementById('caseUploadZone');
+    if (zone) {
+        zone.addEventListener('click', function () { _caseUploadTarget = -1; if (input) input.click(); });
+        zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('dragover'); });
+        zone.addEventListener('dragleave', function () { zone.classList.remove('dragover'); });
+        zone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) caseHandleImageFiles(e.dataTransfer.files, -1);
+        });
+    }
+    // 分组模式：每个制品块可拖拽入图
+    area.querySelectorAll('.case-group-block').forEach(function (block) {
+        const gi = parseInt(block.getAttribute('data-case-group'), 10) || 0;
+        block.addEventListener('dragover', function (e) { e.preventDefault(); block.classList.add('dragover'); });
+        block.addEventListener('dragleave', function () { block.classList.remove('dragover'); });
+        block.addEventListener('drop', function (e) {
+            e.preventDefault();
+            block.classList.remove('dragover');
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) caseHandleImageFiles(e.dataTransfer.files, gi);
+        });
+    });
+    // 底图上传
+    const bgInput = document.getElementById('caseBgImageInput');
+    if (bgInput) {
+        bgInput.addEventListener('change', function () {
+            caseHandleBgImageFile(bgInput.files && bgInput.files[0]);
+            bgInput.value = '';
+        });
+    }
+}
+async function caseHandleBgImageFile(file) {
+    const st = _caseState; if (!st || !file) return;
+    try {
+        if (!/^image\//.test(file.type || '')) { showGlobalToast('请选择图片文件'); return; }
+        const dataUrl = await caseReadFileAsDataUrl(file);
+        let compressed = await caseCompressDataUrl(dataUrl, 1600, 'image/webp', 0.9);
+        if (!compressed || compressed.indexOf('data:image/webp') !== 0) compressed = await caseCompressDataUrl(dataUrl, 1600, 'image/png');
+        const id = 'cbg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        await caseImgPut(id, compressed);
+        const img = await caseLoadImageEl(compressed);
+        _caseImgCache[id] = { dataUrl: compressed, w: img.naturalWidth || 1, h: img.naturalHeight || 1 };
+        st.config.bg.type = 'image';
+        st.config.bg.imgId = id;
+        renderCaseForm();
+        renderCasePreview();
+        showGlobalToast('底图已上传，可开启「调整布局」对位');
+    } catch (e) {
+        console.error('底图处理失败:', e);
+        showGlobalToast('底图处理失败');
+    }
+}
+function caseClearBgImage() {
+    const st = _caseState; if (!st) return;
+    st.config.bg.type = 'color';
+    st.config.bg.imgId = '';
+    renderCaseForm();
+    renderCasePreview();
+}
+// 表单事件处理（输入类只更新状态 + 预览，不重绘表单，避免输入焦点丢失）
+function setCaseRatio(r) {
+    const st = _caseState; if (!st) return;
+    st.config.ratio = r;
+    if (r === '1:1') { st.config.width = 1080; st.config.height = 1080; }
+    else if (r === '3:4') { st.config.width = 1080; st.config.height = 1440; }
+    renderCaseForm(); renderCasePreview();
+}
+function setCaseSizeInput(which, v) {
+    const st = _caseState; if (!st) return;
+    let n = parseInt(v, 10);
+    if (!isFinite(n)) return;
+    n = Math.min(4000, Math.max(200, n));
+    if (which === 'w') st.config.width = n; else st.config.height = n;
+    st.config.ratio = 'custom';
+    renderCaseForm(); renderCasePreview();
+}
+function setCaseBg(type, color) {
+    const st = _caseState; if (!st) return;
+    st.config.bg.type = type;
+    if (color) st.config.bg.color = color;
+    renderCaseForm(); renderCasePreview();
+}
+function toggleCaseSection(key, on) {
+    const st = _caseState; if (!st) return;
+    st.config.toggles[key] = !!on;
+    // 开关同时控制表单中对应输入项的显隐
+    renderCaseForm(); renderCasePreview();
+}
+function setCaseMockupScale(v) {
+    const st = _caseState; if (!st) return;
+    st.config.mockupScale = Math.min(1, Math.max(0.4, parseFloat(v) || 1));
+    const el = document.getElementById('caseMockupScaleVal');
+    if (el) el.textContent = Math.round(st.config.mockupScale * 100) + '%';
+    renderCasePreview();
+}
+function setCaseTextScale(v) {
+    const st = _caseState; if (!st) return;
+    st.config.textScale = Math.min(1.8, Math.max(0.6, parseFloat(v) || 1));
+    const el = document.getElementById('caseTextScaleVal');
+    if (el) el.textContent = Math.round(st.config.textScale * 100) + '%';
+    renderCasePreview();
+}
+// 单品装饰（投影/描边/扩张描边），按制品图片存储
+function setCaseItemFx(idx, field, value) {
+    const st = _caseState; if (!st) return;
+    const imgId = st.images ? st.images[idx] : null;
+    if (!imgId) return;
+    if (!st.config.imgFx) st.config.imgFx = {};
+    if (!st.config.imgFx[imgId] || typeof st.config.imgFx[imgId] !== 'object') st.config.imgFx[imgId] = {};
+    const f = st.config.imgFx[imgId];
+    if (field === 'shadow') f.shadow = !!value;
+    else if (field === 'strokeW') { f.strokeW = Math.min(0.1, Math.max(0, parseFloat(value) || 0)); const el = document.getElementById('caseFxStrokeVal'); if (el) el.textContent = Math.round(f.strokeW * 100) + '%'; }
+    else if (field === 'expandW') { f.expandW = Math.min(0.15, Math.max(0, parseFloat(value) || 0)); const el = document.getElementById('caseFxExpandVal'); if (el) el.textContent = Math.round(f.expandW * 100) + '%'; }
+    else if (field === 'strokeColor') f.strokeColor = String(value);
+    else if (field === 'expandColor') f.expandColor = String(value);
+    else if (field === 'expandAcrylic') f.expandAcrylic = !!value;
+    // 参数变化 → 清除该图的装饰缓存，重烘焙后补绘
+    Object.keys(_caseFxCache).forEach(function (k) {
+        if (k.indexOf(imgId + '|') === 0) delete _caseFxCache[k];
+    });
+    renderCasePreview();
+    caseEnsureShadows([imgId]).then(function (changed) {
+        if (changed && _caseState) renderCasePreview();
+    });
+}
+function caseResetItemFx(idx) {
+    const st = _caseState; if (!st) return;
+    const imgId = st.images ? st.images[idx] : null;
+    if (!imgId) return;
+    if (st.config.imgFx) delete st.config.imgFx[imgId];
+    Object.keys(_caseFxCache).forEach(function (k) {
+        if (k.indexOf(imgId + '|') === 0) delete _caseFxCache[k];
+    });
+    caseSelectElement(null);
+    renderCasePreview();
+}
+// 当前页第 idx 个制品的图片 id
+function caseItemImageId(idx) {
+    const st = _caseState; if (!st) return null;
+    const page = caseCurrentPage(st);
+    return (page && page.images && page.images[idx]) || null;
+}
+function caseItemFxRec(imgId, create) {
+    const st = _caseState; if (!st || !imgId) return null;
+    if (!st.config.imgFx) st.config.imgFx = {};
+    if (!st.config.imgFx[imgId] || typeof st.config.imgFx[imgId] !== 'object') {
+        if (!create) return null;
+        st.config.imgFx[imgId] = {};
+    }
+    return st.config.imgFx[imgId];
+}
+// 单品大小（相对该页自动槽位缩放，中心不变、钳制在制品区内；按图片存储，跨页生效）
+function setCaseItemScale(idx, v) {
+    const st = _caseState; if (!st) return;
+    const imgId = caseItemImageId(idx); if (!imgId) return;
+    const f = caseItemFxRec(imgId, true);
+    f.scale = Math.min(2.5, Math.max(0.3, parseFloat(v) || 1));
+    const el = document.getElementById('caseItemScaleVal');
+    if (el) el.textContent = Math.round(f.scale * 100) + '%';
+    renderCasePreview();
+}
+// 单品旋转
+function setCaseItemRot(idx, v) {
+    const st = _caseState; if (!st) return;
+    const imgId = caseItemImageId(idx); if (!imgId) return;
+    const f = caseItemFxRec(imgId, true);
+    f.rot = Math.min(180, Math.max(-180, parseInt(v, 10) || 0));
+    const el = document.getElementById('caseItemRotVal');
+    if (el) el.textContent = f.rot + '°';
+    renderCasePreview();
+}
+// 快捷旋转（±90°，适合正反面/横竖扫图）
+function caseQuickRotate(idx, delta) {
+    const st = _caseState; if (!st) return;
+    const imgId = caseItemImageId(idx); if (!imgId) return;
+    const f = caseItemFxRec(imgId, true);
+    f.rot = ((Math.round(Number(f.rot) || 0) + delta) % 360 + 540) % 360 - 180;
+    const el = document.getElementById('caseItemRotVal');
+    if (el) el.textContent = f.rot + '°';
+    renderCasePreview();
+}
+function setCaseMockup(id) {
+    const st = _caseState; if (!st) return;
+    st.config.mockupId = id;
+    renderCaseForm(); renderCasePreview();
+    if (caseActiveMockup().shadow) {
+        caseEnsureShadows((st.images || []).slice()).then(function (changed) {
+            if (changed && _caseState) renderCasePreview();
+        });
+    }
+}
+function setCaseField(key, value) {
+    const st = _caseState; if (!st) return;
+    st.fields[key] = value;
+    renderCasePreview();
+}
+function setCaseProjectField(name, value) {
+    const st = _caseState; if (!st) return;
+    caseSetProjectFieldValue(st, name, value);
+    renderCasePreview();
+}
+function caseMoveImage(imgId, dir, groupIdx) {
+    const st = _caseState; if (!st) return;
+    if (groupIdx != null && groupIdx >= 0 && st.groups && st.groups[groupIdx]) {
+        // 组内移动：同步维护组内顺序与总图顺序
+        const g = st.groups[groupIdx];
+        const gi = g.images.indexOf(imgId);
+        const gj = gi + dir;
+        if (gi < 0 || gj < 0 || gj >= g.images.length) return;
+        const neighbor = g.images[gj];
+        g.images[gj] = imgId;
+        g.images[gi] = neighbor;
+        const ai = st.images.indexOf(imgId);
+        const bi = st.images.indexOf(neighbor);
+        if (ai >= 0 && bi >= 0) { st.images[bi] = imgId; st.images[ai] = neighbor; }
+    } else {
+        const arr = st.images;
+        const i = arr.indexOf(imgId);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= arr.length) return;
+        arr.splice(j, 0, arr.splice(i, 1)[0]);
+    }
+    renderCaseForm(); renderCasePreview();
+}
+function caseRemoveImage(imgId) {
+    const st = _caseState; if (!st) return;
+    st.images = st.images.filter(function (x) { return x !== imgId; });
+    (st.groups || []).forEach(function (g) { g.images = (g.images || []).filter(function (x) { return x !== imgId; }); });
+    renderCaseForm(); renderCasePreview();
+}
+let _caseUploadTarget = -1; // 本次上传进入的制品组下标（-1=自由模式/总图）
+function casePickUpload(gi) {
+    _caseUploadTarget = gi;
+    const input = document.getElementById('caseImageInput');
+    if (input) input.click();
+}
+async function caseHandleImageFiles(fileList, groupIdx) {
+    if (!fileList || !fileList.length || !_caseState) return;
+    const files = Array.prototype.slice.call(fileList);
+    showGlobalToast('正在处理 ' + files.length + ' 张图片…');
+    let okCount = 0;
+    for (const file of files) {
+        try {
+            if (!/^image\//.test(file.type || '')) continue;
+            const dataUrl = await caseReadFileAsDataUrl(file);
+            const compressed = await caseCompressUploadData(dataUrl, file.type);
+            const trimmed = await caseTrimTransparent(compressed);
+            const id = 'cimg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+            await caseImgPut(id, trimmed);
+            const img = await caseLoadImageEl(trimmed);
+            _caseImgCache[id] = { dataUrl: trimmed, w: img.naturalWidth || 1, h: img.naturalHeight || 1 };
+            _caseState.images.push(id);
+            // 分组模式：同时归入指定制品组
+            if (groupIdx != null && groupIdx >= 0 && _caseState.groups && _caseState.groups[groupIdx]) {
+                _caseState.groups[groupIdx].images.push(id);
+            }
+            okCount++;
+        } catch (e) { console.error('制品图处理失败:', e); }
+    }
+    if (!_caseState) return;
+    renderCaseForm(); renderCasePreview();
+    if (caseActiveMockup().shadow) {
+        caseEnsureShadows(_caseState.images.slice()).then(function (changed) {
+            if (changed && _caseState) renderCasePreview();
+        });
+    }
+    if (okCount) showGlobalToast('已上传 ' + okCount + ' 张制品图，自动套用样机');
+    else showGlobalToast('没有可用的图片文件');
+}
+function setCaseWmEnabled(on) {
+    const st = _caseState; if (!st) return;
+    const wm = st.config.watermark;
+    wm.enabled = !!on;
+    if (on && wm.type === 'text' && !String(wm.text || '').trim()) {
+        const n = (defaultSettings && defaultSettings.artistInfo && defaultSettings.artistInfo.id) || '';
+        wm.text = n ? '@' + n : '';
+    }
+    renderCaseForm(); renderCasePreview();
+}
+function setCaseWmType(t) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.type = t;
+    renderCaseForm(); renderCasePreview();
+}
+function setCaseWmText(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.text = v;
+    renderCasePreview();
+}
+function setCaseWmPos(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.position = v;
+    renderCasePreview();
+}
+function setCaseWmOpacity(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.opacity = Math.min(1, Math.max(0.05, parseFloat(v) || 0.3));
+    const el = document.getElementById('caseWmOpacityVal');
+    if (el) el.textContent = Math.round(st.config.watermark.opacity * 100) + '%';
+    renderCasePreview();
+}
+function setCaseWmScale(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.scale = Math.min(3, Math.max(0.5, parseFloat(v) || 1));
+    const el = document.getElementById('caseWmScaleVal');
+    if (el) el.textContent = st.config.watermark.scale.toFixed(1) + '×';
+    renderCasePreview();
+}
+async function caseHandleWmImageFile(file) {
+    const st = _caseState; if (!st || !file) return;
+    try {
+        if (!/^image\//.test(file.type || '')) { showGlobalToast('请选择图片文件'); return; }
+        const dataUrl = await caseReadFileAsDataUrl(file);
+        let compressed = await caseCompressDataUrl(dataUrl, 800, 'image/webp', 0.9);
+        if (!compressed || compressed.indexOf('data:image/webp') !== 0) compressed = await caseCompressDataUrl(dataUrl, 800, 'image/png');
+        compressed = await caseTrimTransparent(compressed);
+        const id = 'cwm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        await caseImgPut(id, compressed);
+        const img = await caseLoadImageEl(compressed);
+        _caseImgCache[id] = { dataUrl: compressed, w: img.naturalWidth || 1, h: img.naturalHeight || 1 };
+        st.config.watermark.imgId = id;
+        renderCaseForm(); renderCasePreview();
+    } catch (e) {
+        console.error('水印图处理失败:', e);
+        showGlobalToast('水印图处理失败');
+    }
+}
+
+// ---------- 抽屉 ----------
+async function openCaseGenerator(opts) {
+    opts = opts || {};
+    let base = null;
+    if (opts.caseId) {
+        base = caseLibrary.find(function (c) { return c && c.id === opts.caseId; }) || null;
+    }
+    _caseState = base ? caseNormalizeState(JSON.parse(JSON.stringify(base))) : caseNewState();
+    // 重置编辑模式与选中元素
+    _caseEditMode = false;
+    _caseSelEl = null;
+    const editBtn = document.getElementById('caseEditLayoutBtn');
+    if (editBtn) editBtn.classList.remove('case-edit-on');
+    const pendingOrderId = (!base && opts.orderId != null && opts.orderId !== '') ? opts.orderId : null;
+    const drawer = document.getElementById('caseGeneratorDrawer');
+    if (drawer) {
+        drawer.classList.add('open');
+        drawer.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+    }
+    renderCaseForm();
+    renderCasePreview();
+    // 异步把案例已有图片读进缓存后补绘（含底图）
+    const ids = (_caseState.images || []).slice();
+    const wm = _caseState.config.watermark;
+    if (wm && wm.enabled && wm.type === 'image' && wm.imgId) ids.push(wm.imgId);
+    if (_caseState.config.bg && _caseState.config.bg.type === 'image' && _caseState.config.bg.imgId) ids.push(_caseState.config.bg.imgId);
+    await caseEnsureImagesLoaded(ids);
+    if (!_caseState) return;
+    if (caseActiveMockup().shadow || (_caseState.config.imgFx && Object.keys(_caseState.config.imgFx).length)) await caseEnsureShadows(_caseState.images.slice());
+    // 还原了布局/装饰的案例给出提示，方便发现编辑功能
+    if (_caseState) {
+        const hasExtras = !!(_caseState.config.layout
+            || (_caseState.config.imgFx && Object.keys(_caseState.config.imgFx).length)
+            || (_caseState.fields.customTexts && _caseState.fields.customTexts.some(function (x) { return x && String(x.text || '').trim(); })));
+        if (hasExtras) showGlobalToast('已还原该案例的布局与装饰，点「调整布局」可继续编辑');
+    }
+    if (pendingOrderId != null) {
+        await applyCaseOrder(pendingOrderId);
+    } else {
+        renderCasePreview();
+    }
+}
+function closeCaseGenerator() {
+    const drawer = document.getElementById('caseGeneratorDrawer');
+    if (drawer) {
+        drawer.classList.remove('open', 'case-preview-shown');
+        drawer.setAttribute('aria-hidden', 'true');
+    }
+    document.body.style.overflow = '';
+    toggleCasePreviewDrawer(false);
+    _caseState = null;
+    _caseEditMode = false;
+    _caseSelEl = null;
+    const editBtn = document.getElementById('caseEditLayoutBtn');
+    if (editBtn) editBtn.classList.remove('case-edit-on');
+    // 案例库子页可见时刷新画廊（生成器里可能新增/更新了案例）
+    const libPage = document.getElementById('settingsSubPage-caseLibrary');
+    if (libPage && !libPage.classList.contains('d-none')) renderCaseLibrary();
+}
+function toggleCasePreviewDrawer(show) {
+    const drawer = document.getElementById('caseGeneratorDrawer');
+    const pane = document.getElementById('casePreviewPane');
+    const backdrop = document.getElementById('casePreviewBackdrop');
+    if (!drawer || !pane) return;
+    const on = show === undefined ? !pane.classList.contains('case-preview-open') : !!show;
+    pane.classList.toggle('case-preview-open', on);
+    if (backdrop) {
+        backdrop.classList.toggle('case-preview-open', on);
+        backdrop.classList.toggle('d-none', false);
+    }
+    drawer.classList.toggle('case-preview-shown', on);
+    if (on) setTimeout(fitCasePreview, 320);
+}
+
+// ---------- 导出 / 保存 ----------
+async function caseCaptureCanvas(st, page) {
+    const W = st.config.width, H = st.config.height;
+    // 底图未就绪时先加载，避免导出缺底图
+    if (st.config.bg && st.config.bg.type === 'image' && st.config.bg.imgId && !_caseImgCache[st.config.bg.imgId]) {
+        await caseEnsureImagesLoaded([st.config.bg.imgId]);
+    }
+    let holder = document.getElementById('caseExportHolder');
+    if (!holder) {
+        holder = document.createElement('div');
+        holder.id = 'caseExportHolder';
+        holder.style.cssText = 'position:absolute;left:-10000px;top:0;';
+        document.body.appendChild(holder);
+    }
+    holder.style.width = W + 'px';
+    holder.style.height = H + 'px';
+    holder.innerHTML = buildCaseCanvasHtml(st, page || null);
+    const el = holder.firstElementChild;
+    casePrepareCanvasEl(el);
+    const imgs = el.querySelectorAll('img');
+    await Promise.all(Array.prototype.map.call(imgs, function (img) {
+        if (img.complete) return Promise.resolve();
+        return new Promise(function (res) { img.onload = res; img.onerror = res; });
+    }));
+    let scale = 1;
+    const MAXP = 16.7 * 1024 * 1024;
+    if (W * H > MAXP) {
+        scale = Math.max(0.4, Math.floor(Math.sqrt(MAXP / (W * H)) * 10) / 10);
+        showGlobalToast('画布过大，已按约 ' + Math.round(W * scale) + 'px 导出');
+    }
+    try {
+        return await html2canvas(el, { scale: scale, useCORS: true, logging: false, width: W, height: H, backgroundColor: null });
+    } finally {
+        holder.innerHTML = '';
+    }
+}
+async function exportCaseAsImage(format) {
+    const st = _caseState;
+    if (!st) return;
+    try {
+        const page = caseCurrentPage(st);
+        const canvas = await caseCaptureCanvas(st, page);
+        let dataUrl;
+        if (format === 'jpeg') {
+            const cv2 = document.createElement('canvas');
+            cv2.width = canvas.width; cv2.height = canvas.height;
+            const ctx = cv2.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, cv2.width, cv2.height);
+            ctx.drawImage(canvas, 0, 0);
+            dataUrl = cv2.toDataURL('image/jpeg', 0.92);
+        } else {
+            dataUrl = canvas.toDataURL('image/png');
+        }
+        const title = caseDisplayType(st);
+        const pageSuffix = (page && page.kind === 'group' && page.label) ? '_' + page.label : '';
+        const ext = format === 'jpeg' ? 'jpg' : 'png';
+        const filename = '案例_' + title + pageSuffix + '_' + Date.now() + '.' + ext;
+        const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+        const isMobileUA = /Mobi|Android|iPhone|iPod|Windows Phone/i.test(navigator.userAgent);
+        const isMobile = isTouchDevice && (window.innerWidth <= 1024 || isMobileUA);
+        if (isMobile) {
+            canvas.toBlob(async function (blob) {
+                if (!blob) { showReceiptImagePreview(dataUrl, filename); return; }
+                const file = new File([blob], filename, { type: mime });
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({ files: [file], title: '案例图' });
+                        showGlobalToast('图片已保存');
+                    } catch (err) {
+                        if (err.name !== 'AbortError') {
+                            if (!triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
+                            else showGlobalToast('图片已保存');
+                        }
+                    }
+                } else {
+                    if (!triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
+                    else showGlobalToast('图片已保存');
+                }
+            }, mime);
+        } else {
+            if (!triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
+            else showGlobalToast('已导出 ' + ext.toUpperCase());
+        }
+    } catch (e) {
+        console.error('导出案例失败:', e);
+        alert('导出案例失败，请重试！');
+    }
+}
+async function saveCaseToLibrary() {
+    const st = _caseState;
+    if (!st) return;
+    try {
+        const pages = casePages(st);
+        const total = pages.length;
+        // 收集旧成品图 id（保存成功后清理）
+        const oldIds = [];
+        if (st.exportImgId) oldIds.push(st.exportImgId);
+        if (st.exportThumbId) oldIds.push(st.exportThumbId);
+        (st.pages || []).forEach(function (p) {
+            if (p && p.exportImgId) oldIds.push(p.exportImgId);
+            if (p && p.exportThumbId) oldIds.push(p.exportThumbId);
+        });
+        // 每页生成成品图与缩略图（≤1600 / ≤480；透明背景 PNG，否则 JPEG）
+        const fullMime = st.config.bg.type === 'transparent' ? 'image/png' : 'image/jpeg';
+        const savedPages = [];
+        for (let i = 0; i < pages.length; i++) {
+            showGlobalToast('正在生成案例图（' + (i + 1) + '/' + total + '）…');
+            const canvas = await caseCaptureCanvas(st, pages[i]);
+            const full = await caseCompressCanvas(canvas, 1600, fullMime, 0.85);
+            const thumb = await caseCompressCanvas(canvas, 480, 'image/jpeg', 0.72);
+            const exportImgId = 'cexp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+            const exportThumbId = 'ctmb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+            await caseImgPut(exportImgId, full);
+            await caseImgPut(exportThumbId, thumb);
+            savedPages.push({ kind: pages[i].kind, label: pages[i].label, exportImgId: exportImgId, exportThumbId: exportThumbId });
+        }
+        const main = savedPages[0] || {};
+        const now = new Date().toISOString();
+        st.pages = savedPages;
+        st.exportImgId = main.exportImgId || '';
+        st.exportThumbId = main.exportThumbId || '';
+        st.exportFormat = fullMime === 'image/png' ? 'png' : 'jpeg';
+        st.updatedAt = now;
+        if (!st.id) {
+            st.id = 'case_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+            st.createdAt = now;
+        }
+        const record = caseRecordFromState(st);
+        const idx = caseLibrary.findIndex(function (c) { return c && c.id === st.id; });
+        if (idx >= 0) caseLibrary[idx] = record; else caseLibrary.unshift(record);
+        saveCaseLibrary();
+        oldIds.forEach(function (id) { caseImgDelete(id); });
+        const libPage = document.getElementById('settingsSubPage-caseLibrary');
+        if (libPage && !libPage.classList.contains('d-none')) renderCaseLibrary();
+        showGlobalToast('已保存到案例库（' + savedPages.length + ' 张图）' + (st.orderTitle ? '，关联订单「' + st.orderTitle + '」' : ''));
+    } catch (e) {
+        console.error('保存案例失败:', e);
+        alert('保存案例失败，请重试！');
+    }
+}
+
+// ---------- 案例库 ----------
+function renderCaseLibrary() {
+    const grid = document.getElementById('caseLibraryGrid');
+    if (!grid) return;
+    if (!caseLibrary.length) {
+        grid.innerHTML = '<div class="case-library-empty">还没有案例。点击右上角「新建案例」，或从记录页订单操作卡选择「生成案例」。</div>';
+        return;
+    }
+    grid.innerHTML = caseLibrary.map(function (c) {
+        const title = escapeHtml(caseDisplayType(c));
+        const meta1 = c.orderTitle ? '订单：' + escapeHtml(String(c.orderTitle)) : '未关联订单';
+        const d = c.updatedAt || c.createdAt || '';
+        const meta2 = d ? String(d).slice(0, 10) : '';
+        const cid = escapeHtml(String(c.id || ''));
+        return '<div class="case-library-card">'
+            + '<div class="case-library-thumb" id="caseLibThumb_' + cid + '" onclick="openCaseViewer(\'' + cid + '\')">加载中…</div>'
+            + '<div class="case-library-card-body">'
+            + '<div class="case-library-card-title">' + title + '</div>'
+            + '<div class="case-library-card-meta">' + meta1 + (meta2 ? ' · ' + meta2 : '') + '</div>'
+            + '</div>'
+            + '<div class="case-library-card-ops">'
+            + '<button type="button" class="btn secondary" onclick="regenerateCase(\'' + cid + '\')">重新生成</button>'
+            + '<button type="button" class="btn secondary" onclick="downloadCaseById(\'' + cid + '\')">下载</button>'
+            + '<button type="button" class="btn secondary" onclick="deleteCaseById(\'' + cid + '\')">删除</button>'
+            + '</div>'
+            + '</div>';
+    }).join('');
+    caseFillLibraryThumbs();
+}
+async function caseFillLibraryThumbs() {
+    for (const c of caseLibrary) {
+        const el = document.getElementById('caseLibThumb_' + c.id);
+        if (!el) continue;
+        const id = c.exportThumbId || c.exportImgId;
+        if (!id) { el.textContent = '无预览图'; continue; }
+        const url = await caseImgGet(id);
+        if (url) el.innerHTML = '<img src="' + url + '" alt="">';
+        else el.textContent = '图片缺失';
+    }
+}
+async function openCaseViewer(id) {
+    const c = caseLibrary.find(function (x) { return x && x.id === id; });
+    if (!c) return;
+    _caseViewId = id;
+    const modal = document.getElementById('caseViewModal');
+    const img = document.getElementById('caseViewImg');
+    const meta = document.getElementById('caseViewMeta');
+    const chips = document.getElementById('caseViewPages');
+    const regen = document.getElementById('caseViewRegenBtn');
+    if (!modal || !img) return;
+    const pages = caseViewPagesOf(c);
+    _caseViewPages = pages;
+    const render = function (idx) {
+        idx = Math.min(Math.max(0, idx), pages.length - 1);
+        _caseViewPageIdx = idx;
+        const p = pages[idx];
+        if (meta) meta.textContent = caseDisplayType(c) + (pages.length > 1 && p.label ? ' · ' + p.label : '') + (c.orderTitle ? ' · 订单：' + c.orderTitle : '');
+        if (chips) {
+            if (pages.length > 1) {
+                chips.style.display = 'flex';
+                chips.innerHTML = pages.map(function (pg, i) {
+                    return '<button type="button" class="case-chip' + (i === idx ? ' active' : '') + '" onclick="caseViewShowPage(' + i + ')">' + escapeHtml(pg.label || '') + '</button>';
+                }).join('');
+            } else { chips.style.display = 'none'; chips.innerHTML = ''; }
+        }
+        img.src = '';
+        img.alt = '案例加载中…';
+        caseImgGet(p.exportImgId || p.exportThumbId).then(function (url) {
+            if (url) { img.src = url; img.alt = '案例图'; }
+            else img.alt = '图片缺失';
+        });
+    };
+    _caseViewRender = render;
+    if (regen) regen.onclick = function () { closeCaseViewModal(); regenerateCase(id); };
+    modal.classList.remove('d-none');
+    render(0);
+}
+function closeCaseViewModal() {
+    const modal = document.getElementById('caseViewModal');
+    if (modal) modal.classList.add('d-none');
+    const img = document.getElementById('caseViewImg');
+    if (img) img.src = '';
+    _caseViewId = null;
+}
+function caseViewDownload() {
+    if (_caseViewId != null) downloadCaseById(_caseViewId, _caseViewPageIdx || 0);
+}
+async function downloadCaseById(id, pageIdx) {
+    const c = caseLibrary.find(function (x) { return x && x.id === id; });
+    if (!c) return;
+    const pages = caseViewPagesOf(c);
+    const p = pages[Math.min(Math.max(0, pageIdx || 0), pages.length - 1)] || pages[0];
+    if (!p || !p.exportImgId) { showGlobalToast('该案例没有可下载的图片，请重新生成'); return; }
+    const url = await caseImgGet(p.exportImgId);
+    if (!url) { showGlobalToast('案例图片缺失，请重新生成'); return; }
+    const title = caseDisplayType(c);
+    const pageSuffix = (pages.length > 1 && p.label) ? '_' + p.label : '';
+    const ext = c.exportFormat === 'jpeg' ? 'jpg' : 'png';
+    if (!triggerDownload(url, '案例_' + title + pageSuffix + '_' + Date.now() + '.' + ext)) {
+        showReceiptImagePreview(url, '案例_' + title + pageSuffix + '.' + ext);
+    }
+}
+async function deleteCaseById(id) {
+    const idx = caseLibrary.findIndex(function (x) { return x && x.id === id; });
+    if (idx < 0) return;
+    if (!confirm('确定删除该案例？')) return;
+    const c = caseLibrary[idx];
+    // 仅删除没有被其它案例引用的图片
+    const refs = {};
+    caseLibrary.forEach(function (o) {
+        if (!o || o.id === id) return;
+        (o.images || []).forEach(function (i) { refs[i] = 1; });
+        const w = o.config && o.config.watermark;
+        if (w && w.imgId) refs[w.imgId] = 1;
+    });
+    // 布局方案引用的底图不清理
+    _caseLayoutPresets.forEach(function (p) {
+        if (p && p.bg && p.bg.imgId) refs[p.bg.imgId] = 1;
+    });
+    const ids = [];
+    (c.images || []).forEach(function (i) { if (!refs[i]) ids.push(i); });
+    const w = c.config && c.config.watermark;
+    if (w && w.imgId && !refs[w.imgId]) ids.push(w.imgId);
+    (c.pages || []).forEach(function (p) {
+        if (p && p.exportImgId) ids.push(p.exportImgId);
+        if (p && p.exportThumbId) ids.push(p.exportThumbId);
+    });
+    if (c.exportImgId) ids.push(c.exportImgId);
+    if (c.exportThumbId) ids.push(c.exportThumbId);
+    ids.forEach(function (i) {
+        caseImgDelete(i);
+        delete _caseImgCache[i];
+        Object.keys(_caseFxCache).forEach(function (k) {
+            if (k.indexOf(i + '|') === 0) delete _caseFxCache[k];
+        });
+    });
+    caseLibrary.splice(idx, 1);
+    saveCaseLibrary();
+    renderCaseLibrary();
+    showGlobalToast('案例已删除');
+}
+function regenerateCase(id) {
+    openCaseGenerator({ caseId: id });
 }

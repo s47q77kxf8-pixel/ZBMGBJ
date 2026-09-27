@@ -11,7 +11,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260923-0056">
+    <link rel="stylesheet" href="style.css?v=20260928-0550">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -166,6 +166,15 @@
             <path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
             <circle cx="9" cy="9" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <path d="M5 16l3.5-2.5 3 2 4-3 4.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-eye" viewBox="0 0 24 24">
+            <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        </symbol>
+        <symbol id="i-eye-off" viewBox="0 0 24 24">
+            <path d="M3 3l18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M10.7 5.2C11.1 5.1 11.5 5 12 5c6.4 0 10 7 10 7s-1.1 2-3.1 3.8M6.5 6.6C3.6 8.5 2 12 2 12s3.6 7 10 7c1.3 0 2.5-.3 3.6-.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </symbol>
         <symbol id="i-edit" viewBox="0 0 24 24">
             <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0 0-3L16.5 4.5a2.1 2.1 0 0 0-3 0L3 15v5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -1922,6 +1931,10 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
                             <span class="quick-entry-label">角色<br>档案</span>
                         </button>
+                        <button class="quick-entry-btn" onclick="showSettingsSubPage('caseLibrary')">
+                            <svg class="icon" aria-hidden="true"><use href="#i-image-line-c"></use></svg>
+                            <span class="quick-entry-label">案例<br>库</span>
+                        </button>
                         <!-- 接单物料：dev=1 时显示 -->
                         <button class="quick-entry-btn dev-feature d-none" onclick="showSettingsSubPage('marketingCards')">
                             <svg class="icon" aria-hidden="true"><use href="#i-image-line-b"></use></svg>
@@ -2781,6 +2794,22 @@
                     <button id="mcPreviewFab" class="mc-preview-fab" onclick="toggleMcPreviewDrawer()">预览</button>
                     <div id="mcPreviewBackdrop" class="mc-preview-backdrop d-none" onclick="toggleMcPreviewDrawer(false)"></div>
                 </div>
+                <!-- 案例库子页面（仅本地存储，关联订单） -->
+                <div id="settingsSubPage-caseLibrary" class="settings-sub-page d-none">
+                    <div class="section case-library-section">
+                        <div class="settings-subpage-header mb-4">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>案例库</h2>
+                            <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn btn-compact" onclick="openCaseGenerator()">新建案例</button>
+                            </div>
+                        </div>
+                        <div class="setting-hint text-gray" style="margin-bottom:10px;">
+                            从订单一键生成案例展示图，保存在本机案例库并关联订单；可在案例上叠加水印，随时重新生成。
+                        </div>
+                        <div id="caseLibraryGrid" class="case-library-grid"></div>
+                    </div>
+                </div>
 <!-- 角色档案弹窗（顶层：排单页 Todo 点击角色名也要能弹出，不能放在设置子页面里） -->
 
                 <!-- 添加系数弹窗 -->
@@ -2927,6 +2956,10 @@
                         <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('folder')" title="排单生成文件夹">
                             <svg class="icon" aria-hidden="true"><use href="#i-folder"></use></svg>
                             <span>排单</span>
+                        </button>
+                        <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('gen_case')" title="生成案例展示图">
+                            <svg class="icon" aria-hidden="true"><use href="#i-image-line-a"></use></svg>
+                            <span>生成案例</span>
                         </button>
                         <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnCancel" onclick="scheduleTodoCardAction('cancel')" title="撤单">
                             <svg class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>
@@ -3641,7 +3674,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260923-0056"></script>
+    <script src="script.js?v=20260928-0550"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {
@@ -3677,6 +3710,66 @@
             }
         })();
     </script>
+
+    <!-- 案例生成器抽屉（全屏：左配置 / 右预览；手机端预览为底部抽屉） -->
+    <div id="caseGeneratorDrawer" class="case-drawer" aria-hidden="true">
+        <div class="case-drawer-panel">
+            <div class="case-drawer-header">
+                <button type="button" class="btn-icon btn--icon btn-close-flat case-drawer-close" onclick="closeCaseGenerator()" aria-label="关闭案例生成器" title="关闭">
+                    <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+                    <span class="sr-only">关闭</span>
+                </button>
+                <h2 class="case-drawer-title">生成案例</h2>
+                <div class="case-actions icon-text-actions">
+                    <button type="button" class="btn secondary btn-compact" onclick="saveCaseToLibrary()">保存到案例库</button>
+                    <button type="button" class="btn btn-compact" onclick="exportCaseAsImage('png')">导出 PNG</button>
+                    <button type="button" class="btn btn-compact" onclick="exportCaseAsImage('jpeg')">导出 JPG</button>
+                </div>
+            </div>
+            <div class="case-drawer-body">
+                <div class="case-layout">
+                    <div class="case-layout-form">
+                        <div id="caseSelPanel" class="case-sel-panel d-none"></div>
+                        <div id="caseFormArea"></div>
+                    </div>
+                    <div id="casePreviewPane" class="case-layout-preview">
+                        <div class="case-preview-pane-header">
+                            <span>预览</span>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <button type="button" class="btn secondary btn-compact" id="caseEditLayoutBtn" onclick="toggleCaseEditMode()">调整布局</button>
+                                <button type="button" class="btn secondary btn-compact case-preview-pane-close" onclick="toggleCasePreviewDrawer(false)">收起</button>
+                            </div>
+                        </div>
+                        <div id="casePageChips" class="case-page-chips" style="display:none;"></div>
+                        <div id="casePreviewStage" class="case-preview-stage">
+                            <div id="casePreviewCanvasWrap" class="case-preview-canvas-wrap"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="casePreviewBackdrop" class="case-preview-backdrop d-none" onclick="toggleCasePreviewDrawer(false)"></div>
+            <button id="casePreviewFab" class="case-preview-fab" onclick="toggleCasePreviewDrawer(true)">预览</button>
+        </div>
+    </div>
+
+    <!-- 案例大图查看 -->
+    <div id="caseViewModal" class="modal d-none">
+        <div class="modal-content" style="max-width:640px;">
+            <div class="modal-header">
+                <h3 id="caseViewTitle">案例预览</h3>
+                <span class="close" onclick="closeCaseViewModal()">&times;</span>
+            </div>
+            <div class="modal-body" style="text-align:center;">
+                <div id="caseViewPages" class="case-page-chips" style="justify-content:center;display:none;margin-bottom:8px;"></div>
+                <img id="caseViewImg" alt="案例图" style="max-width:100%;max-height:60vh;display:inline-block;">
+                <div id="caseViewMeta" class="text-gray" style="font-size:12px;margin-top:8px;"></div>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;">
+                <button class="btn small secondary" onclick="caseViewDownload()">下载图片</button>
+                <button class="btn small" id="caseViewRegenBtn">重新生成</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 身份管理弹窗 -->
     <div id="roleManageModal" class="modal d-none">

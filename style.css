@@ -14218,3 +14218,830 @@ html.theme-dark .inline-switch input:checked + .switch-track {
         min-width: 0;
     }
 }
+
+/* ==================================================================
+   案例生成器 & 案例库（case-*）
+   ================================================================== */
+.case-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 160;
+    pointer-events: none;
+}
+.case-drawer.open {
+    pointer-events: auto;
+}
+.case-drawer-panel {
+    position: absolute;
+    inset: 0;
+    background: var(--card-bg, #fff);
+    /* 收起时整体滑出屏幕（-100% 再加上左侧让位的 80px 余量，避免面板残影压在导航栏上） */
+    transform: translateX(calc(-100% - 140px));
+    transition: transform 0.3s ease-out;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+/* 不遮挡导航栏：顶部导航段（769-1023）整体下移；桌面左侧导航段（≥1024）右侧让位 */
+@media (min-width: 769px) {
+    .case-drawer-panel {
+        top: var(--desktop-nav-height, 60px);
+    }
+}
+@media (min-width: 1024px) {
+    .case-drawer-panel {
+        top: 0;
+        left: var(--desktop-nav-width, 80px);
+    }
+}
+@media (max-width: 768px) {
+    .case-drawer-panel {
+        bottom: var(--desktop-nav-height, 62px);
+    }
+}
+.case-drawer.open .case-drawer-panel {
+    transform: translateX(0);
+}
+.case-drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color, #e5e5ea);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+.case-drawer-title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    flex: 1;
+    min-width: 80px;
+}
+.case-drawer-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    padding: 4px;
+    display: flex;
+}
+.case-drawer-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+.case-layout {
+    display: flex;
+    height: 100%;
+}
+.case-layout-form {
+    width: 400px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    padding: 14px 16px 40px;
+    border-right: 1px solid var(--border-color, #e5e5ea);
+    box-sizing: border-box;
+}
+/* 选中元素面板：吸顶跟随表单滚动 */
+.case-sel-panel {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: var(--card-bg, #fff);
+    border: 1.5px solid var(--primary-color, #7c6ff0);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+.case-sel-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.case-sel-ops {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.case-layout-preview {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: var(--card-bg, #fff);
+}
+.case-preview-pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted, #888);
+    flex-shrink: 0;
+}
+.case-preview-pane-close { display: none; }
+.case-preview-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 14px;
+}
+.case-preview-canvas-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+/* 透明背景的棋盘格：仅预览容器，不会画进画布/导出图（白底保证任何主题下文字可读） */
+.case-preview-canvas-wrap.transparent {
+    background-color: #ffffff;
+    background-image:
+        linear-gradient(45deg, #d8d8d8 25%, transparent 25%, transparent 75%, #d8d8d8 75%),
+        linear-gradient(45deg, #d8d8d8 25%, transparent 25%, transparent 75%, #d8d8d8 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 8px 8px;
+}
+.case-preview-backdrop { display: none; }
+.case-preview-fab { display: none; }
+
+/* ===== 画布内部（导出与预览同一套；装饰颜色用固定值，不随主题变化） ===== */
+.case-canvas {
+    position: relative;
+    overflow: hidden;
+    transform-origin: top left;
+}
+.case-canvas img { display: block; }
+.case-slot {
+    position: absolute;
+}
+.case-slot-mat {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 18px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.13);
+}
+.case-slot-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    font-size: 14px;
+}
+.case-title {
+    position: absolute;
+    overflow: hidden;
+    font-weight: 700;
+    line-height: 1.35;
+    word-break: break-word;
+    white-space: pre-line;
+}
+.case-info-block {
+    position: absolute;
+    overflow: hidden;
+}
+.case-info-line {
+    line-height: 1.7;
+    word-break: break-all;
+    overflow: hidden;
+}
+.case-watermark {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 30;
+}
+.case-wm-unit {
+    display: inline-block;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.case-wm-tile {
+    position: absolute;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    transform: rotate(-24deg);
+}
+
+/* ===== 表单控件 ===== */
+.case-form-sec {
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-color, #ececf0);
+}
+.case-form-sec:last-child { border-bottom: none; }
+.case-form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 7px;
+    color: var(--text-color, #222);
+}
+.case-form-hint {
+    font-size: 12px;
+    color: var(--text-muted, #999);
+    margin-top: 5px;
+    line-height: 1.5;
+}
+.case-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.case-chip {
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color, #ddd);
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.case-chip.active {
+    background: var(--primary-color, #7c6ff0);
+    border-color: var(--primary-color, #7c6ff0);
+    color: #fff;
+}
+.case-swatch-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.case-swatch {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color, #ddd);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+}
+.case-swatch.active {
+    border-color: var(--primary-color, #7c6ff0);
+    box-shadow: 0 0 0 2px rgba(124, 111, 240, 0.35);
+}
+.case-swatch-transparent {
+    background-image:
+        linear-gradient(45deg, #d8d8d8 25%, transparent 25%, transparent 75%, #d8d8d8 75%),
+        linear-gradient(45deg, #d8d8d8 25%, transparent 25%, transparent 75%, #d8d8d8 75%);
+    background-size: 10px 10px;
+    background-position: 0 0, 5px 5px;
+    background-color: #fff;
+}
+.case-color-input {
+    width: 34px;
+    height: 34px;
+    padding: 2px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 50%;
+    background: var(--card-bg, #fff);
+    cursor: pointer;
+}
+.case-size-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 10px;
+}
+.case-size-row input[type="number"] {
+    width: 100px;
+    padding: 7px 9px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #222);
+}
+.case-size-x { color: var(--text-muted, #999); }
+.case-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 0;
+}
+.case-toggle-row .case-toggle-name { font-size: 14px; }
+.case-userinfo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+.case-userinfo-row .case-userinfo-type {
+    width: 44px;
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--text-muted, #888);
+}
+.case-userinfo-row input {
+    flex: 1;
+    padding: 7px 9px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #222);
+}
+.case-field-input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #222);
+    box-sizing: border-box;
+}
+.case-field-input:focus { outline: none; border-color: var(--primary-color, #7c6ff0); }
+.case-field-mb { margin-bottom: 9px; }
+
+/* 样机模板卡片 */
+.case-mockup-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 8px;
+}
+.case-mockup-card {
+    border: 2px solid var(--border-color, #e2e2e8);
+    border-radius: 10px;
+    background: var(--card-bg, #fff);
+    padding: 6px 4px 5px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.15s;
+}
+.case-mockup-card.active {
+    border-color: var(--primary-color, #7c6ff0);
+}
+.case-mockup-diagram {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 6px;
+    background: #efece6;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+.case-mockup-name {
+    font-size: 12px;
+    color: var(--text-color, #333);
+    line-height: 1.3;
+}
+/* 模板缩略示意（纯 CSS 摆位） */
+.case-md-rect { position: absolute; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.14); border-radius: 3px; }
+.case-md-round { position: absolute; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.16); border-radius: 50%; }
+
+/* 制品图上传与缩略图 */
+.case-upload-zone {
+    border: 1.5px dashed var(--border-color, #ccd);
+    border-radius: 10px;
+    padding: 16px 10px;
+    text-align: center;
+    color: var(--text-muted, #999);
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.case-upload-zone:hover, .case-upload-zone.dragover {
+    border-color: var(--primary-color, #7c6ff0);
+    background: rgba(124, 111, 240, 0.06);
+}
+.case-thumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+.case-thumb {
+    position: relative;
+    width: 74px;
+    height: 74px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #ddd);
+    background: #f4f4f6;
+    overflow: hidden;
+}
+.case-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.case-thumb-ops {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+    background: rgba(0,0,0,0.45);
+}
+.case-thumb-ops button {
+    border: none;
+    background: none;
+    color: #fff;
+    font-size: 12px;
+    padding: 2px 6px;
+    cursor: pointer;
+}
+.case-thumb-del {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+    padding: 0;
+    cursor: pointer;
+    text-align: center;
+}
+
+/* 预览页签（总图 / 各制品图） */
+.case-page-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 14px 0;
+}
+.case-page-chips .case-chip {
+    padding: 3px 12px;
+    font-size: 12px;
+}
+.case-page-chips .case-page-chip-empty {
+    opacity: 0.45;
+    cursor: default;
+    border-style: dashed;
+}
+
+/* 制品分组块（按订单制品分组上传） */
+.case-group-block {
+    border: 1px solid var(--border-color, #e2e2e8);
+    border-radius: 10px;
+    padding: 8px 10px 9px;
+    margin-top: 10px;
+}
+.case-group-block.dragover {
+    border-color: var(--primary-color, #7c6ff0);
+    background: rgba(124, 111, 240, 0.06);
+}
+.case-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+.case-group-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color, #222);
+}
+.case-group-label em {
+    font-style: normal;
+    color: var(--text-muted, #999);
+    font-size: 12px;
+    font-weight: 500;
+}
+.case-group-block .case-thumbs { margin-top: 6px; }
+.case-group-empty-tip {
+    font-size: 12px;
+    color: var(--text-muted, #999);
+    padding: 4px 0 2px;
+    line-height: 1.5;
+}
+
+/* 水印控件 */
+.case-range-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+.case-range-row input[type="range"] { flex: 1; }
+.case-range-row .case-range-val {
+    width: 44px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--text-muted, #888);
+    flex-shrink: 0;
+}
+
+/* ===== 调整布局（编辑模式） ===== */
+#caseEditLayoutBtn.case-edit-on {
+    background: var(--primary-color, #7c6ff0) !important;
+    border-color: var(--primary-color, #7c6ff0) !important;
+    color: #fff !important;
+}
+.case-editing .case-slot {
+    outline: 1.5px dashed rgba(124, 111, 240, 0.85);
+    outline-offset: 2px;
+    cursor: move;
+    touch-action: none;
+}
+.case-editing [data-case-el] {
+    cursor: move;
+    touch-action: none;
+}
+.case-editing [data-case-el]:hover {
+    outline: 1.5px dashed rgba(124, 111, 240, 0.55);
+    outline-offset: 3px;
+}
+.case-el-selected {
+    outline: 2px solid var(--primary-color, #7c6ff0) !important;
+    outline-offset: 3px;
+}
+.case-area-outline {
+    position: absolute;
+    border: 1.5px dashed rgba(124, 111, 240, 0.9);
+    pointer-events: none;
+    z-index: 40;
+}
+.case-area-grip {
+    position: absolute;
+    top: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--primary-color, #7c6ff0);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: move;
+    pointer-events: auto;
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.case-area-handle {
+    position: absolute;
+    right: -9px;
+    bottom: -9px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary-color, #7c6ff0);
+    border: 2px solid #fff;
+    cursor: nwse-resize;
+    pointer-events: auto;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.case-editing [data-tag-name] {
+    cursor: pointer;
+}
+.case-editing [data-tag-name]:hover {
+    outline: 1.5px dashed rgba(124, 111, 240, 0.55);
+    outline-offset: 2px;
+}
+/* 企划信息字段行：眼睛开关控制单个标签显隐 */
+.case-tagfield-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 9px;
+}
+.case-tagfield-eye {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 38px;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    cursor: pointer;
+    color: var(--text-color, #222);
+}
+.case-tagfield-eye .icon {
+    width: 16px;
+    height: 16px;
+}
+.case-tagfield-row .case-field-input { flex: 1; min-width: 0; }
+.case-tagfield-hidden .case-tagfield-eye { opacity: 0.55; }
+.case-tagfield-hidden .case-field-input { opacity: 0.45; }
+/* ===== 暗色模式：案例功能控件跟随主题（选中态用站点蓝强调，与导出按钮一致） ===== */
+html.theme-dark .case-chip {
+    background: #2f2f36;
+    border-color: #3f3f46;
+    color: #e5e5e5;
+}
+html.theme-dark .case-chip.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #fff;
+}
+html.theme-dark .case-page-chip.case-page-chip-empty {
+    background: transparent;
+    color: #8b8b94;
+    border-color: #3f3f46;
+}
+html.theme-dark #caseEditLayoutBtn.case-edit-on {
+    background: #3b82f6 !important;
+    border-color: #3b82f6 !important;
+    color: #fff !important;
+}
+html.theme-dark .case-tagfield-eye {
+    background: #2f2f36;
+    border-color: #3f3f46;
+    color: #e5e5e5;
+}
+html.theme-dark .case-field-input,
+html.theme-dark .case-userinfo-row input,
+html.theme-dark .case-size-row input[type="number"],
+html.theme-dark #caseLayoutPresetName {
+    background: #1f1f23;
+    border-color: #3f3f46;
+    color: #e5e5e5;
+}
+html.theme-dark .case-swatch-transparent { background-color: #1f1f23; }
+html.theme-dark .case-mockup-card { background: #2f2f36; border-color: #3f3f46; }
+html.theme-dark .case-mockup-card.active { border-color: #3b82f6; }
+html.theme-dark .case-mockup-diagram { background: #1f1f23; }
+html.theme-dark .case-thumb { background: #1f1f23; border-color: #3f3f46; }
+html.theme-dark .case-sel-panel { background: #27272a; }
+html.theme-dark .case-upload-zone:hover, html.theme-dark .case-upload-zone.dragover { background: rgba(59, 130, 246, 0.08); }
+html.theme-dark .case-group-block.dragover { background: rgba(59, 130, 246, 0.08); }
+.case-tagfield-label {
+    flex: 1;
+    font-size: 14px;
+    color: var(--text-color, #222);
+}
+.case-tagfield-sub { margin-left: 14px; }
+.case-tagfield-del {
+    width: 26px;
+    height: 34px;
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    color: #e05666;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+.case-preset-chip {
+    position: relative;
+    display: inline-flex;
+}
+.case-preset-del {
+    position: absolute;
+    top: -6px;
+    right: -7px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    background: #e05666;
+    color: #fff;
+    font-size: 11px;
+    line-height: 16px;
+    padding: 0;
+    cursor: pointer;
+    text-align: center;
+}
+
+/* ===== 案例库画廊 ===== */
+.case-library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+}
+.case-library-card {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #ececf0);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.case-library-thumb {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #f2f2f4;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    font-size: 13px;
+    overflow: hidden;
+}
+.case-library-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.case-library-card-body {
+    padding: 8px 10px 4px;
+    min-width: 0;
+}
+.case-library-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color, #222);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.case-library-card-meta {
+    font-size: 11px;
+    color: var(--text-muted, #999);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.case-library-card-ops {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px 8px;
+    flex-wrap: wrap;
+}
+.case-library-card-ops .btn { padding: 3px 9px; font-size: 12px; }
+.case-library-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--text-muted, #999);
+    padding: 46px 10px;
+    font-size: 14px;
+    border: 1.5px dashed var(--border-color, #ddd);
+    border-radius: 12px;
+}
+
+/* ===== 手机端（<1000px）：预览变底部抽屉 ===== */
+@media (max-width: 999px) {
+    .case-layout { display: block; height: 100%; }
+    .case-layout-form {
+        width: 100%;
+        height: 100%;
+        border-right: none;
+        padding-bottom: 90px;
+    }
+    .case-layout-preview {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        z-index: 165;
+        height: 78vh;
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.22);
+        /* 面板为 transform 容器：fixed 相对面板定位；面板底缘即导航上缘，
+           收起时整体滑出面板底（+90px 越过导航高度），不会遮挡导航栏 */
+        transform: translateY(calc(100% + 90px));
+        transition: transform 0.28s ease-out;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .case-layout-preview.case-preview-open { transform: translateY(0); }
+    .case-preview-pane-close { display: inline-block; }
+    .case-preview-fab {
+        position: fixed;
+        right: 16px;
+        bottom: 24px;
+        z-index: 164;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 999px;
+        background: var(--primary-color, #7c6ff0);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+        cursor: pointer;
+    }
+    .case-drawer.open.case-preview-shown .case-preview-fab { display: none; }
+    .case-preview-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 163;
+        background: rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s;
+    }
+    .case-preview-backdrop.case-preview-open { opacity: 1; pointer-events: auto; }
+    .case-drawer-header .btn { padding: 5px 10px; font-size: 12px; }
+}
+/* ≤768px：底部导航栏存在；面板已止于导航上缘，FAB 贴其上方即可 */
+@media (max-width: 768px) {
+    .case-preview-fab {
+        bottom: 14px;
+    }
+}
