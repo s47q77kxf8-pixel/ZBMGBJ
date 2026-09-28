@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-0735';
+const APP_VERSION = '20260928-1030';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37131,17 +37131,22 @@ function caseActiveMockup() {
 }
 
 // ---------- 画布渲染 ----------
-function caseCanvasTextColor(bg) {
-    if (!bg) return '#3a3a3a';
-    if (bg.type === 'image' && bg.imgId && !bg.imgHidden) return '#f2f2f2';
+// 画布背景亮度（0~255），用于自适应底框与文字色
+function caseCanvasLum(bg) {
+    if (!bg) return 242;
+    if (bg.type === 'image' && bg.imgId && !bg.imgHidden) return 40; // 底图模式按深色处理（配浅字）
     let hex = '';
     if (bg.type === 'gradient') hex = String(bg.gradTo || '#e5e5e5');
     else hex = String(bg.color || '#f2f2f2');
     hex = hex.replace('#', '');
-    if (hex.length !== 6) return '#3a3a3a';
+    if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
+    if (hex.length !== 6) return 242;
     const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
-    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    return lum >= 150 ? '#333333' : '#f2f2f2';
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return 242;
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+function caseCanvasTextColor(bg) {
+    return caseCanvasLum(bg) >= 150 ? '#333333' : '#f2f2f2';
 }
 // 用户信息：直接取「基础设置」中的用户ID，显示为 @ID（通用，不带身份前缀）
 function caseInfoLines(st) {
@@ -37519,8 +37524,16 @@ function buildCaseCanvasHtml(st, page) {
     };
     const framePadX = tagFrame ? Math.max(4, Math.round(tagFs * 0.55)) : 0;
     // 底框：半透明底 + 圆角，始终压在制品上方（z-index 高于制品层）
+    // 自适应：画布深底时用深半透明底 + 浅字；画布浅底时用浅半透明底 + 深字，保证任意背景下文字清晰
+    const frameOn = tagFrame;
+    let frameBgCss = 'rgba(255,255,255,0.78)', frameTextColor = txtColor;
+    if (frameOn) {
+        const fl = caseCanvasLum(cfg.bg);
+        if (fl >= 150) { frameBgCss = 'rgba(255,255,255,0.82)'; frameTextColor = '#2a2a2a'; }
+        else { frameBgCss = 'rgba(16,16,18,0.52)'; frameTextColor = '#f4f4f4'; }
+    }
     const frameStyle = function (fs2) {
-        return tagFrame ? 'background:rgba(255,255,255,0.78);border-radius:' + Math.round(fs2 * 0.6) + 'px;padding:' + Math.round(fs2 * 0.28) + 'px ' + Math.round(fs2 * 0.55) + 'px;z-index:3;' : '';
+        return frameOn ? 'background:' + frameBgCss + ';border-radius:' + Math.round(fs2 * 0.6) + 'px;padding:' + Math.round(fs2 * 0.28) + 'px ' + Math.round(fs2 * 0.55) + 'px;z-index:3;' : '';
     };
     // 每行：字段名 + 最小间距 + 值（单侧隐藏时只显示其一）
     const rowCells = function (e) {
@@ -37543,7 +37556,7 @@ function buildCaseCanvasHtml(st, page) {
                 if (i) inner += '<span style="display:inline-block;width:' + Math.max(8, Math.round(tagGap * 0.9)) + 'px;"></span>';
                 inner += '<span style="display:inline-block;">' + rowCells(e) + '</span>';
             });
-            textHtml += '<div data-case-el="project" data-case-fit="' + baseFs + '" data-case-fit-min="' + Math.max(8, Math.round(baseFs * 0.4)) + '" style="position:absolute;' + pos + 'width:' + maxTagW + 'px;font-size:' + baseFs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;text-align:right;' + frameStyle(baseFs) + '">' + inner + '</div>';
+            textHtml += '<div data-case-el="project" data-case-fit="' + baseFs + '" data-case-fit-min="' + Math.max(8, Math.round(baseFs * 0.4)) + '" style="position:absolute;' + pos + 'width:' + maxTagW + 'px;font-size:' + baseFs + 'px;line-height:1.4;color:' + frameTextColor + ';white-space:nowrap;text-align:right;' + frameStyle(baseFs) + '">' + inner + '</div>';
         } else {
             const flowEls = [];
             const absEls = [];
@@ -37565,14 +37578,14 @@ function buildCaseCanvasHtml(st, page) {
                 flowEls.forEach(function (e) {
                     const fs2 = rowFs(e);
                     // 多行同样支持溢出自动缩小（data-case-fit → casePrepareCanvasEl）
-                    rowsHtml += '<div data-case-el="' + e.key + '" data-case-fit="' + fs2 + '" data-case-fit-min="' + Math.max(8, Math.round(fs2 * 0.4)) + '" style="width:100%;display:flex;justify-content:' + jc + ';align-items:baseline;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.45;color:' + txtColor + ';white-space:nowrap;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
+                    rowsHtml += '<div data-case-el="' + e.key + '" data-case-fit="' + fs2 + '" data-case-fit-min="' + Math.max(8, Math.round(fs2 * 0.4)) + '" style="width:100%;display:flex;justify-content:' + jc + ';align-items:baseline;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.45;color:' + frameTextColor + ';white-space:nowrap;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
                 });
                 textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + blockW + 'px;z-index:3;">' + rowsHtml + '</div>';
             }
             absEls.forEach(function (e) {
                 const t = rowPos(e);
                 const fs2 = rowFs(e);
-                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;display:flex;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.35;color:' + txtColor + ';white-space:nowrap;z-index:3;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
+                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;display:flex;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.35;color:' + frameTextColor + ';white-space:nowrap;z-index:3;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
             });
         }
     }
@@ -38214,7 +38227,7 @@ function renderCaseForm() {
     if (cfg.bg.type === 'solid' || cfg.bg.type === 'color') {
         html += '<div class="case-swatch-row">'
             + '<button type="button" class="case-swatch' + (String(cfg.bg.color || '').toLowerCase() === '#f2f2f2' ? ' active' : '') + '" style="background:#f2f2f2;" onclick="setCaseBg(\'solid\',\'#f2f2f2\')" title="浅灰"></button>'
-            + '<button type="button" class="case-swatch' + (String(cfg.bg.color || '').toLowerCase() === '#3f3f46' ? ' active' : '') + '" style="background:#3f3f46;" onclick="setCaseBg(\'solid\',\'#3f3f46\')" title="深灰"></button>'
+            + '<button type="button" class="case-swatch' + (String(cfg.bg.color || '').toLowerCase() === '#434343' ? ' active' : '') + '" style="background:#434343;" onclick="setCaseBg(\'solid\',\'#434343\')" title="深灰"></button>'
             + '<input type="color" class="case-color-input" value="' + escapeHtml(cfg.bg.color || '#f2f2f2') + '" onchange="setCaseBg(\'solid\', this.value)" title="取色器">'
             + '</div>';
     } else if (cfg.bg.type === 'gradient') {

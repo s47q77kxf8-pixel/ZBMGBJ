@@ -1,0 +1,163 @@
+# 临时文件
+*.tmp
+*.temp
+*.log
+
+# 编辑器生成的文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 备份文件
+*.bak
+*.backup
+backup_*/
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# supabase-config.js 包含 ANON_KEY（公开密钥），需要提交到仓库以支持 GitHub Pages 部署
+# ANON_KEY 配合 RLS 策略可保护数据安全
+
+# 开发工具页面
+clear_tags.html
+icon-selector-all.html
+icon-selector.html
+
+# 旧版仪表盘页面（已不再使用）
+dashboard.html
+
+# 构建输出
+build/
+dist/
+
+# 依赖文件夹
+node_modules/
+venv/
+
+# IDE本地历史
+.history/
+
+# ============================================================
+# 本地个人工作区统一目录：所有非部署产物一律放这里，全程不进 git
+#   • 需求文档 / 修改清单 / 优化方案 / 代码分析报告
+#   • 临时生成的预览、选项、原型页面
+#   • Supabase 运维 SQL 脚本（安全修复、性能修复等）
+#   • 一次性迁移脚本、个人 PowerShell 工具
+#   • 本项目 IDE 工作区记忆（Trae / Cursor）
+# ============================================================
+.trae/
+.cursor/
+
+# ============================================================
+# 根目录兜底忽略（防误提交 —— 新生成的同类文件请优先存 .trae/）
+# ============================================================
+部署到GitHub.md
+需求.txt
+小票制品展示规范.md
+小票边框线说明.md
+修改清单.md
+方案A优化情况.md
+方案A优化详情.md
+方案A优化详情-灰色版.md
+代码分析与优化报告.md
+网页功能分析与优化报告.md
+receipt_display_rules.md
+MGbaojia.zip
+git-backup.bat
+git-backup.ps1
+
+# 本地一次性脚本 / 工具（存 .trae/，此处仅防根目录误生成）
+migrate_old_append_orders.js
+replace_currency.ps1
+supabase_*.sql
+
+# 预览和选项文件（保留本地，不提交到git）
+delete-icons-preview.html
+filter-buttons-options.html
+font-preview.html
+schedule-chip-options.html
+schedule-todo-ui-options.html
+image-processor-worker.js
+
+# Windows 临时新建文件（避免误提交）
+新建 文本文档*.txt
+新建 文本文档*.html
+
+# 本地调试脚本与输出（.m_* 探针、验证脚本、临时输出）
+.m_*.js
+.m_*.txt
+.m_*.json
+.cdp_eval.js
+.verify_*.js
+.receipt_dom_dump.js
+.receipt_smoke_test.js
+.settlement_amount_test.js
+
+# 本地回归测试脚本：一律不进仓库（本地保留即可跑）
+.orderremark_merge_test.js
+.price_list_generation_test.js
+.receipt_template_test.js
+.presettag_sync_test.js
+.module_move_test.js
+.cloud_domain_tombstone_test.js
+.float_order_test.js
+.gift_config_key_test.js
+test_role_profiles.js
+.repro_role_disappear.js
+
+# 其它 IDE/工具本地工作区
+.zcode/
+
+_repro2.js
+_*.txt
+orig_index_tmp.html
+
+# 浏览器自动化 profile 目录与调试截图
+.edge-*-profile/
+.*-preview.png
+.nav-click-after.png
+
+# 本项目 IDE 工作区记忆（本地留存，不进仓库）
+.workbuddy/
+
+# 改名/批量改单主后的云端同步回归
+.rename_sync_test.js
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
