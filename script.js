@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-1030';
+const APP_VERSION = '20260928-1040';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36777,14 +36777,14 @@ function caseNewState() {
             bg: { type: 'solid', color: '#f2f2f2', gradFrom: '#fafafa', gradTo: '#e5e5e5', imgId: '', imgHidden: false },
             sizeLock: true,
             toggles: { title: true, year: true, userInfo: true, productInfo: true, customText: true },
-            tagLayout: { mode: 'multi', align: 'right' },
+            tagLayout: { mode: 'multi', align: 'right', frame: false },
             mockupId: 'shadow',
             mockupScale: 1,
             textScale: 1,
             layout: null,
             watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1 }
         },
-        fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', projectName: '', ip: '', character: '', products: '', custom: {}, customTexts: [] },
+        fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', projectName: '', ip: '', character: '', products: '', custom: {}, customLabels: {}, customTexts: [] },
         images: [],
         groups: [],
         exportImgId: '', exportThumbId: '', exportFormat: 'png',
@@ -38192,6 +38192,11 @@ function renderCaseForm() {
     const cfg = st.config;
     const wm = cfg.watermark;
     let html = '';
+    // 顶部：整体恢复默认（仅重置外观/排版，保留已输入内容）
+    html += '<div class="case-reset-topbar">'
+        + '<button type="button" class="btn secondary btn-compact" onclick="resetCaseDefaults()">↺ 整体恢复默认</button>'
+        + '<span class="case-form-hint" style="margin:0;">仅重置外观/排版，已输入内容保留</span>'
+        + '</div>';
     // 1 关联订单
     html += '<div class="case-form-sec">'
         + '<label class="case-form-label">关联订单</label>'
@@ -38456,11 +38461,6 @@ function renderCaseForm() {
     }
     html += '<div class="case-form-hint">水印绘制在画布最上层，随导出图一起保存；未开启或无内容时不占位</div>'
         + '</div>';
-    // 整体恢复默认（保留已上传的制品图与分组）
-    html += '<div class="case-form-sec" style="text-align:center;">'
-        + '<button type="button" class="btn secondary btn-compact" onclick="resetCaseDefaults()">↺ 整体恢复默认</button>'
-        + '<div class="case-form-hint" style="margin-top:6px;">将比例/背景/排版/文字内容等全部设置恢复为默认（已上传的制品图与分组保留）</div>'
-        + '</div>';
     area.innerHTML = html;
     // 上传控件：统一走 _caseUploadTarget 决定进入哪个制品组（-1=自由模式）
     const input = document.getElementById('caseImageInput');
@@ -38583,10 +38583,14 @@ function setCaseBg(type, color) {
 // 整体恢复默认：比例/背景/排版/文字内容等全部设置回到默认（制品图与分组保留）
 function resetCaseDefaults() {
     const st = _caseState; if (!st) return;
-    if (!confirm('确定将整个案例恢复默认吗？\n比例、背景、排版、文字内容等设置会全部重置；已上传的制品图与分组会保留。')) return;
+    if (!confirm('确定将整个案例恢复默认吗？\n比例、背景、排版等外观设置会重置；已输入的文字内容、制品图与分组会保留。')) return;
     const def = caseNewState();
+    // 仅重置外观/排版设置；保留用户已输入的文字内容（企划信息等），避免恢复默认后内容丢失
     st.config = JSON.parse(JSON.stringify(def.config));
-    st.fields = JSON.parse(JSON.stringify(def.fields));
+    st.fields = Object.assign({}, def.fields, st.fields || {});
+    if (!st.fields.custom || typeof st.fields.custom !== 'object') st.fields.custom = {};
+    if (!st.fields.customLabels || typeof st.fields.customLabels !== 'object') st.fields.customLabels = {};
+    if (!Array.isArray(st.fields.customTexts)) st.fields.customTexts = [];
     st._page = 0;
     renderCaseForm(); renderCasePreview();
     showGlobalToast('已恢复默认设置');
@@ -38742,7 +38746,10 @@ function caseSplitProducts(text) {
 function setCaseTagMode(m) {
     const st = _caseState; if (!st) return;
     if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'right' };
-    st.config.tagLayout.mode = m === 'single' ? 'single' : 'multi';
+    const isSingle = m === 'single';
+    st.config.tagLayout.mode = isSingle ? 'single' : 'multi';
+    // 两端对齐(justify)依赖多行分段；单行模式下强制回到常规对齐，保证「左/中/右」与「两端对齐」互斥
+    if (isSingle && st.config.tagLayout.align === 'justify') st.config.tagLayout.align = 'right';
     renderCaseForm(); renderCasePreview();
 }
 function setCaseTagAlign(a) {
