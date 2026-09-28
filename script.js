@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-1040';
+const APP_VERSION = '20260928-1120';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37000,7 +37000,9 @@ function caseAutoAreaBox(st) {
         prodParts.forEach(function (t) {
             if (projHidden[t.name]) return;
             const ifs = tagFs * (projItemFs[t.name] || 1);
-            const w = t.text.length * ifs * 0.62 + ifs * 1.2;
+            // 字段行只有 value（无 text）；自定义文字行才有 text。统一取可见文字估算宽度
+            const tTxt = (t.text != null && String(t.text).length) ? String(t.text) : (t.value != null ? String(t.value) : '');
+            const w = tTxt.length * ifs * 0.62 + ifs * 1.2;
             if (rowW + w > maxTagW && rowW > 0) { tagRows++; rowW = w; }
             else rowW += (rowW > 0 ? tagGap : 0) + w;
         });
