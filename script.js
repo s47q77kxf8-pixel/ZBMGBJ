@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0130';
+const APP_VERSION = '20260930-0140';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37079,7 +37079,10 @@ function casePackSlots(imgs, area, blocks) {
         for (let i = 0; i < n; i++) if (!placed[i]) unplaced.push(i);
         if (unplaced.length) units.push(unplaced);
     } else {
-        for (let i = 0; i < n; i++) units.push([i]);
+        // 无分组（自由模式 / 分图页）：全部图作为一个单元走网格布局（layoutAll 以覆盖面积择优）
+        const all = [];
+        for (let i = 0; i < n; i++) all.push(i);
+        units.push(all);
     }
     // 单元网格：cols = ceil(sqrt(m))，cell 宽 = 行高×maxA、高 = 行高
     function unitGrid(idxs) {
@@ -37181,21 +37184,54 @@ function casePackSlots(imgs, area, blocks) {
         return best;
     }
     function layoutAll(maxH) {
-        const best = unitLayout(units[0], maxH);
+        // 遍历列数 1..n：目标从「单元格最大」改为「包围盒覆盖面积最大」（尽量贴合制品区、紧凑方正）；
+        // 每行高度上限 = 剩余高度均分，行宽超限再按行内宽高比缩；行内水平居中
+        let best = null;
+        for (let c = 1; c <= n; c++) {
+            const rows = Math.ceil(n / c);
+            const kH = (maxH - (rows - 1) * gap) / rows;
+            if (!(kH > 0)) continue;
+            let bboxW = 0, bboxH = 0, ok = true;
+            const rowK = [];
+            for (let r = 0; r < rows && ok; r++) {
+                const rowIdxs = [];
+                for (let j = r * c; j < Math.min(n, (r + 1) * c); j++) rowIdxs.push(j);
+                let ra = 0;
+                rowIdxs.forEach(function (i) { ra += aspects[i]; });
+                let k = kH;
+                const wNeed = ra * kH + (rowIdxs.length - 1) * gap;
+                if (wNeed > area.w) k = (area.w - (rowIdxs.length - 1) * gap) / ra;
+                if (!(k > 0)) { ok = false; break; }
+                rowK.push(k);
+                const rowW = Math.min(area.w, ra * k + (rowIdxs.length - 1) * gap);
+                if (rowW > bboxW) bboxW = rowW;
+                bboxH += k;
+            }
+            if (!ok) continue;
+            bboxH += (rows - 1) * gap;
+            const cov = bboxW * bboxH;
+            const kMin = Math.min.apply(null, rowK);
+            if (!best || cov > best.cov + 0.5 || (Math.abs(cov - best.cov) <= 0.5 && kMin > best.kMin)) {
+                best = { c: c, rows: rows, kMin: kMin, cov: cov, rowK: rowK };
+            }
+        }
         const out = new Array(n);
-        let p = 0;
-        const blockH = best.rows * Math.round(best.k) + (best.rows - 1) * gap;
+        if (!best) return out;
+        const blockH = best.rowK.reduce(function (a, k) { return a + k; }, 0) + (best.rows - 1) * gap;
         let y = area.y + Math.max(0, Math.round((maxH - blockH) / 2));
+        let p = 0;
         for (let r = 0; r < best.rows; r++) {
             const cnt = Math.min(best.c, n - p);
-            const rowIdxs = units[0].slice(p, p + cnt);
-            const rowW = rowIdxs.reduce(function (acc, i, j) { return acc + best.k * aspects[i] + (j ? gap : 0); }, 0);
+            const rowIdxs = [];
+            for (let j = p; j < p + cnt; j++) rowIdxs.push(j);
+            const k = best.rowK[r];
+            const rowW = rowIdxs.reduce(function (acc, i, j) { return acc + k * aspects[i] + (j ? gap : 0); }, 0);
             let x = area.x + Math.max(0, Math.round((area.w - rowW) / 2));
             rowIdxs.forEach(function (i, j) {
-                out[i] = { x: x, y: y, w: Math.round(best.k * aspects[i]), h: Math.round(best.k) };
+                out[i] = { x: x, y: y, w: Math.round(k * aspects[i]), h: Math.round(k) };
                 x += out[i].w + gap;
             });
-            y += Math.round(best.k) + gap;
+            y += Math.round(k) + gap;
             p += cnt;
         }
         return out;
