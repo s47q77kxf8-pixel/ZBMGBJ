@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260929-1505';
+const APP_VERSION = '20260929-1530';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37349,9 +37349,10 @@ function caseCurrentPage(st) {
 function caseWatermarkHtml(st, W, H, color) {
     const wm = st.config.watermark;
     if (!wm || !wm.enabled) return '';
+    // 仅制品上层：不在画布铺整幅水印，改由各制品槽位内部绘制（见 caseWmSlotOverlayHtml）
+    if (wm.over === 'products') return '';
     const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
-    // 层级：over==='products' 时只压在制品上方（z-index:2 < 文字层 3），否则盖全画布（30）
-    const wmZ = (wm.over === 'products') ? 2 : 30;
+    const wmZ = 30;
     // 斜纹 / 斜方格：整幅重复图案水印（position 不适用，密度由 scale 控制）
     if (wm.type === 'stripe' || wm.type === 'grid') {
         const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
@@ -37406,6 +37407,37 @@ function caseWatermarkHtml(st, W, H, color) {
     else if (wm.position === 'br') pos = 'right:' + m + 'px;bottom:' + m + 'px;';
     else pos = 'left:50%;top:50%;transform:translate(-50%,-50%);';
     return '<div class="case-watermark" style="opacity:' + opacity + ';z-index:' + wmZ + ';"><div style="position:absolute;' + pos + ';">' + unitInner + '</div></div>';
+}
+// 仅制品上层：每个制品槽位内部铺一层水印（背景图与文字保持干净）；居中，文字带 -24° 倾斜
+function caseWmSlotOverlayHtml(st, slot, color) {
+    const wm = st.config.watermark;
+    if (!wm || !wm.enabled || wm.over !== 'products' || !slot) return '';
+    const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
+    const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
+    const base = Math.max(60, Math.min(slot.w, slot.h));
+    if (wm.type === 'stripe' || wm.type === 'grid') {
+        const period = Math.max(10, Math.round(base * 0.24 * scale));  // 线条间距随制品尺寸缩放
+        const lw = Math.max(1, Math.round(base * 0.018 * scale));      // 线条粗细
+        const c = color || '#888888';
+        const seg = c + ' 0 ' + lw + 'px,transparent ' + lw + 'px ' + period + 'px';
+        const bgImg = (wm.type === 'stripe')
+            ? 'repeating-linear-gradient(45deg,' + seg + ')'
+            : 'repeating-linear-gradient(45deg,' + seg + '),repeating-linear-gradient(135deg,' + seg + ')';
+        return '<div class="case-wm-slot" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:' + opacity + ';background-image:' + bgImg + ';pointer-events:none;"></div>';
+    }
+    if (wm.type === 'image') {
+        const ic = _caseImgCache[wm.imgId];
+        if (!ic) return '';
+        const h = Math.max(12, Math.round(base * 0.2 * scale));
+        const w = Math.max(1, Math.round(h * (ic.w / ic.h)));
+        return '<div class="case-wm-slot" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:' + opacity + ';display:flex;align-items:center;justify-content:center;pointer-events:none;">'
+            + '<img src="' + ic.dataUrl + '" style="width:' + Math.min(w, slot.w) + 'px;height:' + h + 'px;"></div>';
+    }
+    const text = String(wm.text || '').trim();
+    if (!text) return '';
+    const fs = Math.max(10, Math.round(base * 0.16 * scale));
+    return '<div class="case-wm-slot" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:' + opacity + ';display:flex;align-items:center;justify-content:center;pointer-events:none;">'
+        + '<span class="case-wm-unit" style="font-size:' + fs + 'px;color:' + (color || '#888888') + ';transform:rotate(-24deg);white-space:nowrap;">' + escapeHtml(text) + '</span></div>';
 }
 function buildCaseCanvasHtml(st, page) {
     const W = st.config.width, H = st.config.height;
@@ -37521,6 +37553,7 @@ function buildCaseCanvasHtml(st, page) {
         }
     }
     // ---------- 制品层 ----------
+    const wmPerSlot = !!(st.config.watermark && st.config.watermark.enabled && st.config.watermark.over === 'products');
     let productsHtml = '';
     for (let i = 0; i < pageImages.length; i++) {
         const imgId = pageImages[i];
@@ -37561,6 +37594,7 @@ function buildCaseCanvasHtml(st, page) {
             }
         }
         let slotStyle = 'left:' + drawSlot.x + 'px;top:' + drawSlot.y + 'px;width:' + drawSlot.w + 'px;height:' + drawSlot.h + 'px;';
+        if (wmPerSlot && c) inner += caseWmSlotOverlayHtml(st, drawSlot, txtColor);
         productsHtml += '<div class="case-slot" data-slot-index="' + i + '" style="' + slotStyle + '">' + inner + '</div>';
     }
     // ---------- 文字元素（全部独立：可拖动、可单独调字号；未自定义位置的按默认流式排布） ----------
@@ -37788,9 +37822,8 @@ function buildCaseCanvasHtml(st, page) {
         }
     }
     const wmHtml = caseWatermarkHtml(st, W, H, txtColor);
-    const wmOverProducts = !!(st.config.watermark && st.config.watermark.enabled && st.config.watermark.over === 'products');
     return '<div class="case-canvas" style="width:' + W + 'px;height:' + H + 'px;background:' + bgStyle + ';">'
-        + bgHtml + productsHtml + (wmOverProducts ? wmHtml : '') + textHtml + (wmOverProducts ? '' : wmHtml)
+        + bgHtml + productsHtml + textHtml + wmHtml
         + '</div>';
 }
 // 文本字号适配：超出容器则逐级缩小字号，仍溢出截字加省略号
@@ -38672,18 +38705,18 @@ function renderCaseForm() {
                 + '<input type="file" id="caseWmImageInput" accept="image/*" class="d-none" onchange="caseHandleWmImageFile(this.files && this.files[0]); this.value=\'\';">'
                 + '</div>';
         }
-        if (!isWmPattern) {
+        if (!isWmPattern && wm.over !== 'products') {
             html += '<select class="case-field-input" style="margin-top:9px;" onchange="setCaseWmPos(this.value)">'
                 + [['br', '右下'], ['bl', '左下'], ['tr', '右上'], ['tl', '左上'], ['center', '居中'], ['tile', '平铺全图']].map(function (p) {
                     return '<option value="' + p[0] + '"' + (wm.position === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
                 }).join('')
                 + '</select>';
         }
-        // 层级：仅制品上层 = 水印盖在制品上但不盖文字/企划信息
+        // 层级：仅制品上层 = 水印逐个绘制在制品图内部，背景图与文字保持干净
         html += '<div class="case-chips" style="margin-top:6px;">'
             + caseChipHtml('仅制品上层', wm.over === 'products', 'toggleCaseWmOver()')
             + '</div>'
-            + '<div class="case-form-hint" style="margin:4px 0 0;">开启后水印只压在制品图上方，标题/企划信息等文字不被盖住</div>';
+            + '<div class="case-form-hint" style="margin:4px 0 0;">开启后水印只绘制在每个制品图上（居中），背景图与标题/企划信息等文字保持干净；关闭则铺满整幅画布</div>';
         html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">透明度</span>'
             + '<input type="range" min="0.05" max="1" step="0.05" value="' + (Number(wm.opacity) || 0.3) + '" oninput="setCaseWmOpacity(this.value)">'
             + '<span class="case-range-val" id="caseWmOpacityVal">' + Math.round((Number(wm.opacity) || 0.3) * 100) + '%</span></div>'
@@ -38691,7 +38724,7 @@ function renderCaseForm() {
             + '<input type="range" min="0.5" max="3" step="0.1" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
             + '<span class="case-range-val" id="caseWmScaleVal">' + (Number(wm.scale) || 1).toFixed(1) + '×</span></div>';
     }
-    html += '<div class="case-form-hint">水印随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为整幅重复图案，方向 45°，文字颜色随背景自动配深浅</div>'
+    html += '<div class="case-form-hint">水印随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为 45° 重复图案，文字颜色随背景自动配深浅</div>'
         + '</div>';
     area.innerHTML = html;
     // 上传控件：统一走 _caseUploadTarget 决定进入哪个制品组（-1=自由模式）
