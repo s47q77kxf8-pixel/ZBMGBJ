@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0020';
+const APP_VERSION = '20260930-0030';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37201,6 +37201,98 @@ function casePackSlots(imgs, area, blocks) {
     }
     return layoutAll(area.h);
 }
+// 一组制品在参考区域内的排版（= 该组自己作为分图页时的排版），归一化为块：
+// 返回 { aspect: 块宽高比, rel: [{x,y,w,h}] 相对包围盒 0~1 }
+function caseGroupBlockPlan(imgs, refW, refH) {
+    const slots = casePackSlots(imgs, { x: 0, y: 0, w: refW, h: refH }, null) || [];
+    if (!slots.length) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    slots.forEach(function (s) {
+        if (!s) return;
+        if (s.x < minX) minX = s.x;
+        if (s.y < minY) minY = s.y;
+        if (s.x + s.w > maxX) maxX = s.x + s.w;
+        if (s.y + s.h > maxY) maxY = s.y + s.h;
+    });
+    if (!isFinite(minX)) return null;
+    const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+    const rel = slots.map(function (s) {
+        return s ? { x: (s.x - minX) / bw, y: (s.y - minY) / bh, w: s.w / bw, h: s.h / bh } : null;
+    });
+    return { aspect: bw / bh, rel: rel };
+}
+// 总图：每组制品保持「自己分图的排版」作为一个块，块再在总图制品区内按网格排布
+// （块内按原比例缩放，不再被压扁；块之间居中、留最小间距）
+function caseTotalBlocksSlots(st, area, pageImages) {
+    const n = pageImages.length;
+    const out = new Array(n);
+    if (!n) return out;
+    const gap = Math.max(10, Math.round(Math.min(area.w, area.h) * 0.04));
+    const refW = 1000, refH = Math.max(1, Math.round(1000 * (area.h / Math.max(1, area.w))));
+    const blocks = [];
+    let cursor = 0;
+    (st.groups || []).forEach(function (g) {
+        const imgs = caseGroupImagesShown(g);
+        if (!imgs.length) return;
+        const idxs = [];
+        for (let k = 0; k < imgs.length; k++) idxs.push(cursor + k);
+        cursor += imgs.length;
+        const plan = caseGroupBlockPlan(imgs, refW, refH);
+        blocks.push({ idxs: idxs, plan: plan || { aspect: 1, rel: idxs.map(function () { return { x: 0, y: 0, w: 1, h: 1 }; }) } });
+    });
+    // 未归组的散图：各自成块
+    for (; cursor < n; cursor++) {
+        const plan = caseGroupBlockPlan([pageImages[cursor]], refW, refH);
+        blocks.push({ idxs: [cursor], plan: plan || { aspect: 1, rel: [{ x: 0, y: 0, w: 1, h: 1 }] } });
+    }
+    if (!blocks.length) return out;
+    const m = blocks.length;
+    function blockSize(a, cellW, cellH) {
+        let w = cellW, h = w / a;
+        if (h > cellH) { h = cellH; w = h * a; }
+        return { w: w, h: h };
+    }
+    let best = null;
+    for (let c = 1; c <= m; c++) {
+        const rows = Math.ceil(m / c);
+        const cellW = (area.w - (c - 1) * gap) / c;
+        const cellH = (area.h - (rows - 1) * gap) / rows;
+        if (cellW <= 0 || cellH <= 0) continue;
+        let score = Infinity, total = 0;
+        for (let i = 0; i < m; i++) {
+            const s = blockSize(blocks[i].plan.aspect, cellW, cellH);
+            score = Math.min(score, Math.min(s.w, s.h)); // 保证最小的块也尽可能大
+            total += s.w * s.h;
+        }
+        if (!best || score > best.score) best = { c: c, rows: rows, cellW: cellW, cellH: cellH, score: score, total: total };
+    }
+    if (!best) return out;
+    let y = area.y + Math.max(0, Math.round((area.h - (best.rows * best.cellH + (best.rows - 1) * gap)) / 2));
+    for (let r = 0; r < best.rows; r++) {
+        const cnt = Math.min(best.c, m - r * best.c);
+        let x = area.x + Math.max(0, Math.round((area.w - (cnt * best.cellW + (cnt - 1) * gap)) / 2));
+        for (let j = 0; j < cnt; j++) {
+            const bi = r * best.c + j;
+            const blk = blocks[bi];
+            const bs = blockSize(blk.plan.aspect, best.cellW, best.cellH);
+            const bx = x + Math.round((best.cellW - bs.w) / 2);
+            const by = y + Math.round((best.cellH - bs.h) / 2);
+            blk.idxs.forEach(function (idx, k) {
+                const rl = blk.plan.rel[k];
+                if (!rl) return;
+                out[idx] = {
+                    x: Math.round(bx + rl.x * bs.w),
+                    y: Math.round(by + rl.y * bs.h),
+                    w: Math.max(8, Math.round(rl.w * bs.w)),
+                    h: Math.max(8, Math.round(rl.h * bs.h))
+                };
+            });
+            x += best.cellW + gap;
+        }
+        y += best.cellH + gap;
+    }
+    return out;
+}
 // 图片有效宽高比：±90° 旋转的宽高互换（排版按旋转后的占位计算，才能与另一面等大）
 function caseItemEffectiveAspect(imgId) {
     const c = _caseImgCache[imgId];
@@ -37564,7 +37656,10 @@ function buildCaseCanvasHtml(st, page) {
         });
         pageImages.forEach(function (id, i) { if (!placed[i]) packBlocks.push([i]); });
     }
-    const slots = casePackSlots(pageImages, area, isGroupPage ? null : packBlocks);
+    // 总图且已按制品分组：每组按「自己分图的排版」成块后排布（块内不压缩）；否则走原装箱
+    const slots = (!isGroupPage && st.groups && st.groups.length)
+        ? caseTotalBlocksSlots(st, area, pageImages)
+        : casePackSlots(pageImages, area, isGroupPage ? null : packBlocks);
     // 记录本次构建的制品区、槽位与文字块区域（编辑拖拽/换父级判定使用）
     const userStackH2 = yearUserZoneH + hintZoneH + ctsStackH; // 左下堆叠：年份+@ID、提示信息、自定义文字行
     const tagZoneH2 = tagRows ? tagRows * tagLh + (tagRows - 1) * Math.round(tagGap * 0.6) : tagLh;
