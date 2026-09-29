@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0030';
+const APP_VERSION = '20260930-0100';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37201,25 +37201,40 @@ function casePackSlots(imgs, area, blocks) {
     }
     return layoutAll(area.h);
 }
-// 一组制品在参考区域内的排版（= 该组自己作为分图页时的排版），归一化为块：
-// 返回 { aspect: 块宽高比, rel: [{x,y,w,h}] 相对包围盒 0~1 }
-function caseGroupBlockPlan(imgs, refW, refH) {
-    const slots = casePackSlots(imgs, { x: 0, y: 0, w: refW, h: refH }, null) || [];
-    if (!slots.length) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    slots.forEach(function (s) {
-        if (!s) return;
-        if (s.x < minX) minX = s.x;
-        if (s.y < minY) minY = s.y;
-        if (s.x + s.w > maxX) maxX = s.x + s.w;
-        if (s.y + s.h > maxY) maxY = s.y + s.h;
+// 一组制品的排版候选（= 该组自己作为分图页时的算法），归一化为块：
+// 给定目标宽高比时用多个参考比例生成候选，取块宽高比最接近目标者（块更方正、总图更紧凑）
+function caseGroupBlockPlan(imgs, refW, refH, targetAspect) {
+    const refs = [[refW, refH]];
+    if (targetAspect) {
+        [1 / targetAspect, targetAspect / 2, targetAspect * 2, 1].forEach(function (a) {
+            refs.push([Math.round(refH * a), refH]);
+        });
+    }
+    let bestP = null;
+    refs.forEach(function (r) {
+        if (!(r[0] > 0) || !(r[1] > 0)) return;
+        const slots = casePackSlots(imgs, { x: 0, y: 0, w: r[0], h: r[1] }, null) || [];
+        if (!slots.length) return;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        slots.forEach(function (s) {
+            if (!s) return;
+            if (s.x < minX) minX = s.x;
+            if (s.y < minY) minY = s.y;
+            if (s.x + s.w > maxX) maxX = s.x + s.w;
+            if (s.y + s.h > maxY) maxY = s.y + s.h;
+        });
+        if (!isFinite(minX)) return;
+        const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+        const plan = {
+            aspect: bw / bh,
+            rel: slots.map(function (s) {
+                return s ? { x: (s.x - minX) / bw, y: (s.y - minY) / bh, w: s.w / bw, h: s.h / bh } : null;
+            })
+        };
+        const dev = targetAspect ? Math.abs(plan.aspect - targetAspect) : 0;
+        if (!bestP || dev < bestP.dev) bestP = { plan: plan, dev: dev };
     });
-    if (!isFinite(minX)) return null;
-    const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
-    const rel = slots.map(function (s) {
-        return s ? { x: (s.x - minX) / bw, y: (s.y - minY) / bh, w: s.w / bw, h: s.h / bh } : null;
-    });
-    return { aspect: bw / bh, rel: rel };
+    return bestP ? bestP.plan : null;
 }
 // 总图：每组制品保持「自己分图的排版」作为一个块，块再在总图制品区内按网格排布
 // （块内按原比例缩放，不再被压扁；块之间居中、留最小间距）
@@ -37227,7 +37242,8 @@ function caseTotalBlocksSlots(st, area, pageImages) {
     const n = pageImages.length;
     const out = new Array(n);
     if (!n) return out;
-    const gap = Math.max(10, Math.round(Math.min(area.w, area.h) * 0.04));
+    // 组间距收紧（0.02 ≈ 组内间距的一半）
+    const gap = Math.max(8, Math.round(Math.min(area.w, area.h) * 0.02));
     const refW = 1000, refH = Math.max(1, Math.round(1000 * (area.h / Math.max(1, area.w))));
     const blocks = [];
     let cursor = 0;
@@ -37237,60 +37253,84 @@ function caseTotalBlocksSlots(st, area, pageImages) {
         const idxs = [];
         for (let k = 0; k < imgs.length; k++) idxs.push(cursor + k);
         cursor += imgs.length;
-        const plan = caseGroupBlockPlan(imgs, refW, refH);
+        const plan = caseGroupBlockPlan(imgs, refW, refH, area.w / Math.max(1, area.h));
         blocks.push({ idxs: idxs, plan: plan || { aspect: 1, rel: idxs.map(function () { return { x: 0, y: 0, w: 1, h: 1 }; }) } });
     });
     // 未归组的散图：各自成块
     for (; cursor < n; cursor++) {
-        const plan = caseGroupBlockPlan([pageImages[cursor]], refW, refH);
+        const plan = caseGroupBlockPlan([pageImages[cursor]], refW, refH, area.w / Math.max(1, area.h));
         blocks.push({ idxs: [cursor], plan: plan || { aspect: 1, rel: [{ x: 0, y: 0, w: 1, h: 1 }] } });
     }
     if (!blocks.length) return out;
     const m = blocks.length;
-    function blockSize(a, cellW, cellH) {
-        let w = cellW, h = w / a;
-        if (h > cellH) { h = cellH; w = h * a; }
-        return { w: w, h: h };
-    }
-    let best = null;
-    for (let c = 1; c <= m; c++) {
-        const rows = Math.ceil(m / c);
-        const cellW = (area.w - (c - 1) * gap) / c;
-        const cellH = (area.h - (rows - 1) * gap) / rows;
-        if (cellW <= 0 || cellH <= 0) continue;
-        let score = Infinity, total = 0;
-        for (let i = 0; i < m; i++) {
-            const s = blockSize(blocks[i].plan.aspect, cellW, cellH);
-            score = Math.min(score, Math.min(s.w, s.h)); // 保证最小的块也尽可能大
-            total += s.w * s.h;
+    const infos = blocks.map(function (b) { return { aspect: Math.max(0.3, b.plan.aspect) }; });
+    // 多行均衡装箱（与组内 packMulti 同思路）：
+    // 每行铺满制品区宽（行高 = 行宽 ÷ 行内宽高比和），总高超限则该行数无效；评分 = 占用面积最大 → 最紧凑最方正
+    function packRows(maxH) {
+        let best = null;
+        for (let R = 1; R <= m; R++) {
+            const rowBlocks = [], rowAsp = [];
+            for (let r = 0; r < R; r++) { rowBlocks.push([]); rowAsp.push(0); }
+            const order = infos.map(function (s, i) { return i; }).sort(function (a, b) { return infos[b].aspect - infos[a].aspect; });
+            order.forEach(function (bi) {
+                let mi = 0;
+                for (let r = 1; r < R; r++) if (rowAsp[r] < rowAsp[mi]) mi = r;
+                rowBlocks[mi].push(bi); rowAsp[mi] += infos[bi].aspect;
+            });
+            const rowHs = rowAsp.map(function (ra, ri) {
+                const cnt = rowBlocks[ri].length;
+                return cnt ? Math.max(12, (area.w - (cnt - 1) * gap) / ra) : 0;
+            });
+            const totalH = rowHs.reduce(function (a, h) { return a + h; }, 0) + (R - 1) * gap;
+            if (totalH > maxH) continue;
+            const used = rowHs.reduce(function (acc, h, ri) { return acc + h * h * rowAsp[ri]; }, 0);
+            if (!best || used > best.used) {
+                best = { R: R, rowBlocks: rowBlocks, rowHs: rowHs, totalH: totalH, used: used, infos: infos };
+            }
         }
-        if (!best || score > best.score) best = { c: c, rows: rows, cellW: cellW, cellH: cellH, score: score, total: total };
+        if (best) return best;
+        // 兜底：每块一行（行高 = min(高度均分, 宽度适配)），保证必有方案
+        const rowsF = m;
+        const rowBlocksF = blocks.map(function (b, i) { return [i]; });
+        const rowHsF = infos.map(function (info) {
+            return Math.max(12, Math.min((maxH - (rowsF - 1) * gap) / rowsF, (area.w - gap) / info.aspect));
+        });
+        return {
+            R: rowsF, rowBlocks: rowBlocksF, rowHs: rowHsF,
+            totalH: rowHsF.reduce(function (a, h) { return a + h; }, 0) + (rowsF - 1) * gap, infos: infos
+        };
     }
-    if (!best) return out;
-    let y = area.y + Math.max(0, Math.round((area.h - (best.rows * best.cellH + (best.rows - 1) * gap)) / 2));
-    for (let r = 0; r < best.rows; r++) {
-        const cnt = Math.min(best.c, m - r * best.c);
-        let x = area.x + Math.max(0, Math.round((area.w - (cnt * best.cellW + (cnt - 1) * gap)) / 2));
-        for (let j = 0; j < cnt; j++) {
-            const bi = r * best.c + j;
+    const pack = packRows(area.h);
+    let y = area.y + Math.max(0, Math.round((area.h - pack.totalH) / 2));
+    pack.rowBlocks.forEach(function (rus, ri) {
+        const rowH = pack.rowHs[ri];
+        let ws = rus.map(function (bi) { return rowH * pack.infos[bi].aspect; });
+        let rowW = ws.reduce(function (a, w) { return a + w; }, 0) + (rus.length - 1) * gap;
+        // 超出行宽则整行等比缩（保比例，不压扁）
+        const inner = rowW - (rus.length - 1) * gap;
+        if (rowW > area.w && inner > 0) {
+            const scale = (area.w - (rus.length - 1) * gap) / inner;
+            ws = ws.map(function (w) { return w * scale; });
+            rowW = area.w;
+        }
+        let x = area.x + Math.max(0, Math.round((area.w - rowW) / 2));
+        rus.forEach(function (bi, uj) {
             const blk = blocks[bi];
-            const bs = blockSize(blk.plan.aspect, best.cellW, best.cellH);
-            const bx = x + Math.round((best.cellW - bs.w) / 2);
-            const by = y + Math.round((best.cellH - bs.h) / 2);
+            const bw = ws[uj], bh = bw / pack.infos[bi].aspect;
             blk.idxs.forEach(function (idx, k) {
                 const rl = blk.plan.rel[k];
                 if (!rl) return;
                 out[idx] = {
-                    x: Math.round(bx + rl.x * bs.w),
-                    y: Math.round(by + rl.y * bs.h),
-                    w: Math.max(8, Math.round(rl.w * bs.w)),
-                    h: Math.max(8, Math.round(rl.h * bs.h))
+                    x: Math.round(x + rl.x * bw),
+                    y: Math.round(y + rl.y * bh),
+                    w: Math.max(8, Math.round(rl.w * bw)),
+                    h: Math.max(8, Math.round(rl.h * bh))
                 };
             });
-            x += best.cellW + gap;
-        }
-        y += best.cellH + gap;
-    }
+            x += bw + gap;
+        });
+        y += rowH + gap;
+    });
     return out;
 }
 // 图片有效宽高比：±90° 旋转的宽高互换（排版按旋转后的占位计算，才能与另一面等大）
