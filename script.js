@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0100';
+const APP_VERSION = '20260930-0120';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36806,6 +36806,7 @@ function caseNewState() {
             textScale: 1,
             textColor: '',
             layout: null,
+            excludedFromTotal: [],   // 不加入总图的制品图 id（分图页仍显示）
             watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, over: 'products' }
         },
         fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', hint: 'Commissioned work. Do not use or copy.', projectName: '', ip: '', character: '', products: '', custom: {}, customLabels: {}, customTexts: [] },
@@ -37464,6 +37465,25 @@ function caseTagFsMap(st) {
     const L = st && st.config && st.config.layout;
     return (L && L.texts && L.texts.project && L.texts.project.itemFs) || {};
 }
+// 「不加入总图」的制品图 id 集合
+function caseExcludedTotal(st) {
+    const arr = (st && st.config && st.config.excludedFromTotal);
+    return Array.isArray(arr) ? arr : [];
+}
+function caseIsExcludedTotal(st, imgId) {
+    return !!imgId && caseExcludedTotal(st).indexOf(imgId) >= 0;
+}
+function caseToggleTotalImage(imgId) {
+    const st = _caseState; if (!st || !imgId) return;
+    if (!Array.isArray(st.config.excludedFromTotal)) st.config.excludedFromTotal = [];
+    const arr = st.config.excludedFromTotal;
+    const i = arr.indexOf(imgId);
+    if (i >= 0) arr.splice(i, 1);
+    else arr.push(imgId);
+    renderCaseForm();
+    renderCasePreview();
+    showGlobalToast(arr.indexOf(imgId) >= 0 ? '该图已排除出总图（分图仍显示）' : '该图已重新加入总图');
+}
 // 分组实际渲染的制品图：按订单份数（count）铺满——
 // 已传图多于份数时以已传图为准；少于份数时循环复用已传图补到正确数量（如 ×2 画两个，×3 画三个）
 function caseGroupImagesShown(g) {
@@ -37481,11 +37501,15 @@ function casePages(st) {
     const hasGroups = !!(st.groups && st.groups.length);
     let all = (st.images || []).slice();
     if (hasGroups) {
-        // 总图 = 各制品按份数展开后的合集
+        // 总图 = 各制品按份数展开后的合集，剔除「不加入总图」的图
         all = [];
         (st.groups || []).forEach(function (g) {
-            caseGroupImagesShown(g).forEach(function (id) { all.push(id); });
+            caseGroupImagesShown(g).forEach(function (id) {
+                if (!caseIsExcludedTotal(st, id)) all.push(id);
+            });
         });
+    } else {
+        all = all.filter(function (id) { return !caseIsExcludedTotal(st, id); });
     }
     if (all.length || !hasGroups) pages.push({ kind: 'total', label: '总图', images: all });
     (st.groups || []).forEach(function (g) {
@@ -38830,17 +38854,20 @@ function renderCaseForm() {
         + '<label class="case-form-label">制品图</label>';
     const hasGroups = !!(st.groups && st.groups.length);
     if (hasGroups) {
-        html += '<div class="case-form-hint" style="margin:0 0 4px;">已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换</div>';
+        html += '<div class="case-form-hint" style="margin:0 0 4px;">已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换；缩略图底栏「入总图」可把某张图排除出总图（分图页仍显示）</div>';
         st.groups.forEach(function (g, gi) {
             let thumbs = '';
             (g.images || []).forEach(function (imgId) {
                 const c = _caseImgCache[imgId];
-                thumbs += '<div class="case-thumb">'
+                const excl = caseIsExcludedTotal(st, imgId);
+                thumbs += '<div class="case-thumb' + (excl ? ' case-thumb-excl' : '') + '">'
                     + (c ? '<img src="' + c.dataUrl + '" alt="">' : '')
                     + '<button type="button" class="case-thumb-del" onclick="caseRemoveImage(\'' + imgId + '\')" title="删除">×</button>'
+                    + (excl ? '<span class="case-thumb-flag" title="已排除出总图">总图✕</span>' : '')
                     + '<div class="case-thumb-ops">'
                     + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',-1,' + gi + ')" title="前移">◀</button>'
                     + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',1,' + gi + ')" title="后移">▶</button>'
+                    + '<button type="button" class="case-thumb-total' + (excl ? ' off' : '') + '" onclick="caseToggleTotalImage(\'' + imgId + '\')" title="' + (excl ? '点击重新加入总图' : '点击不加入总图（分图仍显示）') + '">' + (excl ? '不入总图' : '入总图') + '</button>'
                     + '</div></div>';
             });
             if (!(g.images || []).length) thumbs = '<div class="case-group-empty-tip">还没有上传该制品的图，可点击「上传」或拖图到此框</div>';

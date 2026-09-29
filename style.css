@@ -14759,6 +14759,25 @@ html.theme-dark .case-size-lock.active {
     padding: 2px 6px;
     cursor: pointer;
 }
+/* 「入总图 / 不入总图」开关：排除态半透明灰并加删除线 */
+.case-thumb-total { opacity: 0.9; }
+.case-thumb-total.off {
+    opacity: 0.55;
+    text-decoration: line-through;
+}
+.case-thumb-excl img { opacity: 0.45; }
+.case-thumb-flag {
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1.4;
+    pointer-events: none;
+}
 .case-thumb-del {
     position: absolute;
     top: 2px;
