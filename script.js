@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0200';
+const APP_VERSION = '20260930-0210';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37076,8 +37076,7 @@ function caseSpanGridSlots(aspects, area, gap, cols, rows) {
         const cs = Math.max(1, Math.min(cols, Math.round(a / cellA)));
         return { rs: rs, cs: cs };
     });
-    const order = spans.map(function (s, i) { return i; })
-        .sort(function (x, y) { return spans[y].rs * spans[y].cs - spans[x].rs * spans[x].cs; });
+    const order = spans.map(function (s, i) { return i; }); // 按上传/分组顺序放置：同组制品天然相邻
     const used = {};
     const placed = new Array(n).fill(null);
     function tryPlace(i, rs, cs) {
@@ -37118,7 +37117,7 @@ function casePackSlots(imgs, area, blocks) {
     const slots = new Array(imgs ? imgs.length : 0);
     const n = imgs ? imgs.length : 0;
     if (n <= 0) return slots;
-    const gap = Math.max(8, Math.round(Math.min(area.w, area.h) * 0.02));
+    const gap = Math.max(6, Math.round(Math.min(area.w, area.h) * 0.012));
     // 布局宽高比：有效宽高比钳制 0.45~3（防极端图拖垮排版；渲染仍等比 contain 居中）
     const aspects = [];
     for (let i = 0; i < n; i++) {
@@ -37317,6 +37316,12 @@ function casePackSlots(imgs, area, blocks) {
 // 一组制品的排版候选（= 该组自己作为分图页时的算法），归一化为块：
 // 给定目标宽高比时用多个参考比例生成候选，取块宽高比最接近目标者（块更方正、总图更紧凑）
 function caseGroupBlockPlan(imgs, refW, refH, targetAspect) {
+    // 单图组：块比例 = 图片真实比例（否则会拿到参考区比例，图在块内大量留白）
+    if (imgs.length === 1) {
+        const c0 = _caseImgCache[imgs[0]];
+        const a0 = (c0 && c0.w && c0.h) ? c0.w / c0.h : 1;
+        return { aspect: Math.max(0.3, Math.min(3.5, a0)), rel: [{ x: 0, y: 0, w: 1, h: 1 }] };
+    }
     const refs = [[refW, refH]];
     if (targetAspect) {
         [1 / targetAspect, targetAspect / 2, targetAspect * 2, 1].forEach(function (a) {
@@ -37356,7 +37361,7 @@ function caseTotalBlocksSlots(st, area, pageImages) {
     const out = new Array(n);
     if (!n) return out;
     // 组间距收紧（0.02 ≈ 组内间距的一半）
-    const gap = Math.max(8, Math.round(Math.min(area.w, area.h) * 0.02));
+    const gap = Math.max(6, Math.round(Math.min(area.w, area.h) * 0.012));
     const refW = 1000, refH = Math.max(1, Math.round(1000 * (area.h / Math.max(1, area.w))));
     const blocks = [];
     let cursor = 0;
@@ -37829,10 +37834,10 @@ function buildCaseCanvasHtml(st, page) {
         });
         pageImages.forEach(function (id, i) { if (!placed[i]) packBlocks.push([i]); });
     }
-    // 总图且已按制品分组：每组按「自己分图的排版」成块后排布（块内不压缩）；否则走原装箱
+    // 总图（有分组）：每组按「自己分图的排版」成块后排布（保持按组）；分图页/自由模式走跨格网格
     const slots = (!isGroupPage && st.groups && st.groups.length)
         ? caseTotalBlocksSlots(st, area, pageImages)
-        : casePackSlots(pageImages, area, isGroupPage ? null : packBlocks);
+        : casePackSlots(pageImages, area, null);
     // 记录本次构建的制品区、槽位与文字块区域（编辑拖拽/换父级判定使用）
     const userStackH2 = yearUserZoneH + hintZoneH + ctsStackH; // 左下堆叠：年份+@ID、提示信息、自定义文字行
     const tagZoneH2 = tagRows ? tagRows * tagLh + (tagRows - 1) * Math.round(tagGap * 0.6) : tagLh;
