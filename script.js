@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260929-1740';
+const APP_VERSION = '20260929-2355';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37856,7 +37856,17 @@ function renderCasePreview() {
     if (!wrap || !_caseState) return;
     const st = _caseState;
     const page = caseCurrentPage(st);
-    wrap.innerHTML = buildCaseCanvasHtml(st, page);
+    try {
+        wrap.innerHTML = buildCaseCanvasHtml(st, page);
+    } catch (e) {
+        // 渲染失败不允许静默空白：降级显示错误信息，设置仍在，改任意选项会自动重试
+        console.error('案例画布渲染失败:', e);
+        wrap.innerHTML = '<div class="case-canvas" style="width:' + st.config.width + 'px;height:' + st.config.height
+            + 'px;background:#f2f2f2;display:flex;align-items:center;justify-content:center;">'
+            + '<div style="text-align:center;color:#c0392b;font-size:15px;padding:24px;max-width:80%;">画布渲染出错：'
+            + escapeHtml(String((e && e.message) || e))
+            + '<br><span style="font-size:12px;color:#999;">已保留全部设置，修改任意选项会自动重试；请把此错误信息反馈给开发者</span></div></div>';
+    }
     wrap.classList.toggle('transparent', st.config.bg.type === 'transparent');
     casePrepareCanvasEl(wrap.firstElementChild);
     fitCasePreview();
@@ -37897,7 +37907,12 @@ function fitCasePreview() {
     const stage = document.getElementById('casePreviewStage');
     const wrap = document.getElementById('casePreviewCanvasWrap');
     if (!stage || !wrap || !_caseState) return;
+    // 抽屉未打开时不做几何计算（rect 不可信，避免写入错误缩放）
+    const drawer = document.getElementById('caseGeneratorDrawer');
+    if (drawer && !drawer.classList.contains('open')) return;
     const rect = stage.getBoundingClientRect();
+    // 面板滑入动画中/离屏时 rect 不可信（transitionend 会补一次校正）
+    if (rect.width < 100 || rect.height < 100) return;
     const availW = Math.max(60, rect.width - 28);
     const availH = Math.max(60, rect.height - 28);
     const fit = Math.min(availW / _caseState.config.width, availH / _caseState.config.height, 1);
@@ -37919,6 +37934,19 @@ function caseSetZoom(z) {
 function caseZoomStep(dir) { caseSetZoom(_casePreviewZoom * (dir > 0 ? 1.25 : 0.8)); }
 function caseZoomReset() { caseSetZoom(1); }
 window.addEventListener('resize', function () { fitCasePreview(); });
+// 抽屉滑入动画（transform 0.3s）结束后补一次几何校正：动画期间的 rect 不可信，
+// 动画中写入的缩放会让画布偏移/裁切（表现为预览区"不可见"）
+(function () {
+    const drawer = document.getElementById('caseGeneratorDrawer');
+    if (!drawer) return;
+    drawer.addEventListener('transitionend', function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains('case-drawer-panel')) {
+            fitCasePreview();
+            // 双保险：再补一帧，确保布局完全稳定
+            requestAnimationFrame(function () { fitCasePreview(); });
+        }
+    });
+})();
 
 // ===== 调整布局模式（预览区直接拖拽定位） =====
 function toggleCaseEditMode(force) {
