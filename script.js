@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0120';
+const APP_VERSION = '20260930-0130';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37753,6 +37753,19 @@ function buildCaseCanvasHtml(st, page) {
         const by = Math.min(Math.max(Math.round(cy - bh / 2), area.y), area.y + area.h - bh);
         const drawSlot = { x: bx, y: by, w: bw, h: bh };
         const c = _caseImgCache[imgId];
+        // 等比 contain 进槽位：装箱用的宽高比有 0.45~3 钳制，极端比例图（如超长竖图）若直接铺满槽位会被拉伸；
+        // 这里按原图（±90° 旋转后）真实比例缩小居中回槽位，装饰层同比例烘焙、保持对齐
+        if (c && c.w && c.h) {
+            const rotQ = ((slotRot % 180) + 180) % 180;
+            const taRaw = c.w / c.h;
+            const ta = (rotQ === 90) ? 1 / taRaw : taRaw;
+            let dw2 = bw, dh2 = bw / ta;
+            if (dh2 > bh) { dh2 = bh; dw2 = bh * ta; }
+            drawSlot.x = Math.round(bx + (bw - dw2) / 2);
+            drawSlot.y = Math.round(by + (bh - dh2) / 2);
+            drawSlot.w = Math.max(8, Math.round(dw2));
+            drawSlot.h = Math.max(8, Math.round(dh2));
+        }
         // 槽位框 = 旋转后的可视占位（排版已按互换比例分配）；
         // ±90° 时图层盒按「宽高互换」取槽位反向尺寸并居中，旋转 90° 后正好盖满槽位且不变形
         const swapped = Math.abs(((slotRot % 180) + 180) % 180) === 90;
