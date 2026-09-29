@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0140';
+const APP_VERSION = '20260930-0141';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36806,7 +36806,7 @@ function caseNewState() {
             textScale: 1,
             textColor: '',
             layout: null,
-            excludedFromTotal: [],   // 不加入总图的制品图 id（分图页仍显示）
+            // excludedFromTotal 已废弃（旧版按图排除，迁移为组级 g.noTotal，见 caseNormalizeState）
             watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, over: 'products' }
         },
         fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', hint: 'Commissioned work. Do not use or copy.', projectName: '', ip: '', character: '', products: '', custom: {}, customLabels: {}, customTexts: [] },
@@ -36843,6 +36843,16 @@ function caseNormalizeState(st) {
     });
     st.images = Array.isArray(st.images) ? st.images : [];
     st.groups = Array.isArray(st.groups) ? st.groups.filter(function (g) { return g && g.label; }) : [];
+    // 旧数据迁移：「不入总图」原为按图 id 存 config.excludedFromTotal，现改为按组开关（g.noTotal）
+    // 组内任一图曾被排除 → 整组标记不入总图（可再手动打开）；迁移后清空旧数组
+    const legacyExcl = st.config && Array.isArray(st.config.excludedFromTotal) ? st.config.excludedFromTotal : [];
+    if (legacyExcl.length) {
+        st.groups.forEach(function (g) {
+            if ((g.images || []).some(function (id) { return legacyExcl.indexOf(id) >= 0; })) g.noTotal = true;
+        });
+        st.config.excludedFromTotal = [];
+    }
+    st.groups.forEach(function (g) { if (!g.noTotal) delete g.noTotal; });
     st.pages = Array.isArray(st.pages) ? st.pages : [];
     st.config.width = Math.min(4000, Math.max(200, parseInt(st.config.width, 10) || 1080));
     st.config.height = Math.min(4000, Math.max(200, parseInt(st.config.height, 10) || 1080));
@@ -37053,13 +37063,62 @@ function caseAutoAreaBox(st) {
         h: Math.max(Math.round(H * 0.18), H - pad * 2 - bottomUsed)
     };
 }
+// 跨格网格装箱：按图宽高比分配跨度（高图跨多行如「占竖两格」、宽图跨多列），贪心放入网格；
+// 全部放下返回各图所在块矩形（图片绘制时再按自身比例 contain 居中），放不下返回 null
+function caseSpanGridSlots(aspects, area, gap, cols, rows) {
+    const cellW = (area.w - (cols - 1) * gap) / cols;
+    const cellH = (area.h - (rows - 1) * gap) / rows;
+    if (!(cellW > 0) || !(cellH > 0)) return null;
+    const cellA = cellW / cellH;
+    const n = aspects.length;
+    const spans = aspects.map(function (a) {
+        const rs = Math.max(1, Math.min(rows, Math.round(cellA / a)));
+        const cs = Math.max(1, Math.min(cols, Math.round(a / cellA)));
+        return { rs: rs, cs: cs };
+    });
+    const order = spans.map(function (s, i) { return i; })
+        .sort(function (x, y) { return spans[y].rs * spans[y].cs - spans[x].rs * spans[x].cs; });
+    const used = {};
+    const placed = new Array(n).fill(null);
+    function tryPlace(i, rs, cs) {
+        for (let r = 0; r + rs <= rows; r++) {
+            for (let c = 0; c + cs <= cols; c++) {
+                let fit = true;
+                for (let rr = r; rr < r + rs && fit; rr++) {
+                    for (let cc = c; cc < c + cs && fit; cc++) {
+                        if (used[rr * cols + cc]) fit = false;
+                    }
+                }
+                if (!fit) continue;
+                for (let rr = r; rr < r + rs; rr++) {
+                    for (let cc = c; cc < c + cs; cc++) used[rr * cols + cc] = 1;
+                }
+                placed[i] = { r: r, c: c, rs: rs, cs: cs };
+                return true;
+            }
+        }
+        return false;
+    }
+    order.forEach(function (i) {
+        if (!tryPlace(i, spans[i].rs, spans[i].cs)) tryPlace(i, 1, 1); // 放不下降级为 1×1
+    });
+    if (placed.some(function (x) { return !x; })) return null;
+    return placed.map(function (p) {
+        return {
+            x: Math.round(area.x + p.c * (cellW + gap)),
+            y: Math.round(area.y + p.r * (cellH + gap)),
+            w: Math.round(p.cs * cellW + (p.cs - 1) * gap),
+            h: Math.round(p.rs * cellH + (p.rs - 1) * gap)
+        };
+    });
+}
 // 默认排版：按制品实际尺寸等比缩放 + 行装箱紧密排列（小间距、行内/整体居中、不超制品区）
 // 制品之间的相对大小保持上传原图的比例关系；模板只控制装饰风格，不再决定拼贴方式
 function casePackSlots(imgs, area, blocks) {
     const slots = new Array(imgs ? imgs.length : 0);
     const n = imgs ? imgs.length : 0;
     if (n <= 0) return slots;
-    const gap = Math.max(10, Math.round(Math.min(area.w, area.h) * 0.04));
+    const gap = Math.max(8, Math.round(Math.min(area.w, area.h) * 0.02));
     // 布局宽高比：有效宽高比钳制 0.45~3（防极端图拖垮排版；渲染仍等比 contain 居中）
     const aspects = [];
     for (let i = 0; i < n; i++) {
@@ -37079,7 +37138,24 @@ function casePackSlots(imgs, area, blocks) {
         for (let i = 0; i < n; i++) if (!placed[i]) unplaced.push(i);
         if (unplaced.length) units.push(unplaced);
     } else {
-        // 无分组（自由模式 / 分图页）：全部图作为一个单元走网格布局（layoutAll 以覆盖面积择优）
+        // 跨格网格：高图跨行（长图占竖两格）、宽图跨列；遍历列×行组合，取「实际绘制覆盖面积」最大者
+        let bestS = null, bestScore = -1;
+        for (let cols = 1; cols <= n; cols++) {
+            for (let rows = 1; rows <= n; rows++) {
+                if (cols * rows < n) continue;
+                const s = caseSpanGridSlots(aspects, area, gap, cols, rows);
+                if (!s) continue;
+                let score = 0;
+                s.forEach(function (sl, i) {
+                    let w = sl.w, h = sl.w / aspects[i];
+                    if (h > sl.h) { h = sl.h; w = h * aspects[i]; }
+                    score += w * h;
+                });
+                if (score > bestScore) { bestScore = score; bestS = s; }
+            }
+        }
+        if (bestS) return bestS;
+        // 兜底：均匀网格（覆盖面积择优）
         const all = [];
         for (let i = 0; i < n; i++) all.push(i);
         units.push(all);
@@ -37285,6 +37361,7 @@ function caseTotalBlocksSlots(st, area, pageImages) {
     const blocks = [];
     let cursor = 0;
     (st.groups || []).forEach(function (g) {
+        if (caseGroupNoTotal(g)) return;
         const imgs = caseGroupImagesShown(g);
         if (!imgs.length) return;
         const idxs = [];
@@ -37501,24 +37578,18 @@ function caseTagFsMap(st) {
     const L = st && st.config && st.config.layout;
     return (L && L.texts && L.texts.project && L.texts.project.itemFs) || {};
 }
-// 「不加入总图」的制品图 id 集合
-function caseExcludedTotal(st) {
-    const arr = (st && st.config && st.config.excludedFromTotal);
-    return Array.isArray(arr) ? arr : [];
+// 「入总图」按分图组设置（g.noTotal = true 表示整组不进总图，分图页仍显示）；默认入总图
+function caseGroupNoTotal(g) {
+    return !!(g && g.noTotal);
 }
-function caseIsExcludedTotal(st, imgId) {
-    return !!imgId && caseExcludedTotal(st).indexOf(imgId) >= 0;
-}
-function caseToggleTotalImage(imgId) {
-    const st = _caseState; if (!st || !imgId) return;
-    if (!Array.isArray(st.config.excludedFromTotal)) st.config.excludedFromTotal = [];
-    const arr = st.config.excludedFromTotal;
-    const i = arr.indexOf(imgId);
-    if (i >= 0) arr.splice(i, 1);
-    else arr.push(imgId);
+function caseToggleGroupTotal(gi) {
+    const st = _caseState; if (!st || !st.groups || !st.groups[gi]) return;
+    const g = st.groups[gi];
+    if (g.noTotal) delete g.noTotal;   // 默认态不落盘
+    else g.noTotal = true;
     renderCaseForm();
     renderCasePreview();
-    showGlobalToast(arr.indexOf(imgId) >= 0 ? '该图已排除出总图（分图仍显示）' : '该图已重新加入总图');
+    showGlobalToast(g.noTotal ? '「' + (g.label || '该组') + '」已排除出总图（分图页仍显示）' : '「' + (g.label || '该组') + '」已重新加入总图');
 }
 // 分组实际渲染的制品图：按订单份数（count）铺满——
 // 已传图多于份数时以已传图为准；少于份数时循环复用已传图补到正确数量（如 ×2 画两个，×3 画三个）
@@ -37537,15 +37608,12 @@ function casePages(st) {
     const hasGroups = !!(st.groups && st.groups.length);
     let all = (st.images || []).slice();
     if (hasGroups) {
-        // 总图 = 各制品按份数展开后的合集，剔除「不加入总图」的图
+        // 总图 = 各制品按份数展开后的合集；整组「不入总图」的分组跳过
         all = [];
         (st.groups || []).forEach(function (g) {
-            caseGroupImagesShown(g).forEach(function (id) {
-                if (!caseIsExcludedTotal(st, id)) all.push(id);
-            });
+            if (caseGroupNoTotal(g)) return;
+            caseGroupImagesShown(g).forEach(function (id) { all.push(id); });
         });
-    } else {
-        all = all.filter(function (id) { return !caseIsExcludedTotal(st, id); });
     }
     if (all.length || !hasGroups) pages.push({ kind: 'total', label: '总图', images: all });
     (st.groups || []).forEach(function (g) {
@@ -38903,28 +38971,30 @@ function renderCaseForm() {
         + '<label class="case-form-label">制品图</label>';
     const hasGroups = !!(st.groups && st.groups.length);
     if (hasGroups) {
-        html += '<div class="case-form-hint" style="margin:0 0 4px;">已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换；缩略图底栏「入总图」可把某张图排除出总图（分图页仍显示）</div>';
+        html += '<div class="case-form-hint" style="margin:0 0 4px;">已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换；每组右上角「入总图」开关可把整组图排除出总图（分图页仍显示）</div>';
         st.groups.forEach(function (g, gi) {
             let thumbs = '';
+            const noTotal = caseGroupNoTotal(g);
             (g.images || []).forEach(function (imgId) {
                 const c = _caseImgCache[imgId];
-                const excl = caseIsExcludedTotal(st, imgId);
-                thumbs += '<div class="case-thumb' + (excl ? ' case-thumb-excl' : '') + '">'
+                thumbs += '<div class="case-thumb">'
                     + (c ? '<img src="' + c.dataUrl + '" alt="">' : '')
                     + '<button type="button" class="case-thumb-del" onclick="caseRemoveImage(\'' + imgId + '\')" title="删除">×</button>'
-                    + (excl ? '<span class="case-thumb-flag" title="已排除出总图">总图✕</span>' : '')
                     + '<div class="case-thumb-ops">'
                     + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',-1,' + gi + ')" title="前移">◀</button>'
                     + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',1,' + gi + ')" title="后移">▶</button>'
-                    + '<button type="button" class="case-thumb-total' + (excl ? ' off' : '') + '" onclick="caseToggleTotalImage(\'' + imgId + '\')" title="' + (excl ? '点击重新加入总图' : '点击不加入总图（分图仍显示）') + '">' + (excl ? '不入总图' : '入总图') + '</button>'
                     + '</div></div>';
             });
             if (!(g.images || []).length) thumbs = '<div class="case-group-empty-tip">还没有上传该制品的图，可点击「上传」或拖图到此框</div>';
-            html += '<div class="case-group-block" data-case-group="' + gi + '">'
+            html += '<div class="case-group-block' + (noTotal ? ' case-group-off' : '') + '" data-case-group="' + gi + '">'
                 + '<div class="case-group-head">'
                 + '<span class="case-group-label">' + escapeHtml(g.label) + (g.count > 1 ? ' <em>×' + g.count + '</em>' : '') + '</span>'
+                + '<span class="case-group-ops">'
+                + '<span class="case-group-total' + (noTotal ? ' off' : '') + '" role="checkbox" aria-checked="' + (!noTotal) + '" onclick="caseToggleGroupTotal(' + gi + ')" title="' + (noTotal ? '该组图不进入总图，点击重新加入' : '点击把整组图排除出总图（分图页仍显示）') + '"><i class="case-group-total-box"></i>入总图</span>'
                 + '<button type="button" class="btn secondary btn-compact" onclick="casePickUpload(' + gi + ')">上传</button>'
+                + '</span>'
                 + '</div>'
+                + (noTotal ? '<div class="case-group-off-tip">该组图不进入总图，分图页仍显示</div>' : '')
                 + '<div class="case-thumbs">' + thumbs + '</div>'
                 + '</div>';
         });

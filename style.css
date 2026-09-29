@@ -14759,24 +14759,57 @@ html.theme-dark .case-size-lock.active {
     padding: 2px 6px;
     cursor: pointer;
 }
-/* 「入总图 / 不入总图」开关：排除态半透明灰并加删除线 */
-.case-thumb-total { opacity: 0.9; }
-.case-thumb-total.off {
-    opacity: 0.55;
+/* 分组头「入总图」开关（默认勾选态）；off = 整组不入总图 */
+.case-group-ops {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+.case-group-total {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-muted, #999);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.case-group-total-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color, #ccc);
+    background: var(--primary-color, #7c6ff0);
+    display: inline-block;
+    position: relative;
+}
+.case-group-total-box::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.case-group-total.off {
+    color: var(--text-muted, #999);
     text-decoration: line-through;
 }
-.case-thumb-excl img { opacity: 0.45; }
-.case-thumb-flag {
-    position: absolute;
-    left: 3px;
-    top: 3px;
-    padding: 1px 4px;
-    border-radius: 4px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
-    font-size: 10px;
-    line-height: 1.4;
-    pointer-events: none;
+.case-group-total.off .case-group-total-box {
+    background: transparent;
+    border-color: var(--text-muted, #999);
+}
+.case-group-total.off .case-group-total-box::after { content: none; }
+.case-group-block.case-group-off .case-thumbs { opacity: 0.55; }
+.case-group-off-tip {
+    font-size: 11px;
+    color: var(--text-muted, #999);
+    padding: 2px 0 0;
+    line-height: 1.5;
 }
 .case-thumb-del {
     position: absolute;
