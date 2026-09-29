@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0220';
+const APP_VERSION = '20260930-0230';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37375,46 +37375,33 @@ function casePackSlots(imgs, area, blocks) {
     }
     return layoutAll(area.h);
 }
-// 一组制品的排版候选（= 该组自己作为分图页时的算法），归一化为块：
-// 给定目标宽高比时用多个参考比例生成候选，取块宽高比最接近目标者（块更方正、总图更紧凑）
-function caseGroupBlockPlan(imgs, refW, refH, targetAspect) {
+// 一组制品的排版（= 该组自己作为分图页时的算法与结果），归一化为块：
+// refW/refH 用与分图页相同的区域宽高比 → 总图里的组块与分图页显示完全一致
+function caseGroupBlockPlan(imgs, refW, refH) {
     // 单图组：块比例 = 图片真实比例（否则会拿到参考区比例，图在块内大量留白）
     if (imgs.length === 1) {
         const c0 = _caseImgCache[imgs[0]];
         const a0 = (c0 && c0.w && c0.h) ? c0.w / c0.h : 1;
         return { aspect: Math.max(0.3, Math.min(3.5, a0)), rel: [{ x: 0, y: 0, w: 1, h: 1 }] };
     }
-    const refs = [[refW, refH]];
-    if (targetAspect) {
-        [1 / targetAspect, targetAspect / 2, targetAspect * 2, 1].forEach(function (a) {
-            refs.push([Math.round(refH * a), refH]);
-        });
-    }
-    let bestP = null;
-    refs.forEach(function (r) {
-        if (!(r[0] > 0) || !(r[1] > 0)) return;
-        const slots = casePackSlots(imgs, { x: 0, y: 0, w: r[0], h: r[1] }, null) || [];
-        if (!slots.length) return;
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        slots.forEach(function (s) {
-            if (!s) return;
-            if (s.x < minX) minX = s.x;
-            if (s.y < minY) minY = s.y;
-            if (s.x + s.w > maxX) maxX = s.x + s.w;
-            if (s.y + s.h > maxY) maxY = s.y + s.h;
-        });
-        if (!isFinite(minX)) return;
-        const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
-        const plan = {
-            aspect: bw / bh,
-            rel: slots.map(function (s) {
-                return s ? { x: (s.x - minX) / bw, y: (s.y - minY) / bh, w: s.w / bw, h: s.h / bh } : null;
-            })
-        };
-        const dev = targetAspect ? Math.abs(plan.aspect - targetAspect) : 0;
-        if (!bestP || dev < bestP.dev) bestP = { plan: plan, dev: dev };
+    const slots = casePackSlots(imgs, { x: 0, y: 0, w: refW, h: refH }, null) || [];
+    if (!slots.length) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    slots.forEach(function (s) {
+        if (!s) return;
+        if (s.x < minX) minX = s.x;
+        if (s.y < minY) minY = s.y;
+        if (s.x + s.w > maxX) maxX = s.x + s.w;
+        if (s.y + s.h > maxY) maxY = s.y + s.h;
     });
-    return bestP ? bestP.plan : null;
+    if (!isFinite(minX)) return null;
+    const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+    return {
+        aspect: bw / bh,
+        rel: slots.map(function (s) {
+            return s ? { x: (s.x - minX) / bw, y: (s.y - minY) / bh, w: s.w / bw, h: s.h / bh } : null;
+        })
+    };
 }
 // 总图：每组制品保持「自己分图的排版」作为一个块，块再在总图制品区内按网格排布
 // （块内按原比例缩放，不再被压扁；块之间居中、留最小间距）
@@ -37434,12 +37421,12 @@ function caseTotalBlocksSlots(st, area, pageImages) {
         const idxs = [];
         for (let k = 0; k < imgs.length; k++) idxs.push(cursor + k);
         cursor += imgs.length;
-        const plan = caseGroupBlockPlan(imgs, refW, refH, area.w / Math.max(1, area.h));
+        const plan = caseGroupBlockPlan(imgs, refW, refH);
         blocks.push({ idxs: idxs, plan: plan || { aspect: 1, rel: idxs.map(function () { return { x: 0, y: 0, w: 1, h: 1 }; }) } });
     });
     // 未归组的散图：各自成块
     for (; cursor < n; cursor++) {
-        const plan = caseGroupBlockPlan([pageImages[cursor]], refW, refH, area.w / Math.max(1, area.h));
+        const plan = caseGroupBlockPlan([pageImages[cursor]], refW, refH);
         blocks.push({ idxs: [cursor], plan: plan || { aspect: 1, rel: [{ x: 0, y: 0, w: 1, h: 1 }] } });
     }
     if (!blocks.length) return out;
