@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0210';
+const APP_VERSION = '20260930-0220';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37111,6 +37111,55 @@ function caseSpanGridSlots(aspects, area, gap, cols, rows) {
         };
     });
 }
+// 宽度铺满行装箱（等比、零留白）：行高 = 行宽 ÷ 行内宽高比和，行内贴边、整体超高等比缩
+function caseMasonrySlots(aspects, area, gap) {
+    const n = aspects.length;
+    if (!n) return null;
+    let best = null;
+    for (let R = 1; R <= n; R++) {
+        const q = Math.floor(n / R), rem = n % R;
+        const rows = [];
+        let idx = 0;
+        for (let r = 0; r < R; r++) {
+            const cnt = q + (r < rem ? 1 : 0);
+            const arr = [];
+            for (let k = 0; k < cnt; k++) arr.push(idx++);
+            rows.push(arr);
+        }
+        const rowHs = rows.map(function (arr) {
+            const ra = arr.reduce(function (a, i) { return a + aspects[i]; }, 0);
+            return ra > 0 ? (area.w - (arr.length - 1) * gap) / ra : 0;
+        });
+        let totalH = rowHs.reduce(function (a, h) { return a + h; }, 0) + (R - 1) * gap;
+        if (!(totalH > 0)) continue;
+        if (totalH > area.h) {
+            const scale = area.h / totalH;
+            for (let r = 0; r < R; r++) rowHs[r] *= scale;
+            totalH = area.h;
+        }
+        let score = 0;
+        rows.forEach(function (arr, r) {
+            const ra = arr.reduce(function (a, i) { return a + aspects[i]; }, 0);
+            score += rowHs[r] * rowHs[r] * ra;
+        });
+        if (!best || score > best.score) best = { rows: rows, rowHs: rowHs, totalH: totalH, score: score };
+    }
+    if (!best) return null;
+    const out = new Array(n);
+    let y = area.y + Math.max(0, Math.round((area.h - best.totalH) / 2));
+    best.rows.forEach(function (arr, r) {
+        const h = best.rowHs[r];
+        const rowW = arr.reduce(function (a, i) { return a + aspects[i] * h; }, 0) + (arr.length - 1) * gap;
+        let x = area.x + Math.max(0, Math.round((area.w - rowW) / 2));
+        arr.forEach(function (i) {
+            const w = Math.round(aspects[i] * h);
+            out[i] = { x: x, y: Math.round(y), w: w, h: Math.round(h) };
+            x += w + gap;
+        });
+        y += Math.round(h) + gap;
+    });
+    return out;
+}
 // 默认排版：按制品实际尺寸等比缩放 + 行装箱紧密排列（小间距、行内/整体居中、不超制品区）
 // 制品之间的相对大小保持上传原图的比例关系；模板只控制装饰风格，不再决定拼贴方式
 function casePackSlots(imgs, area, blocks) {
@@ -37137,8 +37186,8 @@ function casePackSlots(imgs, area, blocks) {
         for (let i = 0; i < n; i++) if (!placed[i]) unplaced.push(i);
         if (unplaced.length) units.push(unplaced);
     } else {
-        // 跨格网格：高图跨行（长图占竖两格）、宽图跨列；遍历列×行组合，取「实际绘制覆盖面积」最大者
-        let bestS = null, bestScore = -1;
+        // 候选一：跨格网格（高图跨行/宽图跨列）；评分 = 绘制面积 − 块内留白（letterbox 惩罚）
+        let bestS = null, bestScore = -Infinity;
         for (let cols = 1; cols <= n; cols++) {
             for (let rows = 1; rows <= n; rows++) {
                 if (cols * rows < n) continue;
@@ -37148,11 +37197,24 @@ function casePackSlots(imgs, area, blocks) {
                 s.forEach(function (sl, i) {
                     let w = sl.w, h = sl.w / aspects[i];
                     if (h > sl.h) { h = sl.h; w = h * aspects[i]; }
-                    score += w * h;
+                    score += 1.5 * w * h - 0.5 * sl.w * sl.h;
                 });
                 if (score > bestScore) { bestScore = score; bestS = s; }
             }
         }
+        // 候选二：宽度铺满行装箱（等比、行内贴边、零留白——原版效果）
+        let bestM = null, mScore = -Infinity;
+        const m = caseMasonrySlots(aspects, area, gap);
+        if (m) {
+            mScore = 0;
+            m.forEach(function (sl, i) {
+                let w = sl.w, h = sl.w / aspects[i];
+                if (h > sl.h) { h = sl.h; w = h * aspects[i]; }
+                mScore += 1.5 * w * h - 0.5 * sl.w * sl.h;
+            });
+        }
+        // 同分优先行装箱（无块内留白）
+        if (m && mScore >= bestScore) return m;
         if (bestS) return bestS;
         // 兜底：均匀网格（覆盖面积择优）
         const all = [];
