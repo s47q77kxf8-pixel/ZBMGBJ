@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0010';
+const APP_VERSION = '20260930-0020';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37116,6 +37116,11 @@ function casePackSlots(imgs, area, blocks) {
                 best = { R: R, rowUnits: rowUnits, rowAsp: rowAsp, rowHs: rowHs, totalH: totalH, used: used, infos: infos };
             }
         }
+        // 找到最优方案就直接用（此前漏了这行，导致永远走兜底、每单元一行）
+        if (best) return {
+            R: best.R, rowUnits: best.rowUnits, rowAsp: best.rowAsp,
+            rowHs: best.rowHs, totalH: best.totalH, infos: infos
+        };
         // 兜底：每单元一行（行高 = min(高度均分, 宽度适配)），保证必有方案
         const rowsF = units.length;
         const rowUnitsF = units.map(function (u, i) { return [i]; });
@@ -37153,6 +37158,7 @@ function casePackSlots(imgs, area, blocks) {
                     });
                     x += uw + gap;
                 });
+                y += rowH + gap;   // 换行：漏掉会让所有行叠在同一 y，制品全部重叠成一个
             });
             return slotsOut;
         }
@@ -37326,16 +37332,35 @@ function caseTagFsMap(st) {
     const L = st && st.config && st.config.layout;
     return (L && L.texts && L.texts.project && L.texts.project.itemFs) || {};
 }
+// 分组实际渲染的制品图：按订单份数（count）铺满——
+// 已传图多于份数时以已传图为准；少于份数时循环复用已传图补到正确数量（如 ×2 画两个，×3 画三个）
+function caseGroupImagesShown(g) {
+    const src = (g && g.images) ? (g.images || []).slice() : [];
+    if (!src.length) return [];
+    const want = Math.max(1, parseInt(g && g.count, 10) || 1);
+    if (want <= src.length) return src;
+    const out = [];
+    for (let i = 0; i < want; i++) out.push(src[i % src.length]);
+    return out;
+}
 // 页面列表：1 张总图 + 每种制品 1 张（相同制品合并）；未关联订单仅总图
 function casePages(st) {
     const pages = [];
-    const all = (st.images || []).slice();
     const hasGroups = !!(st.groups && st.groups.length);
+    let all = (st.images || []).slice();
+    if (hasGroups) {
+        // 总图 = 各制品按份数展开后的合集
+        all = [];
+        (st.groups || []).forEach(function (g) {
+            caseGroupImagesShown(g).forEach(function (id) { all.push(id); });
+        });
+    }
     if (all.length || !hasGroups) pages.push({ kind: 'total', label: '总图', images: all });
     (st.groups || []).forEach(function (g) {
-        if (!g.images || !g.images.length) return;
+        const imgs = caseGroupImagesShown(g);
+        if (!imgs.length) return;
         if (!st.orderId && st.groups.length === 1) return;
-        pages.push({ kind: 'group', label: g.label, images: g.images.slice() });
+        pages.push({ kind: 'group', label: g.label, images: imgs });
     });
     if (!pages.length) pages.push({ kind: 'total', label: '总图', images: [] });
     return pages;
