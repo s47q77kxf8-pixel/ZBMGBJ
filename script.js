@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260929-2355';
+const APP_VERSION = '20260930-0010';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37113,7 +37113,7 @@ function casePackSlots(imgs, area, blocks) {
             if (totalH > maxH) continue;
             const used = rowHs.reduce(function (acc, h, ri) { return acc + h * h * rowAsp[ri]; }, 0);
             if (!best || used > best.used) {
-                best = { R: R, rowUnits: rowUnits, rowAsp: rowAsp, rowHs: rowHs, totalH: totalH, used: used };
+                best = { R: R, rowUnits: rowUnits, rowAsp: rowAsp, rowHs: rowHs, totalH: totalH, used: used, infos: infos };
             }
         }
         // 兜底：每单元一行（行高 = min(高度均分, 宽度适配)），保证必有方案
@@ -37124,7 +37124,7 @@ function casePackSlots(imgs, area, blocks) {
             return Math.max(12, Math.min((maxH - (rowsF - 1) * gap) / rowsF, (area.w - gap) / ra));
         });
         const totalHF = rowHsF.reduce(function (a, h) { return a + h; }, 0) + (rowsF - 1) * gap;
-        return { R: rowsF, rowUnits: rowUnitsF, rowAsp: rowAspF, rowHs: rowHsF, totalH: totalHF };
+        return { R: rowsF, rowUnits: rowUnitsF, rowAsp: rowAspF, rowHs: rowHsF, totalH: totalHF, infos: infos };
     }
     const slotsOut = new Array(n);
     if (units.length > 1) {
