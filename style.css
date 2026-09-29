@@ -14759,51 +14759,25 @@ html.theme-dark .case-size-lock.active {
     padding: 2px 6px;
     cursor: pointer;
 }
-/* 分组头「入总图」开关（默认勾选态）；off = 整组不入总图 */
+/* 组头「入总图」眼睛按钮（默认睁眼 = 入总图；off = 闭眼整组不入总图）*/
 .case-group-ops {
     display: inline-flex;
     align-items: center;
     gap: 10px;
 }
-.case-group-total {
+.case-eye-btn {
+    border: none;
+    background: none;
+    padding: 2px;
+    cursor: pointer;
+    color: var(--text-muted, #999);
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--text-muted, #999);
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
+    line-height: 1;
 }
-.case-group-total-box {
-    width: 14px;
-    height: 14px;
-    border-radius: 4px;
-    border: 1px solid var(--border-color, #ccc);
-    background: var(--primary-color, #7c6ff0);
-    display: inline-block;
-    position: relative;
-}
-.case-group-total-box::after {
-    content: '';
-    position: absolute;
-    left: 4px;
-    top: 1px;
-    width: 4px;
-    height: 8px;
-    border: solid #fff;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-}
-.case-group-total.off {
-    color: var(--text-muted, #999);
-    text-decoration: line-through;
-}
-.case-group-total.off .case-group-total-box {
-    background: transparent;
-    border-color: var(--text-muted, #999);
-}
-.case-group-total.off .case-group-total-box::after { content: none; }
+.case-eye-btn .icon { width: 17px; height: 17px; }
+.case-eye-btn:hover { color: var(--text-color, #222); }
+.case-eye-btn.off { color: var(--primary-color, #7c6ff0); }
 .case-group-block.case-group-off .case-thumbs { opacity: 0.55; }
 .case-group-off-tip {
     font-size: 11px;
@@ -14811,6 +14785,10 @@ html.theme-dark .case-size-lock.active {
     padding: 2px 0 0;
     line-height: 1.5;
 }
+/* 缩略图底栏「不入分图」眼睛 */
+.case-thumb-ops .icon { width: 14px; height: 14px; }
+.case-thumb-eye.off { opacity: 0.9; }
+.case-thumb.case-thumb-hidden img { opacity: 0.35; }
 .case-thumb-del {
     position: absolute;
     top: 2px;

@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0240';
+const APP_VERSION = '20260930-0245';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36806,6 +36806,7 @@ function caseNewState() {
             textScale: 1,
             textColor: '',
             layout: null,
+            hiddenImages: [],        // 不入分图的制品图 id（总图按分图排版派生，连带不入总图）
             // excludedFromTotal 已废弃（旧版按图排除，迁移为组级 g.noTotal，见 caseNormalizeState）
             watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, over: 'products' }
         },
@@ -36853,6 +36854,9 @@ function caseNormalizeState(st) {
         st.config.excludedFromTotal = [];
     }
     st.groups.forEach(function (g) { if (!g.noTotal) delete g.noTotal; });
+    // 「不入分图」的隐藏图 id 集合
+    if (!Array.isArray(st.config.hiddenImages)) st.config.hiddenImages = [];
+    st.config.hiddenImages = st.config.hiddenImages.filter(function (id) { return !!id; });
     st.pages = Array.isArray(st.pages) ? st.pages : [];
     st.config.width = Math.min(4000, Math.max(200, parseInt(st.config.width, 10) || 1080));
     st.config.height = Math.min(4000, Math.max(200, parseInt(st.config.height, 10) || 1080));
@@ -37416,7 +37420,7 @@ function caseTotalBlocksSlots(st, area, pageImages) {
     let cursor = 0;
     (st.groups || []).forEach(function (g) {
         if (caseGroupNoTotal(g)) return;
-        const imgs = caseGroupImagesShown(g);
+        const imgs = caseGroupVisibleImages(g, st);
         if (!imgs.length) return;
         const idxs = [];
         for (let k = 0; k < imgs.length; k++) idxs.push(cursor + k);
@@ -37647,7 +37651,35 @@ function caseToggleGroupTotal(gi) {
     else g.noTotal = true;
     renderCaseForm();
     renderCasePreview();
-    showGlobalToast(g.noTotal ? '「' + (g.label || '该组') + '」已排除出总图（分图页仍显示）' : '「' + (g.label || '该组') + '」已重新加入总图');
+    showGlobalToast(g.noTotal ? '「' + (g.label || '该组') + '」已隐藏，不入总图（分图页仍显示）' : '「' + (g.label || '该组') + '」已恢复，重新加入总图');
+}
+// 「不入分图」的制品图 id 集合（总图按分图排版派生，隐藏图连带不入总图）
+function caseHiddenImages(st) {
+    const arr = st && st.config && st.config.hiddenImages;
+    return Array.isArray(arr) ? arr : [];
+}
+function caseImgHidden(st, imgId) {
+    return !!imgId && caseHiddenImages(st).indexOf(imgId) >= 0;
+}
+function caseToggleImagePageHidden(imgId) {
+    const st = _caseState; if (!st || !imgId) return;
+    if (!Array.isArray(st.config.hiddenImages)) st.config.hiddenImages = [];
+    const arr = st.config.hiddenImages;
+    const i = arr.indexOf(imgId);
+    if (i >= 0) arr.splice(i, 1);
+    else arr.push(imgId);
+    renderCaseForm();
+    renderCasePreview();
+    showGlobalToast(i >= 0 ? '该图已恢复显示' : '该图已隐藏，不入分图与总图');
+}
+// 分图/总图实际使用的组内图：先剔除「不入分图」的隐藏图，再按份数铺满
+function caseGroupVisibleImages(g, st) {
+    const hidden = caseHiddenImages(st);
+    return caseGroupImagesShown({
+        label: g && g.label,
+        count: g && g.count,
+        images: ((g && g.images) || []).filter(function (id) { return hidden.indexOf(id) < 0; })
+    });
 }
 // 分组实际渲染的制品图：按订单份数（count）铺满——
 // 已传图多于份数时以已传图为准；少于份数时循环复用已传图补到正确数量（如 ×2 画两个，×3 画三个）
@@ -37666,16 +37698,16 @@ function casePages(st) {
     const hasGroups = !!(st.groups && st.groups.length);
     let all = (st.images || []).slice();
     if (hasGroups) {
-        // 总图 = 各制品按份数展开后的合集；整组「不入总图」的分组跳过
+        // 总图 = 各制品按份数展开后的合集（先剔除组内隐藏图）；整组「不入总图」的分组跳过
         all = [];
         (st.groups || []).forEach(function (g) {
             if (caseGroupNoTotal(g)) return;
-            caseGroupImagesShown(g).forEach(function (id) { all.push(id); });
+            caseGroupVisibleImages(g, st).forEach(function (id) { all.push(id); });
         });
     }
     if (all.length || !hasGroups) pages.push({ kind: 'total', label: '总图', images: all });
     (st.groups || []).forEach(function (g) {
-        const imgs = caseGroupImagesShown(g);
+        const imgs = caseGroupVisibleImages(g, st);
         if (!imgs.length) return;
         if (!st.orderId && st.groups.length === 1) return;
         pages.push({ kind: 'group', label: g.label, images: imgs });
@@ -39029,18 +39061,20 @@ function renderCaseForm() {
         + '<label class="case-form-label">制品图</label>';
     const hasGroups = !!(st.groups && st.groups.length);
     if (hasGroups) {
-        html += '<div class="case-form-hint" style="margin:0 0 4px;">已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换；每组右上角「入总图」开关可把整组图排除出总图（分图页仍显示）</div>';
+        html += '<div class="case-form-hint" style="margin:0 0 4px;">已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换；组名右侧眼睛 = 整组不入总图（分图页仍显示），缩略图底栏眼睛 = 该图不入分图（总图按分图排版，连带不入总图）</div>';
         st.groups.forEach(function (g, gi) {
             let thumbs = '';
             const noTotal = caseGroupNoTotal(g);
             (g.images || []).forEach(function (imgId) {
                 const c = _caseImgCache[imgId];
-                thumbs += '<div class="case-thumb">'
+                const hid = caseImgHidden(st, imgId);
+                thumbs += '<div class="case-thumb' + (hid ? ' case-thumb-hidden' : '') + '">'
                     + (c ? '<img src="' + c.dataUrl + '" alt="">' : '')
                     + '<button type="button" class="case-thumb-del" onclick="caseRemoveImage(\'' + imgId + '\')" title="删除">×</button>'
                     + '<div class="case-thumb-ops">'
                     + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',-1,' + gi + ')" title="前移">◀</button>'
                     + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',1,' + gi + ')" title="后移">▶</button>'
+                    + '<button type="button" class="case-thumb-eye' + (hid ? ' off' : '') + '" onclick="caseToggleImagePageHidden(\'' + imgId + '\')" title="' + (hid ? '该图已隐藏（不入分图与总图），点击恢复' : '点击隐藏该图（不入分图；总图按分图排版，连带不入总图）') + '">' + caseEyeSvg(hid) + '</button>'
                     + '</div></div>';
             });
             if (!(g.images || []).length) thumbs = '<div class="case-group-empty-tip">还没有上传该制品的图，可点击「上传」或拖图到此框</div>';
@@ -39048,11 +39082,11 @@ function renderCaseForm() {
                 + '<div class="case-group-head">'
                 + '<span class="case-group-label">' + escapeHtml(g.label) + (g.count > 1 ? ' <em>×' + g.count + '</em>' : '') + '</span>'
                 + '<span class="case-group-ops">'
-                + '<span class="case-group-total' + (noTotal ? ' off' : '') + '" role="checkbox" aria-checked="' + (!noTotal) + '" onclick="caseToggleGroupTotal(' + gi + ')" title="' + (noTotal ? '该组图不进入总图，点击重新加入' : '点击把整组图排除出总图（分图页仍显示）') + '"><i class="case-group-total-box"></i>入总图</span>'
+                + '<button type="button" class="case-eye-btn' + (noTotal ? ' off' : '') + '" onclick="caseToggleGroupTotal(' + gi + ')" aria-label="入总图" title="' + (noTotal ? '该组已隐藏，不入总图（分图页仍显示）；点击恢复' : '点击隐藏该组（不入总图，分图页仍显示）') + '">' + caseEyeSvg(noTotal) + '</button>'
                 + '<button type="button" class="btn secondary btn-compact" onclick="casePickUpload(' + gi + ')">上传</button>'
                 + '</span>'
                 + '</div>'
-                + (noTotal ? '<div class="case-group-off-tip">该组图不进入总图，分图页仍显示</div>' : '')
+                + (noTotal ? '<div class="case-group-off-tip">该组已隐藏，不入总图（分图页仍显示）</div>' : '')
                 + '<div class="case-thumbs">' + thumbs + '</div>'
                 + '</div>';
         });
