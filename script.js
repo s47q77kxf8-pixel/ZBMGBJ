@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0230';
+const APP_VERSION = '20260930-0240';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37432,60 +37432,59 @@ function caseTotalBlocksSlots(st, area, pageImages) {
     if (!blocks.length) return out;
     const m = blocks.length;
     const infos = blocks.map(function (b) { return { aspect: Math.max(0.3, b.plan.aspect) }; });
-    // 多行均衡装箱（与组内 packMulti 同思路）：
-    // 每行铺满制品区宽（行高 = 行宽 ÷ 行内宽高比和），总高超限则该行数无效；评分 = 占用面积最大 → 最紧凑最方正
+    // 连续分行枚举（保持组顺序相邻）：每行强制铺满制品区宽（行高 = 行宽 ÷ 行内宽高比和），
+    // 总高最贴近制品区高的切分即最优 → 所有行左右对齐、整体是一个规整矩形；
+    // 总高超限的切分整体等比缩（仍为矩形，居中留边）
     function packRows(maxH) {
         let best = null;
-        for (let R = 1; R <= m; R++) {
-            const rowBlocks = [], rowAsp = [];
-            for (let r = 0; r < R; r++) { rowBlocks.push([]); rowAsp.push(0); }
-            const order = infos.map(function (s, i) { return i; }).sort(function (a, b) { return infos[b].aspect - infos[a].aspect; });
-            order.forEach(function (bi) {
-                let mi = 0;
-                for (let r = 1; r < R; r++) if (rowAsp[r] < rowAsp[mi]) mi = r;
-                rowBlocks[mi].push(bi); rowAsp[mi] += infos[bi].aspect;
+        function tryRows(sizes) {
+            const rowBlocks = [];
+            let idx = 0;
+            for (let r = 0; r < sizes.length; r++) {
+                const arr = [];
+                for (let k = 0; k < sizes[r]; k++) arr.push(idx++);
+                rowBlocks.push(arr);
+            }
+            const rowHs = rowBlocks.map(function (arr) {
+                const ra = arr.reduce(function (a, bi) { return a + infos[bi].aspect; }, 0);
+                return ra > 0 ? (area.w - (arr.length - 1) * gap) / ra : 0;
             });
-            const rowHs = rowAsp.map(function (ra, ri) {
-                const cnt = rowBlocks[ri].length;
-                if (!cnt) return 0;
-                // 行高 = min(铺满行宽, 剩余高度均分)：只有铺满宽一种算法时，少块的行会巨高被拒，
-                // 永远只剩单行 → 制品区大量留白；加上高度上限后多行方案可用、整体贴合制品区
-                const wFill = (area.w - (cnt - 1) * gap) / ra;
-                const hCap = (maxH - (R - 1) * gap) / R;
-                return Math.max(12, Math.min(wFill, hCap));
-            });
-            const totalH = rowHs.reduce(function (a, h) { return a + h; }, 0) + (R - 1) * gap;
-            if (totalH > maxH) continue;
-            const used = rowHs.reduce(function (acc, h, ri) { return acc + h * h * rowAsp[ri]; }, 0);
-            if (!best || used > best.used) {
-                best = { R: R, rowBlocks: rowBlocks, rowHs: rowHs, totalH: totalH, used: used, infos: infos };
+            let totalH = rowHs.reduce(function (a, h) { return a + h; }, 0) + (sizes.length - 1) * gap;
+            if (rowHs.some(function (h) { return !(h > 0); })) return;
+            let cov;
+            if (totalH <= maxH) cov = area.w * totalH;
+            else cov = area.w * maxH * maxH / totalH; // 超高整体等比缩到 maxH
+            // 行高均衡因子：避免「一组挤一行、另一组独占多行」的失衡切分
+            const mn = Math.min.apply(null, rowHs), mx = Math.max.apply(null, rowHs);
+            cov *= Math.sqrt(mn / mx);
+            if (!best || cov > best.cov) {
+                best = { R: sizes.length, rowBlocks: rowBlocks, rowHs: rowHs, totalH: totalH, cov: cov, infos: infos };
             }
         }
-        if (best) return best;
-        // 兜底：每块一行（行高 = min(高度均分, 宽度适配)），保证必有方案
-        const rowsF = m;
-        const rowBlocksF = blocks.map(function (b, i) { return [i]; });
-        const rowHsF = infos.map(function (info) {
-            return Math.max(12, Math.min((maxH - (rowsF - 1) * gap) / rowsF, (area.w - gap) / info.aspect));
-        });
-        return {
-            R: rowsF, rowBlocks: rowBlocksF, rowHs: rowHsF,
-            totalH: rowHsF.reduce(function (a, h) { return a + h; }, 0) + (rowsF - 1) * gap, infos: infos
-        };
+        // 枚举所有连续切分（组合数 C(m-1, R-1)，组数少时可全枚举）
+        for (let R = 1; R <= m; R++) {
+            const sizes = new Array(R).fill(1);
+            let rest = m - R;
+            (function next(pos) {
+                if (pos === R - 1 || rest === 0) { sizes[R - 1] += rest; tryRows(sizes); sizes[R - 1] -= rest; return; }
+                for (let add = 0; add <= rest; add++) {
+                    sizes[pos] += add; rest -= add;
+                    next(pos + 1);
+                    rest += add; sizes[pos] -= add;
+                }
+            })(0);
+        }
+        return best;
     }
     const pack = packRows(area.h);
-    let y = area.y + Math.max(0, Math.round((area.h - pack.totalH) / 2));
+    if (!pack) return out;
+    const scale = pack.totalH > area.h ? area.h / pack.totalH : 1;
+    const rowGap = gap * (scale < 1 ? scale : 1);
+    let y = area.y + Math.max(0, Math.round((area.h - (pack.totalH * scale + (pack.R - 1) * rowGap)) / 2));
     pack.rowBlocks.forEach(function (rus, ri) {
-        const rowH = pack.rowHs[ri];
-        let ws = rus.map(function (bi) { return rowH * pack.infos[bi].aspect; });
-        let rowW = ws.reduce(function (a, w) { return a + w; }, 0) + (rus.length - 1) * gap;
-        // 超出行宽则整行等比缩（保比例，不压扁）
-        const inner = rowW - (rus.length - 1) * gap;
-        if (rowW > area.w && inner > 0) {
-            const scale = (area.w - (rus.length - 1) * gap) / inner;
-            ws = ws.map(function (w) { return w * scale; });
-            rowW = area.w;
-        }
+        const rowH = pack.rowHs[ri] * scale;
+        const ws = rus.map(function (bi) { return rowH * pack.infos[bi].aspect; });
+        const rowW = ws.reduce(function (a, w) { return a + w; }, 0) + (rus.length - 1) * gap * scale;
         let x = area.x + Math.max(0, Math.round((area.w - rowW) / 2));
         rus.forEach(function (bi, uj) {
             const blk = blocks[bi];
@@ -37500,9 +37499,9 @@ function caseTotalBlocksSlots(st, area, pageImages) {
                     h: Math.max(8, Math.round(rl.h * bh))
                 };
             });
-            x += bw + gap;
+            x += bw + gap * scale;
         });
-        y += rowH + gap;
+        y += rowH + rowGap;
     });
     return out;
 }
