@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0141';
+const APP_VERSION = '20260930-0200';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37393,7 +37393,12 @@ function caseTotalBlocksSlots(st, area, pageImages) {
             });
             const rowHs = rowAsp.map(function (ra, ri) {
                 const cnt = rowBlocks[ri].length;
-                return cnt ? Math.max(12, (area.w - (cnt - 1) * gap) / ra) : 0;
+                if (!cnt) return 0;
+                // 行高 = min(铺满行宽, 剩余高度均分)：只有铺满宽一种算法时，少块的行会巨高被拒，
+                // 永远只剩单行 → 制品区大量留白；加上高度上限后多行方案可用、整体贴合制品区
+                const wFill = (area.w - (cnt - 1) * gap) / ra;
+                const hCap = (maxH - (R - 1) * gap) / R;
+                return Math.max(12, Math.min(wFill, hCap));
             });
             const totalH = rowHs.reduce(function (a, h) { return a + h; }, 0) + (R - 1) * gap;
             if (totalH > maxH) continue;
