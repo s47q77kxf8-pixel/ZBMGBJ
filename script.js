@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260928-1120';
+const APP_VERSION = '20260929-1505';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36269,6 +36269,7 @@ let _lastBuild = null;        // 最近一次画布构建（制品区盒/尺寸�
 let _caseEditMode = false;    // 调整布局模式
 let _caseSelEl = null;        // 当前选中的文字元素
 let _casePreviewScale = 1;    // 预览缩放比例（拖拽位移折算用）
+let _casePreviewZoom = 1;     // 预览手动缩放倍数：1=适应窗口，>1 可放大看局部（配合容器滚动平移）
 function caseViewPagesOf(c) {
     return (Array.isArray(c.pages) && c.pages.length) ? c.pages : [{ kind: 'total', label: '总图', exportImgId: c.exportImgId, exportThumbId: c.exportThumbId }];
 }
@@ -36663,7 +36664,7 @@ function caseNormalizeLayout(layout) {
     }
     if (layout.texts && typeof layout.texts === 'object') {
         const texts = {};
-        ['title', 'year', 'user', 'project'].forEach(function (key) {
+        ['title', 'year', 'user', 'hint', 'project'].forEach(function (key) {
             const t = layout.texts[key];
             if (!t || typeof t !== 'object') return;
             const rec = { x: pct(t.x), y: pct(t.y), fsScale: Math.min(2.5, Math.max(0.4, Number(t.fsScale) || 1)) };
@@ -36698,23 +36699,39 @@ function caseNormalizeLayout(layout) {
     }
     return (out.productArea || out.productAreaGroup || out.items || out.texts) ? out : null;
 }
-// ===== 布局方案（localStorage 'caseLayoutPresets'，保存整体布局+底图，跨案例套用） =====
+// ===== 布局模版（localStorage 'caseLayoutPresets'，保存整体布局+底图，跨案例套用） =====
 let _caseLayoutPresets = [];
+let _caseLayoutPresetDefault = ''; // 默认布局模版 id：新建案例自动套用；空 = 系统默认样式
 function loadCaseLayoutPresets() {
     try {
         _caseLayoutPresets = JSON.parse(localStorage.getItem('caseLayoutPresets') || '[]');
         if (!Array.isArray(_caseLayoutPresets)) _caseLayoutPresets = [];
     } catch (e) { _caseLayoutPresets = []; }
+    try { _caseLayoutPresetDefault = String(localStorage.getItem('caseLayoutPresetDefault') || ''); } catch (e) { _caseLayoutPresetDefault = ''; }
+    if (_caseLayoutPresetDefault && !_caseLayoutPresets.some(function (p) { return p && p.id === _caseLayoutPresetDefault; })) _caseLayoutPresetDefault = '';
     return _caseLayoutPresets;
+}
+function saveCaseLayoutDefault() {
+    try { localStorage.setItem('caseLayoutPresetDefault', _caseLayoutPresetDefault || ''); } catch (e) {}
+}
+// 设为/取消默认布局模版（新建案例自动套用；未设则用系统默认样式）
+function toggleCasePresetDefault(id) {
+    _caseLayoutPresetDefault = (_caseLayoutPresetDefault === id) ? '' : id;
+    saveCaseLayoutDefault();
+    renderCaseForm();
+    const p = _caseLayoutPresets.find(function (x) { return x && x.id === id; });
+    showGlobalToast(_caseLayoutPresetDefault
+        ? ('已设为默认模版，新建案例自动套用「' + (p ? p.name : '') + '」')
+        : '已取消默认模版，新建案例使用系统默认样式');
 }
 function saveCaseLayoutPresets() {
     try { localStorage.setItem('caseLayoutPresets', JSON.stringify(_caseLayoutPresets)); }
-    catch (e) { console.error('布局方案保存失败:', e); showGlobalToast('布局方案保存失败（本地存储空间不足）'); }
+    catch (e) { console.error('布局模版保存失败:', e); showGlobalToast('布局模版保存失败（本地存储空间不足）'); }
 }
 function saveCaseLayoutPreset() {
     const st = _caseState; if (!st) return;
     const nameInput = document.getElementById('caseLayoutPresetName');
-    const name = String((nameInput && nameInput.value) || '').trim() || ('方案 ' + (_caseLayoutPresets.length + 1));
+    const name = String((nameInput && nameInput.value) || '').trim() || ('模版 ' + (_caseLayoutPresets.length + 1));
     _caseLayoutPresets.unshift({
         id: 'lp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         name: name,
@@ -36725,14 +36742,19 @@ function saveCaseLayoutPreset() {
     saveCaseLayoutPresets();
     if (nameInput) nameInput.value = '';
     renderCaseForm();
-    showGlobalToast('布局方案「' + name + '」已保存');
+    showGlobalToast('布局模版「' + name + '」已保存');
+}
+// 把模版的布局与底图应用到案例状态（不做渲染/提示）
+function caseApplyPresetToState(st, p) {
+    if (!st || !p) return;
+    st.config.layout = p.layout ? caseNormalizeLayout(JSON.parse(JSON.stringify(p.layout))) : null;
+    st.config.bg = JSON.parse(JSON.stringify(p.bg || { type: 'color', color: '#ffffff' }));
 }
 function applyCaseLayoutPreset(id) {
     const st = _caseState; if (!st) return;
     const p = _caseLayoutPresets.find(function (x) { return x && x.id === id; });
     if (!p) return;
-    st.config.layout = p.layout ? caseNormalizeLayout(JSON.parse(JSON.stringify(p.layout))) : null;
-    st.config.bg = JSON.parse(JSON.stringify(p.bg || { type: 'color', color: '#ffffff' }));
+    caseApplyPresetToState(st, p);
     renderCaseForm();
     renderCasePreview();
     if (st.config.bg && st.config.bg.type === 'image' && st.config.bg.imgId) {
@@ -36740,11 +36762,12 @@ function applyCaseLayoutPreset(id) {
             if (changed && _caseState) renderCasePreview();
         });
     }
-    showGlobalToast('已应用布局方案「' + p.name + '」');
+    showGlobalToast('已应用布局模版「' + p.name + '」');
 }
 function deleteCaseLayoutPreset(id) {
-    if (!confirm('删除该布局方案？')) return;
+    if (!confirm('删除该布局模版？')) return;
     _caseLayoutPresets = _caseLayoutPresets.filter(function (x) { return x && x.id !== id; });
+    if (_caseLayoutPresetDefault === id) { _caseLayoutPresetDefault = ''; saveCaseLayoutDefault(); }
     saveCaseLayoutPresets();
     renderCaseForm();
 }
@@ -36776,15 +36799,16 @@ function caseNewState() {
             ratio: '1:1', width: 1080, height: 1080,
             bg: { type: 'solid', color: '#f2f2f2', gradFrom: '#fafafa', gradTo: '#e5e5e5', imgId: '', imgHidden: false },
             sizeLock: true,
-            toggles: { title: true, year: true, userInfo: true, productInfo: true, customText: true },
-            tagLayout: { mode: 'multi', align: 'right', frame: false },
+            toggles: { title: true, year: true, userInfo: true, productInfo: true, customText: true, hint: true },
+            tagLayout: { mode: 'multi', align: 'justify', frame: false, frameColor: '' },
             mockupId: 'shadow',
             mockupScale: 1,
             textScale: 1,
+            textColor: '',
             layout: null,
-            watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1 }
+            watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, over: 'all' }
         },
-        fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', projectName: '', ip: '', character: '', products: '', custom: {}, customLabels: {}, customTexts: [] },
+        fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', hint: 'Commissioned work. Do not use or copy.', projectName: '', ip: '', character: '', products: '', custom: {}, customLabels: {}, customTexts: [] },
         images: [],
         groups: [],
         exportImgId: '', exportThumbId: '', exportFormat: 'png',
@@ -36801,9 +36825,11 @@ function caseNormalizeState(st) {
     st.config.bg.imgHidden = !!st.config.bg.imgHidden;
     st.config.sizeLock = st.config.sizeLock !== false;
     st.config.toggles = Object.assign({}, def.config.toggles, st.config.toggles || {});
-    st.config.tagLayout = Object.assign({ mode: 'multi', align: 'right', frame: false }, st.config.tagLayout || {});
+    st.config.tagLayout = Object.assign({ mode: 'multi', align: 'justify', frame: false, frameColor: '' }, st.config.tagLayout || {});
     st.config.tagLayout.frame = !!st.config.tagLayout.frame;
-    if (['left', 'center', 'right', 'justify'].indexOf(st.config.tagLayout.align) < 0) st.config.tagLayout.align = 'right';
+    // 底框自定义颜色：空 = 自动（按画布深浅配白/深底）
+    if (typeof st.config.tagLayout.frameColor !== 'string' || !/^#[0-9a-fA-F]{3,8}$/.test(st.config.tagLayout.frameColor)) st.config.tagLayout.frameColor = '';
+    if (['left', 'center', 'right', 'justify'].indexOf(st.config.tagLayout.align) < 0) st.config.tagLayout.align = 'justify';
     if (st.config.tagLayout.mode !== 'single') st.config.tagLayout.mode = 'multi';
     st.config.watermark = Object.assign({}, def.config.watermark, st.config.watermark || {});
     st.fields = Object.assign({}, def.fields, st.fields || {});
@@ -36821,6 +36847,8 @@ function caseNormalizeState(st) {
     st.config.height = Math.min(4000, Math.max(200, parseInt(st.config.height, 10) || 1080));
     st.config.mockupScale = Math.min(1, Math.max(0.4, Number(st.config.mockupScale) || 1));
     st.config.textScale = Math.min(1.8, Math.max(0.6, Number(st.config.textScale) || 1));
+    // 文字颜色：空 = 自动（按背景亮度配深/浅字）
+    if (typeof st.config.textColor !== 'string' || !/^#[0-9a-fA-F]{3,8}$/.test(st.config.textColor)) st.config.textColor = '';
     st.config.layout = caseNormalizeLayout(st.config.layout);
     // 单品装饰/变换清洗
     if (!st.config.imgFx || typeof st.config.imgFx !== 'object') st.config.imgFx = {};
@@ -36912,7 +36940,7 @@ async function applyCaseOrder(orderId) {
     if (!order) { showGlobalToast('未找到该订单'); return; }
     st.orderId = order.id;
     st.orderTitle = String(order.projectName || '').trim();
-    // 自动带入企划信息与制品信息；案例类型保持当前值（左上角两行文案，用户可自定义，不由订单标题覆盖）
+    // 自动带入企划信息与制品信息；案例类型保持当前值（左下角文案，用户可自定义，不由订单标题覆盖）
     st.fields.projectName = String(order.projectName || '').trim();
     st.fields.ip = String(order.projectOrigin || '').trim();
     st.fields.character = String(order.characterName || '').trim();
@@ -36982,10 +37010,10 @@ function caseAutoAreaBox(st) {
     const titleText = (cfg.toggles.title ? (st.fields.title || '') : '').trim();
     const infoArr = cfg.toggles.userInfo ? caseInfoLines(st) : [];
     const prodParts = cfg.toggles.productInfo ? caseProjectElements(st, null) : [];
-    const titleFs = Math.round(W * 0.032 * tScale);
+    const titleFs = Math.round(W * 0.032 * tScale * 0.8);
     const titleLh = Math.round(titleFs * 1.35);
     const titleZoneH = titleText ? titleLh * 2 : 0;
-    const infoFs = Math.round(W * 0.018 * tScale);
+    const infoFs = Math.round(W * 0.018 * tScale * 0.8);
     const infoLh = Math.round(infoFs * 1.7);
     const tagFs = Math.round(W * 0.017 * tScale);
     const tagH = Math.round(tagFs * 2.1);
@@ -37007,17 +37035,21 @@ function caseAutoAreaBox(st) {
             else rowW += (rowW > 0 ? tagGap : 0) + w;
         });
     }
-    const infoH = infoArr.length ? infoLh : 0;
     const tagZoneH = tagRows ? tagRows * tagH + (tagRows - 1) * tagGap : 0;
-    const bottomZoneH = Math.max(infoH, tagZoneH);
+    // 默认布局：左下角三排 = 案例类型 → 设计年份+@ID（一行）→ 提示信息，顶部不再预留
+    const yearAuto = (cfg.toggles.year !== false) ? String(st.fields.year || '').trim() : '';
+    const hintAutoFs = Math.max(9, Math.round(infoFs * 0.85));
+    const hintAuto = ((cfg.toggles.hint !== false) && String(st.fields.hint || '').trim()) ? Math.round(hintAutoFs * 1.75) : 0;
+    const yearUserH = (yearAuto || infoArr.length) ? infoLh : 0;
+    const leftStackH = titleZoneH + yearUserH + hintAuto;
+    const bottomZoneH = Math.max(leftStackH, tagZoneH);
     const gapY = Math.round(W * 0.025);
-    const topUsed = titleZoneH ? titleZoneH + gapY : 0;
     const bottomUsed = bottomZoneH ? bottomZoneH + gapY : 0;
     return {
         x: pad,
-        y: pad + topUsed,
+        y: pad,
         w: W - pad * 2,
-        h: Math.max(Math.round(H * 0.18), H - pad * 2 - topUsed - bottomUsed)
+        h: Math.max(Math.round(H * 0.18), H - pad * 2 - bottomUsed)
     };
 }
 // 默认排版：按制品实际尺寸等比缩放 + 行装箱紧密排列（小间距、行内/整体居中、不超制品区）
@@ -37027,15 +37059,15 @@ function casePackSlots(imgs, area, blocks) {
     const n = imgs ? imgs.length : 0;
     if (n <= 0) return slots;
     const gap = Math.max(10, Math.round(Math.min(area.w, area.h) * 0.04));
-    // 布局宽高比：有效宽高比钳制 0.25~4（仅防极端图拖垮排版；槽位严格等于图片比例，无 letterbox）
+    // 布局宽高比：有效宽高比钳制 0.45~3（防极端图拖垮排版；渲染仍等比 contain 居中）
     const aspects = [];
     for (let i = 0; i < n; i++) {
         const a = caseItemEffectiveAspect(imgs[i]);
-        aspects.push(Math.min(4, Math.max(0.25, a)));
+        aspects.push(Math.min(3, Math.max(0.45, a)));
     }
-    // 单元划分：总图多分组 → 每组一个单元（组内不拆行）；其余 → 全部合成一个单元
+    // 单元：有分组 → 每组一个单元（组内网格、不拆行）；无分组 → 每图一个单元
     const units = [];
-    if (blocks && blocks.length > 1) {
+    if (blocks && blocks.length) {
         const placed = {};
         blocks.forEach(function (idxs) {
             const u = [];
@@ -37046,12 +37078,87 @@ function casePackSlots(imgs, area, blocks) {
         for (let i = 0; i < n; i++) if (!placed[i]) unplaced.push(i);
         if (unplaced.length) units.push(unplaced);
     } else {
-        const all = [];
-        for (let i = 0; i < n; i++) all.push(i);
-        units.push(all);
+        for (let i = 0; i < n; i++) units.push([i]);
     }
-    // 单元内布局：尝试列数 1..m，取「单元格最大」者
-    // （自动覆盖：4 方图→2×2、4 窄票→一排、5→3/2、11 椭圆→4/4/3）
+    // 单元网格：cols = ceil(sqrt(m))，cell 宽 = 行高×maxA、高 = 行高
+    function unitGrid(idxs) {
+        const m = idxs.length;
+        const cols = Math.max(1, Math.ceil(Math.sqrt(m)));
+        const rows = Math.ceil(m / cols);
+        const maxA = Math.max.apply(null, idxs.map(function (i) { return aspects[i]; }));
+        return { idxs: idxs, cols: cols, rows: rows, maxA: maxA, aspect: (cols * maxA) / rows };
+    }
+    // 多单元：尝试 R 行 —— 单元按宽高比降序放入最空的行（均衡）；
+    // 每行高度 = 制品区宽 ÷ 行内宽高比和（每行铺满宽、行高按内容自适应）；
+    // 总高超限则该方案无效；评分 = 占用面积最大者
+    function packMulti(maxH) {
+        const infos = units.map(function (idxs) { return unitGrid(idxs); });
+        let best = null;
+        for (let R = 1; R <= units.length; R++) {
+            const rowUnits = [];
+            for (let r = 0; r < R; r++) rowUnits.push([]);
+            const rowAsp = [];
+            for (let r = 0; r < R; r++) rowAsp.push(0);
+            const order = infos.map(function (s, i) { return i; }).sort(function (a, b) { return infos[b].aspect - infos[a].aspect; });
+            order.forEach(function (ui) {
+                let mi = 0;
+                for (let r = 1; r < R; r++) if (rowAsp[r] < rowAsp[mi]) mi = r;
+                rowUnits[mi].push(ui); rowAsp[mi] += infos[ui].aspect;
+            });
+            const rowHs = rowAsp.map(function (ra, ri) {
+                const cnt = rowUnits[ri].length;
+                return Math.max(12, (area.w - (cnt - 1) * gap) / ra);
+            });
+            const totalH = rowHs.reduce(function (a, h) { return a + h; }, 0) + (R - 1) * gap;
+            if (totalH > maxH) continue;
+            const used = rowHs.reduce(function (acc, h, ri) { return acc + h * h * rowAsp[ri]; }, 0);
+            if (!best || used > best.used) {
+                best = { R: R, rowUnits: rowUnits, rowAsp: rowAsp, rowHs: rowHs, totalH: totalH, used: used };
+            }
+        }
+        // 兜底：每单元一行（行高 = min(高度均分, 宽度适配)），保证必有方案
+        const rowsF = units.length;
+        const rowUnitsF = units.map(function (u, i) { return [i]; });
+        const rowAspF = units.map(function (u) { return unitGrid(u).aspect; });
+        const rowHsF = rowAspF.map(function (ra, ri) {
+            return Math.max(12, Math.min((maxH - (rowsF - 1) * gap) / rowsF, (area.w - gap) / ra));
+        });
+        const totalHF = rowHsF.reduce(function (a, h) { return a + h; }, 0) + (rowsF - 1) * gap;
+        return { R: rowsF, rowUnits: rowUnitsF, rowAsp: rowAspF, rowHs: rowHsF, totalH: totalHF };
+    }
+    const slotsOut = new Array(n);
+    if (units.length > 1) {
+        const pack = packMulti(area.h) || packMulti(area.h * 2) || null;
+        if (pack) {
+            let y = area.y + Math.max(0, Math.round((area.h - pack.totalH) / 2));
+            pack.rowUnits.forEach(function (rus, ri) {
+                const rowH = pack.rowHs[ri];
+                const rowAsp = pack.rowAsp[ri];
+                const unitWs = rus.map(function (ui) { return rowH * pack.infos[ui].aspect; });
+                const totalUW = unitWs.reduce(function (a, w) { return a + w; }, 0) + (rus.length - 1) * gap;
+                let x = area.x + Math.max(0, Math.round((area.w - totalUW) / 2));
+                rus.forEach(function (ui, uj) {
+                    const g = pack.infos[ui];
+                    const uw = unitWs[uj];
+                    const cellW = uw / g.cols, cellH = (rowH - (g.rows - 1) * gap) / g.rows;
+                    const unitH = g.rows * cellH + (g.rows - 1) * gap;
+                    const ux = x;
+                    const uy = y + Math.round((rowH - unitH) / 2);
+                    g.idxs.forEach(function (i, j) {
+                        const cc = j % g.cols, rr = Math.floor(j / g.cols);
+                        const inRow = Math.min(g.cols, g.idxs.length - rr * g.cols);
+                        const rowWpx = inRow * cellW + (inRow - 1) * gap;
+                        const x0 = ux + Math.round((uw - rowWpx) / 2);
+                        slotsOut[i] = { x: x0 + cc * (cellW + gap), y: uy + rr * (cellH + gap), w: cellW, h: cellH };
+                    });
+                    x += uw + gap;
+                });
+            });
+            return slotsOut;
+        }
+    }
+    // 单单元（分图页 / 无分组自由模式）：尝试列数 1..m，取「单元格最大」者
+    function uh0(gg, ch) { return gg.rows * ch + (gg.rows - 1) * gap; }
     function unitLayout(idxs, maxH) {
         const m = idxs.length;
         const avgA = idxs.reduce(function (acc, i) { return acc + aspects[i]; }, 0) / m;
@@ -37066,45 +37173,27 @@ function casePackSlots(imgs, area, blocks) {
         }
         return best;
     }
-    // 各单元铺满制品区宽后堆叠（多单元时总高超限整体等比缩小）；垂直居中；每行居中
     function layoutAll(maxH) {
-        const unitLays = units.map(function (idxs) {
-            const best = unitLayout(idxs, maxH);
-            const rowImgGroups = [];
-            let p = 0;
-            for (let r = 0; r < best.rows; r++) {
-                const cnt = Math.min(best.c, idxs.length - p);
-                rowImgGroups.push(idxs.slice(p, p + cnt));
-                p += cnt;
-            }
-            const rowWs = rowImgGroups.map(function (g) {
-                return g.reduce(function (acc, i, j) { return acc + best.k * aspects[i] + (j ? gap : 0); }, 0);
-            });
-            const w = Math.max.apply(null, rowWs);
-            const h = best.rows * Math.round(best.k) + (best.rows - 1) * gap;
-            return { idxs: idxs, rowImgGroups: rowImgGroups, rowWs: rowWs, w: w, h: h, k: best.k };
-        });
-        const rawH = unitLays.reduce(function (acc, ul) { return acc + ul.h + gap; }, -gap);
-        const g2 = Math.min(1, maxH / Math.max(1, rawH));
+        const best = unitLayout(units[0], maxH);
         const out = new Array(n);
-        let y = area.y + Math.max(0, Math.round((maxH - rawH * g2) / 2));
-        unitLays.forEach(function (ul) {
-            const uw = ul.w * g2, uh = ul.h * g2, kk = ul.k * g2, cg = Math.max(4, gap * g2);
-            const ux = area.x + Math.round((area.w - uw) / 2);
-            ul.rowImgGroups.forEach(function (g, ri) {
-                const rw = ul.rowWs[ri] * g2;
-                let x = ux + Math.round((uw - rw) / 2);
-                g.forEach(function (i, j) {
-                    const w = Math.max(12, Math.round(kk * aspects[i]));
-                    out[i] = { x: x, y: y + ri * (Math.round(kk) + cg), w: w, h: Math.max(12, Math.round(kk)) };
-                    x += w + cg;
-                });
+        let p = 0;
+        const blockH = best.rows * Math.round(best.k) + (best.rows - 1) * gap;
+        let y = area.y + Math.max(0, Math.round((maxH - blockH) / 2));
+        for (let r = 0; r < best.rows; r++) {
+            const cnt = Math.min(best.c, n - p);
+            const rowIdxs = units[0].slice(p, p + cnt);
+            const rowW = rowIdxs.reduce(function (acc, i, j) { return acc + best.k * aspects[i] + (j ? gap : 0); }, 0);
+            let x = area.x + Math.max(0, Math.round((area.w - rowW) / 2));
+            rowIdxs.forEach(function (i, j) {
+                out[i] = { x: x, y: y, w: Math.round(best.k * aspects[i]), h: Math.round(best.k) };
+                x += out[i].w + gap;
             });
-            y += uh + cg;
-        });
-        return { slots: out, height: rawH * g2 };
+            y += Math.round(best.k) + gap;
+            p += cnt;
+        }
+        return out;
     }
-    return layoutAll(area.h).slots;
+    return layoutAll(area.h);
 }
 // 图片有效宽高比：±90° 旋转的宽高互换（排版按旋转后的占位计算，才能与另一面等大）
 function caseItemEffectiveAspect(imgId) {
@@ -37133,6 +37222,15 @@ function caseActiveMockup() {
 }
 
 // ---------- 画布渲染 ----------
+// 十六进制颜色亮度（0~255）；非法色值按浅色处理
+function caseHexLum(hex) {
+    hex = String(hex || '').replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
+    if (hex.length !== 6) return 242;
+    const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return 242;
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+}
 // 画布背景亮度（0~255），用于自适应底框与文字色
 function caseCanvasLum(bg) {
     if (!bg) return 242;
@@ -37140,19 +37238,14 @@ function caseCanvasLum(bg) {
     let hex = '';
     if (bg.type === 'gradient') hex = String(bg.gradTo || '#e5e5e5');
     else hex = String(bg.color || '#f2f2f2');
-    hex = hex.replace('#', '');
-    if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
-    if (hex.length !== 6) return 242;
-    const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
-    if (isNaN(r) || isNaN(g) || isNaN(b)) return 242;
-    return 0.299 * r + 0.587 * g + 0.114 * b;
+    return caseHexLum(hex);
 }
 function caseCanvasTextColor(bg) {
     return caseCanvasLum(bg) >= 150 ? '#333333' : '#f2f2f2';
 }
 // 用户信息：直接取「基础设置」中的用户ID，显示为 @ID（通用，不带身份前缀）
 function caseInfoLines(st) {
-    // 用户信息：默认按「基础设置」用户ID 生成（@ID），可在案例内容中修改；留空则不显示
+    // 用户信息：默认按「基础设置」用户ID 生成（@ID），可在案例文案中修改；留空则不显示
     const line = String((st && st.fields && st.fields.user) || '').trim();
     if (!line) return [];
     return [line];
@@ -37224,7 +37317,7 @@ function caseProjectElements(st, page) {
     });
     return rows;
 }
-// 企划标签的隐藏/单标签字号映射（存于 layout.texts.project，随布局方案保存）
+// 企划标签的隐藏/单标签字号映射（存于 layout.texts.project，随布局模版保存）
 function caseTagHiddenMap(st) {
     const L = st && st.config && st.config.layout;
     return (L && L.texts && L.texts.project && L.texts.project.hidden) || {};
@@ -37257,6 +37350,20 @@ function caseWatermarkHtml(st, W, H, color) {
     const wm = st.config.watermark;
     if (!wm || !wm.enabled) return '';
     const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
+    // 层级：over==='products' 时只压在制品上方（z-index:2 < 文字层 3），否则盖全画布（30）
+    const wmZ = (wm.over === 'products') ? 2 : 30;
+    // 斜纹 / 斜方格：整幅重复图案水印（position 不适用，密度由 scale 控制）
+    if (wm.type === 'stripe' || wm.type === 'grid') {
+        const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
+        const period = Math.max(10, Math.round(W * 0.06 * scale));   // 线条间距
+        const lw = Math.max(1, Math.round(W * 0.0045 * scale));      // 线条粗细
+        const c = color || '#888888';
+        const seg = c + ' 0 ' + lw + 'px,transparent ' + lw + 'px ' + period + 'px';
+        const bgImg = (wm.type === 'stripe')
+            ? 'repeating-linear-gradient(45deg,' + seg + ')'
+            : 'repeating-linear-gradient(45deg,' + seg + '),repeating-linear-gradient(135deg,' + seg + ')';
+        return '<div class="case-watermark" style="opacity:' + opacity + ';z-index:' + wmZ + ';background-image:' + bgImg + ';"></div>';
+    }
     let unitInner = '', unitW = 0, unitH = 0;
     if (wm.type === 'image') {
         const c = _caseImgCache[wm.imgId];
@@ -37287,7 +37394,7 @@ function caseWatermarkHtml(st, W, H, color) {
                 cells += '<span style="display:inline-block;margin:' + Math.round(gapY / 2) + 'px ' + Math.round(gapX / 2) + 'px;">' + unitInner + '</span>';
             }
         }
-        return '<div class="case-watermark" style="opacity:' + opacity + ';">'
+        return '<div class="case-watermark" style="opacity:' + opacity + ';z-index:' + wmZ + ';">'
             + '<div class="case-wm-tile" style="left:' + Math.round((W - coverW) / 2) + 'px;top:' + Math.round((H - coverH) / 2) + 'px;width:' + coverW + 'px;height:' + coverH + 'px;">' + cells + '</div>'
             + '</div>';
     }
@@ -37298,13 +37405,14 @@ function caseWatermarkHtml(st, W, H, color) {
     else if (wm.position === 'bl') pos = 'left:' + m + 'px;bottom:' + m + 'px;';
     else if (wm.position === 'br') pos = 'right:' + m + 'px;bottom:' + m + 'px;';
     else pos = 'left:50%;top:50%;transform:translate(-50%,-50%);';
-    return '<div class="case-watermark" style="opacity:' + opacity + ';"><div style="position:absolute;' + pos + ';">' + unitInner + '</div></div>';
+    return '<div class="case-watermark" style="opacity:' + opacity + ';z-index:' + wmZ + ';"><div style="position:absolute;' + pos + ';">' + unitInner + '</div></div>';
 }
 function buildCaseCanvasHtml(st, page) {
     const W = st.config.width, H = st.config.height;
     const cfg = st.config;
     const pad = Math.round(W * 0.055);
-    const txtColor = caseCanvasTextColor(cfg.bg);
+    const customTextColor = (typeof cfg.textColor === 'string' && cfg.textColor) ? cfg.textColor : ''; // 空 = 按背景自动配深/浅字
+    const txtColor = customTextColor || caseCanvasTextColor(cfg.bg);
     const layout = cfg.layout || null;
     const tLayout = layout ? (layout.texts || {}) : {};
     const titleText = (cfg.toggles.title ? (st.fields.title || '') : '').trim();
@@ -37316,10 +37424,12 @@ function buildCaseCanvasHtml(st, page) {
     const pageImages = (page && page.images) ? page.images : (st.images || []);
     // 文字整体大小（可调，100% = 推荐基准）
     const tScale = Math.min(1.8, Math.max(0.6, Number(cfg.textScale) || 1));
-    const titleFs = Math.round(W * 0.032 * tScale);
+    // 左侧文字模块（案例类型/年份+@ID/提示信息）整体为基准字号的 80%；右侧企划信息用 tagFs 不受影响
+    const titleFs = Math.round(W * 0.032 * tScale * 0.8);
     const titleLh = Math.round(titleFs * 1.35);
-    const infoFs = Math.round(W * 0.018 * tScale);
+    const infoFs = Math.round(W * 0.018 * tScale * 0.8);
     const infoLh = Math.round(infoFs * 1.7);
+    const hintFs = Math.max(9, Math.round(infoFs * 0.85)); // 提示信息比正文小一号
     const tagFs = Math.round(W * 0.013 * tScale);
     const tagLh = Math.round(tagFs * 1.75);
     const tagGap = Math.round(W * 0.012);
@@ -37350,10 +37460,15 @@ function buildCaseCanvasHtml(st, page) {
     projEls.forEach(function (e) { tagTotalW += rowLen(e) * tagFs * 0.62 + tagFs * 1.2 + tagGap; });
     const tagRows = projEls.length ? Math.max(1, Math.ceil(tagTotalW / maxTagW)) : 0;
     const tagZoneH = tagRows ? tagRows * tagLh + (tagRows - 1) * Math.round(tagGap * 0.6) : 0;
-    const userStackH = (infoOn && infoArr.length ? infoLh : 0) + userCts.length * Math.round(tagLh * 1.15) + rootCts.length * Math.round(tagLh * 1.15);
-    const bottomZoneH = Math.max(userStackH, tagZoneH);
+    // 默认布局：左下角三排 = 案例类型(+子文字) → 设计年份+用户信息@ID（一行）→ 提示信息；顶部不再预留文字区
+    const yearText = (cfg.toggles.year !== false) ? String(st.fields.year || '').trim() : '';
+    const ctsStackH = (userCts.length + rootCts.length) * Math.round(tagLh * 1.15);
+    const yearUserZoneH = (yearText || (infoOn && infoArr.length)) ? infoLh : 0; // 年份+@ID 合并一行
+    const hintZoneH = ((cfg.toggles.hint !== false) && String(st.fields.hint || '').trim()) ? Math.round(hintFs * 1.75) : 0;
+    const leftStackH = titleZoneH + yearUserZoneH + hintZoneH + ctsStackH;
+    const bottomZoneH = Math.max(leftStackH, tagZoneH);
     const gapY = Math.round(W * 0.025);
-    const topUsed = titleZoneH ? titleZoneH + gapY : 0;
+    const topUsed = 0;
     const bottomUsed = bottomZoneH ? bottomZoneH + gapY : 0;
     // 制品区：分图默认 = 总图制品区 × 分图百分比（数值可调）；有独立显式区域则用之；否则自动
     const isGroupPage = !!(page && page.kind === 'group');
@@ -37394,12 +37509,13 @@ function buildCaseCanvasHtml(st, page) {
     }
     const slots = casePackSlots(pageImages, area, isGroupPage ? null : packBlocks);
     // 记录本次构建的制品区、槽位与文字块区域（编辑拖拽/换父级判定使用）
-    const userStackH2 = (infoOn && infoArr.length ? infoLh : 0) + userCts.length * Math.round(tagLh * 1.15) + rootCts.length * Math.round(tagLh * 1.15);
+    const userStackH2 = yearUserZoneH + hintZoneH + ctsStackH; // 左下堆叠：年份+@ID、提示信息、自定义文字行
     const tagZoneH2 = tagRows ? tagRows * tagLh + (tagRows - 1) * Math.round(tagGap * 0.6) : tagLh;
+    const leftTopH2 = titleZoneH; // 左下堆叠中案例类型部分的高度
     _lastBuild = {
         area: { x: area.x, y: area.y, w: area.w, h: area.h }, W: W, H: H, slots: slots,
         zones: {
-            title: { x: pad, y: pad, w: W - pad * 2, h: Math.max(titleZoneH, Math.round(tagLh * 1.2)) },
+            title: { x: pad, y: H - pad - userStackH2 - leftTopH2, w: W - pad * 2, h: Math.max(leftTopH2, Math.round(tagLh * 1.2)) },
             user: { x: pad, y: H - pad - userStackH2, w: Math.round(W * 0.55), h: Math.max(userStackH2, Math.round(tagLh * 1.2)) },
             project: { x: W - pad - maxTagW, y: H - pad - tagZoneH2, w: maxTagW, h: Math.max(tagZoneH2, Math.round(tagLh * 1.2)) }
         }
@@ -37455,45 +37571,91 @@ function buildCaseCanvasHtml(st, page) {
         return { fs: fs, pos: pos };
     };
     let textHtml = '';
-    // 案例类型（左上角，行数按文本）
-    if (titleText) {
-        const tl = elStyle('title', titleFs, 'left:' + pad + 'px;top:' + pad + 'px;');
-        const lines = titleText.split('\n').length;
-        textHtml += '<div class="case-title" data-case-el="title"' + (lines === 1 ? ' data-case-fit="' + tl.fs + '" data-case-fit-min="' + Math.round(tl.fs * 0.55) + '"' : '')
-            + ' style="' + tl.pos + 'width:' + (W - pad * 2) + 'px;height:' + (lines * titleLh) + 'px;font-size:' + tl.fs + 'px;color:' + txtColor + ';white-space:pre-line;">'
+    // 默认布局：左下角三排 = 案例类型(+子文字) → 设计年份 → 用户信息@ID(+子文字)；右下角 = 企划信息
+    // 拖过的元素按自定义位置绝对定位，不参与堆叠
+    const hasCustomPos = function (key) {
+        const t = tLayout[key];
+        return !!(t && t.x != null && t.y != null);
+    };
+    const titleCustom = hasCustomPos('title');
+    const yearCustom = hasCustomPos('year');
+    const titleLines = titleText ? titleText.split('\n').length : 0;
+    // 案例类型已拖自定义位置：画在其位置上，子文字跟随其下方（子文字也可有自己的位置）
+    if (titleText && titleCustom) {
+        const tp = tLayout.title;
+        const leftPx = Math.round(tp.x * W), topPx = Math.round(tp.y * H);
+        const fsT = elFs('title', titleFs);
+        textHtml += '<div class="case-title" data-case-el="title"' + (titleLines === 1 ? ' data-case-fit="' + fsT + '" data-case-fit-min="' + Math.round(fsT * 0.55) + '"' : '')
+            + ' style="left:' + leftPx + 'px;top:' + topPx + 'px;width:' + (W - pad * 2) + 'px;height:' + (titleLines * titleLh) + 'px;font-size:' + fsT + 'px;line-height:' + titleLh + 'px;color:' + txtColor + ';">'
             + escapeHtml(titleText) + '</div>';
-        // 案例类型的自定义子文字：标题下方逐行
         titleCts.forEach(function (it, i) {
             const cfs = elFs('ct:' + it.id, tagFs);
-            textHtml += '<div data-case-el="ct:' + it.id + '" style="position:absolute;left:' + pad + 'px;top:' + (pad + lines * titleLh + i * Math.round(tagLh * 1.15)) + 'px;font-size:' + cfs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(String(it.text).trim()) + '</div>';
+            const pos = hasCustomPos('ct:' + it.id) ? elStyle('ct:' + it.id, tagFs, '').pos
+                : 'left:' + leftPx + 'px;top:' + (topPx + titleLines * titleLh + i * Math.round(tagLh * 1.15)) + 'px;';
+            textHtml += '<div data-case-el="ct:' + it.id + '" style="position:absolute;' + pos + 'font-size:' + cfs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(String(it.text).trim()) + '</div>';
         });
     }
-    // 设计年份（右上角，独立开关）
-    const yearText = (cfg.toggles.year !== false) ? String(st.fields.year || '').trim() : '';
-    if (yearText) {
-        const yl = elStyle('year', infoFs, 'top:' + pad + 'px;right:' + pad + 'px;');
+    // 设计年份已拖自定义位置
+    if (yearText && yearCustom) {
+        const yl = elStyle('year', infoFs, '');
         textHtml += '<div data-case-el="year" style="position:absolute;' + yl.pos + 'font-size:' + yl.fs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(yearText) + '</div>';
     }
-    // 底部左侧堆叠：自定义文字（独立/用户子级）+ @ID（自上而下，最底行贴住底边）
+    // 用户信息已拖自定义位置（年份+@ID 默认合并一行，仅单独拖开时才分行）
+    const userShow = infoOn && infoArr.length;
+    const userCustom = hasCustomPos('user');
+    if (userShow && userCustom) {
+        const ul = elStyle('user', infoFs, '');
+        textHtml += '<div data-case-el="user" style="position:absolute;' + ul.pos + 'font-size:' + ul.fs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(infoArr.join(' ')) + '</div>';
+    }
+    // 提示信息已拖自定义位置
+    const hintText = (cfg.toggles.hint !== false) ? String(st.fields.hint || '').trim() : '';
+    const hintCustom = hasCustomPos('hint');
+    if (hintText && hintCustom) {
+        const hl = elStyle('hint', hintFs, '');
+        textHtml += '<div data-case-el="hint" style="position:absolute;' + hl.pos + 'font-size:' + hl.fs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(hintText) + '</div>';
+    }
+    // 左下角堆叠（自上而下）：案例类型(+子文字) → 设计年份+@ID（一行）→ 提示信息 → 自定义文字(独立/用户子级)；最底行贴住底边
     const stackEls = [];
+    if (titleText && !titleCustom) {
+        stackEls.push({ key: 'title', kind: 'title', text: titleText, base: titleFs, lines: titleLines });
+        titleCts.forEach(function (it) {
+            stackEls.push({ key: 'ct:' + it.id, text: String(it.text).trim(), base: tagFs });
+        });
+    }
+    // 设计年份 + 用户信息@ID 合并一行（任一显示即占一行；年份被拖走时该行以 @ID 为键）
+    const yearInStack = yearText && !yearCustom;
+    const userInStack = userShow && !userCustom;
+    const mergedParts = [];
+    if (yearInStack) mergedParts.push(yearText);
+    if (userInStack) mergedParts.push(infoArr.join(' '));
+    if (mergedParts.length) {
+        stackEls.push({ key: yearInStack ? 'year' : 'user', text: mergedParts.join(' '), base: infoFs });
+    }
+    if (hintText && !hintCustom) {
+        stackEls.push({ key: 'hint', text: hintText, base: hintFs });
+    }
     rootCts.forEach(function (it) {
         stackEls.push({ key: 'ct:' + it.id, text: String(it.text).trim(), base: tagFs });
     });
     userCts.forEach(function (it) {
         stackEls.push({ key: 'ct:' + it.id, text: String(it.text).trim(), base: tagFs });
     });
-    if (infoOn && infoArr.length) {
-        infoArr.forEach(function (line) { stackEls.push({ key: 'user', text: line, base: infoFs }); });
-    }
     if (stackEls.length) {
         let yCur = H - pad;
         for (let i = stackEls.length - 1; i >= 0; i--) {
             const e = stackEls[i];
-            const lh = Math.round(e.base * 1.75);
-            const stl = elStyle(e.key, e.base, 'left:' + pad + 'px;top:' + (yCur - lh) + 'px;');
-            const usedDef = stl.pos.indexOf('left:' + pad + 'px') === 0;
-            textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;' + stl.pos + 'width:' + (W - pad * 2) + 'px;font-size:' + stl.fs + 'px;line-height:' + lh + 'px;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(e.text) + '</div>';
-            yCur -= lh;
+            if (e.kind === 'title') {
+                const tl = elStyle('title', e.base, 'left:' + pad + 'px;top:' + (yCur - e.lines * titleLh) + 'px;');
+                textHtml += '<div class="case-title" data-case-el="title"' + (e.lines === 1 ? ' data-case-fit="' + tl.fs + '" data-case-fit-min="' + Math.round(tl.fs * 0.55) + '"' : '')
+                    + ' style="' + tl.pos + 'width:' + (W - pad * 2) + 'px;height:' + (e.lines * titleLh) + 'px;font-size:' + tl.fs + 'px;color:' + txtColor + ';">'
+                    + escapeHtml(e.text) + '</div>';
+                yCur -= e.lines * titleLh;
+            } else {
+                const lh = Math.round(e.base * 1.75);
+                const stl = elStyle(e.key, e.base, 'left:' + pad + 'px;top:' + (yCur - lh) + 'px;');
+                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;' + stl.pos + 'width:' + (W - pad * 2) + 'px;font-size:' + stl.fs + 'px;line-height:' + lh + 'px;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(e.text) + '</div>';
+                yCur -= lh;
+            }
         }
     }
     // 右下角企划信息（无胶囊底；每行 = 字段名+值 一组，整行可拖动/调字号）
@@ -37512,7 +37674,7 @@ function buildCaseCanvasHtml(st, page) {
     };
     // 右下角企划信息：多行（每行=字段名+值一组，可左/中/右/两端对齐）或单行（合并一行，溢出自动缩小）
     const tagMode = (cfg.tagLayout && cfg.tagLayout.mode === 'single') ? 'single' : 'multi';
-    const tagAlign = (cfg.tagLayout && ['left', 'center', 'right', 'justify'].indexOf(cfg.tagLayout.align) >= 0) ? cfg.tagLayout.align : 'right';
+    const tagAlign = (cfg.tagLayout && ['left', 'center', 'right', 'justify'].indexOf(cfg.tagLayout.align) >= 0) ? cfg.tagLayout.align : 'justify';
     const tagFrame = !!(cfg.tagLayout && cfg.tagLayout.frame);
     // 字段名与值之间的最小间距
     const cellGap = Math.max(6, Math.round(tagFs * 0.45));
@@ -37524,18 +37686,31 @@ function buildCaseCanvasHtml(st, page) {
         for (let k = 0; k < str.length; k++) w += str.charCodeAt(k) > 0x2e80 ? fs2 : fs2 * 0.55;
         return w;
     };
-    const framePadX = tagFrame ? Math.max(4, Math.round(tagFs * 0.55)) : 0;
-    // 底框：半透明底 + 圆角，始终压在制品上方（z-index 高于制品层）
+    // 底框：直角矩形半透明底，每一行带细虚线下划线；始终压在制品上方（z-index 高于制品层）
     // 自适应：画布深底时用深半透明底 + 浅字；画布浅底时用浅半透明底 + 深字，保证任意背景下文字清晰
     const frameOn = tagFrame;
-    let frameBgCss = 'rgba(255,255,255,0.78)', frameTextColor = txtColor;
+    const framePadX = frameOn ? Math.max(8, Math.round(tagFs * 0.9)) : 0;
+    const framePadY = frameOn ? Math.max(8, Math.round(tagFs * 1.1)) : 0; // 上下留白多一些
+    let frameBgCss = 'rgba(255,255,255,0.78)', frameTextColor = txtColor, frameLineCss = 'transparent';
     if (frameOn) {
-        const fl = caseCanvasLum(cfg.bg);
-        if (fl >= 150) { frameBgCss = 'rgba(255,255,255,0.82)'; frameTextColor = '#2a2a2a'; }
-        else { frameBgCss = 'rgba(16,16,18,0.52)'; frameTextColor = '#f4f4f4'; }
+        const customFrameColor = (cfg.tagLayout && typeof cfg.tagLayout.frameColor === 'string' && cfg.tagLayout.frameColor) ? cfg.tagLayout.frameColor : '';
+        if (customFrameColor) {
+            // 自定义底框色：文字/虚线按底框明暗配对比色（用户设置过文字色则以其为准）
+            frameBgCss = customFrameColor;
+            const fLum = caseHexLum(customFrameColor);
+            frameLineCss = fLum >= 150 ? 'rgba(42,42,42,0.35)' : 'rgba(244,244,244,0.38)';
+            if (!customTextColor) frameTextColor = fLum >= 150 ? '#2a2a2a' : '#f4f4f4';
+        } else {
+            const fl = caseCanvasLum(cfg.bg);
+            if (fl >= 150) { frameBgCss = 'rgba(255,255,255,0.82)'; frameLineCss = 'rgba(42,42,42,0.35)'; }
+            else { frameBgCss = 'rgba(16,16,18,0.52)'; frameLineCss = 'rgba(244,244,244,0.38)'; }
+            if (!customTextColor) frameTextColor = (fl >= 150) ? '#2a2a2a' : '#f4f4f4';
+        }
     }
+    // 行细虚线下划线（1px）
+    const rowUnderline = frameOn ? 'border-bottom:1px dashed ' + frameLineCss + ';' : '';
     const frameStyle = function (fs2) {
-        return frameOn ? 'background:' + frameBgCss + ';border-radius:' + Math.round(fs2 * 0.6) + 'px;padding:' + Math.round(fs2 * 0.28) + 'px ' + Math.round(fs2 * 0.55) + 'px;z-index:3;' : '';
+        return frameOn ? 'background:' + frameBgCss + ';padding:' + Math.round(fs2 * 0.5) + 'px ' + Math.round(fs2 * 0.55) + 'px;z-index:3;' : '';
     };
     // 每行：字段名 + 最小间距 + 值（单侧隐藏时只显示其一）
     const rowCells = function (e) {
@@ -37558,7 +37733,7 @@ function buildCaseCanvasHtml(st, page) {
                 if (i) inner += '<span style="display:inline-block;width:' + Math.max(8, Math.round(tagGap * 0.9)) + 'px;"></span>';
                 inner += '<span style="display:inline-block;">' + rowCells(e) + '</span>';
             });
-            textHtml += '<div data-case-el="project" data-case-fit="' + baseFs + '" data-case-fit-min="' + Math.max(8, Math.round(baseFs * 0.4)) + '" style="position:absolute;' + pos + 'width:' + maxTagW + 'px;font-size:' + baseFs + 'px;line-height:1.4;color:' + frameTextColor + ';white-space:nowrap;text-align:right;' + frameStyle(baseFs) + '">' + inner + '</div>';
+            textHtml += '<div data-case-el="project" data-case-fit="' + baseFs + '" data-case-fit-min="' + Math.max(8, Math.round(baseFs * 0.4)) + '" style="position:absolute;' + pos + 'width:' + maxTagW + 'px;font-size:' + baseFs + 'px;line-height:1.4;color:' + frameTextColor + ';white-space:nowrap;text-align:right;' + frameStyle(baseFs) + rowUnderline + '">' + inner + '</div>';
         } else {
             const flowEls = [];
             const absEls = [];
@@ -37580,14 +37755,20 @@ function buildCaseCanvasHtml(st, page) {
                 flowEls.forEach(function (e) {
                     const fs2 = rowFs(e);
                     // 多行同样支持溢出自动缩小（data-case-fit → casePrepareCanvasEl）
-                    rowsHtml += '<div data-case-el="' + e.key + '" data-case-fit="' + fs2 + '" data-case-fit-min="' + Math.max(8, Math.round(fs2 * 0.4)) + '" style="width:100%;display:flex;justify-content:' + jc + ';align-items:baseline;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.45;color:' + frameTextColor + ';white-space:nowrap;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
+                    rowsHtml += '<div data-case-el="' + e.key + '" data-case-fit="' + fs2 + '" data-case-fit-min="' + Math.max(8, Math.round(fs2 * 0.4)) + '" style="width:100%;display:flex;justify-content:' + jc + ';align-items:baseline;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.45;color:' + frameTextColor + ';white-space:nowrap;' + rowUnderline + '">' + rowCells(e) + '</div>';
                 });
-                textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + blockW + 'px;z-index:3;">' + rowsHtml + '</div>';
+                if (frameOn) {
+                    // 直角矩形底框：整块半透明底
+                    textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + blockW + 'px;z-index:3;">'
+                        + '<div style="background:' + frameBgCss + ';padding:' + framePadY + 'px ' + framePadX + 'px;">' + rowsHtml + '</div></div>';
+                } else {
+                    textHtml += '<div style="position:absolute;right:' + pad + 'px;bottom:' + pad + 'px;width:' + blockW + 'px;z-index:3;">' + rowsHtml + '</div>';
+                }
             }
             absEls.forEach(function (e) {
                 const t = rowPos(e);
                 const fs2 = rowFs(e);
-                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;display:flex;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.35;color:' + frameTextColor + ';white-space:nowrap;z-index:3;' + frameStyle(fs2) + '">' + rowCells(e) + '</div>';
+                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;left:' + Math.round(t.x * W) + 'px;top:' + Math.round(t.y * H) + 'px;display:flex;gap:' + cellGap + 'px;font-size:' + fs2 + 'px;line-height:1.35;color:' + frameTextColor + ';white-space:nowrap;z-index:3;' + frameStyle(fs2) + rowUnderline + '">' + rowCells(e) + '</div>';
             });
         }
     }
@@ -37595,7 +37776,7 @@ function buildCaseCanvasHtml(st, page) {
     const bgc = cfg.bg;
     let bgStyle = 'transparent';
     if (bgc.type === 'solid' || bgc.type === 'color') bgStyle = (bgc.color || '#f2f2f2');
-    else if (bgc.type === 'gradient') bgStyle = 'linear-gradient(135deg,' + (bgc.gradFrom || '#fafafa') + ',' + (bgc.gradTo || '#e5e5e5') + ')';
+    else if (bgc.type === 'gradient') bgStyle = 'linear-gradient(180deg,' + (bgc.gradFrom || '#fafafa') + ',' + (bgc.gradTo || '#e5e5e5') + ')';
     else if (bgc.type === 'image' && bgc.imgId && bgc.imgHidden) bgStyle = (bgc.color || '#f2f2f2');
     let bgHtml = '';
     if (cfg.bg.type === 'image' && cfg.bg.imgId) {
@@ -37606,8 +37787,10 @@ function buildCaseCanvasHtml(st, page) {
             bgHtml = '<img src="' + bgc.dataUrl + '" style="position:absolute;left:' + Math.round((W - bw) / 2) + 'px;top:' + Math.round((H - bh) / 2) + 'px;width:' + bw + 'px;height:' + bh + 'px;">';
         }
     }
+    const wmHtml = caseWatermarkHtml(st, W, H, txtColor);
+    const wmOverProducts = !!(st.config.watermark && st.config.watermark.enabled && st.config.watermark.over === 'products');
     return '<div class="case-canvas" style="width:' + W + 'px;height:' + H + 'px;background:' + bgStyle + ';">'
-        + bgHtml + productsHtml + textHtml + caseWatermarkHtml(st, W, H, txtColor)
+        + bgHtml + productsHtml + (wmOverProducts ? wmHtml : '') + textHtml + (wmOverProducts ? '' : wmHtml)
         + '</div>';
 }
 // 文本字号适配：超出容器则逐级缩小字号，仍溢出截字加省略号
@@ -37684,13 +37867,24 @@ function fitCasePreview() {
     const rect = stage.getBoundingClientRect();
     const availW = Math.max(60, rect.width - 28);
     const availH = Math.max(60, rect.height - 28);
-    const s = Math.min(availW / _caseState.config.width, availH / _caseState.config.height, 1);
+    const fit = Math.min(availW / _caseState.config.width, availH / _caseState.config.height, 1);
+    const s = fit * _casePreviewZoom;
     _casePreviewScale = s;
     wrap.style.width = Math.round(_caseState.config.width * s) + 'px';
     wrap.style.height = Math.round(_caseState.config.height * s) + 'px';
     const el = wrap.querySelector('.case-canvas');
     if (el) el.style.transform = 'scale(' + s + ')';
+    const zv = document.getElementById('caseZoomVal');
+    if (zv) zv.textContent = Math.round(_casePreviewZoom * 100) + '%';
 }
+// 预览缩放（小屏 ±按钮）：步进 1.25 倍，范围 50%–400%；100% 即适应窗口，
+// 放大后画布超出容器部分靠容器滚动查看局部（调整布局模式下拖拽位移已按有效比例折算）
+function caseSetZoom(z) {
+    _casePreviewZoom = Math.min(4, Math.max(0.5, Number(z) || 1));
+    fitCasePreview();
+}
+function caseZoomStep(dir) { caseSetZoom(_casePreviewZoom * (dir > 0 ? 1.25 : 0.8)); }
+function caseZoomReset() { caseSetZoom(1); }
 window.addEventListener('resize', function () { fitCasePreview(); });
 
 // ===== 调整布局模式（预览区直接拖拽定位） =====
@@ -37807,7 +38001,7 @@ function caseRenderSelPanel() {
             + '</div>'
             + '<div class="case-form-hint" style="margin:6px 0 0;">拖动移动整行（字段名+值一起移动）</div>';
     } else {
-        const names = { title: '案例类型', year: '设计年份', user: '用户信息 @ID', project: '企划信息' };
+        const names = { title: '案例类型', year: '设计年份', user: '用户信息 @ID', hint: '提示信息', project: '企划信息' };
         const L = (_caseState.config.layout && _caseState.config.layout.texts) || {};
         const rec = L[key] || { fsScale: 1 };
         html = '<div class="case-sel-title">已选中：' + (names[key] || '') + '</div>'
@@ -37821,7 +38015,9 @@ function caseRenderSelPanel() {
             + '</div>';
     }
     box.classList.remove('d-none');
-    box.innerHTML = html;
+    // 外壳固定 + 内部滚动：右上角关闭钮常驻可见，内容过高时在 .case-sel-body 里下滑
+    box.innerHTML = '<button type="button" class="case-sel-close" onclick="caseSelectElement(null)" title="取消选中" aria-label="取消选中">✕</button>'
+        + '<div class="case-sel-body">' + html + '</div>';
 }
 function setCaseElFs(key, v) {
     const st = _caseState; if (!st) return;
@@ -38194,16 +38390,30 @@ function renderCaseForm() {
     const cfg = st.config;
     const wm = cfg.watermark;
     let html = '';
-    // 顶部：整体恢复默认（仅重置外观/排版，保留已输入内容）
-    html += '<div class="case-reset-topbar">'
-        + '<button type="button" class="btn secondary btn-compact" onclick="resetCaseDefaults()">↺ 整体恢复默认</button>'
-        + '<span class="case-form-hint" style="margin:0;">仅重置外观/排版，已输入内容保留</span>'
+    // 顶部：布局模版（保存/应用整体布局与底图）+ 整体恢复默认，合并为一个模块
+    html += '<div class="case-form-sec">'
+        + '<label class="case-form-label">布局模版</label>'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+        + '<input type="text" id="caseLayoutPresetName" class="case-field-input" placeholder="模版名称（留空自动命名）" style="flex:1;min-width:100px;">'
+        + '<button type="button" class="btn secondary btn-compact" onclick="saveCaseLayoutPreset()" style="flex-shrink:0;">保存当前</button>'
+        + '<button type="button" class="btn secondary btn-compact" onclick="resetCaseDefaults()" title="仅重置外观/排版，已输入内容保留">↺ 恢复默认</button>'
+        + '</div>';
+    if (_caseLayoutPresets.length) {
+        html += '<div class="case-preset-chips">' + _caseLayoutPresets.map(function (p) {
+            const isDef = p.id === _caseLayoutPresetDefault;
+            return '<span class="case-preset-chip' + (isDef ? ' case-preset-def' : '') + '">'
+                + '<button type="button" class="case-chip" onclick="applyCaseLayoutPreset(\'' + p.id + '\')" title="应用该布局模版">' + escapeHtml(p.name) + '</button>'
+                + '<button type="button" class="case-preset-star' + (isDef ? ' active' : '') + '" onclick="toggleCasePresetDefault(\'' + p.id + '\')" title="' + (isDef ? '取消默认（新案例恢复系统默认样式）' : '设为默认模版（新建案例自动套用）') + '">' + (isDef ? '★' : '☆') + '</button>'
+                + '<button type="button" class="case-preset-del" onclick="deleteCaseLayoutPreset(\'' + p.id + '\')" title="删除模版">×</button></span>';
+        }).join('') + '</div>';
+    }
+    html += '<div class="case-form-hint" style="margin-top:6px;">保存当前布局（含底图）为模版，名称可留空自动命名；点 ☆ 设为默认，新建案例自动套用（未设 ★ 则用系统默认样式）；「恢复默认」仅重置外观/排版，已输入内容保留</div>'
         + '</div>';
     // 1 关联订单
     html += '<div class="case-form-sec">'
         + '<label class="case-form-label">关联订单</label>'
         + '<select id="caseOrderSelect" class="case-field-input" onchange="applyCaseOrder(this.value)">' + caseOrderOptionsHtml() + '</select>'
-        + '<div class="case-form-hint">选择订单后自动带入 IP、角色与制品名；左上角案例类型可在下方自定义，不被订单标题覆盖</div>'
+        + '<div class="case-form-hint">选择订单后自动带入 IP、角色与制品名；左下角案例类型可在下方自定义，不被订单标题覆盖</div>'
         + '</div>';
     // 2 画布比例与尺寸（中间的锁：锁定=按比例等比修改，解锁=自由修改）
     const sizeLocked = cfg.sizeLock !== false;
@@ -38222,7 +38432,7 @@ function renderCaseForm() {
         + '</div>'
         + '<div class="case-form-hint">比例指案例图整体宽高；制品图始终按原图比例等比缩放，不会被拉伸或裁切。中间的锁：锁定=改一边另一边按比例联动，解锁=自由修改。</div>'
         + '</div>';
-    // 3 背景：纯色（默认浅灰/深灰）、两色斜角渐变、底图（上传不丢失，可隐藏）
+    // 3 背景：纯色（默认浅灰/深灰）、上下渐变、底图（上传不丢失，可隐藏）
     html += '<div class="case-form-sec">'
         + '<label class="case-form-label">背景</label>'
         + '<div class="case-chips">'
@@ -38244,9 +38454,8 @@ function renderCaseForm() {
             + '<input type="color" class="case-color-input" value="' + escapeHtml(gf) + '" onchange="setCaseGradColor(\'from\', this.value)" title="渐变起始色">'
             + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">到</span>'
             + '<input type="color" class="case-color-input" value="' + escapeHtml(gt) + '" onchange="setCaseGradColor(\'to\', this.value)" title="渐变结束色">'
-            + '<span style="width:34px;height:24px;border-radius:6px;border:1px solid var(--border-color,#ddd);background:linear-gradient(135deg,' + escapeHtml(gf) + ',' + escapeHtml(gt) + ');flex-shrink:0;" title="斜角渐变预览"></span>'
-            + '</div>'
-            + '<div class="case-form-hint" style="margin-top:6px;">两色斜角渐变（左上 → 右下）</div>';
+            + '<span style="width:34px;height:24px;border-radius:6px;border:1px solid var(--border-color,#ddd);background:linear-gradient(180deg,' + escapeHtml(gf) + ',' + escapeHtml(gt) + ');flex-shrink:0;" title="渐变预览"></span>'
+            + '</div>';
     }
     // 底图（上传不丢失；可隐藏/显示，切到纯色/渐变时保留）
     const bgImgCache = cfg.bg.imgId ? _caseImgCache[cfg.bg.imgId] : null;
@@ -38258,12 +38467,12 @@ function renderCaseForm() {
         + (bgImgCache ? '<button type="button" class="btn secondary btn-compact" onclick="caseClearBgImage()">清除底图</button>' : '')
         + '<input type="file" id="caseBgImageInput" accept="image/*" class="d-none">'
         + '</div>'
-        + '<div class="case-form-hint">底图等比铺满画布，上传后不会丢失（切到纯色/渐变再切回来还在）；可临时隐藏。开启预览区「调整布局」后，可把制品区和文字拖到底图对应位置，再保存为布局方案反复套用</div>'
+        + '<div class="case-form-hint">底图等比铺满画布，上传后不会丢失，可临时隐藏</div>'
         + '</div>';
-    // 4 案例内容（统一眼睛开关：👁 显示 / 🚫 隐藏，内容为空时同样不显示不占位）
+    // 4 案例文案（统一眼睛开关：👁 显示 / 🚫 隐藏，内容为空时同样不显示不占位）
     html += '<div class="case-form-sec">'
-        + '<label class="case-form-label">案例内容</label>';
-    // 案例类型（左上角文案 + 设计年份）
+        + '<label class="case-form-label">案例文案</label>';
+    // 案例类型（左下角第一排文案 + 设计年份）
     html += '<div class="case-tagfield-row' + (cfg.toggles.title ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'title\', ' + (!cfg.toggles.title) + ')" title="' + (cfg.toggles.title ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(!cfg.toggles.title) + '</button>'
         + '<span class="case-tagfield-label">案例类型</span>'
@@ -38271,7 +38480,7 @@ function renderCaseForm() {
     if (cfg.toggles.title) {
         html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.title || '')) + '" placeholder="案例类型" oninput="setCaseField(\'title\', this.value)">';
     }
-    // 设计年份（右上角，独立显示/隐藏）
+    // 设计年份（左下角第二排，独立显示/隐藏）
     html += '<div class="case-tagfield-row' + (cfg.toggles.year !== false ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'year\', ' + (cfg.toggles.year === false) + ')" title="' + (cfg.toggles.year !== false ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(cfg.toggles.year === false) + '</button>'
         + '<span class="case-tagfield-label">设计年份</span>'
@@ -38287,21 +38496,29 @@ function renderCaseForm() {
     if (cfg.toggles.userInfo) {
         html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.user || '')) + '" placeholder="用户信息，如 @yourid（可修改，留空不显示）" oninput="setCaseField(\'user\', this.value)">';
     }
+    // 提示信息（左下角第三排；默认 Commissioned work. Do not use or copy.）
+    html += '<div class="case-tagfield-row' + (cfg.toggles.hint !== false ? '' : ' case-tagfield-hidden') + '">'
+        + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'hint\', ' + (cfg.toggles.hint === false) + ')" title="' + (cfg.toggles.hint !== false ? '点击隐藏' : '点击显示') + '">' + caseEyeSvg(cfg.toggles.hint === false) + '</button>'
+        + '<span class="case-tagfield-label">提示信息</span>'
+        + '</div>';
+    if (cfg.toggles.hint !== false) {
+        html += '<input type="text" class="case-field-input case-field-mb" value="' + escapeHtml(String(st.fields.hint || '')) + '" placeholder="提示信息（可修改，留空不显示）" oninput="setCaseField(\'hint\', this.value)">';
+    }
     // 企划信息（组开关 + 各字段独立眼睛 + 排版图标：单行/多行、左/中/右/两端）
     const tagMode = (cfg.tagLayout && cfg.tagLayout.mode === 'single') ? 'single' : 'multi';
-    const tagAlign = (cfg.tagLayout && cfg.tagLayout.align) || 'right';
-    const tagIcon = function (kind, active, fn, title) {
-        return '<button type="button" class="case-tag-icon' + (active ? ' active' : '') + '" onclick="' + fn + '" title="' + title + '">' + caseTagIconSvg(kind) + '</button>';
+    const tagAlign = (cfg.tagLayout && cfg.tagLayout.align) || 'justify';
+    const tagIcon = function (kind, active, fn, title, disabled) {
+        return '<button type="button" class="case-tag-icon' + (active ? ' active' : '') + '"' + (disabled ? ' disabled title="对齐仅多行模式可选，点「单行」图标切回多行后再选"' : ' onclick="' + fn + '" title="' + title + '"') + '>' + caseTagIconSvg(kind) + '</button>';
     };
     html += '<div class="case-tagfield-row' + (cfg.toggles.productInfo ? '' : ' case-tagfield-hidden') + '">'
         + '<button type="button" class="case-tagfield-eye" onclick="toggleCaseSection(\'productInfo\', ' + (!cfg.toggles.productInfo) + ')" title="' + (cfg.toggles.productInfo ? '点击隐藏整组' : '点击显示整组') + '">' + caseEyeSvg(!cfg.toggles.productInfo) + '</button>'
         + '<span class="case-tagfield-label">企划信息</span>'
         + '<span class="case-tag-icons">'
         + tagIcon('single', tagMode === 'single', "setCaseTagMode('" + (tagMode === 'single' ? 'multi' : 'single') + "')", tagMode === 'single' ? '单行显示（点击切回多行）' : '切为单行显示（溢出自动缩小）')
-        + tagIcon('left', tagAlign === 'left', "setCaseTagAlign('left')", '左对齐')
-        + tagIcon('center', tagAlign === 'center', "setCaseTagAlign('center')", '居中')
-        + tagIcon('right', tagAlign === 'right', "setCaseTagAlign('right')", '右对齐')
-        + tagIcon('justify', tagAlign === 'justify', "setCaseTagAlign('justify')", '两端对齐（字段名与值按最小间距排布）')
+        + tagIcon('left', tagMode === 'multi' && tagAlign === 'left', "setCaseTagAlign('left')", '左对齐', tagMode === 'single')
+        + tagIcon('center', tagMode === 'multi' && tagAlign === 'center', "setCaseTagAlign('center')", '居中', tagMode === 'single')
+        + tagIcon('right', tagMode === 'multi' && tagAlign === 'right', "setCaseTagAlign('right')", '右对齐', tagMode === 'single')
+        + tagIcon('justify', tagMode === 'multi' && tagAlign === 'justify', "setCaseTagAlign('justify')", '两端对齐（字段名与值按最小间距排布）', tagMode === 'single')
         + tagIcon('frame', !!(cfg.tagLayout && cfg.tagLayout.frame), "toggleCaseTagFrame()", '底框（企划信息加半透明底框，始终在制品上方）')
         + '</span>'
         + '</div>';
@@ -38337,8 +38554,27 @@ function renderCaseForm() {
             + caseCellBox('制品', prodValHid,
                 '<input type="text" class="case-field-input case-cell-input" value="' + escapeHtml(String(st.fields.products || '')) + '" placeholder="制品名，多个用、分隔" oninput="setCaseField(\'products\', this.value)">')
             + '</div>';
-        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；框内眼睛可单独隐藏字段名或值（两个都隐藏=整行不显示）；标题右侧图标可切换单行/多行及对齐（两端对齐=字段名靠左、值靠右）；编辑模式下点选可拖动、调字号</div>';
+        html += '<div class="case-form-hint" style="margin:6px 0 0;">标签按「基础设置 → 身份与企划字段」的配置顺序生成；框内眼睛可单独隐藏字段名或值（两个都隐藏=整行不显示）；标题右侧图标可切换单行/多行及对齐（对齐仅多行模式可选，默认两端对齐=字段名靠左、值靠右）；编辑模式下点选可拖动、调字号</div>';
     }
+    // 文字颜色 + 底框颜色（并排一行）：取色器自定义，「自动」恢复按背景/画布深浅配色
+    const customTxtColor = (typeof cfg.textColor === 'string' && cfg.textColor) ? cfg.textColor : '';
+    const frameColorOn = !!(cfg.toggles.productInfo && cfg.tagLayout && cfg.tagLayout.frame);
+    const customFrameColor = (cfg.tagLayout && typeof cfg.tagLayout.frameColor === 'string' && cfg.tagLayout.frameColor) ? cfg.tagLayout.frameColor : '';
+    const autoFrameHex = caseCanvasLum(cfg.bg) >= 150 ? '#ffffff' : '#101012';
+    html += '<div class="case-swatch-row" style="margin:8px 0 2px;column-gap:20px;">'
+        + '<span style="display:inline-flex;align-items:center;gap:8px;">'
+        + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">文字颜色</span>'
+        + '<input type="color" class="case-color-input" value="' + escapeHtml(customTxtColor || caseCanvasTextColor(cfg.bg)) + '" onchange="setCaseTextColor(this.value)" title="自定义文字颜色（作用于案例类型、年份、用户信息、企划信息等全部文案）">'
+        + caseChipHtml('自动', !customTxtColor, "setCaseTextColor('')")
+        + '</span>'
+        + (frameColorOn
+            ? '<span style="display:inline-flex;align-items:center;gap:8px;">'
+                + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">底框颜色</span>'
+                + '<input type="color" class="case-color-input" value="' + escapeHtml(customFrameColor || autoFrameHex) + '" onchange="setCaseFrameColor(this.value)" title="自定义底框颜色（虚线与文字按底框明暗自动配对比色）">'
+                + caseChipHtml('自动', !customFrameColor, "setCaseFrameColor('')")
+                + '</span>'
+            : '')
+        + '</div>';
     html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">文字大小</span>'
         + '<input type="range" min="0.6" max="1.8" step="0.05" value="' + (Number(cfg.textScale) || 1) + '" oninput="setCaseTextScale(this.value)">'
         + '<span class="case-range-val" id="caseTextScaleVal">' + Math.round((Number(cfg.textScale) || 1) * 100) + '%</span></div>';
@@ -38368,22 +38604,6 @@ function renderCaseForm() {
                 + '<div class="case-form-hint">一处设置，所有分图页生效（= 总图制品区 × 此百分比，围绕中心缩放）</div>'
             : '')
         + '</div>';
-    // 6 布局方案（保存/应用整体布局与底图）
-    html += '<div class="case-form-sec">'
-        + '<label class="case-form-label">布局方案</label>'
-        + '<div style="display:flex;gap:8px;">'
-        + '<input type="text" id="caseLayoutPresetName" class="case-field-input" placeholder="方案名称" style="flex:1;min-width:0;">'
-        + '<button type="button" class="btn secondary btn-compact" onclick="saveCaseLayoutPreset()" style="flex-shrink:0;">保存当前</button>'
-        + '</div>';
-    if (_caseLayoutPresets.length) {
-        html += '<div class="case-chips" style="margin-top:9px;">' + _caseLayoutPresets.map(function (p) {
-            return '<span class="case-preset-chip"><button type="button" class="case-chip" onclick="applyCaseLayoutPreset(\'' + p.id + '\')" title="应用该布局方案">' + escapeHtml(p.name) + '</button>'
-                + '<button type="button" class="case-preset-del" onclick="deleteCaseLayoutPreset(\'' + p.id + '\')" title="删除方案">×</button></span>';
-        }).join('') + '</div>';
-    } else {
-        html += '<div class="case-form-hint" style="margin-top:6px;">调整布局（含底图）后保存为方案，之后新建案例一键套用。</div>';
-    }
-    html += '</div>';
     // 7 制品图（关联订单时按制品分组：自动生成 1 张总图 + 每种制品各 1 张预览图）
     html += '<div class="case-form-sec">'
         + '<label class="case-form-label">制品图</label>';
@@ -38435,13 +38655,16 @@ function renderCaseForm() {
         + '<div class="case-toggle-row"><span class="case-toggle-name">水印</span>'
         + '<label class="custom-toggle"><input type="checkbox"' + (wm.enabled ? ' checked' : '') + ' onchange="setCaseWmEnabled(this.checked)"><span class="toggle-slider"></span></label></div>';
     if (wm.enabled) {
+        const isWmPattern = wm.type === 'stripe' || wm.type === 'grid';
         html += '<div class="case-chips" style="margin-top:6px;">'
             + caseChipHtml('文字', wm.type === 'text', "setCaseWmType('text')")
             + caseChipHtml('图片', wm.type === 'image', "setCaseWmType('image')")
+            + caseChipHtml('斜纹', wm.type === 'stripe', "setCaseWmType('stripe')")
+            + caseChipHtml('斜方格', wm.type === 'grid', "setCaseWmType('grid')")
             + '</div>';
         if (wm.type === 'text') {
             html += '<input type="text" class="case-field-input" style="margin-top:9px;" value="' + escapeHtml(String(wm.text || '')) + '" placeholder="水印文字，如 @昵称" oninput="setCaseWmText(this.value)">';
-        } else {
+        } else if (wm.type === 'image') {
             const wmc = _caseImgCache[wm.imgId];
             html += '<div style="margin-top:9px;display:flex;align-items:center;gap:10px;">'
                 + (wmc ? '<img src="' + wmc.dataUrl + '" style="width:44px;height:44px;object-fit:contain;border:1px solid var(--border-color,#ddd);border-radius:8px;background:#f4f4f6;padding:3px;">' : '')
@@ -38449,19 +38672,26 @@ function renderCaseForm() {
                 + '<input type="file" id="caseWmImageInput" accept="image/*" class="d-none" onchange="caseHandleWmImageFile(this.files && this.files[0]); this.value=\'\';">'
                 + '</div>';
         }
-        html += '<select class="case-field-input" style="margin-top:9px;" onchange="setCaseWmPos(this.value)">'
-            + [['br', '右下'], ['bl', '左下'], ['tr', '右上'], ['tl', '左上'], ['center', '居中'], ['tile', '平铺全图']].map(function (p) {
-                return '<option value="' + p[0] + '"' + (wm.position === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
-            }).join('')
-            + '</select>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">透明度</span>'
+        if (!isWmPattern) {
+            html += '<select class="case-field-input" style="margin-top:9px;" onchange="setCaseWmPos(this.value)">'
+                + [['br', '右下'], ['bl', '左下'], ['tr', '右上'], ['tl', '左上'], ['center', '居中'], ['tile', '平铺全图']].map(function (p) {
+                    return '<option value="' + p[0] + '"' + (wm.position === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+                }).join('')
+                + '</select>';
+        }
+        // 层级：仅制品上层 = 水印盖在制品上但不盖文字/企划信息
+        html += '<div class="case-chips" style="margin-top:6px;">'
+            + caseChipHtml('仅制品上层', wm.over === 'products', 'toggleCaseWmOver()')
+            + '</div>'
+            + '<div class="case-form-hint" style="margin:4px 0 0;">开启后水印只压在制品图上方，标题/企划信息等文字不被盖住</div>';
+        html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">透明度</span>'
             + '<input type="range" min="0.05" max="1" step="0.05" value="' + (Number(wm.opacity) || 0.3) + '" oninput="setCaseWmOpacity(this.value)">'
             + '<span class="case-range-val" id="caseWmOpacityVal">' + Math.round((Number(wm.opacity) || 0.3) * 100) + '%</span></div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
+            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">' + (isWmPattern ? '密度' : '大小') + '</span>'
             + '<input type="range" min="0.5" max="3" step="0.1" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
             + '<span class="case-range-val" id="caseWmScaleVal">' + (Number(wm.scale) || 1).toFixed(1) + '×</span></div>';
     }
-    html += '<div class="case-form-hint">水印绘制在画布最上层，随导出图一起保存；未开启或无内容时不占位</div>'
+    html += '<div class="case-form-hint">水印随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为整幅重复图案，方向 45°，文字颜色随背景自动配深浅</div>'
         + '</div>';
     area.innerHTML = html;
     // 上传控件：统一走 _caseUploadTarget 决定进入哪个制品组（-1=自由模式）
@@ -38629,6 +38859,13 @@ function setCaseTextScale(v) {
     if (el) el.textContent = Math.round(st.config.textScale * 100) + '%';
     renderCasePreview();
 }
+// 文字颜色：传合法色值 = 自定义；传空 = 恢复自动（按背景深浅配字）
+function setCaseTextColor(v) {
+    const st = _caseState; if (!st) return;
+    const val = String(v || '').trim();
+    st.config.textColor = /^#[0-9a-fA-F]{3,8}$/.test(val) ? val : '';
+    renderCaseForm(); renderCasePreview();
+}
 // 单品装饰（投影/描边/扩张描边），按制品图片存储
 function setCaseItemFx(idx, field, value) {
     const st = _caseState; if (!st) return;
@@ -38747,26 +38984,32 @@ function caseSplitProducts(text) {
 // 企划信息排版：单行/多行、对齐（图标在「企划信息」标题右侧）
 function setCaseTagMode(m) {
     const st = _caseState; if (!st) return;
-    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'right' };
-    const isSingle = m === 'single';
-    st.config.tagLayout.mode = isSingle ? 'single' : 'multi';
-    // 两端对齐(justify)依赖多行分段；单行模式下强制回到常规对齐，保证「左/中/右」与「两端对齐」互斥
-    if (isSingle && st.config.tagLayout.align === 'justify') st.config.tagLayout.align = 'right';
+    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'justify' };
+    st.config.tagLayout.mode = (m === 'single') ? 'single' : 'multi';
+    // 对齐设置保留：单行模式下不生效（对齐图标禁用），切回多行后恢复
     renderCaseForm(); renderCasePreview();
 }
 function setCaseTagAlign(a) {
     const st = _caseState; if (!st) return;
-    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'right' };
-    // 对齐只在多行下生效：当前为单行时点对齐自动取消单行
-    st.config.tagLayout.mode = 'multi';
-    st.config.tagLayout.align = ['left', 'center', 'right', 'justify'].indexOf(a) >= 0 ? a : 'right';
+    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'justify' };
+    // 对齐仅多行模式可选：单行下图标已禁用，这里兜底忽略
+    if (st.config.tagLayout.mode === 'single') return;
+    st.config.tagLayout.align = ['left', 'center', 'right', 'justify'].indexOf(a) >= 0 ? a : 'justify';
     renderCaseForm(); renderCasePreview();
 }
 // 企划信息底框开关：加半透明底框，且整体始终压在制品上方
 function toggleCaseTagFrame(on) {
     const st = _caseState; if (!st) return;
-    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'right' };
+    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'justify', frame: false };
     st.config.tagLayout.frame = on === undefined ? !st.config.tagLayout.frame : !!on;
+    renderCaseForm(); renderCasePreview();
+}
+// 底框颜色：传合法色值 = 自定义；传空 = 恢复自动（按画布深浅配白/深底）
+function setCaseFrameColor(v) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.tagLayout) st.config.tagLayout = { mode: 'multi', align: 'justify', frame: false };
+    const val = String(v || '').trim();
+    st.config.tagLayout.frameColor = /^#[0-9a-fA-F]{3,8}$/.test(val) ? val : '';
     renderCaseForm(); renderCasePreview();
 }
 function caseTagIconSvg(kind) {
@@ -38867,7 +39110,13 @@ function setCaseWmEnabled(on) {
 }
 function setCaseWmType(t) {
     const st = _caseState; if (!st) return;
-    st.config.watermark.type = t;
+    if (t === 'stripe' || t === 'grid' || t === 'image' || t === 'text') st.config.watermark.type = t;
+    renderCaseForm(); renderCasePreview();
+}
+// 水印层级开关：仅制品上层（不盖文字）↔ 全画布最上层
+function toggleCaseWmOver() {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.over = (st.config.watermark.over === 'products') ? 'all' : 'products';
     renderCaseForm(); renderCasePreview();
 }
 function setCaseWmText(v) {
@@ -38922,9 +39171,15 @@ async function openCaseGenerator(opts) {
         base = caseLibrary.find(function (c) { return c && c.id === opts.caseId; }) || null;
     }
     _caseState = base ? caseNormalizeState(JSON.parse(JSON.stringify(base))) : caseNewState();
+    // 新建案例：自动套用默认布局模版（未设默认则用系统默认样式）；打开已有案例不受影响
+    if (!base) {
+        const defPreset = _caseLayoutPresets.find(function (p) { return p && p.id === _caseLayoutPresetDefault; });
+        if (defPreset) caseApplyPresetToState(_caseState, defPreset);
+    }
     // 重置编辑模式与选中元素
     _caseEditMode = false;
     _caseSelEl = null;
+    _casePreviewZoom = 1;
     const editBtn = document.getElementById('caseEditLayoutBtn');
     if (editBtn) editBtn.classList.remove('case-edit-on');
     const pendingOrderId = (!base && opts.orderId != null && opts.orderId !== '') ? opts.orderId : null;
@@ -38934,6 +39189,7 @@ async function openCaseGenerator(opts) {
         drawer.setAttribute('aria-hidden', 'false');
         document.body.style.overflow = 'hidden';
     }
+    setCasePreviewView('split');
     renderCaseForm();
     renderCasePreview();
     // 异步把案例已有图片读进缓存后补绘（含底图）
@@ -38960,11 +39216,11 @@ async function openCaseGenerator(opts) {
 function closeCaseGenerator() {
     const drawer = document.getElementById('caseGeneratorDrawer');
     if (drawer) {
-        drawer.classList.remove('open', 'case-preview-shown');
+        drawer.classList.remove('open');
         drawer.setAttribute('aria-hidden', 'true');
     }
+    setCasePreviewView('split');
     document.body.style.overflow = '';
-    toggleCasePreviewDrawer(false);
     _caseState = null;
     _caseEditMode = false;
     _caseSelEl = null;
@@ -38974,20 +39230,28 @@ function closeCaseGenerator() {
     const libPage = document.getElementById('settingsSubPage-caseLibrary');
     if (libPage && !libPage.classList.contains('d-none')) renderCaseLibrary();
 }
-function toggleCasePreviewDrawer(show) {
-    const drawer = document.getElementById('caseGeneratorDrawer');
-    const pane = document.getElementById('casePreviewPane');
-    const backdrop = document.getElementById('casePreviewBackdrop');
-    if (!drawer || !pane) return;
-    const on = show === undefined ? !pane.classList.contains('case-preview-open') : !!show;
-    pane.classList.toggle('case-preview-open', on);
-    if (backdrop) {
-        backdrop.classList.toggle('case-preview-open', on);
-        backdrop.classList.toggle('d-none', false);
-    }
-    drawer.classList.toggle('case-preview-shown', on);
-    if (on) setTimeout(fitCasePreview, 320);
+// 预览区已常驻可见（大屏在右 / 窄屏在上，上下分栏），不再需要开合抽屉；
+// 保留函数仅为兼容旧调用：布局变化后重算一次预览缩放
+function toggleCasePreviewDrawer() {
+    setTimeout(fitCasePreview, 320);
 }
+
+// ===== 小屏预览视图切换：split 上下分栏 / preview 放大预览（藏设置区）/ form 只看设置（藏预览区） =====
+function setCasePreviewView(mode) {
+    const drawer = document.getElementById('caseGeneratorDrawer');
+    if (!drawer) return;
+    drawer.classList.toggle('case-view-preview', mode === 'preview');
+    drawer.classList.toggle('case-view-form', mode === 'form');
+    const maxBtn = document.getElementById('casePreviewMaxBtn');
+    if (maxBtn) maxBtn.textContent = mode === 'preview' ? '还原' : '全屏';
+    setTimeout(fitCasePreview, 60);
+    setTimeout(fitCasePreview, 340);
+}
+function toggleCasePreviewMax() {
+    const drawer = document.getElementById('caseGeneratorDrawer');
+    setCasePreviewView(drawer && drawer.classList.contains('case-view-preview') ? 'split' : 'preview');
+}
+function showCasePreview() { setCasePreviewView('split'); }
 
 // ---------- 导出 / 保存 ----------
 async function caseCaptureCanvas(st, page) {
@@ -39247,7 +39511,7 @@ async function deleteCaseById(id) {
         const w = o.config && o.config.watermark;
         if (w && w.imgId) refs[w.imgId] = 1;
     });
-    // 布局方案引用的底图不清理
+    // 布局模版引用的底图不清理
     _caseLayoutPresets.forEach(function (p) {
         if (p && p.bg && p.bg.imgId) refs[p.bg.imgId] = 1;
     });

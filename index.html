@@ -11,7 +11,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260928-1120">
+    <link rel="stylesheet" href="style.css?v=20260929-1505">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -3674,7 +3674,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260928-1120"></script>
+    <script src="script.js?v=20260929-1505"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {
@@ -3721,6 +3721,7 @@
                 </button>
                 <h2 class="case-drawer-title">生成案例</h2>
                 <div class="case-actions icon-text-actions">
+                    <button type="button" class="btn secondary btn-compact case-preview-show-btn" onclick="showCasePreview()">预览</button>
                     <button type="button" class="btn secondary btn-compact" onclick="saveCaseToLibrary()">保存到案例库</button>
                     <button type="button" class="btn btn-compact" onclick="exportCaseAsImage('png')">导出 PNG</button>
                     <button type="button" class="btn btn-compact" onclick="exportCaseAsImage('jpeg')">导出 JPG</button>
@@ -3735,20 +3736,25 @@
                     <div id="casePreviewPane" class="case-layout-preview">
                         <div class="case-preview-pane-header">
                             <span>预览</span>
-                            <div style="display:flex;gap:6px;align-items:center;">
+                            <div style="display:flex;gap:5px;align-items:center;">
                                 <button type="button" class="btn secondary btn-compact" id="caseEditLayoutBtn" onclick="toggleCaseEditMode()">调整布局</button>
-                                <button type="button" class="btn secondary btn-compact case-preview-pane-close" onclick="toggleCasePreviewDrawer(false)">收起</button>
+                                <button type="button" class="btn secondary btn-compact case-preview-max-btn" id="casePreviewMaxBtn" onclick="toggleCasePreviewMax()">全屏</button>
+                                <button type="button" class="btn secondary btn-compact case-preview-hide-btn" onclick="setCasePreviewView('form')">收起</button>
                             </div>
                         </div>
                         <div id="casePageChips" class="case-page-chips" style="display:none;"></div>
                         <div id="casePreviewStage" class="case-preview-stage">
                             <div id="casePreviewCanvasWrap" class="case-preview-canvas-wrap"></div>
                         </div>
+                        <!-- 缩放控件：浮在预览区右下角，仅小屏显示；100% 即适应窗口，点击可复位 -->
+                        <div class="case-zoom-ctrl" id="caseZoomCtrl">
+                            <button type="button" onclick="caseZoomStep(-1)" aria-label="缩小预览">&minus;</button>
+                            <button type="button" class="case-zoom-val" id="caseZoomVal" onclick="caseZoomReset()" title="点击复位为适应窗口">100%</button>
+                            <button type="button" onclick="caseZoomStep(1)" aria-label="放大预览">&plus;</button>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div id="casePreviewBackdrop" class="case-preview-backdrop d-none" onclick="toggleCasePreviewDrawer(false)"></div>
-            <button id="casePreviewFab" class="case-preview-fab" onclick="toggleCasePreviewDrawer(true)">预览</button>
         </div>
     </div>
 
