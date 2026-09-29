@@ -19289,7 +19289,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260929-1530';
+const APP_VERSION = '20260929-1740';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36806,7 +36806,7 @@ function caseNewState() {
             textScale: 1,
             textColor: '',
             layout: null,
-            watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, over: 'all' }
+            watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, over: 'products' }
         },
         fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', hint: 'Commissioned work. Do not use or copy.', projectName: '', ip: '', character: '', products: '', custom: {}, customLabels: {}, customTexts: [] },
         images: [],
