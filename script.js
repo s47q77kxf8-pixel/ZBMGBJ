@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261001-0340';
+const APP_VERSION = '20261001-0410';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36474,11 +36474,18 @@ function caseEffectiveFx(st, imgId) {
     const expandColor = String(fx.expandColor || '#ffffff');
     const expandAcrylic = !!fx.expandAcrylic;
     // 轮廓投影可调（2026-10-01）：透明度 / 大小倍率 / 水平与垂直偏移
-    // 偏移按制品长边比例存储，随制品尺寸缩放；默认 = 0.38 透明 + 1× 大小 + 向下 1.5%
-    const shadowAlpha = Math.min(1, Math.max(0, fx.shadowAlpha != null && fx.shadowAlpha !== '' ? Number(fx.shadowAlpha) : 0.38));
-    const shadowScale = Math.min(3, Math.max(0, Number(fx.shadowScale != null && fx.shadowScale !== '' ? fx.shadowScale : 1) || 0));
-    const shadowDx = Math.min(0.2, Math.max(-0.2, Number(fx.shadowDx) || 0));
-    const shadowDy = Math.min(0.2, Math.max(-0.2, fx.shadowDy != null && fx.shadowDy !== '' ? Number(fx.shadowDy) : 0.015));
+    // 默认值（用户指定）：透明 30% / 大小 20% / X 1% / Y 1%（按制品长边比例）
+    // 「全局跟随」开启（config.imgFxAll.on）时，四参数对所有制品统一读全局值——修改一处即应用到全部
+    const gAll = (st.config && st.config.imgFxAll && st.config.imgFxAll.on) ? st.config.imgFxAll : null;
+    const fxv = function (field, def) {
+        const src = gAll || fx;
+        const v = (src[field] != null && src[field] !== '') ? Number(src[field]) : NaN;
+        return isFinite(v) ? v : def;
+    };
+    const shadowAlpha = Math.min(1, Math.max(0, fxv('shadowAlpha', 0.30)));
+    const shadowScale = Math.min(3, Math.max(0, fxv('shadowScale', 0.2)));
+    const shadowDx = Math.min(0.2, Math.max(-0.2, fxv('shadowDx', 0.01)));
+    const shadowDy = Math.min(0.2, Math.max(-0.2, fxv('shadowDy', 0.01)));
     // 描边 / 扩张描边透明度（0–1，默认不透明）
     const strokeAlpha = Math.min(1, Math.max(0, fx.strokeAlpha != null && fx.strokeAlpha !== '' ? Number(fx.strokeAlpha) : 1));
     const expandAlpha = Math.min(1, Math.max(0, fx.expandAlpha != null && fx.expandAlpha !== '' ? Number(fx.expandAlpha) : 1));
@@ -37060,9 +37067,27 @@ function caseNormalizeState(st) {
         if (f.strokeColor) o.strokeColor = String(f.strokeColor);
         if (f.expandColor) o.expandColor = String(f.expandColor);
         if (f.expandAcrylic === true) o.expandAcrylic = true;
+        // 数值参数（2026-10-01 起可调；⚠️ 必须在此保留，否则加载/合并后会被清掉回到默认）
+        const numIn = function (v) { const n = Number(v); return (v != null && v !== '' && isFinite(n)) ? n : null; };
+        const aS = numIn(f.shadowAlpha); if (aS != null) o.shadowAlpha = Math.min(1, Math.max(0, aS));
+        const aSt = numIn(f.strokeAlpha); if (aSt != null) o.strokeAlpha = Math.min(1, Math.max(0, aSt));
+        const aE = numIn(f.expandAlpha); if (aE != null) o.expandAlpha = Math.min(1, Math.max(0, aE));
+        const sS = numIn(f.shadowScale); if (sS != null) o.shadowScale = Math.min(3, Math.max(0, sS));
+        const dX = numIn(f.shadowDx); if (dX != null) o.shadowDx = Math.min(0.2, Math.max(-0.2, dX));
+        const dY = numIn(f.shadowDy); if (dY != null) o.shadowDy = Math.min(0.2, Math.max(-0.2, dY));
         if (Object.keys(o).length) fxOut[k] = o;
     });
     st.config.imgFx = fxOut;
+    // 投影「全局跟随」（开启后投影四参数所有制品统一）
+    if (st.config.imgFxAll && typeof st.config.imgFxAll === 'object') {
+        const gin = st.config.imgFxAll, gout = { on: gin.on === true };
+        const gnum = function (v, lo, hi) { const n = Number(v); return (v != null && v !== '' && isFinite(n)) ? Math.min(hi, Math.max(lo, n)) : null; };
+        const ga = gnum(gin.shadowAlpha, 0, 1); if (ga != null) gout.shadowAlpha = ga;
+        const gs = gnum(gin.shadowScale, 0, 3); if (gs != null) gout.shadowScale = gs;
+        const gx = gnum(gin.shadowDx, -0.2, 0.2); if (gx != null) gout.shadowDx = gx;
+        const gy = gnum(gin.shadowDy, -0.2, 0.2); if (gy != null) gout.shadowDy = gy;
+        st.config.imgFxAll = gout;
+    }
     st.orderId = st.orderId || '';
     st.orderTitle = st.orderTitle || '';
     st.exportImgId = st.exportImgId || '';
@@ -39040,6 +39065,13 @@ function caseRenderSelPanel() {
         const idx = parseInt(key.slice(5), 10) || 0;
         const imgId = caseItemImageId(idx);
         const fx = (imgId && _caseState.config.imgFx && _caseState.config.imgFx[imgId]) || {};
+        // 投影「全局跟随」：开启时投影四参数读全局值显示（修改同样写全局=应用到所有制品）
+        const gAll = (_caseState.config.imgFxAll && _caseState.config.imgFxAll.on) ? _caseState.config.imgFxAll : null;
+        const fxView = gAll ? (function () {
+            const v = Object.assign({}, fx);
+            Object.keys(CASE_FX_ALL_FIELDS).forEach(function (k) { if (gAll[k] != null) v[k] = gAll[k]; });
+            return v;
+        })() : fx;
         const effShadow = fx.shadow != null ? !!fx.shadow : caseActiveMockup().shadow;
         const curScale = Math.round((Number(fx.scale) || 1) * 100);
         const curRot = Math.round(Number(fx.rot) || 0);
@@ -39065,11 +39097,14 @@ function caseRenderSelPanel() {
             + '<div class="case-toggle-row"><span class="case-toggle-name">轮廓投影</span>'
             + '<label class="custom-toggle"><input type="checkbox"' + (effShadow ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'shadow\', this.checked)"><span class="toggle-slider"></span></label></div>'
             + '<div class="case-form-hint" style="margin:2px 0 0;">默认跟随「样机模板」的实物投影；此开关为该制品单独覆盖</div>'
+            + '<div class="case-toggle-row"><span class="case-toggle-name">全局跟随</span>'
+            + '<label class="custom-toggle"><input type="checkbox"' + (gAll ? ' checked' : '') + ' onchange="setCaseItemFxAllOn(this.checked)"><span class="toggle-slider"></span></label></div>'
+            + '<div class="case-form-hint" style="margin:2px 0 0;">开启后投影参数<b>所有制品统一</b>：当前制品的投影参数立即带入全局，此后修改任一数值即应用到全部（个别制品的单独投影数值暂停生效）</div>'
             + (effShadow
-                ? caseSliderNumRowHtml({ label: '投影透明', id: 'caseFxShadowAlpha', val: caseFxPctVal(fx, 'shadowAlpha'), min: 0, max: 100, step: 5, unit: '%', setter: 'setCaseItemShadowAlpha' })
-                + caseSliderNumRowHtml({ label: '投影大小', id: 'caseFxShadowScale', val: caseFxPctVal(fx, 'shadowScale'), min: 0, max: 300, step: 5, unit: '%', setter: 'setCaseItemShadowSize' })
-                + caseSliderNumRowHtml({ label: '投影 X', id: 'caseFxShadowDx', val: caseFxPctVal(fx, 'shadowDx'), min: -20, max: 20, step: 0.5, dec: 1, unit: '%', setter: 'setCaseItemShadowX' })
-                + caseSliderNumRowHtml({ label: '投影 Y', id: 'caseFxShadowDy', val: caseFxPctVal(fx, 'shadowDy'), min: -20, max: 20, step: 0.5, dec: 1, unit: '%', setter: 'setCaseItemShadowY' })
+                ? caseSliderNumRowHtml({ label: '投影透明', id: 'caseFxShadowAlpha', val: caseFxPctVal(fxView, 'shadowAlpha'), min: 0, max: 100, step: 5, unit: '%', setter: 'setCaseItemShadowAlpha' })
+                + caseSliderNumRowHtml({ label: '投影大小', id: 'caseFxShadowScale', val: caseFxPctVal(fxView, 'shadowScale'), min: 0, max: 300, step: 5, unit: '%', setter: 'setCaseItemShadowSize' })
+                + caseSliderNumRowHtml({ label: '投影 X', id: 'caseFxShadowDx', val: caseFxPctVal(fxView, 'shadowDx'), min: -20, max: 20, step: 0.5, dec: 1, unit: '%', setter: 'setCaseItemShadowX' })
+                + caseSliderNumRowHtml({ label: '投影 Y', id: 'caseFxShadowDy', val: caseFxPctVal(fxView, 'shadowDy'), min: -20, max: 20, step: 0.5, dec: 1, unit: '%', setter: 'setCaseItemShadowY' })
                 + '<div class="case-form-hint" style="margin:4px 0 0;">大小=投影扩散范围（100% 为默认）；X/Y=按制品长边比例的水平/垂直偏移，正值向右/向下</div>'
                 : '')
             + '<div class="case-step-row"><span class="case-step-name">大小</span>'
@@ -40236,10 +40271,10 @@ function setCaseItemFx(idx, field, value) {
 // 轮廓投影：透明度 / 大小 / 水平·垂直偏移；描边、扩张描边：透明度
 // 面板控件统一用百分数（%）；内部存储：透明度 0–1、大小倍率 0–3（100%=默认）、偏移 ±0.2（按制品长边比例，随图缩放）
 const CASE_FX_PCT = {
-    shadowAlpha: { min: 0, max: 100, step: 5, dec: 0, unit: '%', def: 38 },
-    shadowScale: { min: 0, max: 300, step: 5, dec: 0, unit: '%', def: 100 },
-    shadowDx: { min: -20, max: 20, step: 0.5, dec: 1, unit: '%', def: 0 },
-    shadowDy: { min: -20, max: 20, step: 0.5, dec: 1, unit: '%', def: 1.5 },
+    shadowAlpha: { min: 0, max: 100, step: 5, dec: 0, unit: '%', def: 30 },
+    shadowScale: { min: 0, max: 300, step: 5, dec: 0, unit: '%', def: 20 },
+    shadowDx: { min: -20, max: 20, step: 0.5, dec: 1, unit: '%', def: 1 },
+    shadowDy: { min: -20, max: 20, step: 0.5, dec: 1, unit: '%', def: 1 },
     strokeAlpha: { min: 0, max: 100, step: 5, dec: 0, unit: '%', def: 100 },
     expandAlpha: { min: 0, max: 100, step: 5, dec: 0, unit: '%', def: 100 }
 };
@@ -40261,6 +40296,8 @@ function caseFxSyncCtrls(id, val) {
     const num = document.getElementById(id + 'Num');
     if (num) num.value = val;
 }
+// 投影四参数（「全局跟随」作用范围；描边/扩张描边/位置等仍为制品单独设置）
+const CASE_FX_ALL_FIELDS = { shadowAlpha: 1, shadowScale: 1, shadowDx: 1, shadowDy: 1 };
 // 制品装饰参数写入（field=CASE_FX_PCT 的键，入参为百分数）
 function setCaseItemFxPct(field, pct) {
     const idx = caseSelItemIdx();
@@ -40269,6 +40306,17 @@ function setCaseItemFxPct(field, pct) {
     const imgId = caseItemImageId(idx); if (!imgId) return;
     const d = CASE_FX_PCT[field]; if (!d) return;
     const p = Math.min(d.max, Math.max(d.min, parseFloat(pct) || 0));
+    // 「全局跟随」开启时投影四参数写全局：一处修改，所有制品统一生效
+    const gAll = (st.config.imgFxAll && st.config.imgFxAll.on && CASE_FX_ALL_FIELDS[field]) ? st.config.imgFxAll : null;
+    if (gAll) {
+        gAll[field] = Math.round(p * 10) / 1000;
+        Object.keys(_caseFxCache).forEach(function (k) { delete _caseFxCache[k]; });
+        renderCasePreview();
+        caseEnsureShadows((st.images || []).slice()).then(function (changed) {
+            if (changed && _caseState) renderCasePreview();
+        });
+        return;
+    }
     const f = caseItemFxRec(imgId, true);
     f[field] = Math.round(p * 10) / 1000;
     // 参数变化 → 清除该图装饰缓存，重烘焙后补绘
@@ -40279,6 +40327,30 @@ function setCaseItemFxPct(field, pct) {
     caseEnsureShadows([imgId]).then(function (changed) {
         if (changed && _caseState) renderCasePreview();
     });
+}
+// 「全局跟随」开关：开启瞬间把当前制品的投影参数带入全局（= 立即应用到所有制品），之后改一处即全部生效
+function setCaseItemFxAllOn(on) {
+    const st = _caseState; if (!st) return;
+    if (!st.config.imgFxAll || typeof st.config.imgFxAll !== 'object') st.config.imgFxAll = { on: false };
+    const g = st.config.imgFxAll;
+    const wasOn = g.on === true;
+    g.on = !!on;
+    if (g.on && !wasOn) {
+        // 仅「关 → 开」瞬间带入当前制品的投影参数；已开启时重复调用不做任何事（避免覆盖已调好的全局值）
+        const imgId = caseItemImageId(caseSelItemIdx() || 0);
+        const fx = (imgId && st.config.imgFx && st.config.imgFx[imgId]) || {};
+        Object.keys(CASE_FX_ALL_FIELDS).forEach(function (k) {
+            const v = (fx[k] != null && fx[k] !== '') ? Number(fx[k]) : NaN;
+            g[k] = isFinite(v) ? v : CASE_FX_PCT[k].def / 100;
+        });
+    }
+    if (g.on === wasOn && !g.on) { caseRenderSelPanel(); return; }
+    Object.keys(_caseFxCache).forEach(function (k) { delete _caseFxCache[k]; });
+    renderCasePreview();
+    caseEnsureShadows((st.images || []).slice()).then(function (changed) {
+        if (changed && _caseState) renderCasePreview();
+    });
+    caseRenderSelPanel();
 }
 function setCaseItemShadowAlpha(v) { setCaseItemFxPct('shadowAlpha', v); }
 function setCaseItemShadowSize(v) { setCaseItemFxPct('shadowScale', v); }
