@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-1310';
+const APP_VERSION = '20260930-1320';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36564,9 +36564,9 @@ async function caseBakeFx(imgId) {
                 ring.width = cv.width; ring.height = cv.height;
                 const rctx = ring.getContext('2d');
                 caseDilate(rctx, black, ox, oy, expandR);
-                // 半透明乳白填充（可调色调；不透明度提高让磨砂感更明显）
+                // 半透明乳白填充（可调色调；透明度更高、更透，靠高光带与亮边撑质感）
                 rctx.globalCompositeOperation = 'source-in';
-                rctx.fillStyle = caseHexToRgba(fx.expandColor, 0.62);
+                rctx.fillStyle = caseHexToRgba(fx.expandColor, 0.42);
                 rctx.fillRect(0, 0, ring.width, ring.height);
                 // 斜向高光带 × 2：只落在磨砂环内（source-atop），模拟亚克力侧边的反光
                 rctx.globalCompositeOperation = 'source-atop';
