@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-1360';
+const APP_VERSION = '20260930-1400';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -38043,7 +38043,7 @@ async function caseBakeWmLayer(entry) {
     if (!wm || !wm.enabled) return false;
     const c = _caseImgCache[entry.imgId];
     if (!c) return false;
-    const key = entry.imgId + '|' + caseWmSig(wm) + '|' + entry.w + 'x' + entry.h;
+    const key = entry.imgId + '|' + caseWmSig(wm) + '|' + (entry.rot || 0) + '|' + entry.w + 'x' + entry.h;
     if (_caseWmBakeCache[key]) return false;
     try {
         const img = await caseLoadImageEl(c.dataUrl);
@@ -38051,7 +38051,23 @@ async function caseBakeWmLayer(entry) {
         cv.width = Math.max(1, entry.w); cv.height = Math.max(1, entry.h);
         const ctx = cv.getContext('2d');
         if (!ctx) return false;
-        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        // 制品按槽位旋转角转进「视觉画布」（entry.w/h = 视觉槽位尺寸），水印后续按画布方向平铺 → 不随制品旋转
+        const rotQ = ((entry.rot || 0) % 360 + 360) % 360;
+        if (rotQ === 90 || rotQ === 270) {
+            ctx.save();
+            ctx.translate(cv.width / 2, cv.height / 2);
+            ctx.rotate(rotQ * Math.PI / 180);
+            ctx.drawImage(img, -(cv.height / 2), -(cv.width / 2), cv.height, cv.width);
+            ctx.restore();
+        } else if (rotQ === 180) {
+            ctx.save();
+            ctx.translate(cv.width / 2, cv.height / 2);
+            ctx.rotate(Math.PI);
+            ctx.drawImage(img, -(cv.width / 2), -(cv.height / 2), cv.width, cv.height);
+            ctx.restore();
+        } else {
+            ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        }
         // ⚠️ 水印先平铺到中间画布（普通 source-over），最后一次性 source-in 裁到制品不透明像素。
         // 不能在制品画布上持续用 source-in 逐个画水印单元：该模式下每次绘制都会把画布整体替换为
         // 「新内容 ∩ 现有内容」，互不重叠的水印单元会两两交集清空（文字/图片水印消失的根因，2026-09-30）
@@ -38315,13 +38331,15 @@ function buildCaseCanvasHtml(st, page) {
         }
         let slotStyle = 'left:' + drawSlot.x + 'px;top:' + drawSlot.y + 'px;width:' + drawSlot.w + 'px;height:' + drawSlot.h + 'px;';
         if (wmPerSlot && c) {
-            // 水印层 = 按槽位尺寸烘焙的透明 PNG（source-in 裁到制品不透明像素），与本体图层同盒同旋转
-            const wmKey = imgId + '|' + caseWmSig(st.config.watermark) + '|' + lw + 'x' + lh;
+            // 水印层 = 按「视觉槽位」烘焙的透明 PNG（source-in 裁到制品不透明像素）。
+            // ⚠️ 水印不随制品 ±90°/180° 旋转：烘焙时先把制品按 rot 转进视觉画布再裁水印，
+            // 挂载层不带 rotCss，水印始终保持画布方向（2026-09-30 用户要求）
+            const wmKey = imgId + '|' + caseWmSig(st.config.watermark) + '|' + slotRot + '|' + drawSlot.w + 'x' + drawSlot.h;
             const wmUrl = _caseWmBakeCache[wmKey];
             if (wmUrl) {
-                inner += layer(wmUrl);
+                inner += '<img src="' + wmUrl + '" style="position:absolute;left:0;top:0;width:' + drawSlot.w + 'px;height:' + drawSlot.h + 'px;">';
             } else {
-                _caseWmBakeMiss.push({ imgId: imgId, w: lw, h: lh, color: txtColor });
+                _caseWmBakeMiss.push({ imgId: imgId, w: drawSlot.w, h: drawSlot.h, rot: slotRot, color: txtColor });
             }
         }
         productsHtml += '<div class="case-slot" data-slot-index="' + i + '" style="' + slotStyle + '">' + inner + '</div>';
