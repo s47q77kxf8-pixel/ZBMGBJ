@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261001-0300';
+const APP_VERSION = '20261001-0330';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37243,10 +37243,11 @@ function caseAutoAreaBox(st) {
     const infoArr = cfg.toggles.userInfo ? caseInfoLines(st) : [];
     const prodParts = cfg.toggles.productInfo ? caseProjectElements(st, null) : [];
     const titleFs = Math.round(W * 0.032 * tScale * 0.8);
-    const titleLh = Math.round(titleFs * 1.35);
+    // 案例类型单独调大的字号计入占位（分图制品区按此继承时同样让位）
+    const _tls = (cfg.layout && cfg.layout.texts && cfg.layout.texts.title && cfg.layout.texts.title.fsScale) || 1;
+    const titleLh = Math.round(Math.max(9, Math.round(titleFs * _tls)) * 1.35);
     const titleZoneH = titleText ? titleLh * 2 : 0;
     const infoFs = Math.round(W * 0.018 * tScale * 0.8);
-    const infoLh = Math.round(infoFs * 1.7);
     const tagFs = Math.round(W * 0.017 * tScale);
     const tagH = Math.round(tagFs * 2.1);
     const tagGap = Math.round(W * 0.012);
@@ -38201,9 +38202,7 @@ function buildCaseCanvasHtml(st, page) {
     const tScale = Math.min(1.8, Math.max(0.6, Number(cfg.textScale) || 1));
     // 左侧文字模块（案例类型/年份+@ID/提示信息）整体为基准字号的 80%；右侧企划信息用 tagFs 不受影响
     const titleFs = Math.round(W * 0.032 * tScale * 0.8);
-    const titleLh = Math.round(titleFs * 1.35);
     const infoFs = Math.round(W * 0.018 * tScale * 0.8);
-    const infoLh = Math.round(infoFs * 1.7);
     const hintFs = Math.max(9, Math.round(infoFs * 0.85)); // 提示信息比正文小一号
     const tagFs = Math.round(W * 0.013 * tScale);
     const tagLh = Math.round(tagFs * 1.75);
@@ -38229,7 +38228,11 @@ function buildCaseCanvasHtml(st, page) {
     const projEls = prodOn ? caseProjectElements(st, page) : [];
     // ---------- 区域占位估算 ----------
     const titleLineCount = titleText ? titleText.split('\n').length : 0;
-    const titleZoneH = titleTextOn && titleLineCount ? titleLineCount * titleLh + titleCts.length * Math.round(tagLh * 1.15) : 0;
+    // 行高按「实际字号」（含该元素单独 fsScale）计算：字号调大后占位与行高跟随，
+    // 否则容器高度按基准算、装不下大字 → 触发溢出缩字 + 截字省略号（2026-10-01 修复「字号大了变成 P…」）
+    const titleFsEff = elFs('title', titleFs);
+    const titleLhEff = Math.round(titleFsEff * 1.35);
+    const titleZoneH = titleTextOn && titleLineCount ? titleLineCount * titleLhEff + titleCts.length * Math.round(tagLh * 1.15) : 0;
     let tagTotalW = 0;
     const rowLen = function (e) { return (e.value != null) ? (String(e.label).length + 1 + String(e.value).length) : String(e.text || '').length; };
     projEls.forEach(function (e) { tagTotalW += rowLen(e) * tagFs * 0.62 + tagFs * 1.2 + tagGap; });
@@ -38237,9 +38240,10 @@ function buildCaseCanvasHtml(st, page) {
     const tagZoneH = tagRows ? tagRows * tagLh + (tagRows - 1) * Math.round(tagGap * 0.6) : 0;
     // 默认布局：左下角三排 = 案例类型(+子文字) → 设计年份+用户信息@ID（一行）→ 提示信息；顶部不再预留文字区
     const yearText = (cfg.toggles.year !== false) ? String(st.fields.year || '').trim() : '';
-    const ctsStackH = (userCts.length + rootCts.length) * Math.round(tagLh * 1.15);
-    const yearUserZoneH = (yearText || (infoOn && infoArr.length)) ? infoLh : 0; // 年份+@ID 合并一行
-    const hintZoneH = ((cfg.toggles.hint !== false) && String(st.fields.hint || '').trim()) ? Math.round(hintFs * 1.75) : 0;
+    // 与渲染一致：行高先按 1.75×实际字号 round，再乘 1.15 间距系数（fsScale 全为 1 时与旧布局完全相同）
+    const ctsStackH = userCts.concat(rootCts).reduce(function (s, it) { return s + Math.round(Math.round(elFs('ct:' + it.id, tagFs) * 1.75) * 1.15); }, 0);
+    const yearUserZoneH = (yearText || (infoOn && infoArr.length)) ? Math.round(Math.max(elFs('year', infoFs), elFs('user', infoFs)) * 1.7) : 0; // 年份+@ID 合并一行
+    const hintZoneH = ((cfg.toggles.hint !== false) && String(st.fields.hint || '').trim()) ? Math.round(elFs('hint', hintFs) * 1.75) : 0;
     const leftStackH = titleZoneH + yearUserZoneH + hintZoneH + ctsStackH;
     const bottomZoneH = Math.max(leftStackH, tagZoneH);
     const gapY = Math.round(W * 0.025);
@@ -38406,12 +38410,12 @@ function buildCaseCanvasHtml(st, page) {
         const leftPx = Math.round(tp.x * W), topPx = Math.round(tp.y * H);
         const fsT = elFs('title', titleFs);
         textHtml += '<div class="case-title" data-case-el="title"' + (titleLines === 1 ? ' data-case-fit="' + fsT + '" data-case-fit-min="' + Math.round(fsT * 0.55) + '"' : '')
-            + ' style="left:' + leftPx + 'px;top:' + topPx + 'px;width:' + (W - pad * 2) + 'px;height:' + (titleLines * titleLh) + 'px;font-size:' + fsT + 'px;line-height:' + titleLh + 'px;color:' + txtColor + ';">'
+            + ' style="left:' + leftPx + 'px;top:' + topPx + 'px;width:' + (W - pad * 2) + 'px;height:' + (titleLines * titleLhEff) + 'px;font-size:' + fsT + 'px;line-height:' + titleLhEff + 'px;color:' + txtColor + ';">'
             + escapeHtml(titleText) + '</div>';
         titleCts.forEach(function (it, i) {
             const cfs = elFs('ct:' + it.id, tagFs);
             const pos = hasCustomPos('ct:' + it.id) ? elStyle('ct:' + it.id, tagFs, '').pos
-                : 'left:' + leftPx + 'px;top:' + (topPx + titleLines * titleLh + i * Math.round(tagLh * 1.15)) + 'px;';
+                : 'left:' + leftPx + 'px;top:' + (topPx + titleLines * titleLhEff + i * Math.round(tagLh * 1.15)) + 'px;';
             textHtml += '<div data-case-el="ct:' + it.id + '" style="position:absolute;' + pos + 'font-size:' + cfs + 'px;line-height:1.4;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(String(it.text).trim()) + '</div>';
         });
     }
@@ -38465,13 +38469,16 @@ function buildCaseCanvasHtml(st, page) {
         for (let i = stackEls.length - 1; i >= 0; i--) {
             const e = stackEls[i];
             if (e.kind === 'title') {
-                const tl = elStyle('title', e.base, 'left:' + pad + 'px;top:' + (yCur - e.lines * titleLh) + 'px;');
+                // 标题行高按实际字号（含 fsScale）：字号调大后容器随之增高，不再触发溢出缩字/截字
+                const tlFs = elFs('title', e.base);
+                const tlLh = Math.round(tlFs * 1.35);
+                const tl = elStyle('title', e.base, 'left:' + pad + 'px;top:' + (yCur - e.lines * tlLh) + 'px;');
                 textHtml += '<div class="case-title" data-case-el="title"' + (e.lines === 1 ? ' data-case-fit="' + tl.fs + '" data-case-fit-min="' + Math.round(tl.fs * 0.55) + '"' : '')
-                    + ' style="' + tl.pos + 'width:' + (W - pad * 2) + 'px;height:' + (e.lines * titleLh) + 'px;font-size:' + tl.fs + 'px;color:' + txtColor + ';">'
+                    + ' style="' + tl.pos + 'width:' + (W - pad * 2) + 'px;height:' + (e.lines * tlLh) + 'px;font-size:' + tl.fs + 'px;color:' + txtColor + ';">'
                     + escapeHtml(e.text) + '</div>';
-                yCur -= e.lines * titleLh;
+                yCur -= e.lines * tlLh;
             } else {
-                const lh = Math.round(e.base * 1.75);
+                const lh = Math.round(elFs(e.key, e.base) * 1.75);
                 const stl = elStyle(e.key, e.base, 'left:' + pad + 'px;top:' + (yCur - lh) + 'px;');
                 // 不写宽度：绝对定位 + nowrap 自动收缩到文字实际大小，选中框/点击热区不再占满整行
                 textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;' + stl.pos + 'font-size:' + stl.fs + 'px;line-height:' + lh + 'px;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(e.text) + '</div>';
