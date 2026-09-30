@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-1400';
+const APP_VERSION = '20261001-0215';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -38076,7 +38076,7 @@ async function caseBakeWmLayer(entry) {
         const mctx = mid.getContext('2d');
         if (!mctx) return false;
         mctx.globalAlpha = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
-        const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
+        const scale = Math.min(3, Math.max(0.2, Number(wm.scale) || 1));
         const base = Math.max(60, Math.min(cv.width, cv.height));
         if (wm.type === 'stripe' || wm.type === 'grid') {
             const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));
@@ -38095,7 +38095,7 @@ async function caseBakeWmLayer(entry) {
             const ic = _caseImgCache[wm.imgId];
             if (ic) {
                 const wimg = await caseLoadImageEl(ic.dataUrl);
-                const ih = Math.max(12, Math.round(base * 0.2 * scale));
+                const ih = Math.max(6, Math.round(base * 0.12 * scale));
                 const iw = Math.max(1, Math.round(ih * ((ic.w || 1) / (ic.h || 1))));
                 const gx = Math.round(iw * 0.6), gy = Math.round(ih * 0.6);   // 原角度平铺
                 for (let y = 0; y < cv.height + ih; y += ih + gy) {
@@ -38107,7 +38107,7 @@ async function caseBakeWmLayer(entry) {
         } else {
             const text = String(wm.text || '').trim();
             if (text) {
-                const fs = Math.max(10, Math.round(base * 0.16 * scale));
+                const fs = Math.max(6, Math.round(base * 0.10 * scale));
                 mctx.font = fs + 'px sans-serif';
                 const tw = Math.ceil(mctx.measureText(text).width);
                 const cellW = Math.max(tw + fs * 0.9, 10), cellH = Math.max(Math.round(fs * 1.9), 10);
@@ -38116,7 +38116,8 @@ async function caseBakeWmLayer(entry) {
                 mctx.rotate(-24 * Math.PI / 180);                              // 文字水印整体 -24° 斜铺
                 const diag = Math.ceil(Math.sqrt(cv.width * cv.width + cv.height * cv.height));
                 const cols = Math.ceil(diag / cellW) + 2, rows = Math.ceil(diag / cellH) + 2;
-                if (cols * rows <= 400) {
+                // 上限放宽到 3000：字号调小后格数显著增加，沿用 400 会导致小字号直接不绘制
+                if (cols * rows <= 3000) {
                     for (let r = 0; r < rows; r++) {
                         for (let ci = 0; ci < cols; ci++) {
                             const x = -diag / 2 + ci * cellW + cellW / 2;
@@ -39855,8 +39856,8 @@ function renderCaseForm() {
                     + '<input type="number" id="caseWmGapNum" min="3" max="240" step="1" value="' + (parseInt(wm.gap, 10) || 3) + '" onchange="setCaseWmGapInput(this.value)">'
                     + '<span class="case-range-unit">px</span></div>'
                 : '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
-                    + '<input type="range" min="0.5" max="3" step="0.1" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
-                    + '<span class="case-range-val" id="caseWmScaleVal">' + (Number(wm.scale) || 1).toFixed(1) + '×</span></div>');
+                    + '<input type="range" min="0.2" max="3" step="0.05" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
+                    + '<span class="case-range-val" id="caseWmScaleVal">' + (Math.round((Number(wm.scale) || 1) * 100) / 100) + '×</span></div>');
     }
     html += '<div class="case-form-hint">水印平铺绘制在每张制品图的不透明像素上（PNG 空白区不显示），随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为 45° 重复图案，线条粗细与间距可调</div>'
         + '</div>';
@@ -40413,9 +40414,9 @@ function caseWmSyncOpacityCtrls(op) {
 }
 function setCaseWmScale(v) {
     const st = _caseState; if (!st) return;
-    st.config.watermark.scale = Math.min(3, Math.max(0.5, parseFloat(v) || 1));
+    st.config.watermark.scale = Math.min(3, Math.max(0.2, parseFloat(v) || 1));
     const el = document.getElementById('caseWmScaleVal');
-    if (el) el.textContent = st.config.watermark.scale.toFixed(1) + '×';
+    if (el) el.textContent = (Math.round(st.config.watermark.scale * 100) / 100) + '×';
     renderCasePreview();
 }
 async function caseHandleWmImageFile(file) {
