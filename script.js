@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-1340';
+const APP_VERSION = '20260930-1350';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36905,8 +36905,9 @@ function caseNewState() {
             hiddenImages: [],        // 不入分图的制品图 id（总图按分图排版派生，连带不入总图）
             lineSolo: {},            // 「独占一行/列」约束（imgId → 'row' | 'col'，调整布局面板设置）
             // excludedFromTotal 已废弃（旧版按图排除，迁移为组级 g.noTotal，见 caseNormalizeState）
-            // 水印默认打开；style: 'emboss'浮雕(默认)|'black'黑色叠加|'white'白色叠加；lineW=图案线条粗细px；gap=图案线条间距px
-            watermark: { enabled: true, type: 'text', style: 'emboss', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, lineW: 2, gap: 64, over: 'products' }
+            // 水印默认打开；style: 'emboss'浮雕(默认)|'black'黑色叠加|'white'白色叠加；lineW=图案线条粗细px；gap=图案线条间距px(默认3)
+            // over 恒为 'products'（水印只绘制在制品不透明像素上，唯一显示效果；字段保留仅为旧数据兼容）
+            watermark: { enabled: true, type: 'text', style: 'emboss', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, lineW: 2, gap: 3, over: 'products' }
         },
         fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', hint: 'Commissioned work. Do not use or copy.', projectName: '', ip: '', character: '', products: '', custom: {}, customLabels: {}, customTexts: [] },
         images: [],
@@ -36935,7 +36936,9 @@ function caseNormalizeState(st) {
     // 水印新字段兜底：样式枚举 / 线条粗细 / 间距（旧数据无此三字段时取默认）
     if (['emboss', 'black', 'white'].indexOf(st.config.watermark.style) < 0) st.config.watermark.style = 'emboss';
     if (!(parseInt(st.config.watermark.lineW, 10) >= 1 && parseInt(st.config.watermark.lineW, 10) <= 8)) st.config.watermark.lineW = 2;
-    if (!(parseInt(st.config.watermark.gap, 10) >= 3 && parseInt(st.config.watermark.gap, 10) <= 240)) st.config.watermark.gap = 64;
+    if (!(parseInt(st.config.watermark.gap, 10) >= 3 && parseInt(st.config.watermark.gap, 10) <= 240)) st.config.watermark.gap = 3;
+    // 2026-09-30 起：水印只绘制在制品不透明像素上（唯一显示效果），旧数据的整幅模式一律迁移回制品层
+    st.config.watermark.over = 'products';
     st.fields = Object.assign({}, def.fields, st.fields || {});
     if (!st.fields.custom || typeof st.fields.custom !== 'object') st.fields.custom = {};
     if (!Array.isArray(st.fields.customTexts)) st.fields.customTexts = [];
@@ -37996,116 +37999,131 @@ function caseCurrentPage(st) {
     if (idx < 0 || idx >= pages.length) idx = 0;
     return pages[idx];
 }
-// 水印样式取值：'emboss'浮雕（按背景自动配深浅 + 双向阴影）/ 'black'黑色叠加 / 'white'白色叠加
-// 返回 { color, shadow }（shadow 为完整 text-shadow 内联样式，图案类只用 color）
-function caseWmStyleColor(wm, autoColor) {
-    const style = (wm && wm.style) || 'emboss';
-    if (style === 'black') return { color: '#000000', shadow: '' };
-    if (style === 'white') return { color: '#ffffff', shadow: '' };
-    const dark = (autoColor || '#333333') !== '#f2f2f2'; // 深字 = 浅底
-    const shadow = dark
-        ? 'text-shadow:-1px -1px 1px rgba(255,255,255,0.75),1px 1px 1px rgba(0,0,0,0.35);'
-        : 'text-shadow:-1px -1px 1px rgba(255,255,255,0.45),1px 1px 2px rgba(0,0,0,0.6);';
-    return { color: autoColor || '#888888', shadow: shadow };
+// ---------- 水印层烘焙（2026-09-30 起：水印只绘制在制品不透明像素上，唯一显示效果） ----------
+// 原理：按槽位显示尺寸离屏画布先画制品原图，再 source-in 只在不透明像素上画水印图案，
+// 产出透明 PNG 层叠加在制品图层上方 —— PNG 空白区不带水印，预览与导出所见即所得。
+// 文字/图片水印按网格平铺整个制品（图片水印保持原角度），斜纹/斜方格为 45° 重复线条。
+const _caseWmBakeCache = {};   // key: imgId|sig|w x h → dataURL
+let _caseWmBakeMiss = [];      // 本次构建中缺烘焙的槽位（构建时收集，构建后统一烘焙补绘）
+// 水印配置签名（任一项变化即重烘焙）
+function caseWmSig(wm) {
+    wm = wm || {};
+    return [wm.type, wm.style || 'emboss', String(wm.text || ''), wm.imgId || '',
+        wm.opacity, wm.scale, wm.lineW, wm.gap].join('|');
 }
-function caseWatermarkHtml(st, W, H, color) {
-    const wm = st.config.watermark;
-    if (!wm || !wm.enabled) return '';
-    // 仅制品上层：不在画布铺整幅水印，改由各制品槽位内部绘制（见 caseWmSlotOverlayHtml）
-    if (wm.over === 'products') return '';
-    const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
-    const wmZ = 30;
-    // 斜纹 / 斜方格：整幅重复图案水印（position 不适用；线条粗细 lineW 与间距 gap 均可调）
-    if (wm.type === 'stripe' || wm.type === 'grid') {
-        const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
-        const period = Math.max(3, Math.round(Number(wm.gap) || 64));   // 线条间距（px）
-        const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));      // 线条粗细（px）
-        let c = color || '#888888';
-        if (wm.style === 'black') c = '#000000';
-        else if (wm.style === 'white') c = '#ffffff';
-        const seg = c + ' 0 ' + lw + 'px,transparent ' + lw + 'px ' + period + 'px';
-        const bgImg = (wm.type === 'stripe')
-            ? 'repeating-linear-gradient(45deg,' + seg + ')'
-            : 'repeating-linear-gradient(45deg,' + seg + '),repeating-linear-gradient(135deg,' + seg + ')';
-        return '<div class="case-watermark" style="opacity:' + opacity + ';z-index:' + wmZ + ';background-image:' + bgImg + ';"></div>';
-    }
-    let unitInner = '', unitW = 0, unitH = 0;
-    if (wm.type === 'image') {
-        const c = _caseImgCache[wm.imgId];
-        if (!c) return '';
-        const h = Math.round(W * 0.075 * scale);
-        const w = Math.max(1, Math.round(h * (c.w / c.h)));
-        unitInner = '<img src="' + c.dataUrl + '" style="width:' + w + 'px;height:' + h + 'px;">';
-        unitW = w; unitH = h;
+// 样式取色：emboss=按背景自动深浅，black/white=纯色
+function caseWmColor(wm, autoColor) {
+    const style = (wm && wm.style) || 'emboss';
+    if (style === 'black') return '#000000';
+    if (style === 'white') return '#ffffff';
+    return autoColor || '#888888';
+}
+// 浮雕文字：高光/阴影双向偏移叠出立体感（黑色/白色叠加为平色）
+function caseWmPaintText(ctx, text, x, y, wm, autoColor) {
+    const style = (wm && wm.style) || 'emboss';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (style === 'black') { ctx.fillStyle = '#000000'; ctx.fillText(text, x, y); return; }
+    if (style === 'white') { ctx.fillStyle = '#ffffff'; ctx.fillText(text, x, y); return; }
+    const dark = (autoColor || '#333333') !== '#f2f2f2'; // 深字 = 浅底
+    if (dark) {
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillText(text, x - 1, y - 1);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillText(text, x + 1, y + 1);
+        ctx.fillStyle = autoColor || '#333333';
     } else {
-        const text = String(wm.text || '').trim();
-        if (!text) return '';
-        const fs = Math.round(W * 0.022 * scale);
-        const ts = caseWmStyleColor(wm, color);
-        unitInner = '<span class="case-wm-unit" style="font-size:' + fs + 'px;color:' + ts.color + ';' + ts.shadow + '">' + escapeHtml(text) + '</span>';
-        unitW = Math.round(text.length * fs * 0.62 + fs * 0.4);
-        unitH = Math.round(fs * 1.5);
+        ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillText(text, x - 1, y - 1);
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(text, x + 1, y + 1);
+        ctx.fillStyle = autoColor || '#f2f2f2';
     }
-    const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
-    if (wm.position === 'tile') {
-        const gapX = Math.round(unitW * 1.1), gapY = Math.round(unitH * 1.3);
-        const diag = Math.ceil(Math.sqrt(W * W + H * H));
-        const coverW = diag + unitW * 2, coverH = diag + unitH * 2;
-        const cols = Math.ceil(coverW / (unitW + gapX)) + 1;
-        const rows = Math.ceil(coverH / (unitH + gapY)) + 1;
-        if (cols * rows > 900) return ''; // 极端尺寸保护
-        let cells = '';
-        for (let r = 0; r < rows; r++) {
-            for (let cIdx = 0; cIdx < cols; cIdx++) {
-                cells += '<span style="display:inline-block;margin:' + Math.round(gapY / 2) + 'px ' + Math.round(gapX / 2) + 'px;">' + unitInner + '</span>';
+    ctx.fillText(text, x, y);
+}
+// 单个槽位水印层烘焙；entry = { imgId, w, h, color }，返回 true=新烘焙完成
+async function caseBakeWmLayer(entry) {
+    const st = _caseState; if (!st || !entry) return false;
+    const wm = st.config.watermark;
+    if (!wm || !wm.enabled) return false;
+    const c = _caseImgCache[entry.imgId];
+    if (!c) return false;
+    const key = entry.imgId + '|' + caseWmSig(wm) + '|' + entry.w + 'x' + entry.h;
+    if (_caseWmBakeCache[key]) return false;
+    try {
+        const img = await caseLoadImageEl(c.dataUrl);
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, entry.w); cv.height = Math.max(1, entry.h);
+        const ctx = cv.getContext('2d');
+        if (!ctx) return false;
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        ctx.globalCompositeOperation = 'source-in'; // 之后画的一切都只落在制品不透明像素上
+        ctx.globalAlpha = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
+        const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
+        const base = Math.max(60, Math.min(cv.width, cv.height));
+        if (wm.type === 'stripe' || wm.type === 'grid') {
+            const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));
+            const gap = Math.max(3, Math.round(Number(wm.gap) || 3));
+            ctx.strokeStyle = caseWmColor(wm, entry.color);
+            ctx.lineWidth = lw;
+            ctx.beginPath();
+            const span = cv.width + cv.height;
+            const step = Math.max(gap + lw, Math.round(gap * 1.4142)); // 45° 斜线垂直间距=gap
+            for (let o = -cv.height; o < span; o += step) {
+                ctx.moveTo(o, 0); ctx.lineTo(o + cv.height, cv.height);      // 45° 方向
+                if (wm.type === 'grid') { ctx.moveTo(o, cv.height); ctx.lineTo(o + cv.height, 0); } // 135° 交叉
+            }
+            ctx.stroke();
+        } else if (wm.type === 'image') {
+            const ic = _caseImgCache[wm.imgId];
+            if (ic) {
+                const wimg = await caseLoadImageEl(ic.dataUrl);
+                const ih = Math.max(12, Math.round(base * 0.2 * scale));
+                const iw = Math.max(1, Math.round(ih * ((ic.w || 1) / (ic.h || 1))));
+                const gx = Math.round(iw * 0.6), gy = Math.round(ih * 0.6);   // 原角度平铺
+                for (let y = 0; y < cv.height + ih; y += ih + gy) {
+                    for (let x = 0; x < cv.width + iw; x += iw + gx) {
+                        ctx.drawImage(wimg, x, y, iw, ih);
+                    }
+                }
+            }
+        } else {
+            const text = String(wm.text || '').trim();
+            if (text) {
+                const fs = Math.max(10, Math.round(base * 0.16 * scale));
+                ctx.font = fs + 'px sans-serif';
+                const tw = Math.ceil(ctx.measureText(text).width);
+                const cellW = Math.max(tw + fs * 0.9, 10), cellH = Math.max(Math.round(fs * 1.9), 10);
+                ctx.save();
+                ctx.translate(cv.width / 2, cv.height / 2);
+                ctx.rotate(-24 * Math.PI / 180);                              // 文字水印整体 -24° 斜铺
+                const diag = Math.ceil(Math.sqrt(cv.width * cv.width + cv.height * cv.height));
+                const cols = Math.ceil(diag / cellW) + 2, rows = Math.ceil(diag / cellH) + 2;
+                if (cols * rows <= 400) {
+                    for (let r = 0; r < rows; r++) {
+                        for (let ci = 0; ci < cols; ci++) {
+                            const x = -diag / 2 + ci * cellW + cellW / 2;
+                            const y = -diag / 2 + r * cellH + cellH / 2;
+                            caseWmPaintText(ctx, text, x, y, wm, entry.color);
+                        }
+                    }
+                }
+                ctx.restore();
             }
         }
-        return '<div class="case-watermark" style="opacity:' + opacity + ';z-index:' + wmZ + ';">'
-            + '<div class="case-wm-tile" style="left:' + Math.round((W - coverW) / 2) + 'px;top:' + Math.round((H - coverH) / 2) + 'px;width:' + coverW + 'px;height:' + coverH + 'px;">' + cells + '</div>'
-            + '</div>';
-    }
-    const m = Math.round(W * 0.045);
-    let pos = '';
-    if (wm.position === 'tl') pos = 'left:' + m + 'px;top:' + m + 'px;';
-    else if (wm.position === 'tr') pos = 'right:' + m + 'px;top:' + m + 'px;';
-    else if (wm.position === 'bl') pos = 'left:' + m + 'px;bottom:' + m + 'px;';
-    else if (wm.position === 'br') pos = 'right:' + m + 'px;bottom:' + m + 'px;';
-    else pos = 'left:50%;top:50%;transform:translate(-50%,-50%);';
-    return '<div class="case-watermark" style="opacity:' + opacity + ';z-index:' + wmZ + ';"><div style="position:absolute;' + pos + ';">' + unitInner + '</div></div>';
+        if (Object.keys(_caseWmBakeCache).length > 120) {
+            Object.keys(_caseWmBakeCache).forEach(function (k) { delete _caseWmBakeCache[k]; });
+        }
+        _caseWmBakeCache[key] = cv.toDataURL('image/png');
+        return true;
+    } catch (e) { console.error('水印层烘焙失败:', e); return false; }
 }
-// 仅制品上层：每个制品槽位内部铺一层水印（背景图与文字保持干净）；居中，文字带 -24° 倾斜
-function caseWmSlotOverlayHtml(st, slot, color) {
-    const wm = st.config.watermark;
-    if (!wm || !wm.enabled || wm.over !== 'products' || !slot) return '';
-    const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
-    const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
-    const base = Math.max(60, Math.min(slot.w, slot.h));
-    if (wm.type === 'stripe' || wm.type === 'grid') {
-        const period = Math.max(3, Math.round(Number(wm.gap) || 64));  // 线条间距（px，与整幅一致）
-        const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));     // 线条粗细（px，与整幅一致）
-        let c = color || '#888888';
-        if (wm.style === 'black') c = '#000000';
-        else if (wm.style === 'white') c = '#ffffff';
-        const seg = c + ' 0 ' + lw + 'px,transparent ' + lw + 'px ' + period + 'px';
-        const bgImg = (wm.type === 'stripe')
-            ? 'repeating-linear-gradient(45deg,' + seg + ')'
-            : 'repeating-linear-gradient(45deg,' + seg + '),repeating-linear-gradient(135deg,' + seg + ')';
-        return '<div class="case-wm-slot" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:' + opacity + ';background-image:' + bgImg + ';pointer-events:none;"></div>';
+// 构建后统一烘焙缺失槽位，完成且确有产出时补绘一次
+async function caseProcessWmBakes() {
+    const list = _caseWmBakeMiss;
+    _caseWmBakeMiss = [];
+    if (!list.length) return;
+    let changed = false;
+    for (const it of list) {
+        const r = await caseBakeWmLayer(it);
+        if (r) changed = true;
     }
-    if (wm.type === 'image') {
-        const ic = _caseImgCache[wm.imgId];
-        if (!ic) return '';
-        const h = Math.max(12, Math.round(base * 0.2 * scale));
-        const w = Math.max(1, Math.round(h * (ic.w / ic.h)));
-        return '<div class="case-wm-slot" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:' + opacity + ';display:flex;align-items:center;justify-content:center;pointer-events:none;">'
-            + '<img src="' + ic.dataUrl + '" style="width:' + Math.min(w, slot.w) + 'px;height:' + h + 'px;"></div>';
-    }
-    const text = String(wm.text || '').trim();
-    if (!text) return '';
-    const fs = Math.max(10, Math.round(base * 0.16 * scale));
-    const ts = caseWmStyleColor(wm, color);
-    return '<div class="case-wm-slot" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:' + opacity + ';display:flex;align-items:center;justify-content:center;pointer-events:none;">'
-        + '<span class="case-wm-unit" style="font-size:' + fs + 'px;color:' + ts.color + ';' + ts.shadow + 'transform:rotate(-24deg);white-space:nowrap;">' + escapeHtml(text) + '</span></div>';
+    if (changed && _caseState) renderCasePreview();
 }
 function buildCaseCanvasHtml(st, page) {
     const W = st.config.width, H = st.config.height;
@@ -38224,7 +38242,8 @@ function buildCaseCanvasHtml(st, page) {
         }
     }
     // ---------- 制品层 ----------
-    const wmPerSlot = !!(st.config.watermark && st.config.watermark.enabled && st.config.watermark.over === 'products');
+    // 水印恒绘制在制品层（2026-09-30 起唯一显示效果；over 字段已废弃，normalize 强制 'products'）
+    const wmPerSlot = !!(st.config.watermark && st.config.watermark.enabled);
     let productsHtml = '';
     for (let i = 0; i < pageImages.length; i++) {
         const imgId = pageImages[i];
@@ -38287,7 +38306,16 @@ function buildCaseCanvasHtml(st, page) {
             }
         }
         let slotStyle = 'left:' + drawSlot.x + 'px;top:' + drawSlot.y + 'px;width:' + drawSlot.w + 'px;height:' + drawSlot.h + 'px;';
-        if (wmPerSlot && c) inner += caseWmSlotOverlayHtml(st, drawSlot, txtColor);
+        if (wmPerSlot && c) {
+            // 水印层 = 按槽位尺寸烘焙的透明 PNG（source-in 裁到制品不透明像素），与本体图层同盒同旋转
+            const wmKey = imgId + '|' + caseWmSig(st.config.watermark) + '|' + lw + 'x' + lh;
+            const wmUrl = _caseWmBakeCache[wmKey];
+            if (wmUrl) {
+                inner += layer(wmUrl);
+            } else {
+                _caseWmBakeMiss.push({ imgId: imgId, w: lw, h: lh, color: txtColor });
+            }
+        }
         productsHtml += '<div class="case-slot" data-slot-index="' + i + '" style="' + slotStyle + '">' + inner + '</div>';
     }
     // ---------- 文字元素（全部独立：可拖动、可单独调字号；未自定义位置的按默认流式排布） ----------
@@ -38515,7 +38543,8 @@ function buildCaseCanvasHtml(st, page) {
             bgHtml = '<img src="' + bgc.dataUrl + '" style="position:absolute;left:' + Math.round((W - bw) / 2) + 'px;top:' + Math.round((H - bh) / 2) + 'px;width:' + bw + 'px;height:' + bh + 'px;">';
         }
     }
-    const wmHtml = caseWatermarkHtml(st, W, H, txtColor);
+    const wmHtml = ''; // 2026-09-30 起：水印只绘制在制品上（槽位烘焙层），整幅画布水印已移除
+    if (_caseWmBakeMiss.length) caseProcessWmBakes(); // 缺失水印层异步烘焙，完成后补绘
     return '<div class="case-canvas" style="width:' + W + 'px;height:' + H + 'px;background:' + bgStyle + ';">'
         + bgHtml + productsHtml + textHtml + wmHtml
         + '</div>';
@@ -39784,18 +39813,8 @@ function renderCaseForm() {
                 + '<input type="file" id="caseWmImageInput" accept="image/*" class="d-none" onchange="caseHandleWmImageFile(this.files && this.files[0]); this.value=\'\';">'
                 + '</div>';
         }
-        if (!isWmPattern && wm.over !== 'products') {
-            html += '<select class="case-field-input" style="margin-top:9px;" onchange="setCaseWmPos(this.value)">'
-                + [['br', '右下'], ['bl', '左下'], ['tr', '右上'], ['tl', '左上'], ['center', '居中'], ['tile', '平铺全图']].map(function (p) {
-                    return '<option value="' + p[0] + '"' + (wm.position === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
-                }).join('')
-                + '</select>';
-        }
-        // 层级：仅制品上层 = 水印逐个绘制在制品图内部，背景图与文字保持干净
-        html += '<div class="case-chips" style="margin-top:6px;">'
-            + caseChipHtml('仅制品上层', wm.over === 'products', 'toggleCaseWmOver()')
-            + '</div>'
-            + '<div class="case-form-hint" style="margin:4px 0 0;">开启后水印只绘制在每个制品图上（居中），背景图与标题/企划信息等文字保持干净；关闭则铺满整幅画布</div>';
+        // 2026-09-30 起：水印恒平铺绘制在制品不透明像素上（唯一显示效果），无位置/层级选项
+        html += '<div class="case-form-hint" style="margin:4px 0 0;">水印平铺绘制在每张制品图的不透明像素上（PNG 空白区不显示），背景图与文字保持干净</div>';
         html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">透明度</span>'
             + '<input type="range" id="caseWmOpacityRange" min="0.05" max="1" step="0.05" value="' + (Number(wm.opacity) || 0.3) + '" oninput="setCaseWmOpacity(this.value)">'
             + '<input type="number" id="caseWmOpacityNum" min="5" max="100" step="5" value="' + Math.round((Number(wm.opacity) || 0.3) * 100) + '" onchange="setCaseWmOpacityInput(this.value)">'
@@ -39806,14 +39825,14 @@ function renderCaseForm() {
                     + '<input type="number" id="caseWmLineWNum" min="1" max="6" step="1" value="' + (parseInt(wm.lineW, 10) || 2) + '" onchange="setCaseWmLineWInput(this.value)">'
                     + '<span class="case-range-unit">px</span></div>'
                 + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">间距</span>'
-                    + '<input type="range" id="caseWmGapRange" min="3" max="200" step="1" value="' + (parseInt(wm.gap, 10) || 64) + '" oninput="setCaseWmGap(this.value)">'
-                    + '<input type="number" id="caseWmGapNum" min="3" max="240" step="1" value="' + (parseInt(wm.gap, 10) || 64) + '" onchange="setCaseWmGapInput(this.value)">'
+                    + '<input type="range" id="caseWmGapRange" min="3" max="200" step="1" value="' + (parseInt(wm.gap, 10) || 3) + '" oninput="setCaseWmGap(this.value)">'
+                    + '<input type="number" id="caseWmGapNum" min="3" max="240" step="1" value="' + (parseInt(wm.gap, 10) || 3) + '" onchange="setCaseWmGapInput(this.value)">'
                     + '<span class="case-range-unit">px</span></div>'
                 : '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
                     + '<input type="range" min="0.5" max="3" step="0.1" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
                     + '<span class="case-range-val" id="caseWmScaleVal">' + (Number(wm.scale) || 1).toFixed(1) + '×</span></div>');
     }
-    html += '<div class="case-form-hint">水印随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为 45° 重复图案，线条粗细与间距可调</div>'
+    html += '<div class="case-form-hint">水印平铺绘制在每张制品图的不透明像素上（PNG 空白区不显示），随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为 45° 重复图案，线条粗细与间距可调</div>'
         + '</div>';
     area.innerHTML = html;
     // 上传控件：统一走 _caseUploadTarget 决定进入哪个制品组（-1=自由模式）
@@ -40325,14 +40344,14 @@ function caseWmSyncLineWCtrls(lw) {
 // 图案水印线条间距（px，滑条）
 function setCaseWmGap(v) {
     const st = _caseState; if (!st) return;
-    st.config.watermark.gap = Math.min(240, Math.max(3, parseInt(v, 10) || 64));
+    st.config.watermark.gap = Math.min(240, Math.max(3, parseInt(v, 10) || 3));
     caseWmSyncGapCtrls(st.config.watermark.gap);
     renderCasePreview();
 }
 // 数字直填间距（px，3–240）
 function setCaseWmGapInput(v) {
     const st = _caseState; if (!st) return;
-    st.config.watermark.gap = Math.min(240, Math.max(3, parseInt(v, 10) || 64));
+    st.config.watermark.gap = Math.min(240, Math.max(3, parseInt(v, 10) || 3));
     caseWmSyncGapCtrls(st.config.watermark.gap);
     renderCasePreview();
 }
@@ -40342,20 +40361,9 @@ function caseWmSyncGapCtrls(gp) {
     const num = document.getElementById('caseWmGapNum');
     if (num) num.value = gp;
 }
-// 水印层级开关：仅制品上层（不盖文字）↔ 全画布最上层
-function toggleCaseWmOver() {
-    const st = _caseState; if (!st) return;
-    st.config.watermark.over = (st.config.watermark.over === 'products') ? 'all' : 'products';
-    renderCaseForm(); renderCasePreview();
-}
 function setCaseWmText(v) {
     const st = _caseState; if (!st) return;
     st.config.watermark.text = v;
-    renderCasePreview();
-}
-function setCaseWmPos(v) {
-    const st = _caseState; if (!st) return;
-    st.config.watermark.position = v;
     renderCasePreview();
 }
 function setCaseWmOpacity(v) {
