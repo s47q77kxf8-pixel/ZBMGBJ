@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261001-0330';
+const APP_VERSION = '20261001-0340';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36491,6 +36491,47 @@ function caseEffectiveFx(st, imgId) {
             + '|' + (useShadow ? shadowAlpha + '|' + shadowScale + '|' + shadowDx + '|' + shadowDy : '') + '|' + strokeAlpha + '|' + expandAlpha
     };
 }
+// 装饰层单边预留宽度（原图坐标系，像素）：
+// 烘焙画布四周各留这么多，用于容纳投影模糊/偏移、描边、扩张描边。
+// ⚠️ 烘焙与排版必须共用此函数——排版要靠它把本体内缩，避免「本体+装饰」超出槽位（2026-10-01）
+function caseFxBearPx(fx, w, h) {
+    if (!fx || fx.enabled === false) return 0;
+    const maxEdge = Math.max(Number(w) || 0, Number(h) || 0);
+    if (!maxEdge) return 0;
+    const strokeR = Math.round(maxEdge * (Number(fx.strokeW) || 0));
+    const expandR = Math.round(maxEdge * (Number(fx.expandW) || 0));
+    // 投影只在开启时才占边距；大小倍率与 X/Y 偏移都按长边比例
+    const useSh = !!fx.shadow;
+    const blur = useSh ? Math.round(maxEdge * 0.045 * (Number(fx.shadowScale) || 0)) : 0;
+    const offX = useSh ? Math.round(maxEdge * (Number(fx.shadowDx) || 0)) : 0;
+    const offY = useSh ? Math.round(maxEdge * (Number(fx.shadowDy) || 0)) : 0;
+    // 外扩边距要算进投影偏移，否则偏移量变大时投影被画布边界裁断
+    return strokeR + expandR + blur + Math.abs(offX) + Math.abs(offY) + 10;
+}
+// 本体等比 contain 进 bw×bh，并给装饰层外扩预留一圈：
+// 先用 bear（原图坐标系，cw/ch 为视觉宽/高方向对应的原图边长）算外扩占比，把可用盒缩一圈，
+// 使「本体 + 装饰」整体仍嵌在 bw×bh 内——描边/投影不再撑出槽位压到相邻制品或文字（2026-10-01）
+function caseFxContainBox(cw, ch, bw, bh, bear) {
+    if (!(cw > 0) || !(ch > 0)) return { w: bw, h: bh };
+    const boxXY = function (aW, aH) {
+        let w = aW, h = aW * (ch / cw);
+        if (h > aH) { h = aH; w = aH * (cw / ch); }
+        return { w: w, h: h };
+    };
+    if (!bear) return boxXY(bw, bh);
+    const availW = bw / (1 + (bear * 2) / cw);
+    const availH = bh / (1 + (bear * 2) / ch);
+    const r = boxXY(availW, availH);
+    // 挂载层按整数像素布局（Math.round），取整误差最多会把「本体+外扩」再顶出 1~2px：
+    // 这里按整像素校验等比收敛（每步 0.5%，通常 1~2 步），保证实际 DOM 也不会越界
+    const fitPx = function (wv, hv) {
+        const iw = Math.max(8, Math.round(wv)), ih = Math.max(8, Math.round(hv));
+        return iw + 2 * Math.round(iw * bear / cw) <= bw && ih + 2 * Math.round(ih * bear / ch) <= bh;
+    };
+    let w = r.w, h = r.h, guard = 0;
+    while (!fitPx(w, h) && guard < 120 && w > 9 && h > 9) { w *= 0.995; h *= 0.995; guard++; }
+    return { w: w, h: h };
+}
 // hex → rgba（亚克力半透明填充用）
 function caseHexToRgba(hex, alpha) {
     const h = String(hex || '#ffffff').replace('#', '');
@@ -36543,11 +36584,11 @@ async function caseBakeFx(imgId) {
         const strokeR = Math.round(maxEdge * fx.strokeW);
         const expandR = Math.round(maxEdge * fx.expandW);
         // 投影大小 = 默认模糊半径 × 倍率；位置 = 按长边比例的 X/Y 偏移
-        const blur = Math.round(maxEdge * 0.045 * (Number(fx.shadowScale) || 0));
-        const offX = Math.round(maxEdge * (Number(fx.shadowDx) || 0));
-        const offY = Math.round(maxEdge * (Number(fx.shadowDy) || 0));
-        // 外扩边距要算进投影偏移，否则偏移量变大时投影被画布边界裁断
-        const bear = strokeR + expandR + blur + Math.abs(offX) + Math.abs(offY) + 10;
+        const blur = fx.shadow ? Math.round(maxEdge * 0.045 * (Number(fx.shadowScale) || 0)) : 0;
+        const offX = fx.shadow ? Math.round(maxEdge * (Number(fx.shadowDx) || 0)) : 0;
+        const offY = fx.shadow ? Math.round(maxEdge * (Number(fx.shadowDy) || 0)) : 0;
+        // 外扩边距要算进投影偏移，否则偏移量变大时投影被画布边界裁断（与排版共用一个解算函数）
+        const bear = caseFxBearPx(fx, w, h);
         const cv = document.createElement('canvas');
         cv.width = w + bear * 2; cv.height = h + bear * 2;
         const ctx = cv.getContext('2d');
@@ -38326,14 +38367,16 @@ function buildCaseCanvasHtml(st, page) {
         const by = Math.min(Math.max(Math.round(cy - bh / 2), area.y), area.y + area.h - bh);
         const drawSlot = { x: bx, y: by, w: bw, h: bh };
         const c = _caseImgCache[imgId];
+        const fxCfg = caseEffectiveFx(st, imgId);
         // 等比 contain 进槽位：装箱用的宽高比有 0.18~5.5 钳制，极端比例图（如超长竖图）若直接铺满槽位会被拉伸；
         // 这里按原图（±90° 旋转后）真实比例缩小居中回槽位，装饰层同比例烘焙、保持对齐
         if (c && c.w && c.h) {
             const rotQ = ((slotRot % 180) + 180) % 180;
-            const taRaw = c.w / c.h;
-            const ta = (rotQ === 90) ? 1 / taRaw : taRaw;
-            let dw2 = bw, dh2 = bw / ta;
-            if (dh2 > bh) { dh2 = bh; dw2 = bh * ta; }
+            // 描边/扩张描边/投影会在本体四周多出一圈 bear（按原图边长比例）；contain 时先把可用盒按该比例缩一圈，
+            // 使「本体 + 装饰」整体嵌回槽位，不会撑出去压到相邻制品或左下/右下文字（2026-10-01）
+            const bear = fxCfg.enabled ? caseFxBearPx(fxCfg, c.w, c.h) : 0;
+            const fit = caseFxContainBox((rotQ === 90) ? c.h : c.w, (rotQ === 90) ? c.w : c.h, bw, bh, bear);
+            const dw2 = fit.w, dh2 = fit.h;
             drawSlot.x = Math.round(bx + (bw - dw2) / 2);
             drawSlot.y = Math.round(by + (bh - dh2) / 2);
             drawSlot.w = Math.max(8, Math.round(dw2));
@@ -38354,7 +38397,6 @@ function buildCaseCanvasHtml(st, page) {
         if (!c) {
             inner = '<div class="case-slot-loading" style="left:0;top:0;width:100%;height:100%;">…</div>';
         } else {
-            const fxCfg = caseEffectiveFx(st, imgId);
             if (fxCfg.enabled) {
                 const sh = _caseFxCache[fxCfg.key];
                 if (sh && sh.url) {
