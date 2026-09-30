@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-0245';
+const APP_VERSION = '20260930-1310';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36463,9 +36463,14 @@ async function caseCompressUploadData(dataUrl, srcType) {
 function caseEffectiveFx(st, imgId) {
     const fx = (st.config.imgFx && st.config.imgFx[imgId]) || {};
     const useShadow = fx.shadow != null ? !!fx.shadow : caseActiveMockup().shadow;
-    const strokeW = Math.min(0.12, Math.max(0, Number(fx.strokeW) || 0));
+    // 描边默认：中灰 1px（按制品原图 maxEdge 换算）；显式设置过（含设为 0）才覆盖默认
+    const cimg0 = (typeof _caseImgCache !== 'undefined' && _caseImgCache) ? _caseImgCache[imgId] : null;
+    const fxMaxEdge = (cimg0 ? Math.max(cimg0.w || 0, cimg0.h || 0) : 0) || 1000;
+    const strokeW = (fx.strokeW != null && fx.strokeW !== '')
+        ? Math.min(0.12, Math.max(0, Number(fx.strokeW) || 0))
+        : 1 / fxMaxEdge;
     const expandW = Math.min(0.2, Math.max(0, Number(fx.expandW) || 0));
-    const strokeColor = String(fx.strokeColor || '#ffffff');
+    const strokeColor = String(fx.strokeColor || '#808080');
     const expandColor = String(fx.expandColor || '#ffffff');
     const expandAcrylic = !!fx.expandAcrylic;
     return {
@@ -36540,29 +36545,35 @@ async function caseBakeFx(imgId) {
             ctx.drawImage(img, ox, oy, w, h);
             ctx.restore();
         }
-        // ② 扩张描边（最外圈：普通=实色环；亚克力=半透明磨砂环）
+        // ② 描边（最外圈：画在扩张描边的外围；独立画布合成，避免 destination-out 抠掉投影）
+        if (strokeR > 0) {
+            const sCv = document.createElement('canvas');
+            sCv.width = cv.width; sCv.height = cv.height;
+            const sctx = sCv.getContext('2d');
+            caseDilate(sctx, caseSilhouette(img, w, h, fx.strokeColor), ox, oy, expandR + strokeR);
+            sctx.globalCompositeOperation = 'destination-out';
+            if (expandR > 0) caseDilate(sctx, caseSilhouette(img, w, h, '#000'), ox, oy, expandR);
+            sctx.drawImage(img, ox, oy, w, h);
+            ctx.drawImage(sCv, 0, 0);
+        }
+        // ③ 扩张描边（贴着图案的贴边环：普通=实色环；亚克力=半透明磨砂环+反光）
         if (expandR > 0) {
+            const black = caseSilhouette(img, w, h, '#000');
             if (fx.expandAcrylic) {
-                const outerR = strokeR + expandR;
-                const black = caseSilhouette(img, w, h, '#000');
-                // 外扩环形状（去掉描边与本体）
                 const ring = document.createElement('canvas');
                 ring.width = cv.width; ring.height = cv.height;
                 const rctx = ring.getContext('2d');
-                caseDilate(rctx, caseSilhouette(img, w, h, '#000'), ox, oy, outerR);
-                rctx.globalCompositeOperation = 'destination-out';
-                if (strokeR > 0) caseDilate(rctx, black, ox, oy, strokeR);
-                rctx.drawImage(img, ox, oy, w, h);
-                // 半透明乳白填充（可调色调）
+                caseDilate(rctx, black, ox, oy, expandR);
+                // 半透明乳白填充（可调色调；不透明度提高让磨砂感更明显）
                 rctx.globalCompositeOperation = 'source-in';
-                rctx.fillStyle = caseHexToRgba(fx.expandColor, 0.45);
+                rctx.fillStyle = caseHexToRgba(fx.expandColor, 0.62);
                 rctx.fillRect(0, 0, ring.width, ring.height);
                 // 斜向高光带 × 2：只落在磨砂环内（source-atop），模拟亚克力侧边的反光
                 rctx.globalCompositeOperation = 'source-atop';
-                const band1 = Math.round((ring.width + ring.height) * 0.09);
+                const band1 = Math.round((ring.width + ring.height) * 0.11);
                 const g1 = rctx.createLinearGradient(0, -band1, 0, band1);
                 g1.addColorStop(0, 'rgba(255,255,255,0)');
-                g1.addColorStop(0.5, 'rgba(255,255,255,0.30)');
+                g1.addColorStop(0.5, 'rgba(255,255,255,0.50)');
                 g1.addColorStop(1, 'rgba(255,255,255,0)');
                 rctx.save();
                 rctx.translate(ring.width / 2, ring.height / 2);
@@ -36572,35 +36583,49 @@ async function caseBakeFx(imgId) {
                 const band2 = Math.round(band1 * 0.4);
                 const g2 = rctx.createLinearGradient(0, band1 * 1.6 - band2, 0, band1 * 1.6 + band2);
                 g2.addColorStop(0, 'rgba(255,255,255,0)');
-                g2.addColorStop(0.5, 'rgba(255,255,255,0.20)');
+                g2.addColorStop(0.5, 'rgba(255,255,255,0.34)');
                 g2.addColorStop(1, 'rgba(255,255,255,0)');
                 rctx.fillStyle = g2;
                 rctx.fillRect(-ring.width, band1 * 1.6 - band2 / 2, ring.width * 2, band2);
                 rctx.restore();
+                // 抠掉本体区域，只留外扩环带
+                rctx.globalCompositeOperation = 'destination-out';
+                rctx.drawImage(img, ox, oy, w, h);
                 ctx.drawImage(ring, 0, 0);
+                // 外缘亮边（亚克力厚度感）
+                const rimR = Math.max(1, Math.round(expandR * 0.2));
+                const rim = document.createElement('canvas');
+                rim.width = cv.width; rim.height = cv.height;
+                const mctx = rim.getContext('2d');
+                caseDilate(mctx, black, ox, oy, expandR);
+                mctx.globalCompositeOperation = 'destination-out';
+                caseDilate(mctx, black, ox, oy, Math.max(0, expandR - rimR));
+                mctx.globalCompositeOperation = 'source-in';
+                mctx.fillStyle = 'rgba(255,255,255,0.55)';
+                mctx.fillRect(0, 0, rim.width, rim.height);
+                ctx.drawImage(rim, 0, 0);
+                // 内缘暗缝：磨砂环与图案的分界，增加厚度层次
+                const seamR = Math.max(1, Math.round(expandR * 0.15));
+                const seam = document.createElement('canvas');
+                seam.width = cv.width; seam.height = cv.height;
+                const xctx = seam.getContext('2d');
+                caseDilate(xctx, black, ox, oy, seamR);
+                xctx.globalCompositeOperation = 'destination-out';
+                xctx.drawImage(img, ox, oy, w, h);
+                xctx.globalCompositeOperation = 'source-in';
+                xctx.fillStyle = 'rgba(0,0,0,0.14)';
+                xctx.fillRect(0, 0, seam.width, seam.height);
+                ctx.drawImage(seam, 0, 0);
             } else {
-                caseDilate(ctx, caseSilhouette(img, w, h, fx.expandColor), ox, oy, strokeR + expandR);
-                ctx.save();
-                ctx.globalCompositeOperation = 'destination-out';
-                if (strokeR > 0) caseDilate(ctx, caseSilhouette(img, w, h, '#000'), ox, oy, strokeR);
-                ctx.drawImage(img, ox, oy, w, h);
-                ctx.restore();
+                caseDilate(ctx, caseSilhouette(img, w, h, fx.expandColor), ox, oy, expandR);
             }
-        }
-        // ③ 描边（贴边色环）
-        if (strokeR > 0) {
-            caseDilate(ctx, caseSilhouette(img, w, h, fx.strokeColor), ox, oy, strokeR);
-            ctx.save();
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.drawImage(img, ox, oy, w, h);
-            ctx.restore();
         }
         // 抠掉本体：只留装饰（制品本体由渲染层绘制在最上）
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
         ctx.drawImage(img, ox, oy, w, h);
         ctx.restore();
-        // 亚克力质感只体现在扩张描边上（磨砂环 + 斜向反光，见 ②），不再在图案上叠加雾光层
+        // 亚克力质感体现在扩张描边上（磨砂环 + 斜向反光 + 外缘亮边 + 内缘暗缝，见 ③）
         const rec = { url: cv.toDataURL('image/png'), bear: bear };
         _caseFxCache[fx.key] = rec;
         return rec;
@@ -36880,7 +36905,8 @@ function caseNewState() {
             hiddenImages: [],        // 不入分图的制品图 id（总图按分图排版派生，连带不入总图）
             lineSolo: {},            // 「独占一行/列」约束（imgId → 'row' | 'col'，调整布局面板设置）
             // excludedFromTotal 已废弃（旧版按图排除，迁移为组级 g.noTotal，见 caseNormalizeState）
-            watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, over: 'products' }
+            // 水印默认打开；style: 'emboss'浮雕(默认)|'black'黑色叠加|'white'白色叠加；lineW=图案线条粗细px；gap=图案线条间距px
+            watermark: { enabled: true, type: 'text', style: 'emboss', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, lineW: 2, gap: 64, over: 'products' }
         },
         fields: { title: 'Preview', year: String(new Date().getFullYear()), user: name ? '@' + name : '', hint: 'Commissioned work. Do not use or copy.', projectName: '', ip: '', character: '', products: '', custom: {}, customLabels: {}, customTexts: [] },
         images: [],
@@ -36906,6 +36932,10 @@ function caseNormalizeState(st) {
     if (['left', 'center', 'right', 'justify'].indexOf(st.config.tagLayout.align) < 0) st.config.tagLayout.align = 'justify';
     if (st.config.tagLayout.mode !== 'single') st.config.tagLayout.mode = 'multi';
     st.config.watermark = Object.assign({}, def.config.watermark, st.config.watermark || {});
+    // 水印新字段兜底：样式枚举 / 线条粗细 / 间距（旧数据无此三字段时取默认）
+    if (['emboss', 'black', 'white'].indexOf(st.config.watermark.style) < 0) st.config.watermark.style = 'emboss';
+    if (!(parseInt(st.config.watermark.lineW, 10) >= 1 && parseInt(st.config.watermark.lineW, 10) <= 8)) st.config.watermark.lineW = 2;
+    if (!(parseInt(st.config.watermark.gap, 10) >= 8 && parseInt(st.config.watermark.gap, 10) <= 240)) st.config.watermark.gap = 64;
     st.fields = Object.assign({}, def.fields, st.fields || {});
     if (!st.fields.custom || typeof st.fields.custom !== 'object') st.fields.custom = {};
     if (!Array.isArray(st.fields.customTexts)) st.fields.customTexts = [];
@@ -37966,6 +37996,18 @@ function caseCurrentPage(st) {
     if (idx < 0 || idx >= pages.length) idx = 0;
     return pages[idx];
 }
+// 水印样式取值：'emboss'浮雕（按背景自动配深浅 + 双向阴影）/ 'black'黑色叠加 / 'white'白色叠加
+// 返回 { color, shadow }（shadow 为完整 text-shadow 内联样式，图案类只用 color）
+function caseWmStyleColor(wm, autoColor) {
+    const style = (wm && wm.style) || 'emboss';
+    if (style === 'black') return { color: '#000000', shadow: '' };
+    if (style === 'white') return { color: '#ffffff', shadow: '' };
+    const dark = (autoColor || '#333333') !== '#f2f2f2'; // 深字 = 浅底
+    const shadow = dark
+        ? 'text-shadow:-1px -1px 1px rgba(255,255,255,0.75),1px 1px 1px rgba(0,0,0,0.35);'
+        : 'text-shadow:-1px -1px 1px rgba(255,255,255,0.45),1px 1px 2px rgba(0,0,0,0.6);';
+    return { color: autoColor || '#888888', shadow: shadow };
+}
 function caseWatermarkHtml(st, W, H, color) {
     const wm = st.config.watermark;
     if (!wm || !wm.enabled) return '';
@@ -37973,12 +38015,14 @@ function caseWatermarkHtml(st, W, H, color) {
     if (wm.over === 'products') return '';
     const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
     const wmZ = 30;
-    // 斜纹 / 斜方格：整幅重复图案水印（position 不适用，密度由 scale 控制）
+    // 斜纹 / 斜方格：整幅重复图案水印（position 不适用；线条粗细 lineW 与间距 gap 均可调）
     if (wm.type === 'stripe' || wm.type === 'grid') {
         const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
-        const period = Math.max(10, Math.round(W * 0.06 * scale));   // 线条间距
-        const lw = Math.max(1, Math.round(W * 0.0045 * scale));      // 线条粗细
-        const c = color || '#888888';
+        const period = Math.max(8, Math.round(Number(wm.gap) || 64));   // 线条间距（px）
+        const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));      // 线条粗细（px）
+        let c = color || '#888888';
+        if (wm.style === 'black') c = '#000000';
+        else if (wm.style === 'white') c = '#ffffff';
         const seg = c + ' 0 ' + lw + 'px,transparent ' + lw + 'px ' + period + 'px';
         const bgImg = (wm.type === 'stripe')
             ? 'repeating-linear-gradient(45deg,' + seg + ')'
@@ -37997,7 +38041,8 @@ function caseWatermarkHtml(st, W, H, color) {
         const text = String(wm.text || '').trim();
         if (!text) return '';
         const fs = Math.round(W * 0.022 * scale);
-        unitInner = '<span class="case-wm-unit" style="font-size:' + fs + 'px;color:' + color + ';">' + escapeHtml(text) + '</span>';
+        const ts = caseWmStyleColor(wm, color);
+        unitInner = '<span class="case-wm-unit" style="font-size:' + fs + 'px;color:' + ts.color + ';' + ts.shadow + '">' + escapeHtml(text) + '</span>';
         unitW = Math.round(text.length * fs * 0.62 + fs * 0.4);
         unitH = Math.round(fs * 1.5);
     }
@@ -38036,9 +38081,11 @@ function caseWmSlotOverlayHtml(st, slot, color) {
     const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
     const base = Math.max(60, Math.min(slot.w, slot.h));
     if (wm.type === 'stripe' || wm.type === 'grid') {
-        const period = Math.max(10, Math.round(base * 0.24 * scale));  // 线条间距随制品尺寸缩放
-        const lw = Math.max(1, Math.round(base * 0.018 * scale));      // 线条粗细
-        const c = color || '#888888';
+        const period = Math.max(8, Math.round(Number(wm.gap) || 64));  // 线条间距（px，与整幅一致）
+        const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));     // 线条粗细（px，与整幅一致）
+        let c = color || '#888888';
+        if (wm.style === 'black') c = '#000000';
+        else if (wm.style === 'white') c = '#ffffff';
         const seg = c + ' 0 ' + lw + 'px,transparent ' + lw + 'px ' + period + 'px';
         const bgImg = (wm.type === 'stripe')
             ? 'repeating-linear-gradient(45deg,' + seg + ')'
@@ -38056,8 +38103,9 @@ function caseWmSlotOverlayHtml(st, slot, color) {
     const text = String(wm.text || '').trim();
     if (!text) return '';
     const fs = Math.max(10, Math.round(base * 0.16 * scale));
+    const ts = caseWmStyleColor(wm, color);
     return '<div class="case-wm-slot" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:' + opacity + ';display:flex;align-items:center;justify-content:center;pointer-events:none;">'
-        + '<span class="case-wm-unit" style="font-size:' + fs + 'px;color:' + (color || '#888888') + ';transform:rotate(-24deg);white-space:nowrap;">' + escapeHtml(text) + '</span></div>';
+        + '<span class="case-wm-unit" style="font-size:' + fs + 'px;color:' + ts.color + ';' + ts.shadow + 'transform:rotate(-24deg);white-space:nowrap;">' + escapeHtml(text) + '</span></div>';
 }
 function buildCaseCanvasHtml(st, page) {
     const W = st.config.width, H = st.config.height;
@@ -38856,7 +38904,9 @@ function caseRenderSelPanel() {
         const maxEdge = (cimg ? Math.max(cimg.w || 0, cimg.h || 0) : 0) || 1000;
         const strokeMaxPx = Math.round(maxEdge * 0.1);
         const expandMaxPx = Math.round(maxEdge * 0.2);
-        const strokePx = Math.min(strokeMaxPx, Math.round((Number(fx.strokeW) || 0) * maxEdge * 10) / 10);
+        // 描边默认中灰 1px（未显式设置时按默认显示）
+        const strokeIsDefault = fx.strokeW == null || fx.strokeW === '';
+        const strokePx = strokeIsDefault ? 1 : Math.min(strokeMaxPx, Math.round((Number(fx.strokeW) || 0) * maxEdge * 10) / 10);
         const expandPx = Math.min(expandMaxPx, Math.round((Number(fx.expandW) || 0) * maxEdge * 10) / 10);
         html = '<div class="case-sel-title">已选中：制品 ' + (idx + 1) + '</div>'
             + '<div class="case-toggle-row"><span class="case-toggle-name">轮廓投影</span>'
@@ -38890,7 +38940,7 @@ function caseRenderSelPanel() {
             + '<input type="number" min="0" max="' + strokeMaxPx + '" step="1" value="' + strokePx + '" onchange="setCaseItemFx(' + idx + ', \'strokeW\', this.value / ' + maxEdge + ')">'
             + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'strokeW\', 1, ' + strokeMaxPx + ')" title="加 1px">＋</button>'
             + '<span class="case-step-unit">px</span>'
-            + caseColorBtnHtml('setCaseItemFx(' + idx + ', \'strokeColor\', $c)', fx.strokeColor || '#ffffff') + '</div>'
+            + caseColorBtnHtml('setCaseItemFx(' + idx + ', \'strokeColor\', $c)', fx.strokeColor || '#808080') + '</div>'
             + '<div class="case-step-row"><span class="case-step-name">扩张描边</span>'
             + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'expandW\', -1, ' + expandMaxPx + ')" title="减 1px">−</button>'
             + '<input type="number" min="0" max="' + expandMaxPx + '" step="1" value="' + expandPx + '" onchange="setCaseItemFx(' + idx + ', \'expandW\', this.value / ' + maxEdge + ')">'
@@ -38902,7 +38952,7 @@ function caseRenderSelPanel() {
             + '<div class="case-sel-ops">'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetItemFx(' + idx + ')">恢复该制品默认</button>'
             + '</div>'
-            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=贴边轮廓环；扩张描边=再向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=扩张描边变半透明磨砂并带斜向反光，模拟亚克力侧边；宽度按制品原图像素</div>';
+            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=轮廓环，默认中灰 1px，<b>画在扩张描边的外围</b>；扩张描边=贴着图案向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=扩张描边变半透明磨砂、带斜向反光与外缘亮边，模拟亚克力侧边；宽度按制品原图像素</div>';
     } else if (key.indexOf('tag:') === 0) {
         title = '文字设置';
         const name = key.slice(4);
@@ -39715,6 +39765,14 @@ function renderCaseForm() {
             + caseChipHtml('斜纹', wm.type === 'stripe', "setCaseWmType('stripe')")
             + caseChipHtml('斜方格', wm.type === 'grid', "setCaseWmType('grid')")
             + '</div>';
+        if (wm.type !== 'image') {
+            html += '<div class="case-chips" style="margin-top:6px;">'
+                + caseChipHtml('浮雕', (wm.style || 'emboss') === 'emboss', "setCaseWmStyle('emboss')")
+                + caseChipHtml('黑色叠加', wm.style === 'black', "setCaseWmStyle('black')")
+                + caseChipHtml('白色叠加', wm.style === 'white', "setCaseWmStyle('white')")
+                + '</div>'
+                + '<div class="case-form-hint" style="margin:4px 0 0;">浮雕 = 按背景自动配深浅并带立体阴影；黑色/白色叠加 = 纯色叠加</div>';
+        }
         if (wm.type === 'text') {
             html += '<input type="text" class="case-field-input" style="margin-top:9px;" value="' + escapeHtml(String(wm.text || '')) + '" placeholder="水印文字，如 @昵称" oninput="setCaseWmText(this.value)">';
         } else if (wm.type === 'image') {
@@ -39740,11 +39798,18 @@ function renderCaseForm() {
         html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">透明度</span>'
             + '<input type="range" min="0.05" max="1" step="0.05" value="' + (Number(wm.opacity) || 0.3) + '" oninput="setCaseWmOpacity(this.value)">'
             + '<span class="case-range-val" id="caseWmOpacityVal">' + Math.round((Number(wm.opacity) || 0.3) * 100) + '%</span></div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">' + (isWmPattern ? '密度' : '大小') + '</span>'
-            + '<input type="range" min="0.5" max="3" step="0.1" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
-            + '<span class="case-range-val" id="caseWmScaleVal">' + (Number(wm.scale) || 1).toFixed(1) + '×</span></div>';
+            + (isWmPattern
+                ? '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">线条</span>'
+                    + '<input type="range" min="1" max="6" step="1" value="' + (parseInt(wm.lineW, 10) || 2) + '" oninput="setCaseWmLineW(this.value)">'
+                    + '<span class="case-range-val" id="caseWmLineWVal">' + (parseInt(wm.lineW, 10) || 2) + 'px</span></div>'
+                + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">间距</span>'
+                    + '<input type="range" min="16" max="200" step="4" value="' + (parseInt(wm.gap, 10) || 64) + '" oninput="setCaseWmGap(this.value)">'
+                    + '<span class="case-range-val" id="caseWmGapVal">' + (parseInt(wm.gap, 10) || 64) + 'px</span></div>'
+                : '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
+                    + '<input type="range" min="0.5" max="3" step="0.1" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
+                    + '<span class="case-range-val" id="caseWmScaleVal">' + (Number(wm.scale) || 1).toFixed(1) + '×</span></div>');
     }
-    html += '<div class="case-form-hint">水印随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为 45° 重复图案，文字颜色随背景自动配深浅</div>'
+    html += '<div class="case-form-hint">水印随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为 45° 重复图案，线条粗细与间距可调</div>'
         + '</div>';
     area.innerHTML = html;
     // 上传控件：统一走 _caseUploadTarget 决定进入哪个制品组（-1=自由模式）
@@ -40027,7 +40092,10 @@ function caseItemStepStroke(idx, field, delta, maxPx) {
     const cimg = _caseImgCache[imgId];
     const maxEdge = (cimg ? Math.max(cimg.w || 0, cimg.h || 0) : 0) || 1000;
     const fx = caseItemFxRec(imgId) || {};
-    const cur = Math.round((Number(fx[field]) || 0) * maxEdge * 10) / 10;
+    // 未显式设置时默认 1px，步进从默认值出发
+    const cur = (fx[field] != null)
+        ? Math.round((Number(fx[field]) || 0) * maxEdge * 10) / 10
+        : (field === 'strokeW' ? 1 : 0);
     setCaseItemFx(idx, field, Math.min(maxPx, Math.max(0, cur + delta)) / maxEdge);
     caseRenderSelPanel();
 }
@@ -40223,6 +40291,28 @@ function setCaseWmType(t) {
     const st = _caseState; if (!st) return;
     if (t === 'stripe' || t === 'grid' || t === 'image' || t === 'text') st.config.watermark.type = t;
     renderCaseForm(); renderCasePreview();
+}
+// 水印样式：浮雕 / 黑色叠加 / 白色叠加
+function setCaseWmStyle(v) {
+    const st = _caseState; if (!st) return;
+    if (['emboss', 'black', 'white'].indexOf(v) >= 0) st.config.watermark.style = v;
+    renderCaseForm(); renderCasePreview();
+}
+// 图案水印线条粗细（px）
+function setCaseWmLineW(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.lineW = Math.min(6, Math.max(1, parseInt(v, 10) || 2));
+    const el = document.getElementById('caseWmLineWVal');
+    if (el) el.textContent = st.config.watermark.lineW + 'px';
+    renderCasePreview();
+}
+// 图案水印线条间距（px）
+function setCaseWmGap(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.gap = Math.min(240, Math.max(8, parseInt(v, 10) || 64));
+    const el = document.getElementById('caseWmGapVal');
+    if (el) el.textContent = st.config.watermark.gap + 'px';
+    renderCasePreview();
 }
 // 水印层级开关：仅制品上层（不盖文字）↔ 全画布最上层
 function toggleCaseWmOver() {
