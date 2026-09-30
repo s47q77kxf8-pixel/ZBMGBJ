@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-1320';
+const APP_VERSION = '20260930-1330';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
