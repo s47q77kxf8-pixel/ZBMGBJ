@@ -38794,6 +38794,42 @@ function closeCaseColorPicker() {
     _caseColorPopBtn = null;
     _caseColorPopSet = '';
 }
+// ===== 字号直设（px）：各文字元素基准字号与渲染管线同一公式，面板不再用百分比 =====
+function caseElBaseFs(key) {
+    const st = _caseState; if (!st) return 20;
+    const W = st.config.width;
+    const tScale = Math.min(1.8, Math.max(0.6, Number(st.config.textScale) || 1));
+    const infoFs = Math.round(W * 0.018 * tScale * 0.8);
+    const bases = {
+        title: Math.round(W * 0.032 * tScale * 0.8),
+        year: infoFs,
+        user: infoFs,
+        hint: Math.max(9, Math.round(infoFs * 0.85)),
+        project: Math.round(W * 0.013 * tScale)
+    };
+    // tag:/row:/ct_（企划标签/整行/自定义文字）基准 = 企划标签字号
+    return bases[key] != null ? bases[key] : Math.round(W * 0.013 * tScale);
+}
+function caseFsPxRange(base) {
+    return { min: Math.max(9, Math.round(base * 0.4)), max: Math.round(base * 2.5) };
+}
+// 字号行（px 直设）：setExpr 形如 setCaseElFs('title', this.value)；stepExpr 形如 caseElFsStep('title',
+function caseFsPxRow(setExpr, stepExpr, base, scale) {
+    const r = caseFsPxRange(base);
+    const px = Math.round(base * (Number(scale) || 1));
+    return '<div class="case-step-row"><span class="case-step-name">字号</span>'
+        + '<button type="button" class="case-step-btn" onclick="' + stepExpr + '-1)" title="字号 -1px">−</button>'
+        + '<input type="number" min="' + r.min + '" max="' + r.max + '" step="1" value="' + px + '" onchange="' + setExpr + '">'
+        + '<button type="button" class="case-step-btn" onclick="' + stepExpr + '1)" title="字号 +1px">＋</button>'
+        + '<span class="case-step-unit">px</span></div>'
+        + '<div class="case-form-hint" style="margin:2px 0 0;">范围 ' + r.min + '–' + r.max + 'px（基准 ' + base + 'px，随画布尺寸与「文字大小」联动）</div>';
+}
+// px → 倍率（钳制后回写显示用）
+function casePxToScale(base, px) {
+    const r = caseFsPxRange(base);
+    const c = Math.min(r.max, Math.max(r.min, parseFloat(px) || base));
+    return Math.min(2.5, Math.max(0.4, c / base));
+}
 function caseRenderSelPanel() {
     const box = document.getElementById('caseEditSelBody');
     const titleEl = document.getElementById('caseEditSelTitle');
@@ -38878,9 +38914,7 @@ function caseRenderSelPanel() {
         const pr = (_caseState.config.layout && _caseState.config.layout.texts && _caseState.config.layout.texts.project) || {};
         const fs = (pr.itemFs && pr.itemFs[name]) || 1;
         html = '<div class="case-sel-title">已选中：标签「' + escapeHtml(displayName) + '」</div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">字号</span>'
-            + '<input type="range" min="0.5" max="2.5" step="0.05" value="' + fs + '" oninput="setCaseTagFs(\'' + escapeHtml(name) + '\', this.value)">'
-            + '<span class="case-range-val" id="caseTagFsVal">' + Math.round(fs * 100) + '%</span></div>'
+            + caseFsPxRow("setCaseTagFs('" + escapeHtml(name) + "', this.value)", "caseTagFsStep('" + escapeHtml(name) + "', ", caseElBaseFs(null), fs)
             + '<div class="case-sel-ops">'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseHideTag(\'' + escapeHtml(name) + '\')">隐藏该标签</button>'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetTag(\'' + escapeHtml(name) + '\')">恢复该标签默认</button>'
@@ -38892,9 +38926,7 @@ function caseRenderSelPanel() {
         const pr = (_caseState.config.layout && _caseState.config.layout.texts && _caseState.config.layout.texts.project) || {};
         const fs = (pr.itemFs && pr.itemFs[name] != null) ? pr.itemFs[name] : 1;
         html = '<div class="case-sel-title">已选中：标签「' + escapeHtml(name) + '」（字段名+值整行）</div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">字号</span>'
-            + '<input type="range" min="0.5" max="2.5" step="0.05" value="' + fs + '" oninput="setCaseTagFs(\'' + escapeHtml(name) + '\', this.value)">'
-            + '<span class="case-range-val" id="caseTagFsVal">' + Math.round(fs * 100) + '%</span></div>'
+            + caseFsPxRow("setCaseTagFs('" + escapeHtml(name) + "', this.value)", "caseTagFsStep('" + escapeHtml(name) + "', ", caseElBaseFs(null), fs)
             + '<div class="case-sel-ops">'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseToggleTagHidden(\'' + escapeHtml(name) + '\')">隐藏该行</button>'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetTag(\'' + escapeHtml(name) + '\')">恢复该行默认</button>'
@@ -38906,9 +38938,7 @@ function caseRenderSelPanel() {
         const L = (_caseState.config.layout && _caseState.config.layout.texts) || {};
         const rec = L[key] || { fsScale: 1 };
         html = '<div class="case-sel-title">已选中：' + (names[key] || '') + '</div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">字号</span>'
-            + '<input type="range" min="0.5" max="2.5" step="0.05" value="' + rec.fsScale + '" oninput="setCaseElFs(\'' + key + '\', this.value)">'
-            + '<span class="case-range-val" id="caseElFsVal">' + Math.round(rec.fsScale * 100) + '%</span></div>'
+            + caseFsPxRow("setCaseElFs('" + key + "', this.value)", "caseElFsStep('" + key + "', ", caseElBaseFs(key), rec.fsScale || 1)
             + (key === 'project' ? '<div class="case-form-hint" style="margin:4px 0 0;">拖动移动整组；点选其中某个标签可单独设置字号/隐藏</div>' : '')
             + '<div class="case-sel-ops">'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetElement(\'' + key + '\')">恢复该元素默认</button>'
@@ -39007,16 +39037,25 @@ function caseReflowItems() {
     renderCasePreview();
     showGlobalToast('制品已按自动排版重新铺排（制品区与外观设置保留）');
 }
+// 字号直设（px）：内部仍存倍率 fsScale（兼容旧数据），面板输入/显示均为 px
 function setCaseElFs(key, v) {
     const st = _caseState; if (!st) return;
+    const base = caseElBaseFs(key);
+    if (!isFinite(parseFloat(v))) return;
     if (!st.config.layout) st.config.layout = {};
     if (!st.config.layout.texts) st.config.layout.texts = {};
     const rec = st.config.layout.texts[key] || { fsScale: 1 };
-    rec.fsScale = Math.min(2.5, Math.max(0.4, parseFloat(v) || 1));
+    rec.fsScale = casePxToScale(base, v);
     st.config.layout.texts[key] = rec;
-    const el = document.getElementById('caseElFsVal');
-    if (el) el.textContent = Math.round(rec.fsScale * 100) + '%';
     renderCasePreview();
+}
+function caseElFsStep(key, dir) {
+    const st = _caseState; if (!st) return;
+    const base = caseElBaseFs(key);
+    const rec = (st.config.layout && st.config.layout.texts && st.config.layout.texts[key]) || null;
+    const cur = Math.round(base * ((rec && rec.fsScale) || 1));
+    setCaseElFs(key, cur + dir);
+    caseRenderSelPanel();
 }
 function caseResetElement(key) {
     const st = _caseState; if (!st) return;
@@ -39037,15 +39076,22 @@ function caseResetElement(key) {
 }
 function setCaseTagFs(name, v) {
     const st = _caseState; if (!st) return;
+    if (!isFinite(parseFloat(v))) return;
     if (!st.config.layout) st.config.layout = {};
     if (!st.config.layout.texts) st.config.layout.texts = {};
     const pr = st.config.layout.texts.project || { fsScale: 1 };
     if (!pr.itemFs || typeof pr.itemFs !== 'object') pr.itemFs = {};
-    pr.itemFs[name] = Math.min(2.5, Math.max(0.4, parseFloat(v) || 1));
+    pr.itemFs[name] = casePxToScale(caseElBaseFs(null), v);
     st.config.layout.texts.project = pr;
-    const el = document.getElementById('caseTagFsVal');
-    if (el) el.textContent = Math.round(pr.itemFs[name] * 100) + '%';
     renderCasePreview();
+}
+function caseTagFsStep(name, dir) {
+    const st = _caseState; if (!st) return;
+    const base = caseElBaseFs(null);
+    const pr = (st.config.layout && st.config.layout.texts && st.config.layout.texts.project) || {};
+    const cur = Math.round(base * ((pr.itemFs && pr.itemFs[name]) || 1));
+    setCaseTagFs(name, cur + dir);
+    caseRenderSelPanel();
 }
 function caseHideTag(name) {
     const st = _caseState; if (!st) return;
@@ -39566,9 +39612,15 @@ function renderCaseForm() {
                 + '</span>'
             : '')
         + '</div>';
-    html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">文字大小</span>'
-        + '<input type="range" min="0.6" max="1.8" step="0.05" value="' + (Number(cfg.textScale) || 1) + '" oninput="setCaseTextScale(this.value)">'
-        + '<span class="case-range-val" id="caseTextScaleVal">' + Math.round((Number(cfg.textScale) || 1) * 100) + '%</span></div>';
+    // 文字大小：以企划标签基准字号（px）直设，其余文字按比例联动；内部仍存 textScale 倍率
+    const tsUnit = cfg.width * 0.013;
+    const tsPx = Math.round(tsUnit * (Number(cfg.textScale) || 1));
+    html += '<div class="case-step-row"><span class="case-step-name">文字大小</span>'
+        + '<button type="button" class="case-step-btn" onclick="caseTextScaleStep(-1)" title="字号 -1px">−</button>'
+        + '<input type="number" min="' + Math.round(tsUnit * 0.6) + '" max="' + Math.round(tsUnit * 1.8) + '" step="1" value="' + tsPx + '" onchange="setCaseTextScalePx(this.value)">'
+        + '<button type="button" class="case-step-btn" onclick="caseTextScaleStep(1)" title="字号 +1px">＋</button>'
+        + '<span class="case-step-unit">px</span></div>'
+        + '<div class="case-form-hint">企划标签的基准字号（其他文字按各自比例联动）；可调 ' + Math.round(tsUnit * 0.6) + '–' + Math.round(tsUnit * 1.8) + 'px，随画布尺寸换算</div>';
     html += '<div class="case-form-hint">眼睛关闭或内容为空时，画布上对应内容不显示、不占位</div>'
         + '</div>';
     // 5 样机模板（无装饰 / 实物投影）+ 占位区域大小
@@ -39853,12 +39905,21 @@ function setCaseMockupScale(v) {
     if (el) el.textContent = Math.round(st.config.mockupScale * 100) + '%';
     renderCasePreview();
 }
-function setCaseTextScale(v) {
+// 文字大小（px 直设企划标签基准字号）：内部仍存 textScale 倍率（0.6–1.8），兼容旧数据
+function setCaseTextScalePx(v) {
     const st = _caseState; if (!st) return;
-    st.config.textScale = Math.min(1.8, Math.max(0.6, parseFloat(v) || 1));
-    const el = document.getElementById('caseTextScaleVal');
-    if (el) el.textContent = Math.round(st.config.textScale * 100) + '%';
+    if (!isFinite(parseFloat(v))) return;
+    const unit = st.config.width * 0.013;
+    st.config.textScale = Math.min(1.8, Math.max(0.6, parseFloat(v) / unit));
     renderCasePreview();
+}
+function caseTextScaleStep(dir) {
+    const st = _caseState; if (!st) return;
+    const unit = st.config.width * 0.013;
+    const cur = Math.round(unit * (Number(st.config.textScale) || 1));
+    setCaseTextScalePx(cur + dir);
+    const inp = document.getElementById('caseTextScalePx');
+    if (inp) inp.value = Math.round(unit * st.config.textScale);
 }
 // 文字颜色：传合法色值 = 自定义；传空 = 恢复自动（按背景深浅配字）
 function setCaseTextColor(v) {
