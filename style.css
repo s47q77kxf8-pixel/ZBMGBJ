@@ -15802,15 +15802,17 @@ html.theme-dark .case-step-row input[type="number"] {
 .case-edit-pct i { font-style: normal; }
 .case-edit-chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 
-/* ===== 小屏（<1000px）：功能区悬浮在预览区右侧，点「完成」收起 ===== */
+/* ===== 小屏（<1000px）：功能区与预览图上下堆叠（预览图在上、功能区在下） ===== */
 @media (max-width: 999px) {
+    .case-preview-main { flex-direction: column; }
     .case-edit-dock {
-        position: absolute;
-        top: 44px;
-        right: 0;
-        bottom: 0;
-        width: min(320px, 86vw);
-        z-index: 9;
-        box-shadow: -6px 0 20px rgba(0, 0, 0, 0.18);
+        width: auto;
+        max-height: 55%;
+        border-left: none;
+        border-top: 1px solid var(--border-color, #e5e5ea);
+        box-shadow: none;
     }
+    /* 编辑态预览区加高：40vh 放不下「预览 + 功能区」两段 */
+    .case-layout-preview.case-edit-open { height: 74vh; }
+    .case-drawer.case-view-preview .case-layout-preview.case-edit-open { height: auto; }
 }

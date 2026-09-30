@@ -38601,6 +38601,9 @@ function toggleCaseEditMode(force) {
     if (btn) btn.classList.toggle('case-edit-on', _caseEditMode);
     const dock = document.getElementById('caseEditDock');
     if (dock) dock.classList.toggle('d-none', !_caseEditMode);
+    // 小屏上下堆叠时预览区加高（.case-layout-preview.case-edit-open）
+    const pane = document.getElementById('casePreviewPane');
+    if (pane) pane.classList.toggle('case-edit-open', _caseEditMode);
     if (!_caseEditMode) caseSelectElement(null);
     renderCasePreview();
     if (_caseEditMode) showGlobalToast('调整布局：拖动虚线框 / 文字 / 制品，点选后可在右侧面板精细设置');
