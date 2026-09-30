@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-1350';
+const APP_VERSION = '20260930-1360';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -38052,23 +38052,29 @@ async function caseBakeWmLayer(entry) {
         const ctx = cv.getContext('2d');
         if (!ctx) return false;
         ctx.drawImage(img, 0, 0, cv.width, cv.height);
-        ctx.globalCompositeOperation = 'source-in'; // 之后画的一切都只落在制品不透明像素上
-        ctx.globalAlpha = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
+        // ⚠️ 水印先平铺到中间画布（普通 source-over），最后一次性 source-in 裁到制品不透明像素。
+        // 不能在制品画布上持续用 source-in 逐个画水印单元：该模式下每次绘制都会把画布整体替换为
+        // 「新内容 ∩ 现有内容」，互不重叠的水印单元会两两交集清空（文字/图片水印消失的根因，2026-09-30）
+        const mid = document.createElement('canvas');
+        mid.width = cv.width; mid.height = cv.height;
+        const mctx = mid.getContext('2d');
+        if (!mctx) return false;
+        mctx.globalAlpha = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
         const scale = Math.min(3, Math.max(0.5, Number(wm.scale) || 1));
         const base = Math.max(60, Math.min(cv.width, cv.height));
         if (wm.type === 'stripe' || wm.type === 'grid') {
             const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));
             const gap = Math.max(3, Math.round(Number(wm.gap) || 3));
-            ctx.strokeStyle = caseWmColor(wm, entry.color);
-            ctx.lineWidth = lw;
-            ctx.beginPath();
+            mctx.strokeStyle = caseWmColor(wm, entry.color);
+            mctx.lineWidth = lw;
+            mctx.beginPath();
             const span = cv.width + cv.height;
             const step = Math.max(gap + lw, Math.round(gap * 1.4142)); // 45° 斜线垂直间距=gap
             for (let o = -cv.height; o < span; o += step) {
-                ctx.moveTo(o, 0); ctx.lineTo(o + cv.height, cv.height);      // 45° 方向
-                if (wm.type === 'grid') { ctx.moveTo(o, cv.height); ctx.lineTo(o + cv.height, 0); } // 135° 交叉
+                mctx.moveTo(o, 0); mctx.lineTo(o + cv.height, cv.height);      // 45° 方向
+                if (wm.type === 'grid') { mctx.moveTo(o, cv.height); mctx.lineTo(o + cv.height, 0); } // 135° 交叉
             }
-            ctx.stroke();
+            mctx.stroke();
         } else if (wm.type === 'image') {
             const ic = _caseImgCache[wm.imgId];
             if (ic) {
@@ -38078,7 +38084,7 @@ async function caseBakeWmLayer(entry) {
                 const gx = Math.round(iw * 0.6), gy = Math.round(ih * 0.6);   // 原角度平铺
                 for (let y = 0; y < cv.height + ih; y += ih + gy) {
                     for (let x = 0; x < cv.width + iw; x += iw + gx) {
-                        ctx.drawImage(wimg, x, y, iw, ih);
+                        mctx.drawImage(wimg, x, y, iw, ih);
                     }
                 }
             }
@@ -38086,12 +38092,12 @@ async function caseBakeWmLayer(entry) {
             const text = String(wm.text || '').trim();
             if (text) {
                 const fs = Math.max(10, Math.round(base * 0.16 * scale));
-                ctx.font = fs + 'px sans-serif';
-                const tw = Math.ceil(ctx.measureText(text).width);
+                mctx.font = fs + 'px sans-serif';
+                const tw = Math.ceil(mctx.measureText(text).width);
                 const cellW = Math.max(tw + fs * 0.9, 10), cellH = Math.max(Math.round(fs * 1.9), 10);
-                ctx.save();
-                ctx.translate(cv.width / 2, cv.height / 2);
-                ctx.rotate(-24 * Math.PI / 180);                              // 文字水印整体 -24° 斜铺
+                mctx.save();
+                mctx.translate(cv.width / 2, cv.height / 2);
+                mctx.rotate(-24 * Math.PI / 180);                              // 文字水印整体 -24° 斜铺
                 const diag = Math.ceil(Math.sqrt(cv.width * cv.width + cv.height * cv.height));
                 const cols = Math.ceil(diag / cellW) + 2, rows = Math.ceil(diag / cellH) + 2;
                 if (cols * rows <= 400) {
@@ -38099,13 +38105,15 @@ async function caseBakeWmLayer(entry) {
                         for (let ci = 0; ci < cols; ci++) {
                             const x = -diag / 2 + ci * cellW + cellW / 2;
                             const y = -diag / 2 + r * cellH + cellH / 2;
-                            caseWmPaintText(ctx, text, x, y, wm, entry.color);
+                            caseWmPaintText(mctx, text, x, y, wm, entry.color);
                         }
                     }
                 }
-                ctx.restore();
+                mctx.restore();
             }
         }
+        ctx.globalCompositeOperation = 'source-in'; // 单次合成：水印层只保留制品不透明像素范围内的水印
+        ctx.drawImage(mid, 0, 0);
         if (Object.keys(_caseWmBakeCache).length > 120) {
             Object.keys(_caseWmBakeCache).forEach(function (k) { delete _caseWmBakeCache[k]; });
         }
