@@ -14983,6 +14983,35 @@ html.theme-dark .case-size-lock.active {
     color: var(--text-muted, #888);
     flex-shrink: 0;
 }
+/* 滑条行内的快捷数值输入框（水印透明度/线条/间距等） */
+.case-range-row input[type="number"] {
+    width: 54px;
+    padding: 4px 4px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 12px;
+    text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+    flex-shrink: 0;
+}
+.case-range-row input[type="number"]::-webkit-outer-spin-button,
+.case-range-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+html.theme-dark .case-range-row input[type="number"] {
+    background: #1f1f23;
+    border-color: #3f3f46;
+    color: #e5e5e5;
+}
+.case-range-row .case-range-unit {
+    font-size: 12px;
+    color: var(--text-muted, #888);
+    flex-shrink: 0;
+}
 
 /* ===== 调整布局（编辑模式） ===== */
 #caseEditLayoutBtn.case-edit-on {

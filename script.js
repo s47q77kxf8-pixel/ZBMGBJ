@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20260930-1330';
+const APP_VERSION = '20260930-1340';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36935,7 +36935,7 @@ function caseNormalizeState(st) {
     // 水印新字段兜底：样式枚举 / 线条粗细 / 间距（旧数据无此三字段时取默认）
     if (['emboss', 'black', 'white'].indexOf(st.config.watermark.style) < 0) st.config.watermark.style = 'emboss';
     if (!(parseInt(st.config.watermark.lineW, 10) >= 1 && parseInt(st.config.watermark.lineW, 10) <= 8)) st.config.watermark.lineW = 2;
-    if (!(parseInt(st.config.watermark.gap, 10) >= 8 && parseInt(st.config.watermark.gap, 10) <= 240)) st.config.watermark.gap = 64;
+    if (!(parseInt(st.config.watermark.gap, 10) >= 3 && parseInt(st.config.watermark.gap, 10) <= 240)) st.config.watermark.gap = 64;
     st.fields = Object.assign({}, def.fields, st.fields || {});
     if (!st.fields.custom || typeof st.fields.custom !== 'object') st.fields.custom = {};
     if (!Array.isArray(st.fields.customTexts)) st.fields.customTexts = [];
@@ -38018,7 +38018,7 @@ function caseWatermarkHtml(st, W, H, color) {
     // 斜纹 / 斜方格：整幅重复图案水印（position 不适用；线条粗细 lineW 与间距 gap 均可调）
     if (wm.type === 'stripe' || wm.type === 'grid') {
         const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
-        const period = Math.max(8, Math.round(Number(wm.gap) || 64));   // 线条间距（px）
+        const period = Math.max(3, Math.round(Number(wm.gap) || 64));   // 线条间距（px）
         const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));      // 线条粗细（px）
         let c = color || '#888888';
         if (wm.style === 'black') c = '#000000';
@@ -38081,7 +38081,7 @@ function caseWmSlotOverlayHtml(st, slot, color) {
     const opacity = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
     const base = Math.max(60, Math.min(slot.w, slot.h));
     if (wm.type === 'stripe' || wm.type === 'grid') {
-        const period = Math.max(8, Math.round(Number(wm.gap) || 64));  // 线条间距（px，与整幅一致）
+        const period = Math.max(3, Math.round(Number(wm.gap) || 64));  // 线条间距（px，与整幅一致）
         const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));     // 线条粗细（px，与整幅一致）
         let c = color || '#888888';
         if (wm.style === 'black') c = '#000000';
@@ -39797,15 +39797,18 @@ function renderCaseForm() {
             + '</div>'
             + '<div class="case-form-hint" style="margin:4px 0 0;">开启后水印只绘制在每个制品图上（居中），背景图与标题/企划信息等文字保持干净；关闭则铺满整幅画布</div>';
         html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">透明度</span>'
-            + '<input type="range" min="0.05" max="1" step="0.05" value="' + (Number(wm.opacity) || 0.3) + '" oninput="setCaseWmOpacity(this.value)">'
-            + '<span class="case-range-val" id="caseWmOpacityVal">' + Math.round((Number(wm.opacity) || 0.3) * 100) + '%</span></div>'
+            + '<input type="range" id="caseWmOpacityRange" min="0.05" max="1" step="0.05" value="' + (Number(wm.opacity) || 0.3) + '" oninput="setCaseWmOpacity(this.value)">'
+            + '<input type="number" id="caseWmOpacityNum" min="5" max="100" step="5" value="' + Math.round((Number(wm.opacity) || 0.3) * 100) + '" onchange="setCaseWmOpacityInput(this.value)">'
+            + '<span class="case-range-unit">%</span></div>'
             + (isWmPattern
                 ? '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">线条</span>'
-                    + '<input type="range" min="1" max="6" step="1" value="' + (parseInt(wm.lineW, 10) || 2) + '" oninput="setCaseWmLineW(this.value)">'
-                    + '<span class="case-range-val" id="caseWmLineWVal">' + (parseInt(wm.lineW, 10) || 2) + 'px</span></div>'
+                    + '<input type="range" id="caseWmLineWRange" min="1" max="6" step="1" value="' + (parseInt(wm.lineW, 10) || 2) + '" oninput="setCaseWmLineW(this.value)">'
+                    + '<input type="number" id="caseWmLineWNum" min="1" max="6" step="1" value="' + (parseInt(wm.lineW, 10) || 2) + '" onchange="setCaseWmLineWInput(this.value)">'
+                    + '<span class="case-range-unit">px</span></div>'
                 + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">间距</span>'
-                    + '<input type="range" min="16" max="200" step="4" value="' + (parseInt(wm.gap, 10) || 64) + '" oninput="setCaseWmGap(this.value)">'
-                    + '<span class="case-range-val" id="caseWmGapVal">' + (parseInt(wm.gap, 10) || 64) + 'px</span></div>'
+                    + '<input type="range" id="caseWmGapRange" min="3" max="200" step="1" value="' + (parseInt(wm.gap, 10) || 64) + '" oninput="setCaseWmGap(this.value)">'
+                    + '<input type="number" id="caseWmGapNum" min="3" max="240" step="1" value="' + (parseInt(wm.gap, 10) || 64) + '" onchange="setCaseWmGapInput(this.value)">'
+                    + '<span class="case-range-unit">px</span></div>'
                 : '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
                     + '<input type="range" min="0.5" max="3" step="0.1" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
                     + '<span class="case-range-val" id="caseWmScaleVal">' + (Number(wm.scale) || 1).toFixed(1) + '×</span></div>');
@@ -40299,21 +40302,45 @@ function setCaseWmStyle(v) {
     if (['emboss', 'black', 'white'].indexOf(v) >= 0) st.config.watermark.style = v;
     renderCaseForm(); renderCasePreview();
 }
-// 图案水印线条粗细（px）
+// 图案水印线条粗细（px，滑条）
 function setCaseWmLineW(v) {
     const st = _caseState; if (!st) return;
     st.config.watermark.lineW = Math.min(6, Math.max(1, parseInt(v, 10) || 2));
-    const el = document.getElementById('caseWmLineWVal');
-    if (el) el.textContent = st.config.watermark.lineW + 'px';
+    caseWmSyncLineWCtrls(st.config.watermark.lineW);
     renderCasePreview();
 }
-// 图案水印线条间距（px）
+// 数字直填线条粗细（px，1–6）
+function setCaseWmLineWInput(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.lineW = Math.min(6, Math.max(1, parseInt(v, 10) || 2));
+    caseWmSyncLineWCtrls(st.config.watermark.lineW);
+    renderCasePreview();
+}
+function caseWmSyncLineWCtrls(lw) {
+    const rng = document.getElementById('caseWmLineWRange');
+    if (rng) rng.value = lw;
+    const num = document.getElementById('caseWmLineWNum');
+    if (num) num.value = lw;
+}
+// 图案水印线条间距（px，滑条）
 function setCaseWmGap(v) {
     const st = _caseState; if (!st) return;
-    st.config.watermark.gap = Math.min(240, Math.max(8, parseInt(v, 10) || 64));
-    const el = document.getElementById('caseWmGapVal');
-    if (el) el.textContent = st.config.watermark.gap + 'px';
+    st.config.watermark.gap = Math.min(240, Math.max(3, parseInt(v, 10) || 64));
+    caseWmSyncGapCtrls(st.config.watermark.gap);
     renderCasePreview();
+}
+// 数字直填间距（px，3–240）
+function setCaseWmGapInput(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.gap = Math.min(240, Math.max(3, parseInt(v, 10) || 64));
+    caseWmSyncGapCtrls(st.config.watermark.gap);
+    renderCasePreview();
+}
+function caseWmSyncGapCtrls(gp) {
+    const rng = document.getElementById('caseWmGapRange');
+    if (rng) rng.value = gp;
+    const num = document.getElementById('caseWmGapNum');
+    if (num) num.value = gp;
 }
 // 水印层级开关：仅制品上层（不盖文字）↔ 全画布最上层
 function toggleCaseWmOver() {
@@ -40334,9 +40361,21 @@ function setCaseWmPos(v) {
 function setCaseWmOpacity(v) {
     const st = _caseState; if (!st) return;
     st.config.watermark.opacity = Math.min(1, Math.max(0.05, parseFloat(v) || 0.3));
-    const el = document.getElementById('caseWmOpacityVal');
-    if (el) el.textContent = Math.round(st.config.watermark.opacity * 100) + '%';
+    caseWmSyncOpacityCtrls(st.config.watermark.opacity);
     renderCasePreview();
+}
+// 数字直填透明度（%，5–100）
+function setCaseWmOpacityInput(v) {
+    const st = _caseState; if (!st) return;
+    st.config.watermark.opacity = Math.min(1, Math.max(0.05, (Math.min(100, Math.max(5, parseFloat(v) || 30))) / 100));
+    caseWmSyncOpacityCtrls(st.config.watermark.opacity);
+    renderCasePreview();
+}
+function caseWmSyncOpacityCtrls(op) {
+    const rng = document.getElementById('caseWmOpacityRange');
+    if (rng) rng.value = op;
+    const num = document.getElementById('caseWmOpacityNum');
+    if (num) num.value = Math.round(op * 100);
 }
 function setCaseWmScale(v) {
     const st = _caseState; if (!st) return;
