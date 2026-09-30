@@ -977,6 +977,8 @@ function showSettingsSubPage(pageName) {
     const subPage = document.getElementById('settingsSubPage-' + pageName);
     if (subPage) {
         subPage.classList.remove('d-none');
+        // 持久化当前子页：刷新后停留在原子页（与一级页面刷新恢复同一机制）
+        try { localStorage.setItem('mg_settings_subpage', pageName); } catch (e) {}
 
         // 兼容异常 DOM 嵌套：若目标子页面被包在另一个 settings-sub-page 内，
         // 需要把祖先 settings-sub-page 一并显示；并标记为“承载子页”以隐藏其自身内容。
@@ -1029,6 +1031,8 @@ function hideSettingsSubPage() {
         el.classList.remove('subpage-hosting-child');
     });
     if (settingsPage) settingsPage.classList.remove('settings-subpage-open');
+    // 清除子页持久化：下次刷新回到设置主页
+    try { localStorage.removeItem('mg_settings_subpage'); } catch (e) {}
 }
 
 function loadLastOrdersSyncAt() {
@@ -2048,6 +2052,15 @@ function init() {
             }
         } catch (e) {}
         showPage(initialPage);
+        // 恢复设置页的子页（如案例库）：刷新后停留在原子页而不是上级
+        if (initialPage === 'settings') {
+            try {
+                const savedSub = localStorage.getItem('mg_settings_subpage');
+                if (savedSub && typeof showSettingsSubPage === 'function' && document.getElementById('settingsSubPage-' + savedSub)) {
+                    showSettingsSubPage(savedSub);
+                }
+            } catch (e) {}
+        }
     }
 }
 
@@ -36480,11 +36493,21 @@ function caseSilhouette(img, w, h, color) {
     return s;
 }
 // 膨胀：把剪影沿圆周多点偏移绘制，得到向外扩 r 像素的形状
+// 角度采样数随半径加密（外缘弧长≈3px），半径较大时补一层半半径偏移填充凹陷，消除锯齿
 function caseDilate(ctx, src, ox, oy, r) {
-    const steps = Math.max(12, Math.min(28, Math.round(r / 2)));
-    for (let i = 0; i < steps; i++) {
-        const a = (i / steps) * Math.PI * 2;
+    const steps = Math.max(24, Math.min(96, Math.round(r)));
+    let i, a;
+    for (i = 0; i < steps; i++) {
+        a = (i / steps) * Math.PI * 2;
         ctx.drawImage(src, ox + Math.cos(a) * r, oy + Math.sin(a) * r);
+    }
+    if (r > 6) {
+        const r2 = r / 2;
+        const steps2 = Math.max(18, Math.round(r2));
+        for (i = 0; i < steps2; i++) {
+            a = (i / steps2) * Math.PI * 2;
+            ctx.drawImage(src, ox + Math.cos(a) * r2, oy + Math.sin(a) * r2);
+        }
     }
     ctx.drawImage(src, ox, oy);
 }
@@ -36534,6 +36557,26 @@ async function caseBakeFx(imgId) {
                 rctx.globalCompositeOperation = 'source-in';
                 rctx.fillStyle = caseHexToRgba(fx.expandColor, 0.45);
                 rctx.fillRect(0, 0, ring.width, ring.height);
+                // 斜向高光带 × 2：只落在磨砂环内（source-atop），模拟亚克力侧边的反光
+                rctx.globalCompositeOperation = 'source-atop';
+                const band1 = Math.round((ring.width + ring.height) * 0.09);
+                const g1 = rctx.createLinearGradient(0, -band1, 0, band1);
+                g1.addColorStop(0, 'rgba(255,255,255,0)');
+                g1.addColorStop(0.5, 'rgba(255,255,255,0.30)');
+                g1.addColorStop(1, 'rgba(255,255,255,0)');
+                rctx.save();
+                rctx.translate(ring.width / 2, ring.height / 2);
+                rctx.rotate(-Math.PI / 5);
+                rctx.fillStyle = g1;
+                rctx.fillRect(-ring.width, -band1 / 2, ring.width * 2, band1);
+                const band2 = Math.round(band1 * 0.4);
+                const g2 = rctx.createLinearGradient(0, band1 * 1.6 - band2, 0, band1 * 1.6 + band2);
+                g2.addColorStop(0, 'rgba(255,255,255,0)');
+                g2.addColorStop(0.5, 'rgba(255,255,255,0.20)');
+                g2.addColorStop(1, 'rgba(255,255,255,0)');
+                rctx.fillStyle = g2;
+                rctx.fillRect(-ring.width, band1 * 1.6 - band2 / 2, ring.width * 2, band2);
+                rctx.restore();
                 ctx.drawImage(ring, 0, 0);
             } else {
                 caseDilate(ctx, caseSilhouette(img, w, h, fx.expandColor), ox, oy, strokeR + expandR);
@@ -36557,40 +36600,8 @@ async function caseBakeFx(imgId) {
         ctx.globalCompositeOperation = 'destination-out';
         ctx.drawImage(img, ox, oy, w, h);
         ctx.restore();
-        // 亚克力高光覆盖层（绘制在制品图之上：薄雾 + 斜向高光带，模拟亚克力板反光）
-        let overUrl = null;
-        if (fx.expandAcrylic && expandR > 0) {
-            const outerR2 = strokeR + expandR;
-            const ov = document.createElement('canvas');
-            ov.width = cv.width; ov.height = cv.height;
-            const octx = ov.getContext('2d');
-            caseDilate(octx, caseSilhouette(img, w, h, '#000'), ox, oy, outerR2);
-            octx.globalCompositeOperation = 'source-atop';
-            // 奶白薄雾盖在图案上，模拟亚克力印刷的通透感
-            octx.fillStyle = 'rgba(255,255,255,0.10)';
-            octx.fillRect(0, 0, ov.width, ov.height);
-            // 斜向高光带 × 2
-            const band1 = Math.round((ov.width + ov.height) * 0.09);
-            const g1 = octx.createLinearGradient(0, -band1, 0, band1);
-            g1.addColorStop(0, 'rgba(255,255,255,0)');
-            g1.addColorStop(0.5, 'rgba(255,255,255,0.30)');
-            g1.addColorStop(1, 'rgba(255,255,255,0)');
-            octx.save();
-            octx.translate(ov.width / 2, ov.height / 2);
-            octx.rotate(-Math.PI / 5);
-            octx.fillStyle = g1;
-            octx.fillRect(-ov.width, -band1 / 2, ov.width * 2, band1);
-            const band2 = Math.round(band1 * 0.4);
-            const g2 = octx.createLinearGradient(0, band1 * 1.6 - band2, 0, band1 * 1.6 + band2);
-            g2.addColorStop(0, 'rgba(255,255,255,0)');
-            g2.addColorStop(0.5, 'rgba(255,255,255,0.20)');
-            g2.addColorStop(1, 'rgba(255,255,255,0)');
-            octx.fillStyle = g2;
-            octx.fillRect(-ov.width, band1 * 1.6 - band2 / 2, ov.width * 2, band2);
-            octx.restore();
-            overUrl = ov.toDataURL('image/png');
-        }
-        const rec = { url: cv.toDataURL('image/png'), bear: bear, overUrl: overUrl };
+        // 亚克力质感只体现在扩张描边上（磨砂环 + 斜向反光，见 ②），不再在图案上叠加雾光层
+        const rec = { url: cv.toDataURL('image/png'), bear: bear };
         _caseFxCache[fx.key] = rec;
         return rec;
     } catch (e) { console.error('制品装饰层烘焙失败:', e); return null; }
@@ -36702,6 +36713,8 @@ function caseNormalizeLayout(layout) {
 // ===== 布局模版（localStorage 'caseLayoutPresets'，保存整体布局+底图，跨案例套用） =====
 let _caseLayoutPresets = [];
 let _caseLayoutPresetDefault = ''; // 默认布局模版 id：新建案例自动套用；空 = 系统默认样式
+let _casePresetAddOpen = false;    // ＋ 展开的命名行（保存当前布局为模版）
+let _casePresetDelMode = false;    // － 删除模式（点自定义模版胶囊执行删除）
 function loadCaseLayoutPresets() {
     try {
         _caseLayoutPresets = JSON.parse(localStorage.getItem('caseLayoutPresets') || '[]');
@@ -36715,7 +36728,16 @@ function saveCaseLayoutDefault() {
     try { localStorage.setItem('caseLayoutPresetDefault', _caseLayoutPresetDefault || ''); } catch (e) {}
 }
 // 设为/取消默认布局模版（新建案例自动套用；未设则用系统默认样式）
+// id = 'system' 表示系统默认胶囊：点它清除自定义默认，回到系统默认样式
 function toggleCasePresetDefault(id) {
+    if (id === 'system') {
+        if (!_caseLayoutPresetDefault) { showGlobalToast('新建案例已使用系统默认样式'); return; }
+        _caseLayoutPresetDefault = '';
+        saveCaseLayoutDefault();
+        renderCaseForm();
+        showGlobalToast('已取消自定义默认模版，新建案例使用系统默认样式');
+        return;
+    }
     _caseLayoutPresetDefault = (_caseLayoutPresetDefault === id) ? '' : id;
     saveCaseLayoutDefault();
     renderCaseForm();
@@ -36741,6 +36763,8 @@ function saveCaseLayoutPreset() {
     });
     saveCaseLayoutPresets();
     if (nameInput) nameInput.value = '';
+    _casePresetAddOpen = false;
+    _casePresetDelMode = false;
     renderCaseForm();
     showGlobalToast('布局模版「' + name + '」已保存');
 }
@@ -36768,8 +36792,55 @@ function deleteCaseLayoutPreset(id) {
     if (!confirm('删除该布局模版？')) return;
     _caseLayoutPresets = _caseLayoutPresets.filter(function (x) { return x && x.id !== id; });
     if (_caseLayoutPresetDefault === id) { _caseLayoutPresetDefault = ''; saveCaseLayoutDefault(); }
+    if (!_caseLayoutPresets.length) _casePresetDelMode = false;
     saveCaseLayoutPresets();
     renderCaseForm();
+}
+// ＋ 胶囊：展开命名行保存当前布局为模版；－ 胶囊：进入/退出删除模式
+function toggleCasePresetAdd() {
+    _casePresetAddOpen = !_casePresetAddOpen;
+    if (_casePresetAddOpen) _casePresetDelMode = false;
+    renderCaseForm();
+    if (_casePresetAddOpen) {
+        const input = document.getElementById('caseLayoutPresetName');
+        if (input) { input.focus(); if (input.select) input.select(); }
+    }
+}
+function cancelCasePresetAdd() {
+    _casePresetAddOpen = false;
+    renderCaseForm();
+}
+function toggleCasePresetDelMode() {
+    _casePresetDelMode = !_casePresetDelMode;
+    if (_casePresetDelMode) _casePresetAddOpen = false;
+    renderCaseForm();
+}
+function casePresetNameKey(e) {
+    if (e.key === 'Enter') { e.preventDefault(); saveCaseLayoutPreset(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelCasePresetAdd(); }
+}
+// 单个模版胶囊：id='system' 为系统默认（固定第一个、不可删除）；删除模式下点自定义胶囊执行删除
+function casePresetChipHtml(id, name, isDef) {
+    const sys = id === 'system';
+    const del = _casePresetDelMode;
+    let click = '';
+    let clickTitle = '';
+    if (sys) {
+        if (!del) { click = 'resetCaseDefaults()'; clickTitle = '应用系统默认样式（重置外观/排版，已输入内容保留）'; }
+    } else if (del) {
+        click = "deleteCaseLayoutPreset('" + id + "')";
+        clickTitle = '删除该模版';
+    } else {
+        click = "applyCaseLayoutPreset('" + id + "')";
+        clickTitle = '应用该布局模版';
+    }
+    const starTitle = sys
+        ? (isDef ? '新建案例已使用系统默认样式' : '恢复系统默认（新案例不再套用自定义模版）')
+        : (isDef ? '取消默认（新案例恢复系统默认样式）' : '设为默认模版（新建案例自动套用）');
+    return '<span class="case-preset-chip' + (isDef ? ' case-preset-def' : '') + (del && sys ? ' case-preset-locked' : '') + (del && !sys ? ' case-preset-deleting' : '') + '">'
+        + '<button type="button" class="case-chip"' + (click ? ' onclick="' + click + '"' : '') + ' title="' + clickTitle + '">' + escapeHtml(name) + '</button>'
+        + '<button type="button" class="case-preset-star' + (isDef ? ' active' : '') + '" onclick="toggleCasePresetDefault(\'' + id + '\')" title="' + starTitle + '">' + (isDef ? '★' : '☆') + '</button>'
+        + '</span>';
 }
 function loadCaseLibrary() {
     try {
@@ -36807,6 +36878,7 @@ function caseNewState() {
             textColor: '',
             layout: null,
             hiddenImages: [],        // 不入分图的制品图 id（总图按分图排版派生，连带不入总图）
+            lineSolo: {},            // 「独占一行/列」约束（imgId → 'row' | 'col'，调整布局面板设置）
             // excludedFromTotal 已废弃（旧版按图排除，迁移为组级 g.noTotal，见 caseNormalizeState）
             watermark: { enabled: false, type: 'text', text: name ? '@' + name : '', imgId: '', position: 'br', opacity: 0.3, scale: 1, over: 'products' }
         },
@@ -36857,6 +36929,8 @@ function caseNormalizeState(st) {
     // 「不入分图」的隐藏图 id 集合
     if (!Array.isArray(st.config.hiddenImages)) st.config.hiddenImages = [];
     st.config.hiddenImages = st.config.hiddenImages.filter(function (id) { return !!id; });
+    // 「独占一行/列」约束（imgId → 'row'|'col'）
+    if (!st.config.lineSolo || typeof st.config.lineSolo !== 'object') st.config.lineSolo = {};
     st.pages = Array.isArray(st.pages) ? st.pages : [];
     st.config.width = Math.min(4000, Math.max(200, parseInt(st.config.width, 10) || 1080));
     st.config.height = Math.min(4000, Math.max(200, parseInt(st.config.height, 10) || 1080));
@@ -36904,17 +36978,95 @@ function caseRecordFromState(st) {
 }
 
 // ---------- 订单带入 ----------
-function caseOrderOptionsHtml() {
-    const st = _caseState;
-    let html = '<option value="">不关联订单</option>';
+// 关联订单组合框：选项按 客户 · 时间 · 企划名 · IP 排列；输入关键字可筛选（含角色）
+function caseOrderLabel(o) {
+    const parts = [];
+    const master = String(o && o.clientId || '').trim();
+    if (master) parts.push(master);
+    const d = o && o.timestamp ? String(o.timestamp).slice(0, 10) : '';
+    if (d) parts.push(d);
+    const t = String(o && o.projectName || '').trim();
+    if (t) parts.push(t);
+    const ip = String(o && o.projectOrigin || '').trim();
+    if (ip) parts.push(ip);
+    return parts.length ? parts.join(' · ') : '（无标题订单）';
+}
+let _caseOrderComboItems = []; // 当前列表项 [{id,label}]，下标供键盘/点选引用
+let _caseOrderComboIdx = -1;   // 键盘高亮下标
+function caseOrderComboRender(filter) {
+    const kw = String(filter || '').trim().toLowerCase();
+    _caseOrderComboItems = [];
+    let html = '';
+    if (!kw) {
+        _caseOrderComboItems.push({ id: '', label: '不关联订单' });
+        html += '<div class="case-order-item case-order-item-none" onmousedown="caseOrderComboPickAt(0)">不关联订单</div>';
+    }
     (history || []).forEach(function (o) {
         if (!o) return;
-        const t = String(o.projectName || '').trim() || '（无标题订单）';
-        const d = o.timestamp ? String(o.timestamp).slice(0, 10) : '';
-        const sel = st && st.orderId != null && String(st.orderId) === String(o.id) ? ' selected' : '';
-        html += '<option value="' + escapeHtml(String(o.id)) + '"' + sel + '>' + escapeHtml(t + (d ? '（' + d + '）' : '')) + '</option>';
+        const label = caseOrderLabel(o);
+        if (kw) {
+            const hay = [o.clientId, o.timestamp, o.projectName, o.projectOrigin, o.characterName]
+                .map(function (v) { return String(v == null ? '' : v).toLowerCase(); }).join('\n');
+            if (label.toLowerCase().indexOf(kw) < 0 && hay.indexOf(kw) < 0) return;
+        }
+        _caseOrderComboItems.push({ id: String(o.id), label: label });
+        html += '<div class="case-order-item" title="' + escapeHtml(label) + '" onmousedown="caseOrderComboPickAt(' + (_caseOrderComboItems.length - 1) + ')">' + escapeHtml(label) + '</div>';
     });
-    return html;
+    if (kw && !_caseOrderComboItems.length) html = '<div class="case-order-empty">无匹配订单</div>';
+    const list = document.getElementById('caseOrderList');
+    if (list) { list.innerHTML = html; list.classList.add('open'); }
+    _caseOrderComboIdx = -1;
+}
+function caseOrderComboOpen() {
+    caseOrderComboRender('');
+    if (!window.__caseOrderComboBound) {
+        window.__caseOrderComboBound = true;
+        document.addEventListener('click', function (e) {
+            const combo = document.getElementById('caseOrderCombo');
+            if (!combo || !combo.contains(e.target)) caseOrderComboClose();
+        });
+    }
+}
+function caseOrderComboFilter() {
+    const input = document.getElementById('caseOrderInput');
+    caseOrderComboRender(input ? input.value : '');
+}
+// 关闭面板并把输入框恢复为当前选中订单的文字
+function caseOrderComboClose() {
+    const list = document.getElementById('caseOrderList');
+    if (list) { list.classList.remove('open'); list.innerHTML = ''; }
+    _caseOrderComboIdx = -1;
+    const input = document.getElementById('caseOrderInput');
+    if (input && _caseState) {
+        const cur = (_caseState.orderId != null && _caseState.orderId !== '')
+            ? (history || []).find(function (x) { return x && String(x.id) === String(_caseState.orderId); })
+            : null;
+        input.value = cur ? caseOrderLabel(cur) : '';
+    }
+}
+function caseOrderComboPickAt(i) {
+    const it = _caseOrderComboItems[i];
+    if (!it) return;
+    caseOrderComboClose();
+    applyCaseOrder(it.id);
+}
+function caseOrderComboKey(e) {
+    const list = document.getElementById('caseOrderList');
+    if (e.key === 'Escape') { e.preventDefault(); caseOrderComboClose(); return; }
+    if (!list || !list.classList.contains('open')) {
+        if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); caseOrderComboOpen(); }
+        return;
+    }
+    const n = _caseOrderComboItems.length;
+    if (!n) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); _caseOrderComboIdx = (_caseOrderComboIdx + 1) % n; }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); _caseOrderComboIdx = (_caseOrderComboIdx - 1 + n) % n; }
+    else if (e.key === 'Enter') { e.preventDefault(); if (_caseOrderComboIdx >= 0) caseOrderComboPickAt(_caseOrderComboIdx); return; }
+    else return;
+    Array.prototype.forEach.call(list.querySelectorAll('.case-order-item'), function (el, i) {
+        el.classList.toggle('hl', i === _caseOrderComboIdx);
+        if (i === _caseOrderComboIdx && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    });
 }
 // 制品名解析：真实订单存 pp.product（制品名）/pp.productId/pp.quantity；兼容旧的 pp.type
 function caseProductLabel(pp) {
@@ -37083,6 +37235,7 @@ function caseSpanGridSlots(aspects, area, gap, cols, rows) {
     const order = spans.map(function (s, i) { return i; }); // 按上传/分组顺序放置：同组制品天然相邻
     const used = {};
     const placed = new Array(n).fill(null);
+    let failedSpan = false; // 有大跨度图被迫缩成 1×1 → 该候选作废
     function tryPlace(i, rs, cs) {
         for (let r = 0; r + rs <= rows; r++) {
             for (let c = 0; c + cs <= cols; c++) {
@@ -37103,9 +37256,15 @@ function caseSpanGridSlots(aspects, area, gap, cols, rows) {
         return false;
     }
     order.forEach(function (i) {
-        if (!tryPlace(i, spans[i].rs, spans[i].cs)) tryPlace(i, 1, 1); // 放不下降级为 1×1
+        if (tryPlace(i, spans[i].rs, spans[i].cs)) return;
+        // 放不下时降级 1×1：仅当该图本来就该占 1 格（round 后跨度为 1）才可接受；
+        // 大跨度图被压进单格会产生远小于其他槽位的「微型格」（如 5 张长图掉进 4×5 网格剩下的单格），
+        // 该候选整体作废，交给行装箱/兜底排版选更均匀的方案
+        if (!tryPlace(i, 1, 1)) return;
+        if (spans[i].rs > 1 || spans[i].cs > 1) failedSpan = true;
     });
     if (placed.some(function (x) { return !x; })) return null;
+    if (failedSpan) return null;
     return placed.map(function (p) {
         return {
             x: Math.round(area.x + p.c * (cellW + gap)),
@@ -37115,21 +37274,77 @@ function caseSpanGridSlots(aspects, area, gap, cols, rows) {
         };
     });
 }
-// 宽度铺满行装箱（等比、零留白）：行高 = 行宽 ÷ 行内宽高比和，行内贴边、整体超高等比缩
-function caseMasonrySlots(aspects, area, gap) {
+// 宽度铺满行装箱（等比、零留白）：行高 = 行宽 ÷ 行内宽高比和，行内贴边、整体超高等比缩。
+// 枚举全部「连续切分」（每行张数可不等，如 [1,4]、[2,1,2]，保持上传顺序相邻）；
+// 图较多时全枚举代价高，退化为均分行数枚举
+function caseMasonrySlots(aspects, area, gap, mustSolo) {
     const n = aspects.length;
     if (!n) return null;
+    // 视觉上最狭长的图（|ln(宽高比)| 最大、比例确实偏离方形 ≥1.6 倍）必须独占一整行：
+    // 行装箱中它是横版(a>1)→独占一行；列装箱（转置调用）里竖长图同样落在独占列。
+    // 否则评分会倾向让最宽的图独占、把最长的图挤进叠放小格里
+    let extreme = -1, extremeDev = 0;
+    for (let i = 0; i < n; i++) {
+        const dev = Math.abs(Math.log(Math.max(1e-6, aspects[i])));
+        if (dev > extremeDev) { extremeDev = dev; extreme = i; }
+    }
+    const extremeSolo = extreme >= 0 && aspects[extreme] > 1 && extremeDev >= Math.log(1.6);
+    // 用户显式约束（调整布局「独占一行/一列」）：这些下标必须独占一行。
+    // 约束从严到宽分级筛选：0=数量均衡+极值独占+用户独占；1=极值+用户；2=仅用户；3=全放开兜底
+    const mustSoloArr = Array.isArray(mustSolo) ? mustSolo.filter(function (x) { return x >= 0 && x < n; }) : [];
     let best = null;
-    for (let R = 1; R <= n; R++) {
-        const q = Math.floor(n / R), rem = n % R;
-        const rows = [];
-        let idx = 0;
-        for (let r = 0; r < R; r++) {
-            const cnt = q + (r < rem ? 1 : 0);
-            const arr = [];
-            for (let k = 0; k < cnt; k++) arr.push(idx++);
+    const allSets = [];
+    if (n <= 16) {
+        // n-1 个断口的位掩码枚举全部连续切分（如 n=5 的 0b0011 → [1,1,1,2]）
+        for (let mask = 0; mask < (1 << (n - 1)); mask++) {
+            const rows = [];
+            let arr = [0];
+            for (let i = 1; i < n; i++) {
+                if (mask & (1 << (i - 1))) { rows.push(arr); arr = [i]; }
+                else arr.push(i);
+            }
             rows.push(arr);
+            allSets.push(rows);
         }
+    } else {
+        for (let R = 1; R <= n; R++) {
+            const q = Math.floor(n / R), rem = n % R;
+            const rows = [];
+            let idx = 0;
+            for (let r = 0; r < R; r++) {
+                const cnt = q + (r < rem ? 1 : 0);
+                const arr = [];
+                for (let k = 0; k < cnt; k++) arr.push(idx++);
+                rows.push(arr);
+            }
+            allSets.push(rows);
+        }
+    }
+    function passFilter(rows, level) {
+        if (level < 1) {
+            // 每行张数最多为另一行的 2 倍：数量悬殊的切分（如 5 张切成 [3,1,1]，3 张挤成细条、
+            // 单张列反而独占满高）不参与选择，符合「[1,2,2] 可以、[3,1,1] 不行」的排版直觉
+            let mx = 0, mn = n;
+            rows.forEach(function (a2) { mx = Math.max(mx, a2.length); mn = Math.min(mn, a2.length); });
+            if (mx > 2 * mn) return false;
+        }
+        if (level < 2 && extremeSolo) {
+            const line = rows.find(function (a2) { return a2.indexOf(extreme) >= 0; });
+            if (line.length !== 1) return false;
+        }
+        if (level < 3) {
+            for (let k = 0; k < mustSoloArr.length; k++) {
+                const line = rows.find(function (a2) { return a2.indexOf(mustSoloArr[k]) >= 0; });
+                if (!line || line.length !== 1) return false;
+            }
+        }
+        return true;
+    }
+    for (let level = 0; level <= 3 && !best; level++) {
+        for (let si = 0; si < allSets.length; si++) {
+            const rows = allSets[si];
+            if (!passFilter(rows, level)) continue;
+            const R = rows.length;
         const rowHs = rows.map(function (arr) {
             const ra = arr.reduce(function (a, i) { return a + aspects[i]; }, 0);
             return ra > 0 ? (area.w - (arr.length - 1) * gap) / ra : 0;
@@ -37147,6 +37362,7 @@ function caseMasonrySlots(aspects, area, gap) {
             score += rowHs[r] * rowHs[r] * ra;
         });
         if (!best || score > best.score) best = { rows: rows, rowHs: rowHs, totalH: totalH, score: score };
+        }
     }
     if (!best) return null;
     const out = new Array(n);
@@ -37164,6 +37380,18 @@ function caseMasonrySlots(aspects, area, gap) {
     });
     return out;
 }
+// 高度铺满列装箱（行装箱的转置）：每列宽 = 列高 ÷ 列内「宽高比倒数和」，
+// 列内图上下贴边、整体超宽等比缩；每列张数可不等（如首列 1 张、其余列各 2 张）。
+// 高图/竖版制品在横版制品区上用列装箱往往比行装箱更满
+function caseColumnSlots(aspects, area, gap, mustSolo) {
+    const tAspects = aspects.map(function (a) { return a > 0 ? 1 / a : 1; });
+    const tArea = { x: area.y, y: area.x, w: area.h, h: area.w };
+    const t = caseMasonrySlots(tAspects, tArea, gap, mustSolo);
+    if (!t) return null;
+    return t.map(function (sl) {
+        return sl ? { x: sl.y, y: sl.x, w: sl.h, h: sl.w } : null;
+    });
+}
 // 默认排版：按制品实际尺寸等比缩放 + 行装箱紧密排列（小间距、行内/整体居中、不超制品区）
 // 制品之间的相对大小保持上传原图的比例关系；模板只控制装饰风格，不再决定拼贴方式
 function casePackSlots(imgs, area, blocks) {
@@ -37171,11 +37399,13 @@ function casePackSlots(imgs, area, blocks) {
     const n = imgs ? imgs.length : 0;
     if (n <= 0) return slots;
     const gap = Math.max(6, Math.round(Math.min(area.w, area.h) * 0.012));
-    // 布局宽高比：有效宽高比钳制 0.45~3（防极端图拖垮排版；渲染仍等比 contain 居中）
+    // 布局宽高比：按旋转后的有效宽高比装箱；仅钳制病态极端值 0.18~5.5（防超长图拖垮排版）。
+    // 钳制区间须覆盖真实制品比例（镭射票 1:3.6、长书签 1:5 等）：槽位比例与绘制 contain 的真实比例一致，
+    // 才不会出现槽位内 letterbox 空隙（此前 0.45~3 钳制导致镭射票旋转后空隙变大）
     const aspects = [];
     for (let i = 0; i < n; i++) {
         const a = caseItemEffectiveAspect(imgs[i]);
-        aspects.push(Math.min(3, Math.max(0.45, a)));
+        aspects.push(Math.min(5.5, Math.max(0.18, a)));
     }
     // 单元：有分组 → 每组一个单元（组内网格、不拆行）；无分组 → 每图一个单元
     const units = [];
@@ -37206,19 +37436,32 @@ function casePackSlots(imgs, area, blocks) {
                 if (score > bestScore) { bestScore = score; bestS = s; }
             }
         }
-        // 候选二：宽度铺满行装箱（等比、行内贴边、零留白——原版效果）
-        let bestM = null, mScore = -Infinity;
-        const m = caseMasonrySlots(aspects, area, gap);
-        if (m) {
-            mScore = 0;
+        // 候选二/三：行装箱 + 列装箱（等比、贴边、零留白）——每行/列张数都可不等（连续切分枚举），取评分高者；
+        // 「独占一行/列」约束（调整布局面板设置）：行约束进行装箱、列约束进列装箱，满足约束数多者优先
+        const soloCfg = (_caseState && _caseState.config && _caseState.config.lineSolo) || {};
+        const rowSolo = [], colSolo = [];
+        for (let i = 0; i < n; i++) {
+            const m = soloCfg[imgs[i]];
+            if (m === 'row') rowSolo.push(i);
+            else if (m === 'col') colSolo.push(i);
+        }
+        let bestM = null, mScore = -Infinity, bestSat = -1;
+        [[caseMasonrySlots(aspects, area, gap, rowSolo), rowSolo.length],
+         [caseColumnSlots(aspects, area, gap, colSolo), colSolo.length]].forEach(function (pair) {
+            const m = pair[0];
+            if (!m) return;
+            let sc = 0;
             m.forEach(function (sl, i) {
                 let w = sl.w, h = sl.w / aspects[i];
                 if (h > sl.h) { h = sl.h; w = h * aspects[i]; }
-                mScore += 1.5 * w * h - 0.5 * sl.w * sl.h;
+                sc += 1.5 * w * h - 0.5 * sl.w * sl.h;
             });
-        }
-        // 同分优先行装箱（无块内留白）
-        if (m && mScore >= bestScore) return m;
+            if (pair[1] > bestSat || (pair[1] === bestSat && sc > mScore)) { bestSat = pair[1]; mScore = sc; bestM = m; }
+        });
+        // 有显式「独占」约束时约束优先（不再与跨格网格按覆盖比较）
+        if (bestSat > 0 && bestM) return bestM;
+        // 同分优先行/列装箱（无块内留白）
+        if (bestM && mScore >= bestScore) return bestM;
         if (bestS) return bestS;
         // 兜底：均匀网格（覆盖面积择优）
         const all = [];
@@ -37670,7 +37913,8 @@ function caseToggleImagePageHidden(imgId) {
     else arr.push(imgId);
     renderCaseForm();
     renderCasePreview();
-    showGlobalToast(i >= 0 ? '该图已恢复显示' : '该图已隐藏，不入分图与总图');
+    const freeMode = !(st.groups && st.groups.length);
+    showGlobalToast(i >= 0 ? '该图已恢复显示' : (freeMode ? '该图已隐藏，不入总图' : '该图已隐藏，不入分图与总图'));
 }
 // 分图/总图实际使用的组内图：先剔除「不入分图」的隐藏图，再按份数铺满
 function caseGroupVisibleImages(g, st) {
@@ -37696,7 +37940,8 @@ function caseGroupImagesShown(g) {
 function casePages(st) {
     const pages = [];
     const hasGroups = !!(st.groups && st.groups.length);
-    let all = (st.images || []).slice();
+    // 自由模式同样剔除「眼睛关闭」的隐藏图（与分组模式的分图/总图过滤一致）
+    let all = (st.images || []).filter(function (id) { return !caseImgHidden(st, id); });
     if (hasGroups) {
         // 总图 = 各制品按份数展开后的合集（先剔除组内隐藏图）；整组「不入总图」的分组跳过
         all = [];
@@ -37827,8 +38072,8 @@ function buildCaseCanvasHtml(st, page) {
     const infoOn = !!cfg.toggles.userInfo;
     const infoArr = infoOn ? caseInfoLines(st) : [];
     const prodOn = !!cfg.toggles.productInfo;
-    // 当前页的制品图列表（总图=全部；制品页=该组的图）
-    const pageImages = (page && page.images) ? page.images : (st.images || []);
+    // 当前页的制品图列表（总图=全部；制品页=该组的图）；page 缺省时也剔除隐藏图
+    const pageImages = (page && page.images) ? page.images : (st.images || []).filter(function (id) { return !caseImgHidden(st, id); });
     // 文字整体大小（可调，100% = 推荐基准）
     const tScale = Math.min(1.8, Math.max(0.6, Number(cfg.textScale) || 1));
     // 左侧文字模块（案例类型/年份+@ID/提示信息）整体为基准字号的 80%；右侧企划信息用 tagFs 不受影响
@@ -37947,7 +38192,7 @@ function buildCaseCanvasHtml(st, page) {
         const by = Math.min(Math.max(Math.round(cy - bh / 2), area.y), area.y + area.h - bh);
         const drawSlot = { x: bx, y: by, w: bw, h: bh };
         const c = _caseImgCache[imgId];
-        // 等比 contain 进槽位：装箱用的宽高比有 0.45~3 钳制，极端比例图（如超长竖图）若直接铺满槽位会被拉伸；
+        // 等比 contain 进槽位：装箱用的宽高比有 0.18~5.5 钳制，极端比例图（如超长竖图）若直接铺满槽位会被拉伸；
         // 这里按原图（±90° 旋转后）真实比例缩小居中回槽位，装饰层同比例烘焙、保持对齐
         if (c && c.w && c.h) {
             const rotQ = ((slotRot % 180) + 180) % 180;
@@ -37967,8 +38212,9 @@ function buildCaseCanvasHtml(st, page) {
         const lh = swapped ? drawSlot.w : drawSlot.h;
         const lx = Math.round((drawSlot.w - lw) / 2), ly = Math.round((drawSlot.h - lh) / 2);
         const rotCss = slotRot ? 'transform:rotate(' + slotRot + 'deg);' : '';
-        const layer = function (src, cls) {
-            return '<img ' + (cls ? 'class="' + cls + '" ' : '') + 'src="' + src + '" style="position:absolute;left:' + lx + 'px;top:' + ly + 'px;width:' + lw + 'px;height:' + lh + 'px;' + rotCss + '">';
+        const layer = function (src, cls, box) {
+            const b = box || { x: lx, y: ly, w: lw, h: lh };
+            return '<img ' + (cls ? 'class="' + cls + '" ' : '') + 'src="' + src + '" style="position:absolute;left:' + b.x + 'px;top:' + b.y + 'px;width:' + b.w + 'px;height:' + b.h + 'px;' + rotCss + '">';
         };
         let inner = '';
         if (!c) {
@@ -37977,9 +38223,17 @@ function buildCaseCanvasHtml(st, page) {
             const fxCfg = caseEffectiveFx(st, imgId);
             if (fxCfg.enabled) {
                 const sh = _caseFxCache[fxCfg.key];
-                if (sh && sh.url) inner += layer(sh.url);
-                inner += layer(c.dataUrl, 'case-item-img');
-                if (sh && sh.overUrl) inner += layer(sh.overUrl);
+                if (sh && sh.url) {
+                    // 烘焙层画布四周多 bear 边距：显示盒按本体盒向外扩 bear 的显示宽度，中心与本体盒一致（旋转后仍对齐）
+                    const bx = lw * (sh.bear || 0) / (c.w || 1);
+                    const by = lh * (sh.bear || 0) / (c.h || 1);
+                    const fbox = { x: Math.round(lx - bx), y: Math.round(ly - by), w: Math.round(lw + bx * 2), h: Math.round(lh + by * 2) };
+                    inner += layer(sh.url, '', fbox);
+                    inner += layer(c.dataUrl, 'case-item-img');
+                    if (sh.overUrl) inner += layer(sh.overUrl, '', fbox);
+                } else {
+                    inner += layer(c.dataUrl, 'case-item-img');
+                }
             } else {
                 inner += layer(c.dataUrl, 'case-item-img');
             }
@@ -38271,6 +38525,7 @@ function renderCasePreview() {
         wrap.classList.remove('case-editing');
     }
     caseRenderSelPanel();
+    if (_caseEditMode) caseRenderEditGlobal();
     // 装饰层（投影/描边/扩张描边）与底图异步就绪补绘
     if (caseActiveMockup().shadow || (st.config.imgFx && Object.keys(st.config.imgFx).length)) {
         caseEnsureShadows((st.images || []).slice()).then(function (changed) {
@@ -38339,14 +38594,16 @@ window.addEventListener('resize', function () { fitCasePreview(); });
     });
 })();
 
-// ===== 调整布局模式（预览区直接拖拽定位） =====
+// ===== 调整布局模式（预览区直接拖拽定位 + 右侧停靠功能区） =====
 function toggleCaseEditMode(force) {
     _caseEditMode = force === undefined ? !_caseEditMode : !!force;
     const btn = document.getElementById('caseEditLayoutBtn');
     if (btn) btn.classList.toggle('case-edit-on', _caseEditMode);
+    const dock = document.getElementById('caseEditDock');
+    if (dock) dock.classList.toggle('d-none', !_caseEditMode);
     if (!_caseEditMode) caseSelectElement(null);
     renderCasePreview();
-    if (_caseEditMode) showGlobalToast('调整布局：拖动虚线框 / 文字 / 制品，点选文字可单独调字号');
+    if (_caseEditMode) showGlobalToast('调整布局：拖动虚线框 / 文字 / 制品，点选后可在右侧面板精细设置');
 }
 function caseRenderAreaOutline(wrap) {
     const canvas = wrap.querySelector('.case-canvas');
@@ -38378,50 +38635,237 @@ function caseSelectElement(key) {
         el.classList.toggle('case-el-selected', key === 'item:' + el.getAttribute('data-slot-index'));
     });
     caseRenderSelPanel();
+    if (_caseEditMode) caseRenderEditGlobal();
+}
+// ===== 通用取色器（常用色板 + Hex 输入 + 原生精细取色；替代仅滑动取色的原生控件） =====
+const CASE_COLOR_PRESETS = [
+    '#ffffff', '#f2f2f2', '#d9d9d9', '#a6a6a6', '#7f7f7f', '#4d4d4d', '#262626', '#000000',
+    '#e05666', '#ff8a9b', '#ffb3c0', '#f5b301', '#ffd76e', '#c9a24b', '#8a6d3b', '#ff6f3c',
+    '#7c5cd6', '#b48ce0', '#3b82f6', '#88c9a1', '#2e8b57', '#1b2440', '#4a5568', '#9aa7b8'
+];
+let _caseColorPop = null;
+let _caseColorPopBtn = null;
+let _caseColorPopSet = '';
+// 圆形取色按钮（表单/面板通用）：点击弹出取色层
+function caseColorBtnHtml(setExpr, cur) {
+    cur = /^#[0-9a-fA-F]{6}$/.test(String(cur || '')) ? String(cur) : '#ffffff';
+    // setExpr 内的单引号需转义，避免截断 onclick 属性里的 JS 字符串
+    const exprAttr = String(setExpr || '').replace(/'/g, "\\'");
+    return '<button type="button" class="case-color-btn" style="background:' + cur + ';" onclick="caseColorPickOpen(event, \'' + exprAttr + '\', \'' + cur + '\')" title="取色"></button>';
+}
+// HSV ↔ Hex 转换（自研取色块用）
+function caseHsvToHex(h, s, v) {
+    const f = function (n) {
+        const k = (n + h / 60) % 6;
+        return Math.round((v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255);
+    };
+    const t2 = function (n) { return ('0' + n.toString(16)).slice(-2); };
+    return '#' + t2(f(5)) + t2(f(3)) + t2(f(1));
+}
+function caseHexToHsv(hex) {
+    const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || ''));
+    if (!m) return { h: 0, s: 0, v: 1 };
+    const n = parseInt(m[1], 16);
+    const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    if (d) {
+        if (max === r) h = ((g - b) / d) % 6;
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60; if (h < 0) h += 360;
+    }
+    return { h: h, s: max ? d / max : 0, v: max };
+}
+// 元素内按下即拖动（Pointer Capture，拖出元素也持续跟踪）
+function caseColorBindDrag(el, onMove) {
+    el.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        try { el.setPointerCapture(e.pointerId); } catch (_) {}
+        onMove(e);
+        const mv = function (ev) { onMove(ev); };
+        const up = function () {
+            el.removeEventListener('pointermove', mv);
+            el.removeEventListener('pointerup', up);
+            el.removeEventListener('pointercancel', up);
+        };
+        el.addEventListener('pointermove', mv);
+        el.addEventListener('pointerup', up);
+        el.addEventListener('pointercancel', up);
+    });
+}
+function caseColorPickOpen(ev, setExpr, cur) {
+    if (ev) { ev.stopPropagation(); if (ev.preventDefault) ev.preventDefault(); }
+    closeCaseColorPicker();
+    _caseColorPopBtn = (ev && ev.currentTarget) || null;
+    _caseColorPopSet = String(setExpr || '');
+    const hex0 = /^#[0-9a-fA-F]{6}$/.test(String(cur)) ? String(cur).toLowerCase() : '#ffffff';
+    const pop = document.createElement('div');
+    pop.className = 'case-color-pop';
+    pop.innerHTML = '<div class="case-color-sv" id="caseColorSv"><div class="case-color-sv-dot" id="caseColorSvDot"></div></div>'
+        + '<div class="case-color-hue" id="caseColorHue"><div class="case-color-hue-dot" id="caseColorHueDot"></div></div>'
+        + '<div class="case-color-pop-head">'
+        + '<span class="case-color-prev" id="caseColorPopPrev" style="background:' + hex0 + ';"></span>'
+        + '<input type="text" class="case-color-hex" id="caseColorPopHex" maxlength="7" spellcheck="false" placeholder="#RRGGBB" value="' + hex0 + '">'
+        + '</div>'
+        + '<div class="case-color-grid">'
+        + CASE_COLOR_PRESETS.map(function (c) { return '<button type="button" class="case-color-chip" style="background:' + c + '" data-c="' + c + '" title="' + c + '"></button>'; }).join('')
+        + '</div>'
+        + '<div class="case-color-pop-foot">'
+        + '<button type="button" class="case-color-done" onclick="closeCaseColorPicker()">完成</button>'
+        + '</div>';
+    document.body.appendChild(pop);
+    // 定位在触发钮下方，贴近视口边缘时收边/上翻
+    if (_caseColorPopBtn) {
+        const r = _caseColorPopBtn.getBoundingClientRect();
+        const pw = 236, ph = 396;
+        pop.style.left = Math.min(window.innerWidth - pw - 8, Math.max(8, r.left)) + 'px';
+        let y = r.bottom + 6;
+        if (y + ph > window.innerHeight - 8) y = Math.max(8, r.top - ph - 6);
+        pop.style.top = y + 'px';
+    }
+    _caseColorPop = pop;
+    // —— 饱和度/明度色块 + 色相条（自绘可拖动） ——
+    const sv = pop.querySelector('#caseColorSv');
+    const svDot = pop.querySelector('#caseColorSvDot');
+    const hueEl = pop.querySelector('#caseColorHue');
+    const hueDot = pop.querySelector('#caseColorHueDot');
+    let hsv = caseHexToHsv(hex0);
+    const refreshSvBg = function () {
+        sv.style.background = 'linear-gradient(to top, #000, rgba(0,0,0,0)), linear-gradient(to right, #fff, hsl(' + Math.round(hsv.h) + ',100%,50%))';
+    };
+    const placeDots = function () {
+        svDot.style.left = (hsv.s * 100) + '%';
+        svDot.style.top = ((1 - hsv.v) * 100) + '%';
+        hueDot.style.left = (hsv.h / 360 * 100) + '%';
+    };
+    const setHsv = function (h, s, v) {
+        hsv = { h: Math.min(359.9, Math.max(0, h)), s: Math.min(1, Math.max(0, s)), v: Math.min(1, Math.max(0, v)) };
+        refreshSvBg(); placeDots();
+        caseColorApply(caseHsvToHex(hsv.h, hsv.s, hsv.v));
+    };
+    // 从 Hex 同步拖点与色块背景（色板/Hex 输入共用）
+    const syncFromHex = function (hex) {
+        caseColorApply(hex);
+        hsv = caseHexToHsv(hex);
+        refreshSvBg(); placeDots();
+    };
+    refreshSvBg(); placeDots();
+    caseColorBindDrag(sv, function (e) {
+        const r = sv.getBoundingClientRect();
+        setHsv(hsv.h, (e.clientX - r.left) / r.width, 1 - (e.clientY - r.top) / r.height);
+    });
+    caseColorBindDrag(hueEl, function (e) {
+        const r = hueEl.getBoundingClientRect();
+        setHsv((e.clientX - r.left) / r.width * 360, hsv.s, hsv.v);
+    });
+    pop.addEventListener('click', function (e) {
+        const chip = e.target.closest ? e.target.closest('.case-color-chip') : null;
+        if (chip) syncFromHex(chip.getAttribute('data-c'));
+    });
+    const hexInput = pop.querySelector('#caseColorPopHex');
+    hexInput.addEventListener('input', function () {
+        let v = String(hexInput.value || '').trim();
+        if (v && v.charAt(0) !== '#') v = '#' + v;
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) syncFromHex(v.toLowerCase());
+    });
+    if (!window.__caseColorDocBound) {
+        window.__caseColorDocBound = true;
+        document.addEventListener('click', function (e) {
+            if (_caseColorPop && !_caseColorPop.contains(e.target) && !(_caseColorPopBtn && _caseColorPopBtn.contains(e.target))) closeCaseColorPicker();
+        });
+    }
+}
+// 应用所选颜色：执行各调用处的 setter（$c 替换为色值），并同步弹层与触发钮的显示
+function caseColorApply(hex) {
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex) || !_caseColorPop) return;
+    try { new Function('c', _caseColorPopSet.replace(/\$c/g, "'" + hex + "'"))(); } catch (e) { console.error('取色应用失败:', e); }
+    const prev = _caseColorPop.querySelector('#caseColorPopPrev');
+    if (prev) prev.style.background = hex;
+    const hexInput = _caseColorPop.querySelector('#caseColorPopHex');
+    if (hexInput && hexInput.value.toLowerCase() !== hex.toLowerCase()) hexInput.value = hex;
+    if (_caseColorPopBtn) _caseColorPopBtn.style.background = hex;
+}
+function closeCaseColorPicker() {
+    if (_caseColorPop) { _caseColorPop.remove(); _caseColorPop = null; }
+    _caseColorPopBtn = null;
+    _caseColorPopSet = '';
 }
 function caseRenderSelPanel() {
-    const box = document.getElementById('caseSelPanel');
+    const box = document.getElementById('caseEditSelBody');
+    const titleEl = document.getElementById('caseEditSelTitle');
     if (!box) return;
-    if (!_caseEditMode || !_caseSelEl || !_caseState) { box.classList.add('d-none'); box.innerHTML = ''; return; }
+    if (!_caseEditMode || !_caseState) { box.innerHTML = ''; return; }
     const key = _caseSelEl;
+    if (!key) {
+        if (titleEl) titleEl.textContent = '选中设置';
+        box.innerHTML = '<div class="case-form-hint">点击预览中的制品或文字进行设置；拖动可直接摆位。</div>';
+        return;
+    }
+    let title = '选中设置';
     let html = '';
     if (key.indexOf('item:') === 0) {
+        title = '制品设置';
         const idx = parseInt(key.slice(5), 10) || 0;
-        const imgId = _caseState.images ? _caseState.images[idx] : null;
+        const imgId = caseItemImageId(idx);
         const fx = (imgId && _caseState.config.imgFx && _caseState.config.imgFx[imgId]) || {};
         const effShadow = fx.shadow != null ? !!fx.shadow : caseActiveMockup().shadow;
         const curScale = Math.round((Number(fx.scale) || 1) * 100);
         const curRot = Math.round(Number(fx.rot) || 0);
-        const sw = Math.round((Number(fx.strokeW) || 0) * 100);
-        const ew = Math.round((Number(fx.expandW) || 0) * 100);
+        // 描边宽度按制品原图像素显示（内部按 maxEdge 比例存储，随制品缩放）
+        const cimg = _caseImgCache[imgId];
+        const maxEdge = (cimg ? Math.max(cimg.w || 0, cimg.h || 0) : 0) || 1000;
+        const strokeMaxPx = Math.round(maxEdge * 0.1);
+        const expandMaxPx = Math.round(maxEdge * 0.2);
+        const strokePx = Math.min(strokeMaxPx, Math.round((Number(fx.strokeW) || 0) * maxEdge * 10) / 10);
+        const expandPx = Math.min(expandMaxPx, Math.round((Number(fx.expandW) || 0) * maxEdge * 10) / 10);
         html = '<div class="case-sel-title">已选中：制品 ' + (idx + 1) + '</div>'
             + '<div class="case-toggle-row"><span class="case-toggle-name">轮廓投影</span>'
             + '<label class="custom-toggle"><input type="checkbox"' + (effShadow ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'shadow\', this.checked)"><span class="toggle-slider"></span></label></div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
-            + '<input type="range" min="0.3" max="2.5" step="0.05" value="' + curScale + '" oninput="setCaseItemScale(' + idx + ', this.value)">'
-            + '<span class="case-range-val" id="caseItemScaleVal">' + curScale + '%</span></div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">旋转</span>'
-            + '<input type="range" min="-180" max="180" step="5" value="' + curRot + '" oninput="setCaseItemRot(' + idx + ', this.value)">'
-            + '<span class="case-range-val" id="caseItemRotVal">' + curRot + '°</span></div>'
+            + '<div class="case-form-hint" style="margin:2px 0 0;">默认跟随「样机模板」的实物投影；此开关为该制品单独覆盖</div>'
+            + '<div class="case-step-row"><span class="case-step-name">大小</span>'
+            + '<button type="button" class="case-step-btn" onclick="caseItemStepScale(' + idx + ', -5)" title="缩小 5%">−</button>'
+            + '<input type="number" min="30" max="250" step="5" value="' + curScale + '" onchange="setCaseItemScale(' + idx + ', this.value / 100)">'
+            + '<button type="button" class="case-step-btn" onclick="caseItemStepScale(' + idx + ', 5)" title="放大 5%">＋</button>'
+            + '<span class="case-step-unit">%</span></div>'
+            + '<div class="case-step-row"><span class="case-step-name">旋转</span>'
+            + '<button type="button" class="case-step-btn" onclick="caseItemStepRot(' + idx + ', -5)" title="逆时针 5°">−</button>'
+            + '<input type="number" min="-180" max="180" step="5" value="' + curRot + '" onchange="setCaseItemRot(' + idx + ', this.value)">'
+            + '<button type="button" class="case-step-btn" onclick="caseItemStepRot(' + idx + ', 5)" title="顺时针 5°">＋</button>'
+            + '<span class="case-step-unit">°</span></div>'
             + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">快捷旋转</span>'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseQuickRotate(' + idx + ', -90)" title="逆时针旋转90°">↺ 90°</button>'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseQuickRotate(' + idx + ', 90)" title="顺时针旋转90°">↻ 90°</button></div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">描边</span>'
-            + '<input type="range" min="0" max="0.1" step="0.005" value="' + (Number(fx.strokeW) || 0) + '" oninput="setCaseItemFx(' + idx + ', \'strokeW\', this.value)">'
-            + '<span class="case-range-val" id="caseFxStrokeVal">' + sw + '%</span>'
-            + '<input type="color" class="case-color-input" value="' + escapeHtml(fx.strokeColor || '#ffffff') + '" oninput="setCaseItemFx(' + idx + ', \'strokeColor\', this.value)" title="描边颜色"></div>'
-            + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">扩张描边</span>'
-            + '<input type="range" min="0" max="0.15" step="0.005" value="' + (Number(fx.expandW) || 0) + '" oninput="setCaseItemFx(' + idx + ', \'expandW\', this.value)">'
-            + '<span class="case-range-val" id="caseFxExpandVal">' + ew + '%</span>'
-            + '<input type="color" class="case-color-input" value="' + escapeHtml(fx.expandColor || '#ffffff') + '" oninput="setCaseItemFx(' + idx + ', \'expandColor\', this.value)" title="扩张描边颜色"></div>'
+            + (caseSelSoloAllowed()
+                ? (function () {
+                    const soloMode = (imgId && _caseState.config.lineSolo) ? (_caseState.config.lineSolo[imgId] || '') : '';
+                    return '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">独占</span>'
+                        + caseChipHtml('独占一行', soloMode === 'row', 'setCaseItemLineSolo(' + idx + ', \'row\')')
+                        + caseChipHtml('独占一列', soloMode === 'col', 'setCaseItemLineSolo(' + idx + ', \'col\')')
+                        + '</div>'
+                        + '<div class="case-form-hint" style="margin:4px 0 0;">独占一行 = 自动排版时该图横向铺满一整行；独占一列 = 纵向占满一整列；再点一次取消</div>';
+                })()
+                : '')
+            + '<div class="case-step-row"><span class="case-step-name">描边</span>'
+            + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'strokeW\', -1, ' + strokeMaxPx + ')" title="减 1px">−</button>'
+            + '<input type="number" min="0" max="' + strokeMaxPx + '" step="1" value="' + strokePx + '" onchange="setCaseItemFx(' + idx + ', \'strokeW\', this.value / ' + maxEdge + ')">'
+            + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'strokeW\', 1, ' + strokeMaxPx + ')" title="加 1px">＋</button>'
+            + '<span class="case-step-unit">px</span>'
+            + caseColorBtnHtml('setCaseItemFx(' + idx + ', \'strokeColor\', $c)', fx.strokeColor || '#ffffff') + '</div>'
+            + '<div class="case-step-row"><span class="case-step-name">扩张描边</span>'
+            + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'expandW\', -1, ' + expandMaxPx + ')" title="减 1px">−</button>'
+            + '<input type="number" min="0" max="' + expandMaxPx + '" step="1" value="' + expandPx + '" onchange="setCaseItemFx(' + idx + ', \'expandW\', this.value / ' + maxEdge + ')">'
+            + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'expandW\', 1, ' + expandMaxPx + ')" title="加 1px">＋</button>'
+            + '<span class="case-step-unit">px</span>'
+            + caseColorBtnHtml('setCaseItemFx(' + idx + ', \'expandColor\', $c)', fx.expandColor || '#ffffff') + '</div>'
             + '<div class="case-toggle-row"><span class="case-toggle-name">亚克力质感</span>'
             + '<label class="custom-toggle"><input type="checkbox"' + (fx.expandAcrylic ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'expandAcrylic\', this.checked)"><span class="toggle-slider"></span></label></div>'
             + '<div class="case-sel-ops">'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetItemFx(' + idx + ')">恢复该制品默认</button>'
-            + '<button type="button" class="btn secondary btn-compact" onclick="caseResetLayout()">恢复默认布局</button>'
             + '</div>'
-            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=贴边轮廓环；扩张描边=再向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=外圈变半透明磨砂并在图案上叠加反光高光，模拟亚克力制品；宽度按制品大小百分比</div>';
+            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=贴边轮廓环；扩张描边=再向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=扩张描边变半透明磨砂并带斜向反光，模拟亚克力侧边；宽度按制品原图像素</div>';
     } else if (key.indexOf('tag:') === 0) {
+        title = '文字设置';
         const name = key.slice(4);
         let displayName = name;
         if (name.indexOf('ct_') === 0) {
@@ -38440,6 +38884,7 @@ function caseRenderSelPanel() {
             + '</div>'
             + '<div class="case-form-hint" style="margin:6px 0 0;">拖动标签整体移动企划信息组</div>';
     } else if (key.indexOf('row:') === 0) {
+        title = '文字设置';
         const name = key.slice(4);
         const pr = (_caseState.config.layout && _caseState.config.layout.texts && _caseState.config.layout.texts.project) || {};
         const fs = (pr.itemFs && pr.itemFs[name] != null) ? pr.itemFs[name] : 1;
@@ -38453,6 +38898,7 @@ function caseRenderSelPanel() {
             + '</div>'
             + '<div class="case-form-hint" style="margin:6px 0 0;">拖动移动整行（字段名+值一起移动）</div>';
     } else {
+        title = '文字设置';
         const names = { title: '案例类型', year: '设计年份', user: '用户信息 @ID', hint: '提示信息', project: '企划信息' };
         const L = (_caseState.config.layout && _caseState.config.layout.texts) || {};
         const rec = L[key] || { fsScale: 1 };
@@ -38463,13 +38909,100 @@ function caseRenderSelPanel() {
             + (key === 'project' ? '<div class="case-form-hint" style="margin:4px 0 0;">拖动移动整组；点选其中某个标签可单独设置字号/隐藏</div>' : '')
             + '<div class="case-sel-ops">'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetElement(\'' + key + '\')">恢复该元素默认</button>'
-            + '<button type="button" class="btn secondary btn-compact" onclick="caseResetLayout()">恢复默认布局</button>'
             + '</div>';
     }
-    box.classList.remove('d-none');
-    // 外壳固定 + 内部滚动：右上角关闭钮常驻可见，内容过高时在 .case-sel-body 里下滑
-    box.innerHTML = '<button type="button" class="case-sel-close" onclick="caseSelectElement(null)" title="取消选中" aria-label="取消选中">✕</button>'
-        + '<div class="case-sel-body">' + html + '</div>';
+    if (titleEl) titleEl.textContent = title;
+    // 焦点保护：用户正在面板内输入/拖滑杆时不重建 DOM，避免打断（直接 setter 已同步显示值）
+    const ae = document.activeElement;
+    if (ae && box.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+    box.innerHTML = html;
+}
+// ===== 右侧功能区 · 整体布局段（制品区微调 / 重新排版 / 恢复默认 / 分图比例 / 文字快选） =====
+function caseRenderEditGlobal() {
+    const box = document.getElementById('caseEditGlobal');
+    if (!box || !_caseEditMode || !_caseState) { if (box) box.innerHTML = ''; return; }
+    const st = _caseState;
+    const page = caseCurrentPage(st);
+    const isGroupPage = !!(page && page.kind === 'group');
+    let html = '';
+    // 制品区位置微调（步进 1% 画布宽高；拖虚线框可粗调）
+    html += '<div class="case-edit-row"><span class="case-edit-lab">制品区位置</span>'
+        + '<span class="case-edit-nudge">'
+        + '<button type="button" onclick="caseAreaNudge(0,-0.01)" title="上移 1%">↑</button>'
+        + '<button type="button" onclick="caseAreaNudge(-0.01,0)" title="左移 1%">←</button>'
+        + '<button type="button" onclick="caseAreaNudge(0.01,0)" title="右移 1%">→</button>'
+        + '<button type="button" onclick="caseAreaNudge(0,0.01)" title="下移 1%">↓</button>'
+        + '</span></div>';
+    // 制品区大小微调（步进 2%，以中心为基准）
+    html += '<div class="case-edit-row"><span class="case-edit-lab">制品区大小</span>'
+        + '<span class="case-edit-nudge">'
+        + '<button type="button" onclick="caseAreaGrow(-0.02,0)" title="窄 2%">宽−</button>'
+        + '<button type="button" onclick="caseAreaGrow(0.02,0)" title="宽 2%">宽＋</button>'
+        + '<button type="button" onclick="caseAreaGrow(0,-0.02)" title="矮 2%">高−</button>'
+        + '<button type="button" onclick="caseAreaGrow(0,0.02)" title="高 2%">高＋</button>'
+        + '</span></div>';
+    // 分图页：分图制品区 = 总图制品区 × 百分比
+    if (isGroupPage) {
+        html += '<div class="case-edit-row"><span class="case-edit-lab">分图制品区</span>'
+            + '<span class="case-edit-pct"><input type="number" min="10" max="100" step="5" value="' + caseGroupPctShown(st) + '" onchange="setCaseGroupAreaPct(this.value / 100)" title="所有分图页的制品区 = 总图制品区 × 此百分比">'
+            + '<i>%</i></span></div>'
+            + '<div class="case-form-hint" style="margin:0 0 8px;">一处设置，所有分图页生效（围绕中心缩放）</div>';
+    }
+    // 文字元素快选：点选后下方「选中设置」显示对应字号/隐藏控制
+    html += '<div class="case-edit-row"><span class="case-edit-lab">文字元素</span>'
+        + '<span class="case-edit-chips">'
+        + caseChipHtml('案例类型', _caseSelEl === 'title', "caseSelectElement('title')")
+        + caseChipHtml('年份', _caseSelEl === 'year', "caseSelectElement('year')")
+        + caseChipHtml('用户', _caseSelEl === 'user', "caseSelectElement('user')")
+        + caseChipHtml('企划', _caseSelEl === 'project', "caseSelectElement('project')")
+        + '</span></div>';
+    // 操作行
+    html += '<div class="case-sel-ops">'
+        + '<button type="button" class="btn secondary btn-compact" onclick="caseReflowItems()" title="清除各制品的手动摆位，按自动排版重新铺排（制品区与外观保留）">制品重新排版</button>'
+        + '<button type="button" class="btn secondary btn-compact" onclick="caseResetLayout()">恢复默认布局</button>'
+        + '</div>'
+        + '<div class="case-form-hint" style="margin:8px 0 0;">拖动虚线框移动制品区、右下角圆点调大小；拖动制品自由摆位；点选文字可单独调字号/隐藏</div>';
+    box.innerHTML = html;
+}
+// 制品区微调提交：以当前构建的制品区为基准改百分比并写回当前页（总图移动时制品摆位跟随平移）
+function caseAreaApply(mut) {
+    const st = _caseState;
+    if (!st || !_lastBuild || !_lastBuild.area) return;
+    if (!st.config.layout) st.config.layout = {};
+    const L = st.config.layout;
+    const page = caseCurrentPage(st);
+    const isGroupPage = !!(page && page.kind === 'group');
+    const areaKey = isGroupPage ? 'productAreaGroup' : 'productArea';
+    const W = st.config.width, H = st.config.height;
+    const a = { x: _lastBuild.area.x / W, y: _lastBuild.area.y / H, w: _lastBuild.area.w / W, h: _lastBuild.area.h / H };
+    const ox = a.x;
+    const na = mut(a);
+    L[areaKey] = {
+        x: caseClampPct(na.x, -0.4, 0.98),
+        y: caseClampPct(na.y, -0.4, 0.98),
+        w: caseClampPct(na.w, 0.1, 1.2),
+        h: caseClampPct(na.h, 0.1, 1.2)
+    };
+    // 与拖拽提交一致：总图制品区平移时，已手动摆位的制品跟随移动（摆位存 cx/cy 中心点）
+    if (!isGroupPage && L.items && na.x !== ox) {
+        const dx = na.x - ox;
+        Object.keys(L.items).forEach(function (k) {
+            L.items[k].cx = caseClampPct((Number(L.items[k].cx) || 0) + dx, -0.5, 1.2);
+        });
+    }
+    renderCasePreview();
+}
+function caseAreaNudge(dx, dy) { caseAreaApply(function (a) { a.x += dx; a.y += dy; return a; }); }
+function caseAreaGrow(dw, dh) {
+    caseAreaApply(function (a) { a.x -= dw / 2; a.y -= dh / 2; a.w += dw; a.h += dh; return a; });
+}
+// 制品重新排版：只清除手动摆位（cx/cy），制品区、独占约束、外观设置全部保留
+function caseReflowItems() {
+    const st = _caseState; if (!st) return;
+    if (st.config.layout && st.config.layout.items) delete st.config.layout.items;
+    caseSelectElement(null);
+    renderCasePreview();
+    showGlobalToast('制品已按自动排版重新铺排（制品区与外观设置保留）');
 }
 function setCaseElFs(key, v) {
     const st = _caseState; if (!st) return;
@@ -38597,14 +39130,7 @@ function caseRemoveCustomText(id) {
 function caseResetLayout() {
     const st = _caseState; if (!st) return;
     st.config.layout = null;
-    caseSelectElement(null);
-    renderCaseForm();
-    renderCasePreview();
-    showGlobalToast('已恢复默认布局');
-}
-function caseResetLayout() {
-    const st = _caseState; if (!st) return;
-    st.config.layout = null;
+    st.config.lineSolo = {}; // 「独占一行/列」约束一并还原为全自动
     caseSelectElement(null);
     renderCaseForm();
     renderCasePreview();
@@ -38663,10 +39189,10 @@ function caseCommitDrag(kind, idx, startBox, dxPctX, dyPctY, canvasW, canvasH, s
             w: caseClampPct(startBox.w / canvasW, 0.1, 1.2),
             h: caseClampPct(startBox.h / canvasH, 0.1, 1.2)
         };
-        // 总图区内自定义制品跟随平移（分图页不涉及 items）
+        // 总图区内自定义制品跟随平移（分图页不涉及 items；摆位存 cx/cy 中心点）
         if (!isGroupPage && L.items) Object.keys(L.items).forEach(function (k) {
-            L.items[k].x = caseClampPct(L.items[k].x + dxPctX, -0.5, 1.2);
-            L.items[k].y = caseClampPct(L.items[k].y + dyPctY, -0.5, 1.2);
+            L.items[k].cx = caseClampPct((Number(L.items[k].cx) || 0) + dxPctX, -0.5, 1.2);
+            L.items[k].cy = caseClampPct((Number(L.items[k].cy) || 0) + dyPctY, -0.5, 1.2);
         });
         if (isGroupPage) renderCaseForm();
     } else if (kind === 'areaResize') {
@@ -38842,30 +39368,40 @@ function renderCaseForm() {
     const cfg = st.config;
     const wm = cfg.watermark;
     let html = '';
-    // 顶部：布局模版（保存/应用整体布局与底图）+ 整体恢复默认，合并为一个模块
+    // 顶部：布局模版——第一排为模版胶囊（系统默认固定第一个，自定义模版随后，行尾 ＋/－）；
+    // ＋ 展开命名行保存当前布局，－ 进入删除模式
     html += '<div class="case-form-sec">'
         + '<label class="case-form-label">布局模版</label>'
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
-        + '<input type="text" id="caseLayoutPresetName" class="case-field-input" placeholder="模版名称（留空自动命名）" style="flex:1;min-width:100px;">'
-        + '<button type="button" class="btn secondary btn-compact" onclick="saveCaseLayoutPreset()" style="flex-shrink:0;">保存当前</button>'
-        + '<button type="button" class="btn secondary btn-compact" onclick="resetCaseDefaults()" title="仅重置外观/排版，已输入内容保留">↺ 恢复默认</button>'
+        + '<div class="case-preset-chips">'
+        + casePresetChipHtml('system', '系统默认', !_caseLayoutPresetDefault)
+        + _caseLayoutPresets.map(function (p) {
+            return casePresetChipHtml(p.id, p.name, p.id === _caseLayoutPresetDefault);
+        }).join('')
+        + '<button type="button" class="case-preset-add' + (_casePresetAddOpen ? ' active' : '') + '" onclick="toggleCasePresetAdd()" title="保存当前布局（含底图）为新模版">＋</button>'
+        + (_caseLayoutPresets.length
+            ? '<button type="button" class="case-preset-remove' + (_casePresetDelMode ? ' active' : '') + '" onclick="toggleCasePresetDelMode()" title="' + (_casePresetDelMode ? '退出删除模式' : '删除模版：点后选择要删除的模版') + '">－</button>'
+            : '')
         + '</div>';
-    if (_caseLayoutPresets.length) {
-        html += '<div class="case-preset-chips">' + _caseLayoutPresets.map(function (p) {
-            const isDef = p.id === _caseLayoutPresetDefault;
-            return '<span class="case-preset-chip' + (isDef ? ' case-preset-def' : '') + '">'
-                + '<button type="button" class="case-chip" onclick="applyCaseLayoutPreset(\'' + p.id + '\')" title="应用该布局模版">' + escapeHtml(p.name) + '</button>'
-                + '<button type="button" class="case-preset-star' + (isDef ? ' active' : '') + '" onclick="toggleCasePresetDefault(\'' + p.id + '\')" title="' + (isDef ? '取消默认（新案例恢复系统默认样式）' : '设为默认模版（新建案例自动套用）') + '">' + (isDef ? '★' : '☆') + '</button>'
-                + '<button type="button" class="case-preset-del" onclick="deleteCaseLayoutPreset(\'' + p.id + '\')" title="删除模版">×</button></span>';
-        }).join('') + '</div>';
+    if (_casePresetAddOpen) {
+        html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">'
+            + '<input type="text" id="caseLayoutPresetName" class="case-field-input" placeholder="模版名称（留空自动命名）" style="flex:1;min-width:100px;" onkeydown="casePresetNameKey(event)">'
+            + '<button type="button" class="btn secondary btn-compact" onclick="saveCaseLayoutPreset()" style="flex-shrink:0;">✓ 保存</button>'
+            + '<button type="button" class="btn secondary btn-compact" onclick="cancelCasePresetAdd()" title="取消">✕</button>'
+            + '</div>';
     }
-    html += '<div class="case-form-hint" style="margin-top:6px;">保存当前布局（含底图）为模版，名称可留空自动命名；点 ☆ 设为默认，新建案例自动套用（未设 ★ 则用系统默认样式）；「恢复默认」仅重置外观/排版，已输入内容保留</div>'
+    html += '<div class="case-form-hint" style="margin-top:6px;">＋ 保存当前布局为模版；－ 删除；★ 设默认，新建案例自动套用；「系统默认」仅重置排版，已输入内容保留</div>'
         + '</div>';
-    // 1 关联订单
+    // 1 关联订单（可输入筛选：客户/时间/企划/IP/角色）
+    const selOrder = st.orderId != null && st.orderId !== ''
+        ? (history || []).find(function (o) { return o && String(o.id) === String(st.orderId); }) : null;
     html += '<div class="case-form-sec">'
         + '<label class="case-form-label">关联订单</label>'
-        + '<select id="caseOrderSelect" class="case-field-input" onchange="applyCaseOrder(this.value)">' + caseOrderOptionsHtml() + '</select>'
-        + '<div class="case-form-hint">选择订单后自动带入 IP、角色与制品名；左下角案例类型可在下方自定义，不被订单标题覆盖</div>'
+        + '<div class="case-order-combo" id="caseOrderCombo">'
+        + '<input type="text" id="caseOrderInput" class="case-field-input" autocomplete="off" placeholder="搜索或选择订单（客户 / 时间 / 企划 / IP）" value="' + escapeHtml(selOrder ? caseOrderLabel(selOrder) : '') + '" onfocus="caseOrderComboOpen()" oninput="caseOrderComboFilter()" onkeydown="caseOrderComboKey(event)">'
+        + (selOrder ? '<button type="button" class="case-order-clear" onclick="applyCaseOrder(\'\')" title="取消关联">×</button>' : '')
+        + '<div class="case-order-list" id="caseOrderList"></div>'
+        + '</div>'
+        + '<div class="case-form-hint">输入关键字筛选订单，点选后自动带入 IP、角色与制品名；点 × 取消关联</div>'
         + '</div>';
     // 2 画布比例与尺寸（中间的锁：锁定=按比例等比修改，解锁=自由修改）
     const sizeLocked = cfg.sizeLock !== false;
@@ -38896,16 +39432,16 @@ function renderCaseForm() {
     if (cfg.bg.type === 'solid' || cfg.bg.type === 'color') {
         html += '<div class="case-swatch-row">'
             + '<button type="button" class="case-swatch' + (String(cfg.bg.color || '').toLowerCase() === '#f2f2f2' ? ' active' : '') + '" style="background:#f2f2f2;" onclick="setCaseBg(\'solid\',\'#f2f2f2\')" title="浅灰"></button>'
-            + '<button type="button" class="case-swatch' + (String(cfg.bg.color || '').toLowerCase() === '#434343' ? ' active' : '') + '" style="background:#434343;" onclick="setCaseBg(\'solid\',\'#434343\')" title="深灰"></button>'
-            + '<input type="color" class="case-color-input" value="' + escapeHtml(cfg.bg.color || '#f2f2f2') + '" onchange="setCaseBg(\'solid\', this.value)" title="取色器">'
+            + '<button type="button" class="case-swatch' + (String(cfg.bg.color || '').toLowerCase() === '#1e1e1e' ? ' active' : '') + '" style="background:#1e1e1e;" onclick="setCaseBg(\'solid\',\'#1e1e1e\')" title="深灰"></button>'
+            + caseColorBtnHtml("setCaseBg('solid', $c)", cfg.bg.color || '#f2f2f2')
             + '</div>';
     } else if (cfg.bg.type === 'gradient') {
         const gf = cfg.bg.gradFrom || '#fafafa', gt = cfg.bg.gradTo || '#e5e5e5';
         html += '<div class="case-swatch-row" style="align-items:center;">'
             + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">从</span>'
-            + '<input type="color" class="case-color-input" value="' + escapeHtml(gf) + '" onchange="setCaseGradColor(\'from\', this.value)" title="渐变起始色">'
+            + caseColorBtnHtml("setCaseGradColor('from', $c)", gf)
             + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">到</span>'
-            + '<input type="color" class="case-color-input" value="' + escapeHtml(gt) + '" onchange="setCaseGradColor(\'to\', this.value)" title="渐变结束色">'
+            + caseColorBtnHtml("setCaseGradColor('to', $c)", gt)
             + '<span style="width:34px;height:24px;border-radius:6px;border:1px solid var(--border-color,#ddd);background:linear-gradient(180deg,' + escapeHtml(gf) + ',' + escapeHtml(gt) + ');flex-shrink:0;" title="渐变预览"></span>'
             + '</div>';
     }
@@ -39016,13 +39552,13 @@ function renderCaseForm() {
     html += '<div class="case-swatch-row" style="margin:8px 0 2px;column-gap:20px;">'
         + '<span style="display:inline-flex;align-items:center;gap:8px;">'
         + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">文字颜色</span>'
-        + '<input type="color" class="case-color-input" value="' + escapeHtml(customTxtColor || caseCanvasTextColor(cfg.bg)) + '" onchange="setCaseTextColor(this.value)" title="自定义文字颜色（作用于案例类型、年份、用户信息、企划信息等全部文案）">'
+        + caseColorBtnHtml('setCaseTextColor($c)', customTxtColor || caseCanvasTextColor(cfg.bg))
         + caseChipHtml('自动', !customTxtColor, "setCaseTextColor('')")
         + '</span>'
         + (frameColorOn
             ? '<span style="display:inline-flex;align-items:center;gap:8px;">'
                 + '<span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">底框颜色</span>'
-                + '<input type="color" class="case-color-input" value="' + escapeHtml(customFrameColor || autoFrameHex) + '" onchange="setCaseFrameColor(this.value)" title="自定义底框颜色（虚线与文字按底框明暗自动配对比色）">'
+                + caseColorBtnHtml('setCaseFrameColor($c)', customFrameColor || autoFrameHex)
                 + caseChipHtml('自动', !customFrameColor, "setCaseFrameColor('')")
                 + '</span>'
             : '')
@@ -39098,15 +39634,18 @@ function renderCaseForm() {
         st.images.forEach(function (imgId) {
             const c = _caseImgCache[imgId];
             const src = c ? c.dataUrl : '';
-            html += '<div class="case-thumb">'
+            const hid = caseImgHidden(st, imgId);
+            html += '<div class="case-thumb' + (hid ? ' case-thumb-hidden' : '') + '">'
                 + (src ? '<img src="' + src + '" alt="">' : '')
                 + '<button type="button" class="case-thumb-del" onclick="caseRemoveImage(\'' + imgId + '\')" title="删除">×</button>'
                 + '<div class="case-thumb-ops">'
                 + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',-1)" title="前移">◀</button>'
                 + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',1)" title="后移">▶</button>'
+                + '<button type="button" class="case-thumb-eye' + (hid ? ' off' : '') + '" onclick="caseToggleImagePageHidden(\'' + imgId + '\')" title="' + (hid ? '该图已隐藏（不入总图），点击恢复' : '点击隐藏该图（不入总图，画布不显示、不占位）') + '">' + caseEyeSvg(hid) + '</button>'
                 + '</div></div>';
         });
         html += '</div>';
+        if (st.images.length) html += '<div class="case-form-hint" style="margin:6px 0 0;">缩略图底栏眼睛 = 该图隐藏，不入总图（画布上不显示、不占位）</div>';
     }
     html += '</div>';
     // 8 水印
@@ -39328,7 +39867,7 @@ function setCaseTextColor(v) {
 // 单品装饰（投影/描边/扩张描边），按制品图片存储
 function setCaseItemFx(idx, field, value) {
     const st = _caseState; if (!st) return;
-    const imgId = st.images ? st.images[idx] : null;
+    const imgId = caseItemImageId(idx);
     if (!imgId) return;
     if (!st.config.imgFx) st.config.imgFx = {};
     if (!st.config.imgFx[imgId] || typeof st.config.imgFx[imgId] !== 'object') st.config.imgFx[imgId] = {};
@@ -39350,9 +39889,10 @@ function setCaseItemFx(idx, field, value) {
 }
 function caseResetItemFx(idx) {
     const st = _caseState; if (!st) return;
-    const imgId = st.images ? st.images[idx] : null;
+    const imgId = caseItemImageId(idx);
     if (!imgId) return;
     if (st.config.imgFx) delete st.config.imgFx[imgId];
+    if (st.config.lineSolo) delete st.config.lineSolo[imgId];
     Object.keys(_caseFxCache).forEach(function (k) {
         if (k.indexOf(imgId + '|') === 0) delete _caseFxCache[k];
     });
@@ -39403,6 +39943,51 @@ function caseQuickRotate(idx, delta) {
     const el = document.getElementById('caseItemRotVal');
     if (el) el.textContent = f.rot + '°';
     renderCasePreview();
+}
+// 制品设置步进器（±按钮）：微调后重渲染面板刷新数值
+function caseItemStepScale(idx, delta) {
+    const imgId = caseItemImageId(idx); if (!imgId) return;
+    const fx = caseItemFxRec(imgId) || {};
+    setCaseItemScale(idx, (Math.round((Number(fx.scale) || 1) * 100) + delta) / 100);
+    caseRenderSelPanel();
+}
+function caseItemStepRot(idx, delta) {
+    const imgId = caseItemImageId(idx); if (!imgId) return;
+    const fx = caseItemFxRec(imgId) || {};
+    setCaseItemRot(idx, Math.round(Number(fx.rot) || 0) + delta);
+    caseRenderSelPanel();
+}
+// 描边/扩张描边步进：面板按制品原图像素显示（内部按 maxEdge 比例存储），步进 1px
+function caseItemStepStroke(idx, field, delta, maxPx) {
+    const imgId = caseItemImageId(idx); if (!imgId) return;
+    const cimg = _caseImgCache[imgId];
+    const maxEdge = (cimg ? Math.max(cimg.w || 0, cimg.h || 0) : 0) || 1000;
+    const fx = caseItemFxRec(imgId) || {};
+    const cur = Math.round((Number(fx[field]) || 0) * maxEdge * 10) / 10;
+    setCaseItemFx(idx, field, Math.min(maxPx, Math.max(0, cur + delta)) / maxEdge);
+    caseRenderSelPanel();
+}
+// 「独占一行/列」控件可用范围：关联订单的总图（组块排版）暂不支持按图独占，分图页/自由模式可用
+function caseSelSoloAllowed() {
+    const st = _caseState;
+    if (!st) return false;
+    if (st.groups && st.groups.length) {
+        const p = caseCurrentPage(st);
+        return !(p && p.kind === 'total');
+    }
+    return true;
+}
+// 调整布局：设置/取消某制品「独占一行 / 独占一列」（自动排版时该图占据完整的一行/一列，再点一次取消）
+function setCaseItemLineSolo(idx, mode) {
+    const st = _caseState; if (!st) return;
+    const imgId = caseItemImageId(idx); if (!imgId) return;
+    if (!st.config.lineSolo || typeof st.config.lineSolo !== 'object') st.config.lineSolo = {};
+    const isOn = st.config.lineSolo[imgId] === mode;
+    if (isOn) delete st.config.lineSolo[imgId];
+    else st.config.lineSolo[imgId] = mode;
+    renderCasePreview();
+    caseRenderSelPanel();
+    showGlobalToast(isOn ? '已取消独占，恢复自动排版' : (mode === 'row' ? '该图已设为独占一行（横向铺满一行）' : '该图已设为独占一列（纵向占满一列）'));
 }
 function setCaseMockup(id) {
     const st = _caseState; if (!st) return;
@@ -39516,6 +40101,9 @@ function caseRemoveImage(imgId) {
     const st = _caseState; if (!st) return;
     st.images = st.images.filter(function (x) { return x !== imgId; });
     (st.groups || []).forEach(function (g) { g.images = (g.images || []).filter(function (x) { return x !== imgId; }); });
+    // 同步清理隐藏/独占记录，避免残留已删除图的 id
+    st.config.hiddenImages = caseHiddenImages(st).filter(function (x) { return x !== imgId; });
+    if (st.config.lineSolo) delete st.config.lineSolo[imgId];
     renderCaseForm(); renderCasePreview();
 }
 let _caseUploadTarget = -1; // 本次上传进入的制品组下标（-1=自由模式/总图）
@@ -39748,55 +40336,76 @@ async function caseCaptureCanvas(st, page) {
         holder.innerHTML = '';
     }
 }
+// 单页导出结果交付：桌面直接下载，移动端优先系统分享，失败回退下载/预览
+function caseExportDeliverPage(canvas, dataUrl, filename, mime, isMobile) {
+    return new Promise(function (resolve) {
+        if (!isMobile) {
+            if (triggerDownload(dataUrl, filename)) resolve('saved');
+            else { showReceiptImagePreview(dataUrl, filename); resolve('preview'); }
+            return;
+        }
+        canvas.toBlob(async function (blob) {
+            if (!blob) { showReceiptImagePreview(dataUrl, filename); resolve('preview'); return; }
+            const file = new File([blob], filename, { type: mime });
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({ files: [file], title: '案例图' });
+                    resolve('saved');
+                } catch (err) {
+                    if (err.name === 'AbortError') { resolve('abort'); return; }
+                    if (!triggerDownload(dataUrl, filename)) { showReceiptImagePreview(dataUrl, filename); resolve('preview'); }
+                    else resolve('saved');
+                }
+            } else {
+                if (!triggerDownload(dataUrl, filename)) { showReceiptImagePreview(dataUrl, filename); resolve('preview'); }
+                else resolve('saved');
+            }
+        }, mime);
+    });
+}
+// 导出所有预览页（总图 + 各制品分图），逐张交付
 async function exportCaseAsImage(format) {
     const st = _caseState;
     if (!st) return;
     try {
-        const page = caseCurrentPage(st);
-        const canvas = await caseCaptureCanvas(st, page);
-        let dataUrl;
-        if (format === 'jpeg') {
-            const cv2 = document.createElement('canvas');
-            cv2.width = canvas.width; cv2.height = canvas.height;
-            const ctx = cv2.getContext('2d');
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, cv2.width, cv2.height);
-            ctx.drawImage(canvas, 0, 0);
-            dataUrl = cv2.toDataURL('image/jpeg', 0.92);
-        } else {
-            dataUrl = canvas.toDataURL('image/png');
-        }
+        const pages = casePages(st);
+        if (!pages.length) return;
         const title = caseDisplayType(st);
-        const pageSuffix = (page && page.kind === 'group' && page.label) ? '_' + page.label : '';
         const ext = format === 'jpeg' ? 'jpg' : 'png';
-        const filename = '案例_' + title + pageSuffix + '_' + Date.now() + '.' + ext;
         const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
         const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
         const isMobileUA = /Mobi|Android|iPhone|iPod|Windows Phone/i.test(navigator.userAgent);
         const isMobile = isTouchDevice && (window.innerWidth <= 1024 || isMobileUA);
-        if (isMobile) {
-            canvas.toBlob(async function (blob) {
-                if (!blob) { showReceiptImagePreview(dataUrl, filename); return; }
-                const file = new File([blob], filename, { type: mime });
-                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                    try {
-                        await navigator.share({ files: [file], title: '案例图' });
-                        showGlobalToast('图片已保存');
-                    } catch (err) {
-                        if (err.name !== 'AbortError') {
-                            if (!triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
-                            else showGlobalToast('图片已保存');
-                        }
-                    }
-                } else {
-                    if (!triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
-                    else showGlobalToast('图片已保存');
-                }
-            }, mime);
-        } else {
-            if (!triggerDownload(dataUrl, filename)) showReceiptImagePreview(dataUrl, filename);
-            else showGlobalToast('已导出 ' + ext.toUpperCase());
+        const ts = Date.now();
+        const multi = pages.length > 1;
+        let saved = 0;
+        for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            if (multi) showGlobalToast('正在导出预览图（' + (i + 1) + '/' + pages.length + '）…');
+            const canvas = await caseCaptureCanvas(st, page);
+            let dataUrl;
+            if (format === 'jpeg') {
+                const cv2 = document.createElement('canvas');
+                cv2.width = canvas.width; cv2.height = canvas.height;
+                const ctx = cv2.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, cv2.width, cv2.height);
+                ctx.drawImage(canvas, 0, 0);
+                dataUrl = cv2.toDataURL('image/jpeg', 0.92);
+            } else {
+                dataUrl = canvas.toDataURL('image/png');
+            }
+            // 多页导出时按页签名区分文件；单页沿用原命名
+            const pageSuffix = multi
+                ? '_' + (page.label || (page.kind === 'total' ? '总图' : '图' + (i + 1)))
+                : ((page && page.kind === 'group' && page.label) ? '_' + page.label : '');
+            const filename = '案例_' + title + pageSuffix + '_' + ts + '.' + ext;
+            const r = await caseExportDeliverPage(canvas, dataUrl, filename, mime, isMobile);
+            if (r === 'saved') saved++;
+            // 连续下载留间隔，避免浏览器拦截多文件下载
+            if (i < pages.length - 1) await new Promise(function (res) { setTimeout(res, 400); });
         }
+        showGlobalToast(multi ? ('已导出 ' + saved + '/' + pages.length + ' 张' + ext.toUpperCase()) : ('已导出 ' + ext.toUpperCase()));
     } catch (e) {
         console.error('导出案例失败:', e);
         alert('导出案例失败，请重试！');
@@ -39856,33 +40465,212 @@ async function saveCaseToLibrary() {
 }
 
 // ---------- 案例库 ----------
+// 案例库卡片标题：自定义名称（双击改名保存到 c.name）优先，其次关联订单信息，最后案例自带企划信息
+function caseLibTitle(c) {
+    if (c && String(c.name || '').trim()) return String(c.name).trim();
+    if (c && c.orderId != null && c.orderId !== '') {
+        const o = (history || []).find(function (x) { return x && String(x.id) === String(c.orderId); });
+        if (o) return caseOrderLabel(o);
+        const t = String(c.orderTitle || '').trim();
+        if (t) return t;
+    }
+    const f = (c && c.fields) || {};
+    const parts = [];
+    const pn = String(f.projectName || '').trim();
+    const ip = String(f.ip || '').trim();
+    const ch = String(f.character || '').trim();
+    if (pn) parts.push(pn);
+    if (ip) parts.push(ip);
+    if (ch) parts.push(ch);
+    return parts.length ? parts.join(' · ') : '未命名案例';
+}
+// 案例库搜索：匹配自定义名称/标题/订单信息/企划字段（不区分大小写子串）
+function caseLibFiltered() {
+    const input = document.getElementById('caseLibrarySearch');
+    const kw = String((input && input.value) || '').trim().toLowerCase();
+    if (!kw) return caseLibrary;
+    return caseLibrary.filter(function (c) {
+        if (!c) return false;
+        const f = c.fields || {};
+        return [c.name, caseLibTitle(c), c.orderTitle, c.updatedAt, c.createdAt,
+            f.projectName, f.ip, f.character, f.user]
+            .some(function (v) { return String(v || '').toLowerCase().indexOf(kw) >= 0; });
+    });
+}
 function renderCaseLibrary() {
     const grid = document.getElementById('caseLibraryGrid');
     if (!grid) return;
+    const input = document.getElementById('caseLibrarySearch');
+    const kw = String((input && input.value) || '').trim();
     if (!caseLibrary.length) {
         grid.innerHTML = '<div class="case-library-empty">还没有案例。点击右上角「新建案例」，或从记录页订单操作卡选择「生成案例」。</div>';
         return;
     }
-    grid.innerHTML = caseLibrary.map(function (c) {
-        const title = escapeHtml(caseDisplayType(c));
-        const meta1 = c.orderTitle ? '订单：' + escapeHtml(String(c.orderTitle)) : '未关联订单';
+    const list = caseLibFiltered();
+    if (!list.length) {
+        grid.innerHTML = '<div class="case-library-empty">没有匹配「' + escapeHtml(kw) + '」的案例</div>';
+        return;
+    }
+    grid.innerHTML = list.map(function (c) {
+        const linked = c.orderId != null && c.orderId !== '';
+        const title = escapeHtml(caseLibTitle(c));
         const d = c.updatedAt || c.createdAt || '';
-        const meta2 = d ? String(d).slice(0, 10) : '';
+        const meta = [linked ? '' : '未关联订单', d ? String(d).slice(0, 10) : ''].filter(Boolean).join(' · ');
         const cid = escapeHtml(String(c.id || ''));
-        return '<div class="case-library-card">'
-            + '<div class="case-library-thumb" id="caseLibThumb_' + cid + '" onclick="openCaseViewer(\'' + cid + '\')">加载中…</div>'
+        const sel = !!_caseLibSelected[c.id];
+        const thumbClick = _caseLibBatchMode ? 'caseLibToggleCard(\'' + cid + '\')' : 'openCaseViewer(\'' + cid + '\')';
+        return '<div class="case-library-card' + (_caseLibBatchMode ? ' batch-mode' : '') + (sel ? ' batch-selected' : '') + '" data-case-id="' + cid + '">'
+            + (_caseLibBatchMode ? '<label class="case-lib-check" title="选择"><input type="checkbox"' + (sel ? ' checked' : '') + ' onchange="caseLibSelectOne(\'' + cid + '\', this.checked)"></label>' : '')
+            + '<div class="case-library-thumb" id="caseLibThumb_' + cid + '" onclick="' + thumbClick + '">加载中…</div>'
             + '<div class="case-library-card-body">'
-            + '<div class="case-library-card-title">' + title + '</div>'
-            + '<div class="case-library-card-meta">' + meta1 + (meta2 ? ' · ' + meta2 : '') + '</div>'
+            + '<div class="case-library-card-title" id="caseLibTitle_' + cid + '" title="' + title + '（双击可修改名称）" ondblclick="caseLibStartRename(\'' + cid + '\')">' + title + '</div>'
+            + '<div class="case-library-card-meta">' + meta + '</div>'
             + '</div>'
-            + '<div class="case-library-card-ops">'
-            + '<button type="button" class="btn secondary" onclick="regenerateCase(\'' + cid + '\')">重新生成</button>'
+            + (_caseLibBatchMode ? '' : '<div class="case-library-card-ops">'
+            + '<button type="button" class="btn secondary" onclick="openCaseViewer(\'' + cid + '\')">查看</button>'
             + '<button type="button" class="btn secondary" onclick="downloadCaseById(\'' + cid + '\')">下载</button>'
-            + '<button type="button" class="btn secondary" onclick="deleteCaseById(\'' + cid + '\')">删除</button>'
-            + '</div>'
+            + '<button type="button" class="btn secondary" onclick="regenerateCase(\'' + cid + '\')">重新生成</button>'
+            + '<button type="button" class="btn secondary" onclick="viewCaseOrder(\'' + cid + '\')" title="查看关联的订单">关联订单</button>'
+            + '</div>')
             + '</div>';
     }).join('');
     caseFillLibraryThumbs();
+    caseLibUpdateBatchBar();
+}
+// 双击卡片标题：行内改名（保存到 c.name；清空并确认则恢复自动标题）
+function caseLibStartRename(id) {
+    if (_caseLibBatchMode) return;
+    const el = document.getElementById('caseLibTitle_' + id);
+    const c = caseLibrary.find(function (x) { return x && x.id === id; });
+    if (!el || !c || el.querySelector('input')) return;
+    const cur = String(c.name || '') || caseLibTitle(c);
+    el.innerHTML = '<input type="text" class="case-lib-rename-input" value="' + escapeHtml(cur) + '">';
+    const input = el.querySelector('input');
+    input.focus();
+    input.select();
+    let done = false;
+    const commit = function (save) {
+        if (done) return;
+        done = true;
+        if (save) {
+            const v = String(input.value || '').trim();
+            if (v) c.name = v; else delete c.name;
+            saveCaseLibrary();
+            showGlobalToast('名称已更新');
+        }
+        renderCaseLibrary();
+    };
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+        else if (e.key === 'Escape') commit(false);
+    });
+    input.addEventListener('blur', function () { commit(true); });
+}
+// ---------- 案例库批量管理 ----------
+let _caseLibBatchMode = false;
+const _caseLibSelected = {};
+function caseLibSelectedIds() {
+    return caseLibrary.filter(function (c) { return c && _caseLibSelected[c.id]; }).map(function (c) { return c.id; });
+}
+function toggleCaseLibBatch() {
+    _caseLibBatchMode = !_caseLibBatchMode;
+    Object.keys(_caseLibSelected).forEach(function (k) { delete _caseLibSelected[k]; });
+    const bar = document.getElementById('caseLibBatchBar');
+    if (bar) bar.classList.toggle('d-none', !_caseLibBatchMode);
+    const btn = document.getElementById('caseLibBatchBtn');
+    if (btn) btn.textContent = _caseLibBatchMode ? '退出批量' : '批量管理';
+    renderCaseLibrary();
+}
+function caseLibApplySelVisual(id) {
+    const card = document.querySelector('.case-library-card[data-case-id="' + id + '"]');
+    if (card) {
+        card.classList.toggle('batch-selected', !!_caseLibSelected[id]);
+        const cb = card.querySelector('.case-lib-check input');
+        if (cb) cb.checked = !!_caseLibSelected[id];
+    }
+    caseLibUpdateBatchBar();
+}
+function caseLibToggleCard(id) {
+    if (_caseLibSelected[id]) delete _caseLibSelected[id]; else _caseLibSelected[id] = true;
+    caseLibApplySelVisual(id);
+}
+function caseLibSelectOne(id, checked) {
+    if (checked) _caseLibSelected[id] = true; else delete _caseLibSelected[id];
+    caseLibApplySelVisual(id);
+}
+function caseLibToggleAll(checked) {
+    caseLibFiltered().forEach(function (c) {
+        if (checked) _caseLibSelected[c.id] = true; else delete _caseLibSelected[c.id];
+        caseLibApplySelVisual(c.id);
+    });
+}
+function caseLibUpdateBatchBar() {
+    const ids = caseLibSelectedIds();
+    const count = document.getElementById('caseLibBatchCount');
+    if (count) count.textContent = '已选 ' + ids.length + ' 项';
+    const all = document.getElementById('caseLibCheckAll');
+    if (all) {
+        const list = caseLibFiltered();
+        const selCount = list.filter(function (c) { return _caseLibSelected[c.id]; }).length;
+        all.checked = list.length > 0 && selCount === list.length;
+        all.indeterminate = selCount > 0 && selCount < list.length;
+    }
+    ['caseLibBatchDeleteBtn', 'caseLibBatchDownloadBtn'].forEach(function (bid) {
+        const b = document.getElementById(bid);
+        if (b) b.disabled = !ids.length;
+    });
+}
+async function caseLibBatchDelete() {
+    const ids = caseLibSelectedIds();
+    if (!ids.length) { showGlobalToast('请先勾选要删除的案例'); return; }
+    if (!confirm('确定删除选中的 ' + ids.length + ' 个案例？删除后不可恢复。')) return;
+    for (const id of ids) await caseLibDeleteCore(id);
+    Object.keys(_caseLibSelected).forEach(function (k) { delete _caseLibSelected[k]; });
+    renderCaseLibrary();
+    showGlobalToast('已删除 ' + ids.length + ' 个案例');
+}
+// 批量下载：全部选中案例打进同一个 ZIP（按「案例名/页签名」分文件夹），只触发一次下载，
+// 不再触发浏览器的多文件下载拦截；单选时直接走单案例下载
+async function caseLibBatchDownload() {
+    const ids = caseLibSelectedIds();
+    if (!ids.length) { showGlobalToast('请先勾选要下载的案例'); return; }
+    if (ids.length === 1) { await downloadCaseById(ids[0]); return; }
+    const list = ids.map(function (id) {
+        return caseLibrary.find(function (c) { return c && c.id === id; });
+    }).filter(Boolean);
+    // 收集全部页图，按案例分文件夹（重名案例自动加序号）
+    const entries = [];
+    const usedFolders = {};
+    let total = 0;
+    list.forEach(function (c) {
+        const base = caseLibTitle(c).replace(/[\\/:*?"<>|]/g, '_');
+        let folder = base;
+        let k = 2;
+        while (usedFolders[folder]) folder = base + ' (' + (k++) + ')';
+        usedFolders[folder] = 1;
+        const ext = c.exportFormat === 'jpeg' ? 'jpg' : 'png';
+        (caseViewPagesOf(c) || []).forEach(function (p, i) {
+            if (!p || !p.exportImgId) return;
+            total++;
+            entries.push({ folder: folder, page: p, idx: i, ext: ext });
+        });
+    });
+    if (!total) { showGlobalToast('所选案例没有可下载的图片'); return; }
+    const files = [];
+    for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        if (i % 4 === 0) showGlobalToast('正在打包 ' + list.length + ' 个案例…（' + Math.min(i, total) + '/' + total + ' 张）');
+        const url = await caseImgGet(e.page.exportImgId);
+        if (!url) continue;
+        const label = String(e.page.label || ('图' + (e.idx + 1))).replace(/[\\/:*?"<>|]/g, '_');
+        files.push({ name: e.folder + '/' + label + '.' + e.ext, bytes: caseDataUrlToBytes(url) });
+    }
+    if (!files.length) { showGlobalToast('所选案例图片缺失，请重新生成'); return; }
+    const blob = caseBuildZipBlob(files);
+    const url = URL.createObjectURL(blob);
+    const ok = triggerDownload(url, '案例批量_' + list.length + '个_' + Date.now() + '.zip');
+    setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
+    showGlobalToast(ok ? ('已打包下载 ' + list.length + ' 个案例（共 ' + files.length + ' 张，ZIP）') : '下载失败，请重试');
 }
 async function caseFillLibraryThumbs() {
     for (const c of caseLibrary) {
@@ -39911,7 +40699,7 @@ async function openCaseViewer(id) {
         idx = Math.min(Math.max(0, idx), pages.length - 1);
         _caseViewPageIdx = idx;
         const p = pages[idx];
-        if (meta) meta.textContent = caseDisplayType(c) + (pages.length > 1 && p.label ? ' · ' + p.label : '') + (c.orderTitle ? ' · 订单：' + c.orderTitle : '');
+        if (meta) meta.textContent = caseLibTitle(c) + (pages.length > 1 && p.label ? ' · ' + p.label : '');
         if (chips) {
             if (pages.length > 1) {
                 chips.style.display = 'flex';
@@ -39942,25 +40730,152 @@ function closeCaseViewModal() {
 function caseViewDownload() {
     if (_caseViewId != null) downloadCaseById(_caseViewId, _caseViewPageIdx || 0);
 }
-async function downloadCaseById(id, pageIdx) {
+// ---------- 客户端 ZIP 打包（store 不压缩）----------
+// 多页案例逐张触发下载会被浏览器拦截（只有第一张成功），打包成 ZIP 一次下载最可靠
+function caseDataUrlToBytes(dataUrl) {
+    const base64 = String(dataUrl).split(',')[1] || '';
+    const bin = atob(base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+}
+const _zipCrcTable = (function () {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+    }
+    return t;
+})();
+function zipCrc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = _zipCrcTable[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+}
+// files: [{ name: string, bytes: Uint8Array }] → Blob
+function caseBuildZipBlob(files) {
+    const enc = new TextEncoder();
+    const chunks = [];
+    const central = [];
+    let offset = 0;
+    files.forEach(function (f) {
+        const nameBytes = enc.encode(f.name);
+        const crc = zipCrc32(f.bytes);
+        const size = f.bytes.length;
+        const local = new Uint8Array(30 + nameBytes.length);
+        const dv = new DataView(local.buffer);
+        dv.setUint32(0, 0x04034b50, true);
+        dv.setUint16(4, 20, true);      // 版本 2.0
+        dv.setUint16(6, 0x0800, true);  // UTF-8 文件名
+        dv.setUint16(8, 0, true);       // store 不压缩
+        dv.setUint16(10, 0, true);      // 时间
+        dv.setUint16(12, 0x21, true);   // 日期（1980-01-01，合法即可）
+        dv.setUint32(14, crc, true);
+        dv.setUint32(18, size, true);
+        dv.setUint32(22, size, true);
+        dv.setUint16(26, nameBytes.length, true);
+        dv.setUint16(28, 0, true);
+        local.set(nameBytes, 30);
+        chunks.push(local, f.bytes);
+        central.push({ nameBytes: nameBytes, crc: crc, size: size, offset: offset });
+        offset += local.length + size;
+    });
+    const centralStart = offset;
+    let centralSize = 0;
+    central.forEach(function (e) {
+        const c = new Uint8Array(46 + e.nameBytes.length);
+        const dv = new DataView(c.buffer);
+        dv.setUint32(0, 0x02014b50, true);
+        dv.setUint16(4, 20, true);
+        dv.setUint16(6, 20, true);
+        dv.setUint16(8, 0x0800, true);
+        dv.setUint16(12, 0, true);
+        dv.setUint16(14, 0x21, true);
+        dv.setUint32(16, e.crc, true);
+        dv.setUint32(20, e.size, true);
+        dv.setUint32(24, e.size, true);
+        dv.setUint16(28, e.nameBytes.length, true);
+        dv.setUint32(42, e.offset, true);
+        c.set(e.nameBytes, 46);
+        chunks.push(c);
+        centralSize += c.length;
+    });
+    const eocd = new Uint8Array(22);
+    const dv2 = new DataView(eocd.buffer);
+    dv2.setUint32(0, 0x06054b50, true);
+    dv2.setUint16(8, central.length, true);
+    dv2.setUint16(10, central.length, true);
+    dv2.setUint32(12, centralSize, true);
+    dv2.setUint32(16, centralStart, true);
+    chunks.push(eocd);
+    return new Blob(chunks, { type: 'application/zip' });
+}
+
+// 下载案例的全部预览图（总图 + 各制品分图）；多页打包 ZIP 一次下载，单页保持直接下载
+async function downloadCaseById(id) {
     const c = caseLibrary.find(function (x) { return x && x.id === id; });
     if (!c) return;
-    const pages = caseViewPagesOf(c);
-    const p = pages[Math.min(Math.max(0, pageIdx || 0), pages.length - 1)] || pages[0];
-    if (!p || !p.exportImgId) { showGlobalToast('该案例没有可下载的图片，请重新生成'); return; }
-    const url = await caseImgGet(p.exportImgId);
-    if (!url) { showGlobalToast('案例图片缺失，请重新生成'); return; }
-    const title = caseDisplayType(c);
-    const pageSuffix = (pages.length > 1 && p.label) ? '_' + p.label : '';
+    const pages = caseViewPagesOf(c).filter(function (p) { return p && p.exportImgId; });
+    if (!pages.length) { showGlobalToast('该案例没有可下载的图片，请重新生成'); return; }
+    const name = caseLibTitle(c).replace(/[\\/:*?"<>|]/g, '_');
     const ext = c.exportFormat === 'jpeg' ? 'jpg' : 'png';
-    if (!triggerDownload(url, '案例_' + title + pageSuffix + '_' + Date.now() + '.' + ext)) {
-        showReceiptImagePreview(url, '案例_' + title + pageSuffix + '.' + ext);
+    if (pages.length === 1) {
+        const url = await caseImgGet(pages[0].exportImgId);
+        if (!url) { showGlobalToast('案例图片缺失，请重新生成'); return; }
+        const filename = '案例_' + name + '_' + Date.now() + '.' + ext;
+        if (triggerDownload(url, filename)) showGlobalToast('已下载 ' + ext.toUpperCase());
+        else showReceiptImagePreview(url, filename);
+        return;
     }
+    // 多页：打包 ZIP（浏览器会拦截连续的多次程序化下载，逐张下只有第一张能落盘）
+    showGlobalToast('正在打包 ' + pages.length + ' 张图片…');
+    const files = [];
+    for (let i = 0; i < pages.length; i++) {
+        const p = pages[i];
+        const url = await caseImgGet(p.exportImgId);
+        if (!url) continue;
+        const label = String(p.label || ('图' + (i + 1))).replace(/[\\/:*?"<>|]/g, '_');
+        files.push({ name: name + '_' + label + '.' + ext, bytes: caseDataUrlToBytes(url) });
+    }
+    if (!files.length) { showGlobalToast('案例图片缺失，请重新生成'); return; }
+    const blob = caseBuildZipBlob(files);
+    const url = URL.createObjectURL(blob);
+    const ok = triggerDownload(url, '案例_' + name + '_' + Date.now() + '.zip');
+    setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
+    showGlobalToast(ok ? ('已打包下载 ' + files.length + ' 张（ZIP）') : '下载失败，请重试');
+}
+// 查看案例关联的订单：跳转记录页并聚焦该订单（复用统计页「查看企划」的聚焦筛选机制），滚动定位并短暂高亮
+function viewCaseOrder(id) {
+    const c = caseLibrary.find(function (x) { return x && x.id === id; });
+    if (!c) return;
+    const linked = c.orderId != null && c.orderId !== '' && (history || []).some(function (o) { return o && String(o.id) === String(c.orderId); });
+    if (!linked) { showGlobalToast('该案例未关联订单（或订单已删除）'); return; }
+    const oid = Number(c.orderId);
+    statsFocusedOrderIds = new Set([oid]);
+    statsFocusedLabel = '案例「' + caseLibTitle(c) + '」的关联订单';
+    showPage('record');
+    applyRecordFilters();
+    // 等记录渲染完成后滚动到该订单卡片并短暂高亮
+    setTimeout(function () {
+        const el = document.querySelector('#recordContainer .record-item[data-id="' + oid + '"]');
+        if (!el) return;
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) { el.scrollIntoView(); }
+        el.classList.add('record-item-locate-flash');
+        setTimeout(function () { el.classList.remove('record-item-locate-flash'); }, 2400);
+    }, 150);
 }
 async function deleteCaseById(id) {
+    const c = caseLibrary.find(function (x) { return x && x.id === id; });
+    if (!c) return;
+    if (!confirm('确定删除案例「' + caseLibTitle(c) + '」？删除后不可恢复。')) return;
+    await caseLibDeleteCore(id);
+    showGlobalToast('案例已删除');
+}
+// 删除核心（无确认）：批量删除复用；若详情预览正打开该案例则一并关闭
+async function caseLibDeleteCore(id) {
     const idx = caseLibrary.findIndex(function (x) { return x && x.id === id; });
     if (idx < 0) return;
-    if (!confirm('确定删除该案例？')) return;
     const c = caseLibrary[idx];
     // 仅删除没有被其它案例引用的图片
     const refs = {};
@@ -39994,7 +40909,7 @@ async function deleteCaseById(id) {
     caseLibrary.splice(idx, 1);
     saveCaseLibrary();
     renderCaseLibrary();
-    showGlobalToast('案例已删除');
+    if (_caseViewId === id) closeCaseViewModal();
 }
 function regenerateCase(id) {
     openCaseGenerator({ caseId: id });

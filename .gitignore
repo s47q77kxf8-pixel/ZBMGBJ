@@ -118,6 +118,7 @@ test_role_profiles.js
 .case_group_total_test.js
 .case_watermark_test.js
 .case_autobox_render_test.js
+.case_edit_dock_test.js
 
 # 其它 IDE/工具本地工作区
 .zcode/

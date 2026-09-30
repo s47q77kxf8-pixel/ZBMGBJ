@@ -11,7 +11,7 @@
     <script>
     (function(){var t=localStorage.getItem('appTheme');var d=typeof matchMedia!='undefined'&&matchMedia('(prefers-color-scheme: dark)').matches;var e=(t==='light'||t==='dark')?t:(d?'dark':'light');if(e==='dark')document.documentElement.classList.add('theme-dark');})();
     </script>
-    <link rel="stylesheet" href="style.css?v=20260930-0245">
+    <link rel="stylesheet" href="style.css?v=20260930-0736">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -2800,13 +2800,23 @@
                         <div class="settings-subpage-header mb-4">
                             <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
                             <h2>案例库</h2>
-                            <div class="settings-subpage-actions d-flex items-center gap-2">
-                                <button class="btn btn-compact" onclick="openCaseGenerator()">新建案例</button>
-                            </div>
+                        <div class="settings-subpage-actions d-flex items-center gap-2">
+                            <input id="caseLibrarySearch" class="case-lib-search" type="text" placeholder="搜索名称 / 企划 / 订单…" oninput="renderCaseLibrary()">
+                            <button class="btn secondary btn-compact" id="caseLibBatchBtn" onclick="toggleCaseLibBatch()">批量管理</button>
+                            <button class="btn btn-compact" onclick="openCaseGenerator()">新建案例</button>
                         </div>
-                        <div class="setting-hint text-gray" style="margin-bottom:10px;">
-                            从订单一键生成案例展示图，保存在本机案例库并关联订单；可在案例上叠加水印，随时重新生成。
-                        </div>
+                    </div>
+                    <div class="setting-hint text-gray" style="margin-bottom:10px;">
+                        从订单一键生成案例展示图，保存在本机案例库并关联订单；可在案例上叠加水印，随时重新生成。
+                        卡片名称双击可修改；「批量管理」可多选后批量下载/删除。
+                    </div>
+                    <div id="caseLibBatchBar" class="case-lib-batch-bar d-none">
+                        <label class="case-lib-checkall"><input type="checkbox" id="caseLibCheckAll" onchange="caseLibToggleAll(this.checked)"> 全选</label>
+                        <span id="caseLibBatchCount" class="case-lib-batch-count">已选 0 项</span>
+                        <button class="btn secondary btn-compact" id="caseLibBatchDownloadBtn" onclick="caseLibBatchDownload()">批量下载</button>
+                        <button class="btn danger btn-compact" id="caseLibBatchDeleteBtn" onclick="caseLibBatchDelete()">批量删除</button>
+                        <button class="btn secondary btn-compact" onclick="toggleCaseLibBatch()">完成</button>
+                    </div>
                         <div id="caseLibraryGrid" class="case-library-grid"></div>
                     </div>
                 </div>
@@ -3674,7 +3684,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20260930-0245"></script>
+    <script src="script.js?v=20260930-0736"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {
@@ -3730,7 +3740,6 @@
             <div class="case-drawer-body">
                 <div class="case-layout">
                     <div class="case-layout-form">
-                        <div id="caseSelPanel" class="case-sel-panel d-none"></div>
                         <div id="caseFormArea"></div>
                     </div>
                     <div id="casePreviewPane" class="case-layout-preview">
@@ -3743,8 +3752,27 @@
                             </div>
                         </div>
                         <div id="casePageChips" class="case-page-chips" style="display:none;"></div>
-                        <div id="casePreviewStage" class="case-preview-stage">
-                            <div id="casePreviewCanvasWrap" class="case-preview-canvas-wrap"></div>
+                        <div class="case-preview-main">
+                            <div id="casePreviewStage" class="case-preview-stage">
+                                <div id="casePreviewCanvasWrap" class="case-preview-canvas-wrap"></div>
+                            </div>
+                            <!-- 调整布局功能区：停靠在预览图右侧（非弹窗）；上=整体布局，下=选中对象设置 -->
+                            <div id="caseEditDock" class="case-edit-dock d-none">
+                                <div class="case-edit-dock-head">
+                                    <span class="case-edit-dock-title">调整布局</span>
+                                    <button type="button" class="btn btn-compact case-edit-done-btn" onclick="toggleCaseEditMode()">完成</button>
+                                </div>
+                                <div class="case-edit-dock-scroll">
+                                    <div class="case-edit-sec">
+                                        <div class="case-edit-sec-title">整体布局</div>
+                                        <div id="caseEditGlobal"></div>
+                                    </div>
+                                    <div class="case-edit-sec">
+                                        <div class="case-edit-sec-title" id="caseEditSelTitle">选中设置</div>
+                                        <div id="caseEditSelBody"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <!-- 缩放控件：浮在预览区右下角，仅小屏显示；100% 即适应窗口，点击可复位 -->
                         <div class="case-zoom-ctrl" id="caseZoomCtrl">
@@ -3771,6 +3799,7 @@
                 <div id="caseViewMeta" class="text-gray" style="font-size:12px;margin-top:8px;"></div>
             </div>
             <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;">
+                <button class="btn small danger" onclick="if (_caseViewId) deleteCaseById(_caseViewId)">删除案例</button>
                 <button class="btn small secondary" onclick="caseViewDownload()">下载图片</button>
                 <button class="btn small" id="caseViewRegenBtn">重新生成</button>
             </div>

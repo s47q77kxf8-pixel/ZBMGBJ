@@ -14305,47 +14305,12 @@ html.theme-dark .inline-switch input:checked + .switch-track {
     border-right: 1px solid var(--border-color, #e5e5ea);
     box-sizing: border-box;
 }
-/* 选中元素面板：吸顶跟随表单滚动 */
-.case-sel-panel {
-    position: sticky;
-    top: 0;
-    z-index: 6;
-    background: var(--card-bg, #fff);
-    border: 1px solid var(--primary-color, #7c6ff0);
-    border-radius: 10px;
-    padding: 10px 12px;
-    margin-bottom: 12px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
-    /* 外壳不滚（关闭钮常驻右上角），内容过高时在 .case-sel-body 内部下滑 */
-    display: flex;
-    flex-direction: column;
-    max-height: 100%;
-    overflow: hidden;
-}
+/* 选中元素内容（嵌在右侧调整布局功能区的「选中设置」段内） */
 .case-sel-body {
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
-.case-sel-close {
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    width: 24px;
-    height: 24px;
-    border: none;
-    border-radius: 999px;
-    background: transparent;
-    color: var(--text-muted, #888);
-    font-size: 15px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-.case-sel-close:hover { color: var(--text-color, #333); background: rgba(128, 128, 128, 0.15); }
 .case-sel-title {
     font-size: 13px;
     font-weight: 700;
@@ -14587,6 +14552,149 @@ html.theme-dark .inline-switch input:checked + .switch-track {
 .case-color-input::-webkit-color-swatch-wrapper { padding: 0; }
 .case-color-input::-webkit-color-swatch { border: none; border-radius: 50%; }
 .case-color-input::-moz-color-swatch { border: none; border-radius: 50%; }
+/* 自定义取色按钮（圆形色块，点击弹出取色层） */
+.case-color-btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 50%;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: box-shadow 0.15s;
+}
+.case-color-btn:hover {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+/* 取色弹层：常用色板 + Hex 输入 + 精细取色 */
+.case-color-pop {
+    position: fixed;
+    z-index: 300;
+    width: 236px;
+    padding: 10px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 12px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+.case-color-pop-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+}
+/* 饱和度/明度取色块（可拖动） */
+.case-color-sv {
+    position: relative;
+    height: 132px;
+    border-radius: 8px;
+    cursor: crosshair;
+    touch-action: none;
+    margin-bottom: 10px;
+    background: #f00;
+}
+.case-color-sv-dot {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+/* 色相条（可拖动） */
+.case-color-hue {
+    position: relative;
+    height: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    touch-action: none;
+    margin-bottom: 10px;
+    background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);
+}
+.case-color-hue-dot {
+    position: absolute;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+.case-color-prev {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #ddd);
+    flex-shrink: 0;
+}
+.case-color-hex {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 12px;
+    font-family: Consolas, monospace;
+}
+.case-color-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 5px;
+}
+.case-color-chip {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.12s;
+}
+.case-color-chip:hover {
+    transform: scale(1.15);
+}
+.case-color-pop-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+.case-color-done {
+    padding: 4px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #ddd);
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 12px;
+    cursor: pointer;
+}
+html.theme-dark .case-color-pop {
+    background: #27272a;
+    border-color: #3f3f46;
+}
+html.theme-dark .case-color-prev {
+    border-color: #3f3f46;
+}
+html.theme-dark .case-color-hex {
+    background: #1f1f23;
+    border-color: #3f3f46;
+    color: #e5e5e5;
+}
+html.theme-dark .case-color-done {
+    background: #26262c;
+    border-color: #3f3f46;
+    color: #e5e5e5;
+}
+html.theme-dark .case-color-chip {
+    border-color: rgba(255, 255, 255, 0.18);
+}
 .case-size-row {
     display: flex;
     gap: 10px;
@@ -15053,6 +15161,100 @@ html.theme-dark #caseEditLayoutBtn.case-edit-on {
     border-color: #3b82f6 !important;
     color: #fff !important;
 }
+/* 黑夜模式：调整布局的移动区域跟随系统强调色（蓝），原紫色虚线/浅灰手柄对比不足 */
+html.theme-dark .case-editing .case-slot {
+    outline-color: rgba(59, 130, 246, 0.9);
+}
+html.theme-dark .case-editing [data-case-el]:hover,
+html.theme-dark .case-editing [data-tag-name]:hover {
+    outline-color: rgba(59, 130, 246, 0.6);
+}
+html.theme-dark .case-area-outline {
+    border-color: rgba(59, 130, 246, 0.95);
+}
+html.theme-dark .case-area-grip {
+    background: #3b82f6;
+    color: #fff;
+}
+html.theme-dark .case-area-handle {
+    background: #3b82f6;
+    border-color: #e5e5e5;
+}
+html.theme-dark .case-el-selected {
+    outline-color: #3b82f6 !important;
+}
+/* 关联订单组合框：输入筛选 + 下拉列表 */
+.case-order-combo {
+    position: relative;
+}
+.case-order-combo .case-field-input {
+    padding-right: 30px;
+}
+.case-order-clear {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(128, 128, 128, 0.25);
+    color: var(--text-color, #333);
+    font-size: 12px;
+    line-height: 18px;
+    padding: 0;
+    cursor: pointer;
+}
+.case-order-clear:hover {
+    background: rgba(224, 86, 102, 0.4);
+}
+.case-order-list {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    padding: 4px;
+    z-index: 60;
+}
+.case-order-list.open {
+    display: block;
+}
+.case-order-item {
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-color, #333);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.case-order-item:hover,
+.case-order-item.hl {
+    background: rgba(59, 130, 246, 0.15);
+}
+.case-order-item-none {
+    color: #8b8b94;
+}
+.case-order-empty {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #8b8b94;
+    text-align: center;
+}
+html.theme-dark .case-order-list {
+    background: #27272a;
+    border-color: #3f3f46;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
 html.theme-dark .case-tagfield-eye {
     background: transparent;
     color: #e5e5e5;
@@ -15070,7 +15272,9 @@ html.theme-dark .case-mockup-card { background: #2f2f36; border-color: #3f3f46; 
 html.theme-dark .case-mockup-card.active { border-color: #3b82f6; }
 html.theme-dark .case-mockup-diagram { background: #1f1f23; }
 html.theme-dark .case-thumb { background: #1f1f23; border-color: #3f3f46; }
-html.theme-dark .case-sel-panel { background: #27272a; }
+html.theme-dark .case-edit-dock { background: #27272a; }
+html.theme-dark .case-edit-nudge button { background: #1f1f23; color: #e4e4e7; border-color: #3f3f46; }
+html.theme-dark .case-edit-pct input { background: #1f1f23; color: #e4e4e7; border-color: #3f3f46; }
 html.theme-dark .case-upload-zone:hover, html.theme-dark .case-upload-zone.dragover { background: rgba(59, 130, 246, 0.08); }
 html.theme-dark .case-group-block.dragover { background: rgba(59, 130, 246, 0.08); }
 .case-tagfield-label {
@@ -15099,22 +15303,24 @@ html.theme-dark .case-group-block.dragover { background: rgba(59, 130, 246, 0.08
 .case-preset-chips {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 8px;
-    margin-top: 9px;
-    max-height: 96px;
+    margin-top: 2px;
+    max-height: 114px;
     overflow-y: auto;
-    padding-right: 2px;
+    /* 上下留白给溢出胶囊的 ★ 角标，避免被 overflow 裁剪 */
+    padding: 8px 8px 0;
 }
 /* 默认模版：名字高亮 */
 .case-preset-chip.case-preset-def .case-chip {
     border-color: var(--primary-color, #7c6ff0);
     color: var(--primary-color, #7c6ff0);
 }
-/* 设为默认的 ★ 按钮（模版左上角） */
+/* 设为默认的 ★ 按钮（模版右上角） */
 .case-preset-star {
     position: absolute;
     top: -7px;
-    left: -7px;
+    right: -7px;
     width: 17px;
     height: 17px;
     border-radius: 50%;
@@ -15145,21 +15351,126 @@ html.theme-dark .case-preset-star.active {
     border-color: #f5b301;
     color: #fff;
 }
-.case-preset-del {
-    position: absolute;
-    top: -6px;
-    right: -7px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    border: none;
-    background: #e05666;
-    color: #fff;
-    font-size: 11px;
-    line-height: 16px;
+/* ＋/－ 胶囊（添加/删除模版，位于模版行尾） */
+.case-preset-add,
+.case-preset-remove {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px dashed var(--border-color, #ddd);
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 15px;
+    line-height: 1;
     padding: 0;
     cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.case-preset-add:hover {
+    border-color: var(--primary-color, #7c6ff0);
+    color: var(--primary-color, #7c6ff0);
+}
+.case-preset-add.active {
+    border-style: solid;
+    background: var(--primary-color, #7c6ff0);
+    border-color: var(--primary-color, #7c6ff0);
+    color: #fff;
+}
+.case-preset-remove:hover {
+    border-color: #e05666;
+    color: #e05666;
+}
+.case-preset-remove.active {
+    border-style: solid;
+    background: #e05666;
+    border-color: #e05666;
+    color: #fff;
+}
+html.theme-dark .case-preset-add,
+html.theme-dark .case-preset-remove {
+    background: #26262c;
+    border-color: #3a3a42;
+}
+/* 删除模式：自定义模版胶囊变红可删；系统默认胶囊锁定不可删 */
+.case-preset-chip.case-preset-deleting .case-chip {
+    border-color: #e05666;
+    color: #e05666;
+    border-style: dashed;
+}
+.case-preset-chip.case-preset-deleting .case-preset-star {
+    opacity: 0.35;
+    pointer-events: none;
+}
+.case-preset-chip.case-preset-locked .case-chip {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.case-preset-chip.case-preset-locked .case-preset-star {
+    opacity: 0.5;
+}
+/* 制品设置面板：步进器行（替代滑块） */
+.case-step-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0;
+}
+.case-step-name {
+    font-size: 12px;
+    color: var(--text-muted, #999);
+    flex-shrink: 0;
+    width: 56px;
+}
+.case-step-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #ddd);
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+.case-step-btn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+html.theme-dark .case-step-btn {
+    background: #26262c;
+    border-color: #3f3f46;
+    color: #e5e5e5;
+}
+.case-step-row input[type="number"] {
+    width: 58px;
+    padding: 4px 4px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 12px;
     text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.case-step-row input[type="number"]::-webkit-outer-spin-button,
+.case-step-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+html.theme-dark .case-step-row input[type="number"] {
+    background: #1f1f23;
+    border-color: #3f3f46;
+    color: #e5e5e5;
+}
+.case-step-unit {
+    font-size: 12px;
+    color: var(--text-muted, #999);
+    flex-shrink: 0;
 }
 
 /* ===== 案例库画廊 ===== */
@@ -15214,12 +15525,42 @@ html.theme-dark .case-preset-star.active {
     text-overflow: ellipsis;
 }
 .case-library-card-ops {
-    display: flex;
-    gap: 4px;
-    padding: 6px 8px 8px;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    padding: 6px 8px 9px;
 }
-.case-library-card-ops .btn { padding: 3px 9px; font-size: 12px; }
+.case-library-card-ops .btn {
+    padding: 4px 4px;
+    font-size: 12px;
+    text-align: center;
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* 案例库页头：搜索框+按钮过多时允许换行，避免溢出面板 */
+#settingsSubPage-caseLibrary .settings-subpage-header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+}
+#settingsSubPage-caseLibrary .settings-subpage-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.case-lib-search {
+    flex: 1 1 140px;
+    min-width: 0;
+    max-width: 220px;
+}
+/* 记录页：从案例库「关联订单」跳转定位时的高亮闪烁 */
+@keyframes recordLocateFlash {
+    0%, 60% { background: rgba(74, 144, 217, 0.18); box-shadow: inset 3px 0 0 var(--primary-color, #4a90d9); }
+    100% { background: transparent; box-shadow: none; }
+}
+.record-item-locate-flash {
+    animation: recordLocateFlash 2.4s ease-out;
+}
 .case-library-empty {
     grid-column: 1 / -1;
     text-align: center;
@@ -15228,6 +15569,93 @@ html.theme-dark .case-preset-star.active {
     font-size: 14px;
     border: 1.5px dashed var(--border-color, #ddd);
     border-radius: 12px;
+}
+/* 案例库：搜索框 / 批量管理条 / 卡片勾选与改名 */
+.case-lib-search {
+    min-width: 180px;
+    padding: 5px 10px;
+    font-size: 13px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #222);
+    outline: none;
+}
+.case-lib-search:focus {
+    border-color: var(--primary-color, #4a90d9);
+}
+.case-lib-batch-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    background: var(--bg-secondary, #f6f7f9);
+    border: 1px solid var(--border-color, #e5e6ea);
+    border-radius: 10px;
+}
+.case-lib-batch-bar .btn[disabled] {
+    opacity: 0.45;
+    pointer-events: none;
+}
+.case-lib-checkall {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--text-color, #222);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.case-lib-batch-count {
+    font-size: 13px;
+    color: var(--text-muted, #888);
+    white-space: nowrap;
+}
+.case-library-card {
+    position: relative;
+}
+.case-lib-check {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    width: 22px;
+    height: 22px;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 6px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+.case-lib-check input {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+}
+.case-library-card.batch-mode .case-lib-check {
+    display: flex;
+}
+.case-library-card.batch-selected {
+    outline: 2px solid var(--primary-color, #4a90d9);
+    outline-offset: -2px;
+}
+.case-library-card.batch-mode .case-library-thumb {
+    cursor: pointer;
+}
+.case-lib-rename-input {
+    width: 100%;
+    padding: 2px 6px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--primary-color, #4a90d9);
+    border-radius: 6px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #222);
+    outline: none;
 }
 
 /* ===== 手机端（<1000px）：上下分栏（参考小票显示和设置：上预览可看，下设置可滚） ===== */
@@ -15296,16 +15724,93 @@ html.theme-dark .case-preset-star.active {
     .case-drawer.case-view-form .case-preview-show-btn { display: inline-block; }
 }
 
-/* ===== 大屏（≥1000px）：选中元素面板悬浮在预览区右侧（参考小票设置右侧抽屉），不占表单列 ===== */
-@media (min-width: 1000px) {
-    .case-sel-panel {
+/* ===== 调整布局功能区：停靠在预览图右侧的面板（非弹窗） ===== */
+/* 预览主体 = 画布区 + 右侧功能区（功能区仅调整布局模式下显示） */
+.case-preview-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+}
+.case-edit-dock {
+    width: 300px;
+    flex-shrink: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--card-bg, #fff);
+    border-left: 1px solid var(--border-color, #e5e5ea);
+}
+.case-edit-dock.d-none { display: none; }
+.case-edit-dock-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px 6px;
+    flex-shrink: 0;
+}
+.case-edit-dock-title { font-size: 13px; font-weight: 700; flex: 1; min-width: 0; }
+.case-edit-dock-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 12px 16px;
+    -webkit-overflow-scrolling: touch;
+}
+.case-edit-sec { padding: 10px 0 4px; }
+.case-edit-sec + .case-edit-sec { border-top: 1px solid var(--border-color, #e5e5ea); }
+.case-edit-sec-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted, #888);
+    margin-bottom: 8px;
+}
+.case-edit-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.case-edit-lab { font-size: 12px; color: var(--text-muted, #999); flex-shrink: 0; }
+.case-edit-nudge { display: flex; gap: 4px; flex-shrink: 0; }
+.case-edit-nudge button {
+    min-width: 30px;
+    height: 26px;
+    padding: 0 6px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 7px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+}
+.case-edit-nudge button:hover { border-color: var(--primary-color, #7c6ff0); color: var(--primary-color, #7c6ff0); }
+.case-edit-pct { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--text-muted, #999); }
+.case-edit-pct input {
+    width: 58px;
+    padding: 4px 6px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 7px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #333);
+    font-size: 12px;
+    box-sizing: border-box;
+}
+.case-edit-pct i { font-style: normal; }
+.case-edit-chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ===== 小屏（<1000px）：功能区悬浮在预览区右侧，点「完成」收起 ===== */
+@media (max-width: 999px) {
+    .case-edit-dock {
         position: absolute;
-        top: 64px;          /* 预览标题行下方 */
-        right: 16px;
-        width: 320px;
-        max-height: calc(100% - 88px);   /* 底部给缩放控件留空间 */
-        margin: 0;
-        z-index: 8;
-        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+        top: 44px;
+        right: 0;
+        bottom: 0;
+        width: min(320px, 86vw);
+        z-index: 9;
+        box-shadow: -6px 0 20px rgba(0, 0, 0, 0.18);
     }
 }
