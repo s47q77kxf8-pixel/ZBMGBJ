@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261001-0215';
+const APP_VERSION = '20261001-0230';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -39513,6 +39513,49 @@ function caseSetPage(kind, label) {
 function caseChipHtml(label, active, onclick) {
     return '<button type="button" class="case-chip' + (active ? ' active' : '') + '" onclick="' + onclick + '">' + label + '</button>';
 }
+// 通用「滑条 + 数值可填写 + 上下快速加减」控件行（2026-10-01 起案例库数值参数统一用此控件）
+// o: { label, id, val, min, max, step, unit, setter, dec, btnStep }
+//     val/min/max/step 与 setter 接收的量纲必须一致（如透明度统一用百分数 5–100）
+//     dec  = 小数位数（0 为整数）；btnStep = 加减按钮步长（默认等于 step）
+function caseSliderNumRowHtml(o) {
+    const dec = o.dec || 0;
+    const step = Number(o.step) || 1;
+    const btnStep = Number(o.btnStep || step);
+    const val = Number(o.val);
+    const disp = dec ? String(Math.round(val * Math.pow(10, dec)) / Math.pow(10, dec)) : String(Math.round(val));
+    const stepCall = function (d) {
+        return 'caseStepNum(\'' + o.id + '\',' + d + ',' + o.min + ',' + o.max + ',' + dec + ',\'' + o.setter + '\')';
+    };
+    return '<div class="case-range-row"><span class="case-range-label">' + o.label + '</span>'
+        + '<input type="range" id="' + o.id + 'Range" min="' + o.min + '" max="' + o.max + '" step="' + step + '" value="' + val + '" oninput="' + o.setter + '(this.value)">'
+        + '<span class="case-num-step">'
+        + '<button type="button" class="case-step-btn case-step-btn-sm" onclick="' + stepCall(-btnStep) + '" title="减 ' + btnStep + '">−</button>'
+        + '<input type="number" id="' + o.id + 'Num" min="' + o.min + '" max="' + o.max + '" step="' + step + '" value="' + disp + '"'
+        + ' onchange="' + o.setter + '(this.value)" onkeydown="caseNumKeyStep(event, this, ' + btnStep + ',' + o.min + ',' + o.max + ',' + dec + ',\'' + o.setter + '\')">'
+        + '<button type="button" class="case-step-btn case-step-btn-sm" onclick="' + stepCall(btnStep) + '" title="加 ' + btnStep + '">＋</button>'
+        + '</span>'
+        + '<span class="case-range-unit">' + (o.unit || '') + '</span></div>';
+}
+// 数值框步进（加减按钮与 ↑↓ 方向键共用）：读当前值 → 加步长 → 钳位 → 回写 → 触发 setter
+function caseStepNum(id, delta, min, max, dec, setter) {
+    const el = document.getElementById(id + 'Num');
+    if (!el) return;
+    let v = parseFloat(el.value);
+    if (!isFinite(v)) v = parseFloat(min);
+    v = Math.round((v + Number(delta)) * 1000000) / 1000000;
+    v = Math.min(Number(max), Math.max(Number(min), v));
+    if (dec) v = Math.round(v * Math.pow(10, dec)) / Math.pow(10, dec);
+    el.value = dec ? String(v) : String(Math.round(v));
+    const fn = (typeof window !== 'undefined') ? window[setter] : null;
+    if (typeof fn === 'function') fn(v);
+}
+// 数字框内 ↑↓ 键 = 快速加减（步长同加减按钮）
+function caseNumKeyStep(ev, el, btnStep, min, max, dec, setter) {
+    if (!ev || (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown')) return;
+    ev.preventDefault();
+    const id = String(el.id || '').replace(/Num$/, '');
+    caseStepNum(id, (ev.key === 'ArrowUp' ? 1 : -1) * Number(btnStep), min, max, dec, setter);
+}
 // 眼睛矢量图标（显示/隐藏）
 function caseEyeSvg(hidden) {
     return '<svg class="icon" aria-hidden="true"><use href="#' + (hidden ? 'i-eye-off' : 'i-eye') + '"></use></svg>';
@@ -39743,9 +39786,10 @@ function renderCaseForm() {
         + '</div>'
         + (cfg.layout && cfg.layout.productArea
             ? '<div class="case-form-hint">已使用自定义制品区：在预览区拖动虚线框移动位置、拖动右下角圆点调整大小；「恢复默认布局」可回到自动排版</div>'
-            : '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">占位区域</span>'
-                + '<input type="range" min="0.4" max="1" step="0.05" value="' + (Number(cfg.mockupScale) || 1) + '" oninput="setCaseMockupScale(this.value)">'
-                + '<span class="case-range-val" id="caseMockupScaleVal">' + Math.round((Number(cfg.mockupScale) || 1) * 100) + '%</span></div>'
+            : caseSliderNumRowHtml({
+                label: '占位区域', id: 'caseMockupScale', val: Math.round((Number(cfg.mockupScale) || 1) * 100),
+                min: 40, max: 100, step: 5, unit: '%', setter: 'setCaseMockupScalePct'
+            })
                 + '<div class="case-form-hint">上传的制品 PNG 会自动按占位区排列并叠加装饰；占位区域越小，制品整体越小、四周留白越多。开启预览区「调整布局」可自由定位制品区。</div>')
         + (st.groups && st.groups.length
             ? '<div class="case-size-row" style="margin-top:10px;"><span style="font-size:13px;font-weight:600;">分图制品区</span>'
@@ -39842,22 +39886,23 @@ function renderCaseForm() {
         }
         // 2026-09-30 起：水印恒平铺绘制在制品不透明像素上（唯一显示效果），无位置/层级选项
         html += '<div class="case-form-hint" style="margin:4px 0 0;">水印平铺绘制在每张制品图的不透明像素上（PNG 空白区不显示），背景图与文字保持干净</div>';
-        html += '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">透明度</span>'
-            + '<input type="range" id="caseWmOpacityRange" min="0.05" max="1" step="0.05" value="' + (Number(wm.opacity) || 0.3) + '" oninput="setCaseWmOpacity(this.value)">'
-            + '<input type="number" id="caseWmOpacityNum" min="5" max="100" step="5" value="' + Math.round((Number(wm.opacity) || 0.3) * 100) + '" onchange="setCaseWmOpacityInput(this.value)">'
-            + '<span class="case-range-unit">%</span></div>'
+        html += caseSliderNumRowHtml({
+            label: '透明度', id: 'caseWmOpacity', val: Math.round((Number(wm.opacity) || 0.3) * 100),
+            min: 5, max: 100, step: 5, unit: '%', setter: 'setCaseWmOpacityInput'
+        })
             + (isWmPattern
-                ? '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">线条</span>'
-                    + '<input type="range" id="caseWmLineWRange" min="1" max="6" step="1" value="' + (parseInt(wm.lineW, 10) || 2) + '" oninput="setCaseWmLineW(this.value)">'
-                    + '<input type="number" id="caseWmLineWNum" min="1" max="6" step="1" value="' + (parseInt(wm.lineW, 10) || 2) + '" onchange="setCaseWmLineWInput(this.value)">'
-                    + '<span class="case-range-unit">px</span></div>'
-                + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">间距</span>'
-                    + '<input type="range" id="caseWmGapRange" min="3" max="200" step="1" value="' + (parseInt(wm.gap, 10) || 3) + '" oninput="setCaseWmGap(this.value)">'
-                    + '<input type="number" id="caseWmGapNum" min="3" max="240" step="1" value="' + (parseInt(wm.gap, 10) || 3) + '" onchange="setCaseWmGapInput(this.value)">'
-                    + '<span class="case-range-unit">px</span></div>'
-                : '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">大小</span>'
-                    + '<input type="range" min="0.2" max="3" step="0.05" value="' + (Number(wm.scale) || 1) + '" oninput="setCaseWmScale(this.value)">'
-                    + '<span class="case-range-val" id="caseWmScaleVal">' + (Math.round((Number(wm.scale) || 1) * 100) / 100) + '×</span></div>');
+                ? caseSliderNumRowHtml({
+                    label: '线条', id: 'caseWmLineW', val: parseInt(wm.lineW, 10) || 2,
+                    min: 1, max: 6, step: 1, unit: 'px', setter: 'setCaseWmLineW'
+                })
+                + caseSliderNumRowHtml({
+                    label: '间距', id: 'caseWmGap', val: parseInt(wm.gap, 10) || 3,
+                    min: 3, max: 240, step: 1, btnStep: 5, unit: 'px', setter: 'setCaseWmGap'
+                })
+                : caseSliderNumRowHtml({
+                    label: '大小', id: 'caseWmScale', val: Math.round((Number(wm.scale) || 1) * 100) / 100,
+                    min: 0.2, max: 3, step: 0.05, dec: 2, unit: '×', setter: 'setCaseWmScale'
+                }));
     }
     html += '<div class="case-form-hint">水印平铺绘制在每张制品图的不透明像素上（PNG 空白区不显示），随导出图一起保存；未开启或无内容时不占位。斜纹/斜方格为 45° 重复图案，线条粗细与间距可调</div>'
         + '</div>';
@@ -40016,9 +40061,22 @@ function toggleCaseSection(key, on) {
 function setCaseMockupScale(v) {
     const st = _caseState; if (!st) return;
     st.config.mockupScale = Math.min(1, Math.max(0.4, parseFloat(v) || 1));
-    const el = document.getElementById('caseMockupScaleVal');
-    if (el) el.textContent = Math.round(st.config.mockupScale * 100) + '%';
+    caseMockupSyncScaleCtrls(st.config.mockupScale);
     renderCasePreview();
+}
+// 占位区域按百分数设置（滑条/数值框量纲：40–100）
+function setCaseMockupScalePct(v) {
+    const st = _caseState; if (!st) return;
+    st.config.mockupScale = Math.min(1, Math.max(0.4, (Math.min(100, Math.max(40, parseFloat(v) || 100))) / 100));
+    caseMockupSyncScaleCtrls(st.config.mockupScale);
+    renderCasePreview();
+}
+function caseMockupSyncScaleCtrls(v) {
+    const pct = Math.round(Number(v) * 100);
+    const rng = document.getElementById('caseMockupScaleRange');
+    if (rng) rng.value = pct;
+    const num = document.getElementById('caseMockupScaleNum');
+    if (num) num.value = pct;
 }
 // 文字大小（px 直设企划标签基准字号）：内部仍存 textScale 倍率（0.6–1.8），兼容旧数据
 function setCaseTextScalePx(v) {
@@ -40407,17 +40465,25 @@ function setCaseWmOpacityInput(v) {
     renderCasePreview();
 }
 function caseWmSyncOpacityCtrls(op) {
+    const pct = Math.round(op * 100);
     const rng = document.getElementById('caseWmOpacityRange');
-    if (rng) rng.value = op;
+    if (rng) rng.value = pct;
     const num = document.getElementById('caseWmOpacityNum');
-    if (num) num.value = Math.round(op * 100);
+    if (num) num.value = pct;
 }
+// 文字/图片水印大小（倍率，滑条与数值框同一量纲）
 function setCaseWmScale(v) {
     const st = _caseState; if (!st) return;
     st.config.watermark.scale = Math.min(3, Math.max(0.2, parseFloat(v) || 1));
-    const el = document.getElementById('caseWmScaleVal');
-    if (el) el.textContent = (Math.round(st.config.watermark.scale * 100) / 100) + '×';
+    caseWmSyncScaleCtrls(st.config.watermark.scale);
     renderCasePreview();
+}
+function caseWmSyncScaleCtrls(sc) {
+    const val = Math.round(Number(sc) * 100) / 100;
+    const rng = document.getElementById('caseWmScaleRange');
+    if (rng) rng.value = val;
+    const num = document.getElementById('caseWmScaleNum');
+    if (num) num.value = String(val);
 }
 async function caseHandleWmImageFile(file) {
     const st = _caseState; if (!st || !file) return;

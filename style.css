@@ -14975,7 +14975,7 @@ html.theme-dark .case-size-lock.active {
     gap: 10px;
     margin-top: 10px;
 }
-.case-range-row input[type="range"] { flex: 1; }
+.case-range-row input[type="range"] { flex: 1; min-width: 56px; }
 .case-range-row .case-range-val {
     width: 44px;
     text-align: right;
@@ -14985,7 +14985,7 @@ html.theme-dark .case-size-lock.active {
 }
 /* 滑条行内的快捷数值输入框（水印透明度/线条/间距等） */
 .case-range-row input[type="number"] {
-    width: 54px;
+    width: 46px;
     padding: 4px 4px;
     border: 1px solid var(--border-color, #ddd);
     border-radius: 8px;
@@ -15011,6 +15011,26 @@ html.theme-dark .case-range-row input[type="number"] {
     font-size: 12px;
     color: var(--text-muted, #888);
     flex-shrink: 0;
+}
+/* 滑条行：左侧参数名（统一控件 caseSliderNumRowHtml 用） */
+.case-range-row .case-range-label {
+    font-size: 12px;
+    color: var(--text-muted, #999);
+    flex-shrink: 0;
+    width: 52px;
+}
+/* 滑条行：数值框 + 上下加减按钮组 */
+.case-num-step {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+}
+.case-step-btn.case-step-btn-sm {
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+    border-radius: 6px;
 }
 
 /* ===== 调整布局（编辑模式） ===== */
