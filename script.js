@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261001-0230';
+const APP_VERSION = '20261001-0300';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -36473,10 +36473,22 @@ function caseEffectiveFx(st, imgId) {
     const strokeColor = String(fx.strokeColor || '#808080');
     const expandColor = String(fx.expandColor || '#ffffff');
     const expandAcrylic = !!fx.expandAcrylic;
+    // 轮廓投影可调（2026-10-01）：透明度 / 大小倍率 / 水平与垂直偏移
+    // 偏移按制品长边比例存储，随制品尺寸缩放；默认 = 0.38 透明 + 1× 大小 + 向下 1.5%
+    const shadowAlpha = Math.min(1, Math.max(0, fx.shadowAlpha != null && fx.shadowAlpha !== '' ? Number(fx.shadowAlpha) : 0.38));
+    const shadowScale = Math.min(3, Math.max(0, Number(fx.shadowScale != null && fx.shadowScale !== '' ? fx.shadowScale : 1) || 0));
+    const shadowDx = Math.min(0.2, Math.max(-0.2, Number(fx.shadowDx) || 0));
+    const shadowDy = Math.min(0.2, Math.max(-0.2, fx.shadowDy != null && fx.shadowDy !== '' ? Number(fx.shadowDy) : 0.015));
+    // 描边 / 扩张描边透明度（0–1，默认不透明）
+    const strokeAlpha = Math.min(1, Math.max(0, fx.strokeAlpha != null && fx.strokeAlpha !== '' ? Number(fx.strokeAlpha) : 1));
+    const expandAlpha = Math.min(1, Math.max(0, fx.expandAlpha != null && fx.expandAlpha !== '' ? Number(fx.expandAlpha) : 1));
     return {
         shadow: useShadow, strokeW: strokeW, strokeColor: strokeColor, expandW: expandW, expandColor: expandColor, expandAcrylic: expandAcrylic,
+        shadowAlpha: useShadow ? shadowAlpha : 0, shadowScale: shadowScale, shadowDx: shadowDx, shadowDy: shadowDy,
+        strokeAlpha: strokeAlpha, expandAlpha: expandAlpha,
         enabled: useShadow || strokeW > 0 || expandW > 0,
         key: imgId + '|' + (useShadow ? 1 : 0) + '|' + strokeW + '|' + strokeColor + '|' + expandW + '|' + expandColor + '|' + (expandAcrylic ? 1 : 0)
+            + '|' + (useShadow ? shadowAlpha + '|' + shadowScale + '|' + shadowDx + '|' + shadowDy : '') + '|' + strokeAlpha + '|' + expandAlpha
     };
 }
 // hex → rgba（亚克力半透明填充用）
@@ -36530,18 +36542,32 @@ async function caseBakeFx(imgId) {
         const maxEdge = Math.max(w, h);
         const strokeR = Math.round(maxEdge * fx.strokeW);
         const expandR = Math.round(maxEdge * fx.expandW);
-        const blur = Math.round(maxEdge * 0.045);
-        const bear = strokeR + expandR + blur + 10;
+        // 投影大小 = 默认模糊半径 × 倍率；位置 = 按长边比例的 X/Y 偏移
+        const blur = Math.round(maxEdge * 0.045 * (Number(fx.shadowScale) || 0));
+        const offX = Math.round(maxEdge * (Number(fx.shadowDx) || 0));
+        const offY = Math.round(maxEdge * (Number(fx.shadowDy) || 0));
+        // 外扩边距要算进投影偏移，否则偏移量变大时投影被画布边界裁断
+        const bear = strokeR + expandR + blur + Math.abs(offX) + Math.abs(offY) + 10;
         const cv = document.createElement('canvas');
         cv.width = w + bear * 2; cv.height = h + bear * 2;
         const ctx = cv.getContext('2d');
         const ox = bear, oy = bear;
+        // 透明度合成助手：临时画布按指定 alpha 叠到主画布（扩张描边/描边透明度用）
+        const drawAlpha = function (srcCanvas, a) {
+            const al = Number(a);
+            if (!(al < 1)) { ctx.drawImage(srcCanvas, 0, 0); return; }
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, al);
+            ctx.drawImage(srcCanvas, 0, 0);
+            ctx.restore();
+        };
         // ① 轮廓投影（最底层）
         if (fx.shadow) {
             ctx.save();
-            ctx.shadowColor = 'rgba(0,0,0,0.38)';
+            ctx.shadowColor = 'rgba(0,0,0,' + (Number(fx.shadowAlpha) || 0) + ')';
             ctx.shadowBlur = blur;
-            ctx.shadowOffsetY = Math.round(maxEdge * 0.015);
+            ctx.shadowOffsetX = offX;
+            ctx.shadowOffsetY = offY;
             ctx.drawImage(img, ox, oy, w, h);
             ctx.restore();
         }
@@ -36554,7 +36580,7 @@ async function caseBakeFx(imgId) {
             sctx.globalCompositeOperation = 'destination-out';
             if (expandR > 0) caseDilate(sctx, caseSilhouette(img, w, h, '#000'), ox, oy, expandR);
             sctx.drawImage(img, ox, oy, w, h);
-            ctx.drawImage(sCv, 0, 0);
+            drawAlpha(sCv, fx.strokeAlpha);
         }
         // ③ 扩张描边（贴着图案的贴边环：普通=实色环；亚克力=半透明磨砂环+反光）
         if (expandR > 0) {
@@ -36566,7 +36592,7 @@ async function caseBakeFx(imgId) {
                 caseDilate(rctx, black, ox, oy, expandR);
                 // 半透明乳白填充（可调色调；透明度更高、更透，靠高光带与亮边撑质感）
                 rctx.globalCompositeOperation = 'source-in';
-                rctx.fillStyle = caseHexToRgba(fx.expandColor, 0.42);
+                rctx.fillStyle = caseHexToRgba(fx.expandColor, 0.42 * (Number(fx.expandAlpha) || 0));
                 rctx.fillRect(0, 0, ring.width, ring.height);
                 // 斜向高光带 × 2：只落在磨砂环内（source-atop），模拟亚克力侧边的反光
                 rctx.globalCompositeOperation = 'source-atop';
@@ -36591,7 +36617,7 @@ async function caseBakeFx(imgId) {
                 // 抠掉本体区域，只留外扩环带
                 rctx.globalCompositeOperation = 'destination-out';
                 rctx.drawImage(img, ox, oy, w, h);
-                ctx.drawImage(ring, 0, 0);
+                drawAlpha(ring, fx.expandAlpha);
                 // 外缘亮边（亚克力厚度感）
                 const rimR = Math.max(1, Math.round(expandR * 0.2));
                 const rim = document.createElement('canvas');
@@ -36603,7 +36629,7 @@ async function caseBakeFx(imgId) {
                 mctx.globalCompositeOperation = 'source-in';
                 mctx.fillStyle = 'rgba(255,255,255,0.55)';
                 mctx.fillRect(0, 0, rim.width, rim.height);
-                ctx.drawImage(rim, 0, 0);
+                drawAlpha(rim, fx.expandAlpha);
                 // 内缘暗缝：磨砂环与图案的分界，增加厚度层次
                 const seamR = Math.max(1, Math.round(expandR * 0.15));
                 const seam = document.createElement('canvas');
@@ -36615,9 +36641,15 @@ async function caseBakeFx(imgId) {
                 xctx.globalCompositeOperation = 'source-in';
                 xctx.fillStyle = 'rgba(0,0,0,0.14)';
                 xctx.fillRect(0, 0, seam.width, seam.height);
-                ctx.drawImage(seam, 0, 0);
+                drawAlpha(seam, fx.expandAlpha);
             } else {
-                caseDilate(ctx, caseSilhouette(img, w, h, fx.expandColor), ox, oy, expandR);
+                // 实色贴边环：先在临时画布画不透明环再整体按 alpha 合成
+                // （不能直接在主画布上用 globalAlpha 逐个 caseDilate——多笔叠加会累积变深、环内外深浅不一）
+                const eCv = document.createElement('canvas');
+                eCv.width = cv.width; eCv.height = cv.height;
+                const ectx = eCv.getContext('2d');
+                caseDilate(ectx, caseSilhouette(img, w, h, fx.expandColor), ox, oy, expandR);
+                drawAlpha(eCv, fx.expandAlpha);
             }
         }
         // 抠掉本体：只留装饰（制品本体由渲染层绘制在最上）
@@ -38277,7 +38309,13 @@ function buildCaseCanvasHtml(st, page) {
         const ifx = (st.config.imgFx && st.config.imgFx[imgId]) || {};
         const sc = Math.min(2.5, Math.max(0.3, Number(ifx.scale) || 1));
         slotRot = Math.min(180, Math.max(-180, Number(ifx.rot) || 0));
-        const cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2;
+        let cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2;
+        // 手动摆位（拖拽制品 /「位置」数值控件 → layout.items[idx] = {cx,cy}，画布百分比）优先于自动槽位；仅总图页记录
+        const itPos = (!isGroupPage && layout && layout.items) ? layout.items[String(i)] : null;
+        if (itPos && itPos.cx != null && itPos.cy != null) {
+            cx = Number(itPos.cx) * W;
+            cy = Number(itPos.cy) * H;
+        }
         const bw = Math.min(Math.max(Math.round(slot.w * sc), 24), area.w);
         const bh = Math.min(Math.max(Math.round(slot.h * sc), 24), area.h);
         const bx = Math.min(Math.max(Math.round(cx - bw / 2), area.x), area.x + area.w - bw);
@@ -38965,10 +39003,26 @@ function caseRenderSelPanel() {
         const strokeIsDefault = fx.strokeW == null || fx.strokeW === '';
         const strokePx = strokeIsDefault ? 1 : Math.min(strokeMaxPx, Math.round((Number(fx.strokeW) || 0) * maxEdge * 10) / 10);
         const expandPx = Math.min(expandMaxPx, Math.round((Number(fx.expandW) || 0) * maxEdge * 10) / 10);
+        // 位置：画布百分比（仅总图页记录，分图页键值是页内下标会串位）
+        const _pgNow = caseCurrentPage(_caseState);
+        const posAllowed = !(_pgNow && _pgNow.kind === 'group');
+        const pos = caseItemCenterPct(idx) || { cx: 0.5, cy: 0.5 };
         html = '<div class="case-sel-title">已选中：制品 ' + (idx + 1) + '</div>'
+            + (posAllowed
+                ? caseSliderNumRowHtml({ label: '位置 X', id: 'caseItemPosX', val: Math.round(pos.cx * 1000) / 10, min: 0, max: 100, step: 0.5, dec: 1, unit: '%', setter: 'setCaseItemPosX' })
+                + caseSliderNumRowHtml({ label: '位置 Y', id: 'caseItemPosY', val: Math.round(pos.cy * 1000) / 10, min: 0, max: 100, step: 0.5, dec: 1, unit: '%', setter: 'setCaseItemPosY' })
+                + '<div class="case-form-hint" style="margin:4px 0 0;">制品中心相对画布的百分比位置；拖动制品摆位同样写入此处（受制品区边界约束）</div>'
+                : '<div class="case-form-hint" style="margin:2px 0 6px;">单张制品的位置在「总图」页调整</div>')
             + '<div class="case-toggle-row"><span class="case-toggle-name">轮廓投影</span>'
             + '<label class="custom-toggle"><input type="checkbox"' + (effShadow ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'shadow\', this.checked)"><span class="toggle-slider"></span></label></div>'
             + '<div class="case-form-hint" style="margin:2px 0 0;">默认跟随「样机模板」的实物投影；此开关为该制品单独覆盖</div>'
+            + (effShadow
+                ? caseSliderNumRowHtml({ label: '投影透明', id: 'caseFxShadowAlpha', val: caseFxPctVal(fx, 'shadowAlpha'), min: 0, max: 100, step: 5, unit: '%', setter: 'setCaseItemShadowAlpha' })
+                + caseSliderNumRowHtml({ label: '投影大小', id: 'caseFxShadowScale', val: caseFxPctVal(fx, 'shadowScale'), min: 0, max: 300, step: 5, unit: '%', setter: 'setCaseItemShadowSize' })
+                + caseSliderNumRowHtml({ label: '投影 X', id: 'caseFxShadowDx', val: caseFxPctVal(fx, 'shadowDx'), min: -20, max: 20, step: 0.5, dec: 1, unit: '%', setter: 'setCaseItemShadowX' })
+                + caseSliderNumRowHtml({ label: '投影 Y', id: 'caseFxShadowDy', val: caseFxPctVal(fx, 'shadowDy'), min: -20, max: 20, step: 0.5, dec: 1, unit: '%', setter: 'setCaseItemShadowY' })
+                + '<div class="case-form-hint" style="margin:4px 0 0;">大小=投影扩散范围（100% 为默认）；X/Y=按制品长边比例的水平/垂直偏移，正值向右/向下</div>'
+                : '')
             + '<div class="case-step-row"><span class="case-step-name">大小</span>'
             + '<button type="button" class="case-step-btn" onclick="caseItemStepScale(' + idx + ', -5)" title="缩小 5%">−</button>'
             + '<input type="number" min="30" max="250" step="5" value="' + curScale + '" onchange="setCaseItemScale(' + idx + ', this.value / 100)">'
@@ -38998,18 +39052,20 @@ function caseRenderSelPanel() {
             + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'strokeW\', 1, ' + strokeMaxPx + ')" title="加 1px">＋</button>'
             + '<span class="case-step-unit">px</span>'
             + caseColorBtnHtml('setCaseItemFx(' + idx + ', \'strokeColor\', $c)', fx.strokeColor || '#808080') + '</div>'
+            + caseSliderNumRowHtml({ label: '描边透明', id: 'caseFxStrokeAlpha', val: caseFxPctVal(fx, 'strokeAlpha'), min: 0, max: 100, step: 5, unit: '%', setter: 'setCaseItemStrokeAlpha' })
             + '<div class="case-step-row"><span class="case-step-name">扩张描边</span>'
             + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'expandW\', -1, ' + expandMaxPx + ')" title="减 1px">−</button>'
             + '<input type="number" min="0" max="' + expandMaxPx + '" step="1" value="' + expandPx + '" onchange="setCaseItemFx(' + idx + ', \'expandW\', this.value / ' + maxEdge + ')">'
             + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'expandW\', 1, ' + expandMaxPx + ')" title="加 1px">＋</button>'
             + '<span class="case-step-unit">px</span>'
             + caseColorBtnHtml('setCaseItemFx(' + idx + ', \'expandColor\', $c)', fx.expandColor || '#ffffff') + '</div>'
+            + caseSliderNumRowHtml({ label: '扩张透明', id: 'caseFxExpandAlpha', val: caseFxPctVal(fx, 'expandAlpha'), min: 0, max: 100, step: 5, unit: '%', setter: 'setCaseItemExpandAlpha' })
             + '<div class="case-toggle-row"><span class="case-toggle-name">亚克力质感</span>'
             + '<label class="custom-toggle"><input type="checkbox"' + (fx.expandAcrylic ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'expandAcrylic\', this.checked)"><span class="toggle-slider"></span></label></div>'
             + '<div class="case-sel-ops">'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetItemFx(' + idx + ')">恢复该制品默认</button>'
             + '</div>'
-            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=轮廓环，默认中灰 1px，<b>画在扩张描边的外围</b>；扩张描边=贴着图案向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=扩张描边变半透明磨砂、带斜向反光与外缘亮边，模拟亚克力侧边；宽度按制品原图像素</div>';
+            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=轮廓环，默认中灰 1px，<b>画在扩张描边的外围</b>；扩张描边=贴着图案向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=扩张描边变半透明磨砂、带斜向反光与外缘亮边，模拟亚克力侧边；宽度按制品原图像素，描边/扩张描边的透明度可单独调（0–100%）</div>';
     } else if (key.indexOf('tag:') === 0) {
         title = '文字设置';
         const name = key.slice(4);
@@ -39546,6 +39602,9 @@ function caseStepNum(id, delta, min, max, dec, setter) {
     v = Math.min(Number(max), Math.max(Number(min), v));
     if (dec) v = Math.round(v * Math.pow(10, dec)) / Math.pow(10, dec);
     el.value = dec ? String(v) : String(Math.round(v));
+    // 步进后同步滑条位置（±按钮与 ↑↓ 键共用）
+    const rng = document.getElementById(id + 'Range');
+    if (rng) rng.value = el.value;
     const fn = (typeof window !== 'undefined') ? window[setter] : null;
     if (typeof fn === 'function') fn(v);
 }
@@ -40124,6 +40183,89 @@ function setCaseItemFx(idx, field, value) {
         if (changed && _caseState) renderCasePreview();
     });
 }
+// ===== 制品装饰参数（2026-10-01）=====
+// 轮廓投影：透明度 / 大小 / 水平·垂直偏移；描边、扩张描边：透明度
+// 面板控件统一用百分数（%）；内部存储：透明度 0–1、大小倍率 0–3（100%=默认）、偏移 ±0.2（按制品长边比例，随图缩放）
+const CASE_FX_PCT = {
+    shadowAlpha: { min: 0, max: 100, step: 5, dec: 0, unit: '%', def: 38 },
+    shadowScale: { min: 0, max: 300, step: 5, dec: 0, unit: '%', def: 100 },
+    shadowDx: { min: -20, max: 20, step: 0.5, dec: 1, unit: '%', def: 0 },
+    shadowDy: { min: -20, max: 20, step: 0.5, dec: 1, unit: '%', def: 1.5 },
+    strokeAlpha: { min: 0, max: 100, step: 5, dec: 0, unit: '%', def: 100 },
+    expandAlpha: { min: 0, max: 100, step: 5, dec: 0, unit: '%', def: 100 }
+};
+// 当前选中制品下标（面板一次只显示一个制品：setter 从选中态推导，便于复用通用数值控件）
+function caseSelItemIdx() {
+    if (!_caseSelEl || String(_caseSelEl).indexOf('item:') !== 0) return null;
+    return parseInt(_caseSelEl.slice(5), 10);
+}
+// fx 记录 → 面板百分数量纲显示值
+function caseFxPctVal(fx, field) {
+    const d = CASE_FX_PCT[field];
+    const raw = (fx && fx[field] != null && fx[field] !== '') ? Number(fx[field]) : NaN;
+    return isFinite(raw) ? Math.round(raw * 1000) / 10 : (d ? d.def : 0);
+}
+// 滑条 + 数值框双向同步（通用控件 id 前缀）
+function caseFxSyncCtrls(id, val) {
+    const rng = document.getElementById(id + 'Range');
+    if (rng) rng.value = val;
+    const num = document.getElementById(id + 'Num');
+    if (num) num.value = val;
+}
+// 制品装饰参数写入（field=CASE_FX_PCT 的键，入参为百分数）
+function setCaseItemFxPct(field, pct) {
+    const idx = caseSelItemIdx();
+    if (idx == null) return;
+    const st = _caseState; if (!st) return;
+    const imgId = caseItemImageId(idx); if (!imgId) return;
+    const d = CASE_FX_PCT[field]; if (!d) return;
+    const p = Math.min(d.max, Math.max(d.min, parseFloat(pct) || 0));
+    const f = caseItemFxRec(imgId, true);
+    f[field] = Math.round(p * 10) / 1000;
+    // 参数变化 → 清除该图装饰缓存，重烘焙后补绘
+    Object.keys(_caseFxCache).forEach(function (k) {
+        if (k.indexOf(imgId + '|') === 0) delete _caseFxCache[k];
+    });
+    renderCasePreview();
+    caseEnsureShadows([imgId]).then(function (changed) {
+        if (changed && _caseState) renderCasePreview();
+    });
+}
+function setCaseItemShadowAlpha(v) { setCaseItemFxPct('shadowAlpha', v); }
+function setCaseItemShadowSize(v) { setCaseItemFxPct('shadowScale', v); }
+function setCaseItemShadowX(v) { setCaseItemFxPct('shadowDx', v); }
+function setCaseItemShadowY(v) { setCaseItemFxPct('shadowDy', v); }
+function setCaseItemStrokeAlpha(v) { setCaseItemFxPct('strokeAlpha', v); }
+function setCaseItemExpandAlpha(v) { setCaseItemFxPct('expandAlpha', v); }
+// ---------- 制品位置（画布百分比中心点，与拖拽摆位共用 layout.items[idx]） ----------
+function caseItemCenterPct(idx) {
+    const st = _caseState; if (!st) return null;
+    const W = st.config.width, H = st.config.height;
+    const rec = (st.config.layout && st.config.layout.items && st.config.layout.items[String(idx)]) || null;
+    if (rec && rec.cx != null && rec.cy != null) return { cx: Number(rec.cx) || 0, cy: Number(rec.cy) || 0 };
+    // 未手动摆位时以最近一次构建的自动槽位中心为基准（数值拖动从当前视觉位置出发）
+    const s = (_lastBuild && _lastBuild.slots) ? _lastBuild.slots[idx] : null;
+    if (!s) return null;
+    return { cx: (s.x + s.w / 2) / W, cy: (s.y + s.h / 2) / H };
+}
+function caseSetItemPosAxis(axis, v) {
+    const idx = caseSelItemIdx();
+    if (idx == null) return;
+    const st = _caseState; if (!st) return;
+    const page = caseCurrentPage(st);
+    if (page && page.kind === 'group') return; // 分图页不记录按图摆位（键值是页内下标，跨页会串位）
+    const p = Math.min(100, Math.max(0, parseFloat(v) || 0)) / 100;
+    if (!st.config.layout) st.config.layout = {};
+    if (!st.config.layout.items) st.config.layout.items = {};
+    const cur = caseItemCenterPct(idx) || { cx: 0.5, cy: 0.5 };
+    const rec = st.config.layout.items[String(idx)] || {};
+    rec.cx = (axis === 'cx') ? p : cur.cx;
+    rec.cy = (axis === 'cy') ? p : cur.cy;
+    st.config.layout.items[String(idx)] = rec;
+    renderCasePreview();
+}
+function setCaseItemPosX(v) { caseSetItemPosAxis('cx', v); }
+function setCaseItemPosY(v) { caseSetItemPosAxis('cy', v); }
 function caseResetItemFx(idx) {
     const st = _caseState; if (!st) return;
     const imgId = caseItemImageId(idx);
