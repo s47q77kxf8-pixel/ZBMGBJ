@@ -38380,7 +38380,8 @@ function buildCaseCanvasHtml(st, page) {
             } else {
                 const lh = Math.round(e.base * 1.75);
                 const stl = elStyle(e.key, e.base, 'left:' + pad + 'px;top:' + (yCur - lh) + 'px;');
-                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;' + stl.pos + 'width:' + (W - pad * 2) + 'px;font-size:' + stl.fs + 'px;line-height:' + lh + 'px;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(e.text) + '</div>';
+                // 不写宽度：绝对定位 + nowrap 自动收缩到文字实际大小，选中框/点击热区不再占满整行
+                textHtml += '<div data-case-el="' + e.key + '" style="position:absolute;' + stl.pos + 'font-size:' + stl.fs + 'px;line-height:' + lh + 'px;color:' + txtColor + ';white-space:nowrap;">' + escapeHtml(e.text) + '</div>';
                 yCur -= lh;
             }
         }
