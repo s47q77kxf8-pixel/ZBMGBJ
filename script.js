@@ -19302,7 +19302,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261001-0410';
+const APP_VERSION = '20261001-0440';
 const APP_CHANGELOG = [
     {
         date: '2026-09-18',
@@ -37314,6 +37314,7 @@ function caseAutoAreaBox(st) {
     const titleLh = Math.round(Math.max(9, Math.round(titleFs * _tls)) * 1.35);
     const titleZoneH = titleText ? titleLh * 2 : 0;
     const infoFs = Math.round(W * 0.018 * tScale * 0.8);
+    const infoLh = Math.round(infoFs * 1.7);
     const tagFs = Math.round(W * 0.017 * tScale);
     const tagH = Math.round(tagFs * 2.1);
     const tagGap = Math.round(W * 0.012);
