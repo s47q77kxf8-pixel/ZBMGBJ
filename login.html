@@ -157,6 +157,23 @@
         messageEl.className = 'message ' + type;
     }
 
+    // 将 Supabase 返回的英文报错翻译为中文提示；未收录的保留原文
+    function translateAuthError(message) {
+        if (!message) return '未知错误';
+        const msg = String(message);
+        if (msg.includes('Invalid login credentials')) return '邮箱或密码不正确。请检查输入（密码区分大小写）；若尚未注册，请先点击「注册账号」；忘记密码可点击下方「忘记密码？」重置';
+        if (msg.includes('Email not confirmed')) return '邮箱未验证，请先查收验证邮件（注意垃圾箱）后再登录';
+        if (msg.includes('already registered') || msg.includes('already been registered')) return '该邮箱已注册，请直接登录；忘记密码可点击「忘记密码？」重置';
+        if (msg.includes('Password should be at least')) return '密码太短，至少需要 6 位';
+        if (msg.includes('Signups not allowed')) return '当前未开放注册，请联系管理员';
+        if (msg.includes('Unable to validate email address') || msg.toLowerCase().includes('invalid format')) return '邮箱格式不正确，请检查后重试';
+        if (msg.toLowerCase().includes('rate limit') || msg.includes('every 60 seconds') || msg.includes('Too many requests')) return '操作过于频繁，请稍等一分钟后再试';
+        if (msg.includes('Email link is invalid or has expired') || msg.includes('Token has expired')) return '链接无效或已过期，请重新发起重置密码';
+        if (msg.includes('New password should be different')) return '新密码不能与旧密码相同';
+        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch failed')) return '网络连接异常，请检查网络后重试';
+        return msg;
+    }
+
     function togglePasswordVisibility(id, btn) {
         const input = document.getElementById(id);
         if (input.type === 'password') {
@@ -205,7 +222,7 @@
 
                 if (error) {
                     setBtnLoading(false);
-                    return showMessage(error.message, 'error');
+                    return showMessage(translateAuthError(error.message), 'error');
                 }
 
                 // 2. 强制登录以确保拿到 Session
@@ -217,7 +234,7 @@
 
                 if (signInErr) {
                     setBtnLoading(false);
-                    return showMessage('注册成功，但自动登录失败：' + signInErr.message + '。请尝试手动登录。', 'error');
+                    return showMessage('注册成功，但自动登录失败：' + translateAuthError(signInErr.message) + '。请尝试手动登录。', 'error');
                 }
 
                 const session = signInData.session;
@@ -268,7 +285,7 @@
                         messageEl.className = 'message error';
                         return;
                     }
-                    return showMessage('登录失败: ' + error.message, 'error');
+                    return showMessage('登录失败：' + translateAuthError(error.message), 'error');
                 }
 
                 showMessage('登录成功！正在同步安全连接...', 'success');
@@ -281,7 +298,7 @@
             }
         } catch (e) {
             setBtnLoading(false);
-            showMessage('请求异常：' + (e && e.message ? e.message : '未知错误'), 'error');
+            showMessage('请求异常：' + (e && e.message ? translateAuthError(e.message) : '未知错误'), 'error');
         }
     }
 
@@ -295,7 +312,7 @@
                 emailRedirectTo: window.location.origin + window.location.pathname
             }
         });
-        if (error) showMessage('重发失败: ' + error.message, 'error');
+        if (error) showMessage('重发失败：' + translateAuthError(error.message), 'error');
         else showMessage('验证邮件已重发，请查收', 'success');
     }
 
@@ -319,14 +336,14 @@
 
             if (error) {
                 setBtnLoading(false);
-                return showMessage('发送失败: ' + error.message, 'error');
+                return showMessage('发送失败：' + translateAuthError(error.message), 'error');
             }
 
             setBtnLoading(false);
             showMessage('已发送重置密码邮件，请去邮箱按提示修改密码（可能在垃圾箱）', 'success');
         } catch (e) {
             setBtnLoading(false);
-            return showMessage('发送失败: ' + (e && e.message ? e.message : '网络错误'), 'error');
+            return showMessage('发送失败：' + (e && e.message ? translateAuthError(e.message) : '网络错误'), 'error');
         }
     }
 
@@ -372,7 +389,7 @@
         showMessage('正在更新密码...', 'success');
         const { error } = await supabaseClient.auth.updateUser({ password: np });
         if (error) {
-            return showMessage('更新失败: ' + error.message, 'error');
+            return showMessage('更新失败：' + translateAuthError(error.message), 'error');
         }
         showMessage('密码已更新！正在进入系统...', 'success');
         // 清理 URL 上的 recovery 参数，避免重复进入
