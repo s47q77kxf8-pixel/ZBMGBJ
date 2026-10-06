@@ -28864,17 +28864,15 @@ function smartParseOrderRemark() {
         return;
     }
     
-    // 清空现有制品和赠品容器
-    var productsContainer = document.getElementById('productsContainer');
-    var giftsContainer = document.getElementById('giftsContainer');
-    if (productsContainer) productsContainer.innerHTML = '';
-    if (giftsContainer) giftsContainer.innerHTML = '';
-    
-    // 清空数组
+    // 清空数组；容器由 renderModulePanels 重建——不能直接 innerHTML 清空，
+    // 否则组级「用途/加急/折扣」等系数下拉（模块面板）会被一并清掉且不再重建
     products = [];
     gifts = [];
     productIdCounter = 0;
     giftIdCounter = 0;
+    resetOrderModulesToDefault();
+    renderModulePanels('product');
+    renderModulePanels('gift');
     
     var lines = text.split('\n');
     var isGiftSection = false;
