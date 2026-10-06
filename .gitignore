@@ -74,6 +74,7 @@ receipt_display_rules.md
 MGbaojia.zip
 git-backup.bat
 git-backup.ps1
+git备份推送.bat
 
 # 本地一次性脚本 / 工具（存 .trae/，此处仅防根目录误生成）
 migrate_old_append_orders.js
