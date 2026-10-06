@@ -8986,13 +8986,18 @@ function applyRecordFilters() {
 
     if (groupBy === 'month') {
         const grouped = {};
+        const monthSortKeys = {}; // 月份分组键 → 数值（年*12+月）：键含中文「年/月」，字符串比较会把 2026年10月 排到 9月/8月 之后
         list.forEach(item => {
             const date = new Date(item.timestamp);
-            const monthKey = `${date.getFullYear()}年${date.getMonth() + 1}月`;
-            if (!grouped[monthKey]) grouped[monthKey] = [];
+            const validDate = !isNaN(date.getTime());
+            const monthKey = validDate ? `${date.getFullYear()}年${date.getMonth() + 1}月` : '未知时间';
+            if (!grouped[monthKey]) {
+                grouped[monthKey] = [];
+                monthSortKeys[monthKey] = validDate ? date.getFullYear() * 12 + date.getMonth() : -1;
+            }
             grouped[monthKey].push(item);
         });
-        const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+        const sortedMonths = Object.keys(grouped).sort((a, b) => monthSortKeys[b] - monthSortKeys[a]);
         let html = '';
         sortedMonths.forEach(month => {
             html += `<div class="history-group">`;
