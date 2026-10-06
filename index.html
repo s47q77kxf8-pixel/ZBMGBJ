@@ -3757,8 +3757,16 @@
                         </div>
                         <div id="casePageChips" class="case-page-chips" style="display:none;"></div>
                         <div class="case-preview-main">
-                            <div id="casePreviewStage" class="case-preview-stage">
-                                <div id="casePreviewCanvasWrap" class="case-preview-canvas-wrap"></div>
+                            <div class="case-stage-wrap">
+                                <div id="casePreviewStage" class="case-preview-stage">
+                                    <div id="casePreviewCanvasWrap" class="case-preview-canvas-wrap"></div>
+                                </div>
+                                <!-- 缩放控件：始终浮在画布区（不含右侧「调整布局」栏）右下角；100% 即适应窗口，点击可复位 -->
+                                <div class="case-zoom-ctrl" id="caseZoomCtrl">
+                                    <button type="button" onclick="caseZoomStep(-1)" aria-label="缩小预览">&minus;</button>
+                                    <button type="button" class="case-zoom-val" id="caseZoomVal" onclick="caseZoomReset()" title="点击复位为适应窗口">100%</button>
+                                    <button type="button" onclick="caseZoomStep(1)" aria-label="放大预览">&plus;</button>
+                                </div>
                             </div>
                             <!-- 调整布局功能区：停靠在预览图右侧（非弹窗）；上=整体布局，下=选中对象设置 -->
                             <div id="caseEditDock" class="case-edit-dock d-none">
@@ -3777,12 +3785,6 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <!-- 缩放控件：浮在预览区右下角，仅小屏显示；100% 即适应窗口，点击可复位 -->
-                        <div class="case-zoom-ctrl" id="caseZoomCtrl">
-                            <button type="button" onclick="caseZoomStep(-1)" aria-label="缩小预览">&minus;</button>
-                            <button type="button" class="case-zoom-val" id="caseZoomVal" onclick="caseZoomReset()" title="点击复位为适应窗口">100%</button>
-                            <button type="button" onclick="caseZoomStep(1)" aria-label="放大预览">&plus;</button>
                         </div>
                     </div>
                 </div>

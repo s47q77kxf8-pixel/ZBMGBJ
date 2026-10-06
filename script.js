@@ -36289,7 +36289,8 @@ function forceShowDevFeatures() {
 let caseLibrary = [];
 let _caseState = null;
 const _caseImgCache = {};    // imgId -> { dataUrl, w, h }
-const _caseFxCache = {};     // key -> { url, bear }（制品装饰层预烘焙：投影/描边/扩张描边）
+const _caseFxCache = {};     // key -> { url, bear, rw, rh, fill }（制品装饰层预烘焙：投影/描边/扩张描边；rw/rh=旋转后本体外接盒；fill=镂空填充层）
+const _caseHoleFillCache = {};   // key: imgId|color → { fill, solid }（镂空填充烘焙，装饰层与水印层共用；fill=半透明显示层，solid=填实轮廓）
 let _caseDbPromise = null;
 let _caseViewId = null;
 let _caseViewPages = [];
@@ -36506,18 +36507,27 @@ function caseEffectiveFx(st, imgId) {
     // 描边 / 扩张描边透明度（0–1，默认不透明）
     const strokeAlpha = Math.min(1, Math.max(0, fx.strokeAlpha != null && fx.strokeAlpha !== '' ? Number(fx.strokeAlpha) : 1));
     const expandAlpha = Math.min(1, Math.max(0, fx.expandAlpha != null && fx.expandAlpha !== '' ? Number(fx.expandAlpha) : 1));
+    // 镂空填充（2026-10-01）：封闭镂空区填半透明亚克力；描边/投影/水印按填充后轮廓解算。
+    // holeClose = 开口闭合半径（按长边比例 0–0.15）：闭运算桥接宽度 ≤ 约2R 的非封闭开口/缝隙，0=仅封闭镂空
+    const fillHole = fx.fillHole === true;
+    const holeColor = /^#[0-9a-fA-F]{6}$/.test(String(fx.holeColor || '')) ? String(fx.holeColor) : '#ffffff';
+    const holeClose = Math.min(0.15, Math.max(0, Number(fx.holeClose) || 0));
+    // 制品旋转角（与排版同一钳制）参与 key：旋转后装饰层需按新角度重烘焙（描边随制品转、投影方向恒定）
+    const rot = Math.min(180, Math.max(-180, Number(fx.rot) || 0));
     return {
         shadow: useShadow, strokeW: strokeW, strokeColor: strokeColor, expandW: expandW, expandColor: expandColor, expandAcrylic: expandAcrylic,
         shadowAlpha: useShadow ? shadowAlpha : 0, shadowScale: shadowScale, shadowDx: shadowDx, shadowDy: shadowDy,
-        strokeAlpha: strokeAlpha, expandAlpha: expandAlpha,
-        enabled: useShadow || strokeW > 0 || expandW > 0,
+        strokeAlpha: strokeAlpha, expandAlpha: expandAlpha, rot: rot,
+        fillHole: fillHole, holeColor: holeColor, holeClose: holeClose,
+        enabled: useShadow || strokeW > 0 || expandW > 0 || fillHole,
         key: imgId + '|' + (useShadow ? 1 : 0) + '|' + strokeW + '|' + strokeColor + '|' + expandW + '|' + expandColor + '|' + (expandAcrylic ? 1 : 0)
-            + '|' + (useShadow ? shadowAlpha + '|' + shadowScale + '|' + shadowDx + '|' + shadowDy : '') + '|' + strokeAlpha + '|' + expandAlpha
+            + '|' + (useShadow ? shadowAlpha + '|' + shadowScale + '|' + shadowDx + '|' + shadowDy : '') + '|' + strokeAlpha + '|' + expandAlpha + '|r' + rot
+            + '|f' + (fillHole ? holeColor + '|' + holeClose : '')
     };
 }
 // 装饰层单边预留宽度（原图坐标系，像素）：
-// 烘焙画布四周各留这么多，用于容纳投影模糊/偏移、描边、扩张描边。
-// ⚠️ 烘焙与排版必须共用此函数——排版要靠它把本体内缩，避免「本体+装饰」超出槽位（2026-10-01）
+// 烘焙画布四周各留这么多，用于容纳投影模糊/偏移、描边、扩张描边，保证装饰不被画布边界裁断。
+// ⚠️ 只用于烘焙画布——排版收缩用 caseFxLayoutBearPx（投影不算制品大小，2026-10-01）
 function caseFxBearPx(fx, w, h) {
     if (!fx || fx.enabled === false) return 0;
     const maxEdge = Math.max(Number(w) || 0, Number(h) || 0);
@@ -36532,9 +36542,18 @@ function caseFxBearPx(fx, w, h) {
     // 外扩边距要算进投影偏移，否则偏移量变大时投影被画布边界裁断
     return strokeR + expandR + blur + Math.abs(offX) + Math.abs(offY) + 10;
 }
-// 本体等比 contain 进 bw×bh，并给装饰层外扩预留一圈：
+// 排版收缩用的外扩宽度（原图坐标系，像素）：只算可见装饰=描边+扩张描边。
+// 投影是光效、不算制品本体大小——不参与收缩，本体不因开投影而变小；投影允许溢出槽位渲染
+// （.case-slot 无 overflow 裁切，仅整块画布 .case-canvas 裁边界）（2026-10-01 用户要求）
+function caseFxLayoutBearPx(fx, w, h) {
+    if (!fx || fx.enabled === false) return 0;
+    const maxEdge = Math.max(Number(w) || 0, Number(h) || 0);
+    if (!maxEdge) return 0;
+    return Math.round(maxEdge * (Number(fx.strokeW) || 0)) + Math.round(maxEdge * (Number(fx.expandW) || 0));
+}
+// 本体等比 contain 进 bw×bh，并给可见装饰（描边/扩张描边）外扩预留一圈：
 // 先用 bear（原图坐标系，cw/ch 为视觉宽/高方向对应的原图边长）算外扩占比，把可用盒缩一圈，
-// 使「本体 + 装饰」整体仍嵌在 bw×bh 内——描边/投影不再撑出槽位压到相邻制品或文字（2026-10-01）
+// 使「本体 + 描边」整体仍嵌在 bw×bh 内——描边不再撑出槽位压到相邻制品或文字；投影不参与（2026-10-01）
 function caseFxContainBox(cw, ch, bw, bh, bear) {
     if (!(cw > 0) || !(ch > 0)) return { w: bw, h: bh };
     const boxXY = function (aW, aH) {
@@ -36562,6 +36581,149 @@ function caseHexToRgba(hex, alpha) {
     if (h.length < 6) return 'rgba(255,255,255,' + alpha + ')';
     const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
     return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+// 镂空内部掩码（纯函数，便于回归）：alpha>thr 视为不透明；
+// 从画布边界沿透明像素泛洪能到达的 = 外部，到不了的透明区 = 内部镂空。
+// 返回 Uint8Array（1=内部镂空像素）。异形制品的封闭镂空（如挂牌的环内、图形孔洞）会被标出
+function caseHoleMask(alpha, w, h, thr) {
+    const n = w * h;
+    const hole = new Uint8Array(n);
+    if (!alpha || !n || !w || !h) return hole;
+    thr = thr == null ? 16 : thr;
+    const outside = new Uint8Array(n);
+    const stack = new Int32Array(n);   // 每像素最多入栈一次
+    let sp = 0;
+    const push = function (i) {
+        if (!outside[i] && alpha[i] <= thr) { outside[i] = 1; stack[sp++] = i; }
+    };
+    for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+    for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+    while (sp > 0) {
+        const i = stack[--sp];
+        const x = i % w;
+        if (x > 0) push(i - 1);
+        if (x < w - 1) push(i + 1);
+        if (i >= w) push(i - w);
+        if (i + w < n) push(i + w);
+    }
+    for (let i = 0; i < n; i++) if (!outside[i] && alpha[i] <= thr) hole[i] = 1;
+    return hole;
+}
+// 二值掩码膨胀（canvas 多偏移并绘，与描边膨胀同一实现；r=0 时原样克隆）
+function caseMaskDilate(src, r) {
+    const cv = document.createElement('canvas');
+    cv.width = src.width; cv.height = src.height;
+    const ctx = cv.getContext('2d');
+    if (r > 0) caseDilate(ctx, src, 0, 0, r);
+    else ctx.drawImage(src, 0, 0);
+    return cv;
+}
+// 二值掩码取反（闭运算的腐蚀步用：erode(A)=补(dilate(补(A)))）
+function caseMaskComplement(src) {
+    const cv = document.createElement('canvas');
+    cv.width = src.width; cv.height = src.height;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.drawImage(src, 0, 0);
+    return cv;
+}
+// 镂空填充烘焙（按 imgId+色+闭合半径+质感 缓存，装饰层与水印层共用）：
+//   fill  = 仅镂空区的填充显示层——acrylic=半透明乳白亚克力（斜向高光带）；否则=纯色直填（不透明）
+//   solid = 本体+镂空填实（不透明）——供描边/投影/扩张与水印按「填充后轮廓」解算（实物是一整块板）
+// closeRatio > 0 时叠加形态学闭运算（膨胀R→腐蚀R）：宽度 ≤ 约2R 的非封闭开口/缝隙也桥接填充
+// 返回 null = 无镂空（全不透明或镂空全连通到边缘且无窄缝）
+function caseHoleFillCanvases(imgId, img, w, h, color, closeRatio, acrylic) {
+    color = /^#[0-9a-fA-F]{6}$/.test(String(color || '')) ? String(color) : '#ffffff';
+    closeRatio = Math.min(0.15, Math.max(0, Number(closeRatio) || 0));
+    acrylic = acrylic === true;
+    const key = imgId + '|' + color + '|' + closeRatio + '|' + (acrylic ? 1 : 0);
+    if (_caseHoleFillCache[key]) return _caseHoleFillCache[key];
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+    let data;
+    try { data = ctx.getImageData(0, 0, w, h); } catch (e) { return null; }
+    const px = data.data;
+    const alpha = new Uint8Array(w * h);
+    for (let i = 0; i < alpha.length; i++) alpha[i] = px[i * 4 + 3];
+    const hole = caseHoleMask(alpha, w, h, 16);
+    // 非封闭镂空：闭运算掩码（二值化本体 → 膨胀R → 取反膨胀R → 再取反），超出本体的部分即桥接区
+    const closeR = Math.round(Math.max(w, h) * closeRatio);
+    if (closeR > 0) {
+        const maskCv = document.createElement('canvas');
+        maskCv.width = w; maskCv.height = h;
+        const mctx = maskCv.getContext('2d');
+        const mimg = mctx.createImageData(w, h);
+        for (let i = 0; i < alpha.length; i++) {
+            if (alpha[i] > 16) { const o = i * 4; mimg.data[o] = 255; mimg.data[o + 1] = 255; mimg.data[o + 2] = 255; mimg.data[o + 3] = 255; }
+        }
+        mctx.putImageData(mimg, 0, 0);
+        const closed = caseMaskComplement(caseMaskDilate(caseMaskComplement(caseMaskDilate(maskCv, closeR)), closeR));
+        const cdata = closed.getContext('2d').getImageData(0, 0, w, h).data;
+        for (let i = 0; i < hole.length; i++) {
+            if (!hole[i] && alpha[i] <= 16 && cdata[i * 4 + 3] > 127) hole[i] = 1;
+        }
+    }
+    let hasHole = false;
+    for (let i = 0; i < hole.length; i++) if (hole[i]) { hasHole = true; break; }
+    if (!hasHole) { _caseHoleFillCache[key] = null; return null; }
+    const rgb = caseHexToRgba(color, 1).match(/[\d.]+/g) || ['255', '255', '255'];
+    // ① 填充显示层：acrylic 开 = 半透明乳白 + 斜向高光带（磨砂亚克力）；关 = 纯色直填（不透明）
+    const fill = document.createElement('canvas');
+    fill.width = w; fill.height = h;
+    const fctx = fill.getContext('2d');
+    const fimg = fctx.createImageData(w, h);
+    const fillA = acrylic ? 107 : 255;   // 0.42 / 1
+    for (let i = 0; i < hole.length; i++) {
+        if (!hole[i]) continue;
+        const o = i * 4;
+        fimg.data[o] = +rgb[0]; fimg.data[o + 1] = +rgb[1]; fimg.data[o + 2] = +rgb[2]; fimg.data[o + 3] = fillA;
+    }
+    fctx.putImageData(fimg, 0, 0);
+    if (acrylic) {
+        // 斜向高光带 ×2 只落在填充区（source-atop），撑亚克力反光质感
+        fctx.globalCompositeOperation = 'source-atop';
+        const band = Math.round((w + h) * 0.09);
+        const g1 = fctx.createLinearGradient(0, -band, 0, band);
+        g1.addColorStop(0, 'rgba(255,255,255,0)');
+        g1.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+        g1.addColorStop(1, 'rgba(255,255,255,0)');
+        fctx.fillStyle = g1;
+        fctx.fillRect(0, 0, w, h);
+        fctx.setTransform(1, 0, 0, 1, 0, 0);
+        fctx.rotate(Math.PI / 5);
+        const band2 = Math.round(band * 0.45);
+        const g2 = fctx.createLinearGradient(0, band, 0, band + band2 * 2);
+        g2.addColorStop(0, 'rgba(255,255,255,0)');
+        g2.addColorStop(0.5, 'rgba(255,255,255,0.28)');
+        g2.addColorStop(1, 'rgba(255,255,255,0)');
+        fctx.fillStyle = g2;
+        fctx.fillRect(-w, 0, w * 3, h * 2);
+        fctx.setTransform(1, 0, 0, 1, 0, 0);
+        fctx.globalCompositeOperation = 'source-over';
+    }
+    // ② 填实轮廓：本体 + 镂空区不透明填色（描边/投影/水印按这块板解算）
+    const solid = document.createElement('canvas');
+    solid.width = w; solid.height = h;
+    const sctx = solid.getContext('2d');
+    sctx.drawImage(img, 0, 0, w, h);
+    const simg = sctx.createImageData(w, h);
+    simg.data.set(px);
+    for (let i = 0; i < hole.length; i++) {
+        if (!hole[i]) continue;
+        const o = i * 4;
+        simg.data[o] = +rgb[0]; simg.data[o + 1] = +rgb[1]; simg.data[o + 2] = +rgb[2]; simg.data[o + 3] = 255;
+    }
+    sctx.putImageData(simg, 0, 0);
+    if (Object.keys(_caseHoleFillCache).length > 24) {
+        Object.keys(_caseHoleFillCache).forEach(function (k) { delete _caseHoleFillCache[k]; });
+    }
+    _caseHoleFillCache[key] = { fill: fill, solid: solid };
+    return _caseHoleFillCache[key];
 }
 // 彩色剪影：图片 → 单色形状（用于膨胀出描边）
 function caseSilhouette(img, w, h, color) {
@@ -36612,9 +36774,34 @@ async function caseBakeFx(imgId) {
         const offX = fx.shadow ? Math.round(maxEdge * (Number(fx.shadowDx) || 0)) : 0;
         const offY = fx.shadow ? Math.round(maxEdge * (Number(fx.shadowDy) || 0)) : 0;
         // 外扩边距要算进投影偏移，否则偏移量变大时投影被画布边界裁断（与排版共用一个解算函数）
+        // 边距按原图边长解算 → 阴影/描边大小不随制品旋转变化
         const bear = caseFxBearPx(fx, w, h);
+        // 旋转支持（2026-10-01）：先把原图按制品旋转角转进「视觉源画布」（旋转后外接盒 rw×rh），
+        // 描边/扩张描边/投影全部以旋转后的形状为源 → 描边环随制品转，投影模糊/偏移方向恒为画布方向
+        // 镂空填充：源改用「本体+镂空填实」画布 → 描边/投影/扩张按填充后轮廓（一块整板）；fill=镂空亚克力显示层
+        const rotDeg = Number(fx.rot) || 0;
+        const rad = rotDeg * Math.PI / 180;
+        const cosA = Math.abs(Math.cos(rad)), sinA = Math.abs(Math.sin(rad));
+        const rw = Math.ceil(w * cosA + h * sinA), rh = Math.ceil(w * sinA + h * cosA);
+        let base = img, fillUrl = null;
+        if (fx.fillHole) {
+            const hf = caseHoleFillCanvases(imgId, img, w, h, fx.holeColor, fx.holeClose, fx.expandAcrylic);
+            if (hf) { base = hf.solid; fillUrl = hf.fill.toDataURL('image/png'); }
+        }
+        let src = img, sw = w, shH = h;
+        if (((Math.round(rotDeg) % 360) + 360) % 360 !== 0) {
+            const rcv = document.createElement('canvas');
+            rcv.width = rw; rcv.height = rh;
+            const rrc = rcv.getContext('2d');
+            rrc.translate(rw / 2, rh / 2);
+            rrc.rotate(rad);
+            rrc.drawImage(base, -w / 2, -h / 2, w, h);
+            src = rcv; sw = rw; shH = rh;
+        } else if (base !== img) {
+            src = base;
+        }
         const cv = document.createElement('canvas');
-        cv.width = w + bear * 2; cv.height = h + bear * 2;
+        cv.width = sw + bear * 2; cv.height = shH + bear * 2;
         const ctx = cv.getContext('2d');
         const ox = bear, oy = bear;
         // 透明度合成助手：临时画布按指定 alpha 叠到主画布（扩张描边/描边透明度用）
@@ -36633,7 +36820,7 @@ async function caseBakeFx(imgId) {
             ctx.shadowBlur = blur;
             ctx.shadowOffsetX = offX;
             ctx.shadowOffsetY = offY;
-            ctx.drawImage(img, ox, oy, w, h);
+            ctx.drawImage(src, ox, oy, sw, shH);
             ctx.restore();
         }
         // ② 描边（最外圈：画在扩张描边的外围；独立画布合成，避免 destination-out 抠掉投影）
@@ -36641,15 +36828,15 @@ async function caseBakeFx(imgId) {
             const sCv = document.createElement('canvas');
             sCv.width = cv.width; sCv.height = cv.height;
             const sctx = sCv.getContext('2d');
-            caseDilate(sctx, caseSilhouette(img, w, h, fx.strokeColor), ox, oy, expandR + strokeR);
+            caseDilate(sctx, caseSilhouette(src, sw, shH, fx.strokeColor), ox, oy, expandR + strokeR);
             sctx.globalCompositeOperation = 'destination-out';
-            if (expandR > 0) caseDilate(sctx, caseSilhouette(img, w, h, '#000'), ox, oy, expandR);
-            sctx.drawImage(img, ox, oy, w, h);
+            if (expandR > 0) caseDilate(sctx, caseSilhouette(src, sw, shH, '#000'), ox, oy, expandR);
+            sctx.drawImage(src, ox, oy, sw, shH);
             drawAlpha(sCv, fx.strokeAlpha);
         }
         // ③ 扩张描边（贴着图案的贴边环：普通=实色环；亚克力=半透明磨砂环+反光）
         if (expandR > 0) {
-            const black = caseSilhouette(img, w, h, '#000');
+            const black = caseSilhouette(src, sw, shH, '#000');
             if (fx.expandAcrylic) {
                 const ring = document.createElement('canvas');
                 ring.width = cv.width; ring.height = cv.height;
@@ -36681,7 +36868,7 @@ async function caseBakeFx(imgId) {
                 rctx.restore();
                 // 抠掉本体区域，只留外扩环带
                 rctx.globalCompositeOperation = 'destination-out';
-                rctx.drawImage(img, ox, oy, w, h);
+                rctx.drawImage(src, ox, oy, sw, shH);
                 drawAlpha(ring, fx.expandAlpha);
                 // 外缘亮边（亚克力厚度感）
                 const rimR = Math.max(1, Math.round(expandR * 0.2));
@@ -36702,7 +36889,7 @@ async function caseBakeFx(imgId) {
                 const xctx = seam.getContext('2d');
                 caseDilate(xctx, black, ox, oy, seamR);
                 xctx.globalCompositeOperation = 'destination-out';
-                xctx.drawImage(img, ox, oy, w, h);
+                xctx.drawImage(src, ox, oy, sw, shH);
                 xctx.globalCompositeOperation = 'source-in';
                 xctx.fillStyle = 'rgba(0,0,0,0.14)';
                 xctx.fillRect(0, 0, seam.width, seam.height);
@@ -36713,17 +36900,17 @@ async function caseBakeFx(imgId) {
                 const eCv = document.createElement('canvas');
                 eCv.width = cv.width; eCv.height = cv.height;
                 const ectx = eCv.getContext('2d');
-                caseDilate(ectx, caseSilhouette(img, w, h, fx.expandColor), ox, oy, expandR);
+                caseDilate(ectx, caseSilhouette(src, sw, shH, fx.expandColor), ox, oy, expandR);
                 drawAlpha(eCv, fx.expandAlpha);
             }
         }
         // 抠掉本体：只留装饰（制品本体由渲染层绘制在最上）
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
-        ctx.drawImage(img, ox, oy, w, h);
+        ctx.drawImage(src, ox, oy, sw, shH);
         ctx.restore();
         // 亚克力质感体现在扩张描边上（磨砂环 + 斜向反光 + 外缘亮边 + 内缘暗缝，见 ③）
-        const rec = { url: cv.toDataURL('image/png'), bear: bear };
+        const rec = { url: cv.toDataURL('image/png'), bear: bear, rw: sw, rh: shH, fill: fillUrl };
         _caseFxCache[fx.key] = rec;
         return rec;
     } catch (e) { console.error('制品装饰层烘焙失败:', e); return null; }
@@ -37084,6 +37271,10 @@ function caseNormalizeState(st) {
         if (f.strokeColor) o.strokeColor = String(f.strokeColor);
         if (f.expandColor) o.expandColor = String(f.expandColor);
         if (f.expandAcrylic === true) o.expandAcrylic = true;
+        // 镂空填充（2026-10-01）：填充开关 + 填充色 + 开口闭合半径
+        if (f.fillHole === true) o.fillHole = true;
+        if (f.holeColor) o.holeColor = String(f.holeColor);
+        if (f.holeClose != null) o.holeClose = Math.min(0.15, Math.max(0, Number(f.holeClose) || 0));
         // 数值参数（2026-10-01 起可调；⚠️ 必须在此保留，否则加载/合并后会被清掉回到默认）
         const numIn = function (v) { const n = Number(v); return (v != null && v !== '' && isFinite(n)) ? n : null; };
         const aS = numIn(f.shadowAlpha); if (aS != null) o.shadowAlpha = Math.min(1, Math.max(0, aS));
@@ -37250,7 +37441,12 @@ function caseBuildGroupsFromOrder(order) {
 async function applyCaseOrder(orderId) {
     const st = _caseState;
     if (!st) return;
-    if (!orderId) { st.orderId = ''; st.orderTitle = ''; st.groups = []; st._page = 0; renderCaseForm(); return; }
+    if (!orderId) {
+        st.orderId = ''; st.orderTitle = '';
+        // 自定义组（手工新建）保留；订单派生组随解绑清空（重新关联会按订单重建）
+        st.groups = (st.groups || []).filter(function (g) { return g && g.custom; });
+        st._page = 0; renderCaseForm(); return;
+    }
     const order = (history || []).find(function (o) { return o && String(o.id) === String(orderId); });
     if (!order) { showGlobalToast('未找到该订单'); return; }
     st.orderId = order.id;
@@ -37269,11 +37465,16 @@ async function applyCaseOrder(orderId) {
         });
         return cpf;
     })();
-    // 按订单制品自动分组（相同制品合并）；已上传未归组的图收入第一组
+    // 按订单制品自动分组（相同制品合并）；自定义组（手工新建）原样保留；
+    // 已上传未归组的图收入第一组（已归入保留组的图不重复收入）
     const prevUploads = (st.images || []).slice();
+    const keptCustom = (st.groups || []).filter(function (g) { return g && g.custom; });
     st.groups = caseBuildGroupsFromOrder(order);
+    if (keptCustom.length) st.groups = st.groups.concat(keptCustom);
     if (prevUploads.length && st.groups.length) {
-        st.groups[0].images = prevUploads.slice();
+        const grouped = {};
+        st.groups.forEach(function (g) { (g.images || []).forEach(function (id) { grouped[id] = 1; }); });
+        st.groups[0].images = prevUploads.filter(function (id) { return !grouped[id]; });
         st.images = prevUploads.slice();
     }
     // 读取该订单此前上传过的制品图（取最近一条案例），按制品名对号入组
@@ -38120,13 +38321,18 @@ function caseCurrentPage(st) {
 // 原理：按槽位显示尺寸离屏画布先画制品原图，再 source-in 只在不透明像素上画水印图案，
 // 产出透明 PNG 层叠加在制品图层上方 —— PNG 空白区不带水印，预览与导出所见即所得。
 // 文字/图片水印按网格平铺整个制品（图片水印保持原角度），斜纹/斜方格为 45° 重复线条。
-const _caseWmBakeCache = {};   // key: imgId|sig|w x h → dataURL
+const _caseWmBakeCache = {};   // key: imgId|sig|rot|w x h|ew x eh → dataURL（w/h=视觉外接盒，ew/eh=未旋转元素盒）
 let _caseWmBakeMiss = [];      // 本次构建中缺烘焙的槽位（构建时收集，构建后统一烘焙补绘）
 // 水印配置签名（任一项变化即重烘焙）
 function caseWmSig(wm) {
     wm = wm || {};
     return [wm.type, wm.style || 'emboss', String(wm.text || ''), wm.imgId || '',
         wm.opacity, wm.scale, wm.lineW, wm.gap].join('|');
+}
+// 水印层缓存键：视觉外接盒 w×h 与未旋转元素盒 ew×eh 共同决定烘焙结果（45° 等角度下两者不同）；
+// fh = 镂空填充色 / fc = 开口闭合半径比例（非空时水印按填实轮廓裁剪覆盖磨砂区）
+function caseWmCacheKey(imgId, wm, rot, w, h, ew, eh, fh, fc) {
+    return imgId + '|' + caseWmSig(wm) + '|' + (rot || 0) + '|' + w + 'x' + h + '|' + (ew || w) + 'x' + (eh || h) + '|' + (fh || '') + '|' + (fc || '');
 }
 // 样式取色：emboss=按背景自动深浅，black/white=纯色
 function caseWmColor(wm, autoColor) {
@@ -38153,37 +38359,41 @@ function caseWmPaintText(ctx, text, x, y, wm, autoColor) {
     }
     ctx.fillText(text, x, y);
 }
-// 单个槽位水印层烘焙；entry = { imgId, w, h, color }，返回 true=新烘焙完成
+// 单个槽位水印层烘焙；entry = { imgId, w, h, ew, eh, rot, color, fh }，返回 true=新烘焙完成
+// w/h = 旋转后视觉外接盒（画布尺寸），ew/eh = 未旋转元素盒（制品绘制尺寸）；rot = 制品旋转角（任意角度）
+// fh = 镂空填充色（开启填充时非空，水印按填实轮廓裁剪）
 async function caseBakeWmLayer(entry) {
     const st = _caseState; if (!st || !entry) return false;
     const wm = st.config.watermark;
     if (!wm || !wm.enabled) return false;
     const c = _caseImgCache[entry.imgId];
     if (!c) return false;
-    const key = entry.imgId + '|' + caseWmSig(wm) + '|' + (entry.rot || 0) + '|' + entry.w + 'x' + entry.h;
+    const key = caseWmCacheKey(entry.imgId, wm, entry.rot, entry.w, entry.h, entry.ew, entry.eh, entry.fh, entry.fc);
     if (_caseWmBakeCache[key]) return false;
     try {
-        const img = await caseLoadImageEl(c.dataUrl);
+        let img = await caseLoadImageEl(c.dataUrl);
+        // 镂空填充开启：源改用「本体+镂空填实」画布 → 水印覆盖磨砂填充区（与装饰层同一块板）。
+        // fa 仅用于命中镂空缓存（水印层只用 solid，与质感无关，故不进水印缓存键）
+        if (entry.fh) {
+            const hf = caseHoleFillCanvases(entry.imgId, img, img.naturalWidth, img.naturalHeight, entry.fh, entry.fc, entry.fa);
+            if (hf) img = hf.solid;
+        }
         const cv = document.createElement('canvas');
         cv.width = Math.max(1, entry.w); cv.height = Math.max(1, entry.h);
         const ctx = cv.getContext('2d');
         if (!ctx) return false;
-        // 制品按槽位旋转角转进「视觉画布」（entry.w/h = 视觉槽位尺寸），水印后续按画布方向平铺 → 不随制品旋转
+        // 制品按实际旋转角转进「视觉画布」：entry.w/h = 旋转后视觉外接盒，entry.ew/eh = 未旋转元素盒。
+        // 任意角度（含 45°）先转再裁水印 → 水印盖满旋转后的制品；水印平铺在画布方向 → 文字/图案方向不随制品旋转
         const rotQ = ((entry.rot || 0) % 360 + 360) % 360;
-        if (rotQ === 90 || rotQ === 270) {
-            ctx.save();
-            ctx.translate(cv.width / 2, cv.height / 2);
-            ctx.rotate(rotQ * Math.PI / 180);
-            ctx.drawImage(img, -(cv.height / 2), -(cv.width / 2), cv.height, cv.width);
-            ctx.restore();
-        } else if (rotQ === 180) {
-            ctx.save();
-            ctx.translate(cv.width / 2, cv.height / 2);
-            ctx.rotate(Math.PI);
-            ctx.drawImage(img, -(cv.width / 2), -(cv.height / 2), cv.width, cv.height);
-            ctx.restore();
-        } else {
+        if (rotQ === 0) {
             ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        } else {
+            const ew = entry.ew || cv.width, eh = entry.eh || cv.height;
+            ctx.save();
+            ctx.translate(cv.width / 2, cv.height / 2);
+            ctx.rotate((entry.rot || 0) * Math.PI / 180);
+            ctx.drawImage(img, -ew / 2, -eh / 2, ew, eh);
+            ctx.restore();
         }
         // ⚠️ 水印先平铺到中间画布（普通 source-over），最后一次性 source-in 裁到制品不透明像素。
         // 不能在制品画布上持续用 source-in 逐个画水印单元：该模式下每次绘制都会把画布整体替换为
@@ -38194,7 +38404,7 @@ async function caseBakeWmLayer(entry) {
         if (!mctx) return false;
         mctx.globalAlpha = Math.min(1, Math.max(0.05, Number(wm.opacity) || 0.3));
         const scale = Math.min(3, Math.max(0.2, Number(wm.scale) || 1));
-        const base = Math.max(60, Math.min(cv.width, cv.height));
+        const base = Math.max(60, Math.min(entry.ew || cv.width, entry.eh || cv.height)); // 按未旋转元素盒取基准 → 水印大小不随旋转变化
         if (wm.type === 'stripe' || wm.type === 'grid') {
             const lw = Math.max(1, Math.round(Number(wm.lineW) || 2));
             const gap = Math.max(3, Math.round(Number(wm.gap) || 3));
@@ -38415,9 +38625,10 @@ function buildCaseCanvasHtml(st, page) {
         // 这里按原图（±90° 旋转后）真实比例缩小居中回槽位，装饰层同比例烘焙、保持对齐
         if (c && c.w && c.h) {
             const rotQ = ((slotRot % 180) + 180) % 180;
-            // 描边/扩张描边/投影会在本体四周多出一圈 bear（按原图边长比例）；contain 时先把可用盒按该比例缩一圈，
-            // 使「本体 + 装饰」整体嵌回槽位，不会撑出去压到相邻制品或左下/右下文字（2026-10-01）
-            const bear = fxCfg.enabled ? caseFxBearPx(fxCfg, c.w, c.h) : 0;
+            // 描边/扩张描边会在本体四周多出一圈（按原图边长比例）；contain 时先把可用盒按该比例缩一圈，
+            // 使「本体+描边」整体嵌回槽位。投影不算制品大小、不参与收缩（本体不因投影变小，
+            // 投影由烘焙层外扩 bear 渲染、允许溢出槽位）（2026-10-01）
+            const bear = fxCfg.enabled ? caseFxLayoutBearPx(fxCfg, c.w, c.h) : 0;
             const fit = caseFxContainBox((rotQ === 90) ? c.h : c.w, (rotQ === 90) ? c.w : c.h, bw, bh, bear);
             const dw2 = fit.w, dh2 = fit.h;
             drawSlot.x = Math.round(bx + (bw - dw2) / 2);
@@ -38432,9 +38643,19 @@ function buildCaseCanvasHtml(st, page) {
         const lh = swapped ? drawSlot.w : drawSlot.h;
         const lx = Math.round((drawSlot.w - lw) / 2), ly = Math.round((drawSlot.h - lh) / 2);
         const rotCss = slotRot ? 'transform:rotate(' + slotRot + 'deg);' : '';
-        const layer = function (src, cls, box) {
+        // 本体元素盒旋转后的视觉外接盒（任意角度，含 45°），中心与槽位中心一致：
+        // 0/±90°/180° 时恰等于槽位本身；其它角度外接盒大于槽位（制品视觉溢出槽位，属预期）。
+        // 水印层挂载在此盒上（不带 rotCss）→ 盖满旋转后的制品且水印方向恒为画布方向。
+        // 挂载盒向上取整（≥精确外接盒）：烘焙画布不裁旋转本体最外角，且挂载尺寸=画布尺寸 1:1 无缩放偏差
+        const wmRad = slotRot * Math.PI / 180;
+        const wmCos = Math.abs(Math.cos(wmRad)), wmSin = Math.abs(Math.sin(wmRad));
+        const visWf = lw * wmCos + lh * wmSin, visHf = lw * wmSin + lh * wmCos;
+        // ceil 前减 epsilon：90° 倍数时浮点噪声（如 200.00000000000002）不应多出 1px 空边
+        const visW = Math.ceil(visWf - 1e-6), visH = Math.ceil(visHf - 1e-6);
+        const vx = Math.round(drawSlot.w / 2 - visW / 2), vy = Math.round(drawSlot.h / 2 - visH / 2);
+        const layer = function (src, cls, box, noRot) {
             const b = box || { x: lx, y: ly, w: lw, h: lh };
-            return '<img ' + (cls ? 'class="' + cls + '" ' : '') + 'src="' + src + '" style="position:absolute;left:' + b.x + 'px;top:' + b.y + 'px;width:' + b.w + 'px;height:' + b.h + 'px;' + rotCss + '">';
+            return '<img ' + (cls ? 'class="' + cls + '" ' : '') + 'src="' + src + '" style="position:absolute;left:' + b.x + 'px;top:' + b.y + 'px;width:' + b.w + 'px;height:' + b.h + 'px;' + (noRot ? '' : rotCss) + '">';
         };
         let inner = '';
         if (!c) {
@@ -38443,13 +38664,17 @@ function buildCaseCanvasHtml(st, page) {
             if (fxCfg.enabled) {
                 const sh = _caseFxCache[fxCfg.key];
                 if (sh && sh.url) {
-                    // 烘焙层画布四周多 bear 边距：显示盒按本体盒向外扩 bear 的显示宽度，中心与本体盒一致（旋转后仍对齐）
-                    const bx = lw * (sh.bear || 0) / (c.w || 1);
-                    const by = lh * (sh.bear || 0) / (c.h || 1);
-                    const fbox = { x: Math.round(lx - bx), y: Math.round(ly - by), w: Math.round(lw + bx * 2), h: Math.round(lh + by * 2) };
-                    inner += layer(sh.url, '', fbox);
+                    // 烘焙层已按制品旋转角预转进视觉画布（画布 = 旋转后本体外接盒 rw×rh + 四周 bear 边距），
+                    // 挂载不带 rotCss：描边环随制品形状转，投影模糊/偏移方向恒为画布方向（不随制品旋转，2026-10-01）。
+                    // 显示盒按「本体视觉外接盒(浮点) : 画布内本体区(rw×rh)」等比映射 → 本体区域精确落回本体盒
+                    const fw = Math.round(visWf * ((sh.rw || c.w) + (sh.bear || 0) * 2) / (sh.rw || c.w));
+                    const fh = Math.round(visHf * ((sh.rh || c.h) + (sh.bear || 0) * 2) / (sh.rh || c.h));
+                    const fbox = { x: Math.round(drawSlot.w / 2 - fw / 2), y: Math.round(drawSlot.h / 2 - fh / 2), w: fw, h: fh };
+                    inner += layer(sh.url, '', fbox, true);
+                    // 镂空填充层：与本体同盒、同 rotCss（形状附着物，无方向语义），垫在本体图下面透出磨砂亚克力
+                    if (sh.fill) inner += layer(sh.fill, 'case-item-fill');
                     inner += layer(c.dataUrl, 'case-item-img');
-                    if (sh.overUrl) inner += layer(sh.overUrl, '', fbox);
+                    if (sh.overUrl) inner += layer(sh.overUrl, '', fbox, true);
                 } else {
                     inner += layer(c.dataUrl, 'case-item-img');
                 }
@@ -38459,15 +38684,15 @@ function buildCaseCanvasHtml(st, page) {
         }
         let slotStyle = 'left:' + drawSlot.x + 'px;top:' + drawSlot.y + 'px;width:' + drawSlot.w + 'px;height:' + drawSlot.h + 'px;';
         if (wmPerSlot && c) {
-            // 水印层 = 按「视觉槽位」烘焙的透明 PNG（source-in 裁到制品不透明像素）。
-            // ⚠️ 水印不随制品 ±90°/180° 旋转：烘焙时先把制品按 rot 转进视觉画布再裁水印，
-            // 挂载层不带 rotCss，水印始终保持画布方向（2026-09-30 用户要求）
-            const wmKey = imgId + '|' + caseWmSig(st.config.watermark) + '|' + slotRot + '|' + drawSlot.w + 'x' + drawSlot.h;
+            // 水印层 = 按「视觉外接盒」烘焙的透明 PNG（source-in 裁到制品不透明像素）。
+            // ⚠️ 水印不随制品旋转：烘焙时先把制品按实际旋转角（含 45° 等任意角）转进视觉画布再裁水印，
+            // 挂载层不带 rotCss → 水印盖满旋转后的制品，水印文字/图案方向始终保持画布方向（2026-09-30/10-01 用户要求）
+            const wmKey = caseWmCacheKey(imgId, st.config.watermark, slotRot, visW, visH, lw, lh, fxCfg.fillHole ? fxCfg.holeColor : '', fxCfg.fillHole ? fxCfg.holeClose : '');
             const wmUrl = _caseWmBakeCache[wmKey];
             if (wmUrl) {
-                inner += '<img src="' + wmUrl + '" style="position:absolute;left:0;top:0;width:' + drawSlot.w + 'px;height:' + drawSlot.h + 'px;">';
+                inner += '<img src="' + wmUrl + '" style="position:absolute;left:' + vx + 'px;top:' + vy + 'px;width:' + visW + 'px;height:' + visH + 'px;">';
             } else {
-                _caseWmBakeMiss.push({ imgId: imgId, w: drawSlot.w, h: drawSlot.h, rot: slotRot, color: txtColor });
+                _caseWmBakeMiss.push({ imgId: imgId, w: visW, h: visH, ew: lw, eh: lh, rot: slotRot, color: txtColor, fh: fxCfg.fillHole ? fxCfg.holeColor : '', fc: fxCfg.fillHole ? fxCfg.holeClose : '', fa: fxCfg.expandAcrylic === true });
             }
         }
         productsHtml += '<div class="case-slot" data-slot-index="' + i + '" style="' + slotStyle + '">' + inner + '</div>';
@@ -38749,6 +38974,7 @@ function renderCasePreview() {
     }
     wrap.classList.toggle('transparent', st.config.bg.type === 'transparent');
     casePrepareCanvasEl(wrap.firstElementChild);
+    caseApplySelVisual();   // DOM 重建后重挂选中高亮（保持制品选定状态）
     fitCasePreview();
     caseRenderPageChips(page);
     // 编辑模式：虚线制品区 + 拖拽 + 选中面板
@@ -38859,8 +39085,10 @@ function caseRenderAreaOutline(wrap) {
     ol.style.width = a.w + 'px';
     ol.style.height = a.h + 'px';
 }
-function caseSelectElement(key) {
-    _caseSelEl = key;
+// 选中高亮重挂（纯视觉，不动面板）：renderCasePreview 重建预览 DOM 后 _caseSelEl 仍在，
+// 但高亮类会随旧 DOM 丢失——渲染后必须重挂，否则改任意参数都表现为「取消选定」（2026-10-02）
+function caseApplySelVisual() {
+    const key = _caseSelEl;
     document.querySelectorAll('#casePreviewCanvasWrap [data-case-el]').forEach(function (el) {
         el.classList.toggle('case-el-selected', el.getAttribute('data-case-el') === key);
     });
@@ -38872,6 +39100,10 @@ function caseSelectElement(key) {
     document.querySelectorAll('#casePreviewCanvasWrap .case-slot').forEach(function (el) {
         el.classList.toggle('case-el-selected', key === 'item:' + el.getAttribute('data-slot-index'));
     });
+}
+function caseSelectElement(key) {
+    _caseSelEl = key;
+    caseApplySelVisual();
     caseRenderSelPanel();
     if (_caseEditMode) caseRenderEditGlobal();
 }
@@ -39164,10 +39396,24 @@ function caseRenderSelPanel() {
             + caseSliderNumRowHtml({ label: '扩张透明', id: 'caseFxExpandAlpha', val: caseFxPctVal(fx, 'expandAlpha'), min: 0, max: 100, step: 5, unit: '%', setter: 'setCaseItemExpandAlpha' })
             + '<div class="case-toggle-row"><span class="case-toggle-name">亚克力质感</span>'
             + '<label class="custom-toggle"><input type="checkbox"' + (fx.expandAcrylic ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'expandAcrylic\', this.checked)"><span class="toggle-slider"></span></label></div>'
+            + '<div class="case-toggle-row"><span class="case-toggle-name">填充镂空</span>'
+            + '<label class="custom-toggle"><input type="checkbox"' + (fx.fillHole ? ' checked' : '') + ' onchange="setCaseItemFx(' + idx + ', \'fillHole\', this.checked)"><span class="toggle-slider"></span></label></div>'
+            + '<div class="case-form-hint" style="margin:2px 0 0;">自动判定镂空区并直填所选颜色（不透明）；打开「亚克力质感」后填充呈半透明磨砂亚克力；描边/投影/水印按填充后的整块轮廓'
+            + (fx.fillHole
+                ? '</div>'
+                    + '<div class="case-range-row"><span style="font-size:12px;color:var(--text-muted,#999);flex-shrink:0;">填充色</span>'
+                    + caseColorBtnHtml('setCaseItemFx(' + idx + ', \'holeColor\', $c)', fx.holeColor || '#ffffff') + '</div>'
+                    + '<div class="case-step-row"><span class="case-step-name">开口闭合</span>'
+                    + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'holeClose\', -1, ' + Math.round(maxEdge * 0.15) + ')" title="减 1px">−</button>'
+                    + '<input type="number" min="0" max="' + Math.round(maxEdge * 0.15) + '" step="1" value="' + Math.round((Number(fx.holeClose) || 0) * maxEdge) + '" onchange="setCaseItemFx(' + idx + ', \'holeClose\', this.value / ' + maxEdge + ')">'
+                    + '<button type="button" class="case-step-btn" onclick="caseItemStepStroke(' + idx + ', \'holeClose\', 1, ' + Math.round(maxEdge * 0.15) + ')" title="加 1px">＋</button>'
+                    + '<span class="case-step-unit">px</span></div>'
+                    + '<div class="case-form-hint" style="margin:2px 0 0;">非封闭的开口/缝隙宽度小于约 2 倍该值时也会被桥接填充（用于 C 形开口、开槽）；0 = 仅封闭镂空</div>'
+                : '</div>')
             + '<div class="case-sel-ops">'
             + '<button type="button" class="btn secondary btn-compact" onclick="caseResetItemFx(' + idx + ')">恢复该制品默认</button>'
             + '</div>'
-            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=轮廓环，默认中灰 1px，<b>画在扩张描边的外围</b>；扩张描边=贴着图案向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=扩张描边变半透明磨砂、带斜向反光与外缘亮边，模拟亚克力侧边；宽度按制品原图像素，描边/扩张描边的透明度可单独调（0–100%）</div>';
+            + '<div class="case-form-hint" style="margin:6px 0 0;">描边=轮廓环，默认中灰 1px，<b>画在扩张描边的外围</b>；扩张描边=贴着图案向外扩的一圈（可配不同颜色做双层贴纸边）；<b>亚克力质感</b>=扩张描边变半透明磨砂、带斜向反光与外缘亮边，模拟亚克力侧边，镂空填充也随此开关切换磨砂/纯色；宽度按制品原图像素，描边/扩张描边的透明度可单独调（0–100%）</div>';
     } else if (key.indexOf('tag:') === 0) {
         title = '文字设置';
         const name = key.slice(4);
@@ -39964,27 +40210,47 @@ function renderCaseForm() {
         + '<label class="case-form-label">制品图</label>';
     const hasGroups = !!(st.groups && st.groups.length);
     if (hasGroups) {
-        html += '<div class="case-form-hint" style="margin:0 0 4px;">已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换；组名右侧眼睛 = 整组不入总图（分图页仍显示），缩略图底栏眼睛 = 该图不入分图（总图按分图排版，连带不入总图）</div>';
+        html += '<div class="case-form-hint" style="margin:0 0 4px;">' + (st.orderId
+            ? '已按订单制品分组，相同制品合并：自动生成 1 张总图 + 每种制品各 1 张预览图，可在预览区页签切换'
+            : '手动分组模式：每组 1 张分图页（多于 1 组时出现），并按组排入总图')
+            + '；组名右侧眼睛 = 整组不入总图（分图页仍显示），缩略图底栏眼睛 = 该图不入分图（总图按分图排版，连带不入总图）；「＋ 新建分组」可添加自定义组（✎ 改名 / ✕ 删除' + (st.orderId ? '，重新关联订单时保留' : '') + '），缩略图「移」= 把该图移入其他分组</div>';
+        if (_caseMoveFrom) {
+            const mf = _caseImgCache[_caseMoveFrom.imgId];
+            html += '<div class="case-form-hint" style="margin:0 0 4px;color:var(--primary-color,#7c6ff0);">移动模式：正在移动' + (mf ? '第 ' + (st.images.indexOf(_caseMoveFrom.imgId) + 1) + ' 张图' : '一张图') + '，点击目标组头的「移入此组」完成，或「＋ 移入新分组」一步建组；再点缩略图上的「移」取消</div>';
+        }
         st.groups.forEach(function (g, gi) {
             let thumbs = '';
             const noTotal = caseGroupNoTotal(g);
             (g.images || []).forEach(function (imgId) {
                 const c = _caseImgCache[imgId];
                 const hid = caseImgHidden(st, imgId);
-                thumbs += '<div class="case-thumb' + (hid ? ' case-thumb-hidden' : '') + '">'
-                    + (c ? '<img src="' + c.dataUrl + '" alt="">' : '')
+                const moving = !!(_caseMoveFrom && _caseMoveFrom.imgId === imgId);
+                thumbs += '<div class="case-thumb' + (hid ? ' case-thumb-hidden' : '') + '" draggable="true" ondragstart="caseThumbDragStart(event,\'' + imgId + '\',' + gi + ')" ondragend="caseThumbDragEnd(event)" title="拖动到其他分组可移入">'
+                    + (c ? '<img src="' + c.dataUrl + '" alt="" draggable="false">' : '')
                     + '<button type="button" class="case-thumb-del" onclick="caseRemoveImage(\'' + imgId + '\')" title="删除">×</button>'
                     + '<div class="case-thumb-ops">'
                     + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',-1,' + gi + ')" title="前移">◀</button>'
                     + '<button type="button" onclick="caseMoveImage(\'' + imgId + '\',1,' + gi + ')" title="后移">▶</button>'
+                    + '<button type="button" onclick="caseStartMoveImage(\'' + imgId + '\',' + gi + ')" title="移入其他分组"' + (moving ? ' style="background:var(--primary-color,#7c6ff0);color:#fff;"' : '') + '>移</button>'
                     + '<button type="button" class="case-thumb-eye' + (hid ? ' off' : '') + '" onclick="caseToggleImagePageHidden(\'' + imgId + '\')" title="' + (hid ? '该图已隐藏（不入分图与总图），点击恢复' : '点击隐藏该图（不入分图；总图按分图排版，连带不入总图）') + '">' + caseEyeSvg(hid) + '</button>'
                     + '</div></div>';
             });
             if (!(g.images || []).length) thumbs = '<div class="case-group-empty-tip">还没有上传该制品的图，可点击「上传」或拖图到此框</div>';
-            html += '<div class="case-group-block' + (noTotal ? ' case-group-off' : '') + '" data-case-group="' + gi + '">'
+            const isCustom = g.custom === true;
+            html += '<div class="case-group-block' + (noTotal ? ' case-group-off' : '') + '" data-case-group="' + gi + '"'
+                + ' ondragover="caseGroupDragOver(event,' + gi + ')" ondragleave="caseGroupDragLeave(event)" ondrop="caseGroupDrop(event,' + gi + ')">'
                 + '<div class="case-group-head">'
-                + '<span class="case-group-label">' + escapeHtml(g.label) + (g.count > 1 ? ' <em>×' + g.count + '</em>' : '') + '</span>'
+                + (_caseGroupRename === gi
+                    ? '<input type="text" id="caseGroupRenameInput" class="case-field-input" style="max-width:170px;" value="' + escapeHtml(g.label) + '" onkeydown="caseGroupNameKey(event,' + gi + ')" onchange="caseSaveRenameGroup(' + gi + ', this.value)">'
+                    : '<span class="case-group-label">' + escapeHtml(g.label) + (g.count > 1 ? ' <em>×' + g.count + '</em>' : '') + (isCustom ? ' <em>自定义</em>' : '') + '</span>')
                 + '<span class="case-group-ops">'
+                + (_caseMoveFrom && _caseMoveFrom.gi !== gi
+                    ? '<button type="button" class="btn secondary btn-compact" onclick="caseMoveImageToGroup(' + gi + ')">移入此组</button>'
+                    : '')
+                + (isCustom
+                    ? '<button type="button" class="case-eye-btn" onclick="caseStartRenameGroup(' + gi + ')" title="重命名该分组">✎</button>'
+                        + '<button type="button" class="case-eye-btn" onclick="caseDeleteGroup(' + gi + ')" title="删除该自定义分组（组内图移入第一组）">✕</button>'
+                    : '')
                 + '<button type="button" class="case-eye-btn' + (noTotal ? ' off' : '') + '" onclick="caseToggleGroupTotal(' + gi + ')" aria-label="入总图" title="' + (noTotal ? '该组已隐藏，不入总图（分图页仍显示）；点击恢复' : '点击隐藏该组（不入总图，分图页仍显示）') + '">' + caseEyeSvg(noTotal) + '</button>'
                 + '<button type="button" class="btn secondary btn-compact" onclick="casePickUpload(' + gi + ')">上传</button>'
                 + '</span>'
@@ -39993,7 +40259,15 @@ function renderCaseForm() {
                 + '<div class="case-thumbs">' + thumbs + '</div>'
                 + '</div>';
         });
-        html += '<input type="file" id="caseImageInput" accept="image/png,image/jpeg,image/webp" multiple class="d-none">';
+        if (_caseGroupAddOpen) {
+            html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">'
+                + '<input type="text" id="caseNewGroupName" class="case-field-input" placeholder="分组名称（留空自动命名）" style="flex:1;min-width:100px;" onkeydown="caseGroupNameKey(event)">'
+                + '<button type="button" class="btn secondary btn-compact" onclick="caseSaveNewGroup()" style="flex-shrink:0;">✓ 创建</button>'
+                + '<button type="button" class="btn secondary btn-compact" onclick="caseToggleGroupAdd()" title="取消">✕</button>'
+                + '</div>';
+        }
+        html += '<button type="button" style="margin-top:8px;width:100%;padding:9px;border:1px dashed var(--border-color,#d5d5da);border-radius:10px;background:transparent;color:var(--text-muted,#999);font-size:12px;cursor:pointer;" onclick="' + (_caseMoveFrom ? 'caseMoveToNewGroup()' : 'caseToggleGroupAdd()') + '" ondragover="caseAddBtnDragOver(event)" ondrop="caseAddBtnDrop(event)">' + (_caseMoveFrom ? '＋ 移入新分组（自动命名，可再改名）' : '＋ 新建分组（也可把缩略图拖到这里）') + '</button>'
+            + '<input type="file" id="caseImageInput" accept="image/png,image/jpeg,image/webp" multiple class="d-none">';
     } else {
         html += '<div class="case-upload-zone" id="caseUploadZone">点击或拖拽上传制品 PNG（可多选）<br>自动按样机占位区排列，等比缩放居中</div>'
             + '<input type="file" id="caseImageInput" accept="image/png,image/jpeg,image/webp" multiple class="d-none">';
@@ -40013,6 +40287,15 @@ function renderCaseForm() {
         });
         html += '</div>';
         if (st.images.length) html += '<div class="case-form-hint" style="margin:6px 0 0;">缩略图底栏眼睛 = 该图隐藏，不入总图（画布上不显示、不占位）</div>';
+        // 自由模式也能建组（2026-10-02）：首建组自动收编现有散图，之后与订单分组同一套 UI（移/改名/删除）
+        if (_caseGroupAddOpen) {
+            html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">'
+                + '<input type="text" id="caseNewGroupName" class="case-field-input" placeholder="分组名称（留空自动命名）" style="flex:1;min-width:100px;" onkeydown="caseGroupNameKey(event)">'
+                + '<button type="button" class="btn secondary btn-compact" onclick="caseSaveNewGroup()" style="flex-shrink:0;">✓ 创建</button>'
+                + '<button type="button" class="btn secondary btn-compact" onclick="caseToggleGroupAdd()" title="取消">✕</button>'
+                + '</div>';
+        }
+        html += '<button type="button" style="margin-top:8px;width:100%;padding:9px;border:1px dashed var(--border-color,#d5d5da);border-radius:10px;background:transparent;color:var(--text-muted,#999);font-size:12px;cursor:pointer;" onclick="caseToggleGroupAdd()">＋ 新建分组（现有图自动收入组内，再用缩略图「移」拆分到其他组）</button>';
     }
     html += '</div>';
     // 8 水印
@@ -40276,11 +40559,15 @@ function setCaseItemFx(idx, field, value) {
     else if (field === 'strokeColor') f.strokeColor = String(value);
     else if (field === 'expandColor') f.expandColor = String(value);
     else if (field === 'expandAcrylic') f.expandAcrylic = !!value;
+    else if (field === 'fillHole') f.fillHole = !!value;
+    else if (field === 'holeColor') f.holeColor = String(value);
+    else if (field === 'holeClose') f.holeClose = Math.min(0.15, Math.max(0, parseFloat(value) || 0));
     // 参数变化 → 清除该图的装饰缓存，重烘焙后补绘
     Object.keys(_caseFxCache).forEach(function (k) {
         if (k.indexOf(imgId + '|') === 0) delete _caseFxCache[k];
     });
     renderCasePreview();
+    caseRenderSelPanel();   // 面板有按参数条件显示的行（填充色/开口闭合），同步重渲染
     caseEnsureShadows([imgId]).then(function (changed) {
         if (changed && _caseState) renderCasePreview();
     });
@@ -40626,6 +40913,160 @@ function caseRemoveImage(imgId) {
     st.config.hiddenImages = caseHiddenImages(st).filter(function (x) { return x !== imgId; });
     if (st.config.lineSolo) delete st.config.lineSolo[imgId];
     renderCaseForm(); renderCasePreview();
+}
+// ---------- 自定义制品分组（2026-10-02）：订单组之外可新建/改名/删除/跨组移动 ----------
+// custom:true 的组在重新关联订单时原样保留（applyCaseOrder 合并逻辑），取消关联时也不清空
+let _caseGroupAddOpen = false;   // 「新建分组」命名行展开中
+let _caseGroupRename = -1;       // 正在改名的自定义组下标
+let _caseMoveFrom = null;        // 移动模式：{ imgId, gi } = 待移动的图与来源组
+// 下一个自定义组的默认名（避免与现有「自定义组N」重名）
+function caseNextCustomGroupName() {
+    const st = _caseState; let max = 0;
+    ((st && st.groups) || []).forEach(function (g) {
+        const m = /^自定义组(\d+)$/.exec(String((g && g.label) || ''));
+        if (m) max = Math.max(max, parseInt(m[1], 10) || 0);
+    });
+    return '自定义组' + (max + 1);
+}
+function caseToggleGroupAdd() {
+    _caseGroupAddOpen = !_caseGroupAddOpen;
+    _caseGroupRename = -1;
+    renderCaseForm();
+    if (_caseGroupAddOpen) {
+        const ni = document.getElementById('caseNewGroupName');
+        if (ni) ni.focus();
+    }
+}
+// 命名行/改名输入的键盘行为：Enter 提交，Esc 取消（gi 传值=改名行，缺省=新建行）
+function caseGroupNameKey(e, gi) {
+    if (!e) return;
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (gi != null) e.target.blur();   // blur 触发 onchange → caseSaveRenameGroup
+        else caseSaveNewGroup();
+    } else if (e.key === 'Escape') {
+        if (gi != null) { _caseGroupRename = -1; renderCaseForm(); }
+        else caseToggleGroupAdd();
+    }
+}
+function caseSaveNewGroup() {
+    const st = _caseState; if (!st) return;
+    const input = document.getElementById('caseNewGroupName');
+    const name = String((input && input.value) || '').trim() || caseNextCustomGroupName();
+    st.groups = st.groups || [];
+    const wasFree = !(st.groups && st.groups.length);
+    st.groups.push({ label: name, count: 0, images: [], custom: true });
+    const gi = st.groups.length - 1;
+    // 自由模式首建组：现有散图全部收入该组（总图=各组成果合集，散图不归组会从总图消失），再用「移」拆分到其他组
+    if (wasFree && st.images.length) st.groups[gi].images = st.images.slice();
+    _caseGroupAddOpen = false;
+    _caseUploadTarget = gi;   // 后续上传自动进入新组
+    st._page = 0;
+    renderCaseForm(); renderCasePreview();
+    showGlobalToast(wasFree && st.images.length
+        ? '已创建「' + name + '」，现有 ' + st.images.length + ' 张图已收入该组，可用缩略图「移」拆分'
+        : '已创建「' + name + '」，上传将进入该组');
+}
+function caseStartRenameGroup(gi) {
+    _caseGroupRename = gi;
+    _caseGroupAddOpen = false;
+    renderCaseForm();
+    const ri = document.getElementById('caseGroupRenameInput');
+    if (ri) { ri.focus(); ri.select(); }
+}
+function caseSaveRenameGroup(gi, value) {
+    const st = _caseState; if (!st || !st.groups || !st.groups[gi]) { _caseGroupRename = -1; return; }
+    const name = String(value || '').trim();
+    if (name) st.groups[gi].label = name;
+    _caseGroupRename = -1;
+    renderCaseForm(); renderCasePreview();   // 分图页签/页面标题用组名，需重渲染
+}
+function caseDeleteGroup(gi) {
+    const st = _caseState; if (!st || !st.groups || !st.groups[gi] || !st.groups[gi].custom) return;
+    const imgs = (st.groups[gi].images || []).slice();
+    st.groups.splice(gi, 1);
+    if (st.groups.length) st.groups[0].images = (st.groups[0].images || []).concat(imgs);
+    // 组清空后回到自由模式：st.images 本就是全集，直接可用
+    if (_caseMoveFrom && _caseMoveFrom.gi === gi) _caseMoveFrom = null;
+    if (_caseUploadTarget >= st.groups.length) _caseUploadTarget = st.groups.length ? st.groups.length - 1 : -1;
+    st._page = 0;
+    renderCaseForm(); renderCasePreview();
+}
+// 移动模式：点缩略图「移」进入/取消；再点目标组头的「移入此组」完成
+function caseStartMoveImage(imgId, gi) {
+    if (_caseMoveFrom && _caseMoveFrom.imgId === imgId) _caseMoveFrom = null;
+    else _caseMoveFrom = { imgId: imgId, gi: gi };
+    renderCaseForm();
+}
+function caseMoveImageToGroup(toGi) {
+    const st = _caseState;
+    if (!st || !_caseMoveFrom || !st.groups) { _caseMoveFrom = null; renderCaseForm(); return; }
+    const imgId = _caseMoveFrom.imgId;
+    const tg = st.groups[toGi];
+    if (!tg) { _caseMoveFrom = null; renderCaseForm(); return; }
+    // 全组去重：一张图只允许属于一个组——历史数据可能残留同图多组，移动后原分组一律不再保留
+    st.groups.forEach(function (g, gi) {
+        if (gi === toGi) return;
+        g.images = (g.images || []).filter(function (x) { return x !== imgId; });
+    });
+    tg.images = (tg.images || []).concat([imgId]);
+    _caseMoveFrom = null;
+    st._page = 0;
+    renderCaseForm(); renderCasePreview();
+}
+// 移入新分组：一步建组（自动命名）+ 移入，随后进入改名状态方便命名
+function caseMoveToNewGroup() {
+    const st = _caseState; if (!st || !_caseMoveFrom) return;
+    st.groups.push({ label: caseNextCustomGroupName(), count: 0, images: [], custom: true });
+    const gi = st.groups.length - 1;
+    caseMoveImageToGroup(gi);
+    caseStartRenameGroup(gi);
+}
+// ---------- 缩略图拖拽换组（2026-10-02）：拖到目标组块高亮松手移入；触屏无 HTML5 拖拽，走「移」按钮 ----------
+let _caseThumbDrag = null;   // { imgId, gi } 拖拽中的图与来源组
+function caseThumbDragStart(e, imgId, gi) {
+    if (!e || !e.dataTransfer) return;
+    _caseThumbDrag = { imgId: imgId, gi: gi };
+    _caseMoveFrom = null;   // 拖拽与「移」按钮模式互斥，避免状态串扰
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', imgId); } catch (err) {}   // Firefox 需 setData 才启动拖拽
+}
+function caseThumbDragEnd() {
+    _caseThumbDrag = null;
+    document.querySelectorAll('.case-group-block.case-drop-hint').forEach(function (el) { el.classList.remove('case-drop-hint'); });
+}
+function caseGroupDragOver(e, gi) {
+    if (!_caseThumbDrag || _caseThumbDrag.gi === gi) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const el = e.currentTarget;
+    if (el && el.classList) el.classList.add('case-drop-hint');
+}
+function caseGroupDragLeave(e) {
+    const el = e && e.currentTarget;
+    if (el && el.classList) el.classList.remove('case-drop-hint');
+}
+function caseGroupDrop(e, toGi) {
+    e.preventDefault();
+    const el = e && e.currentTarget;
+    if (el && el.classList) el.classList.remove('case-drop-hint');
+    if (!_caseThumbDrag || _caseThumbDrag.gi === toGi) { _caseThumbDrag = null; return; }
+    _caseMoveFrom = { imgId: _caseThumbDrag.imgId, gi: _caseThumbDrag.gi };
+    _caseThumbDrag = null;
+    caseMoveImageToGroup(toGi);
+}
+// 拖到「＋ 新建分组」按钮：一步建组 + 移入 + 进入改名
+function caseAddBtnDragOver(e) {
+    if (!_caseThumbDrag) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+}
+function caseAddBtnDrop(e) {
+    if (!_caseThumbDrag) return;
+    e.preventDefault();
+    _caseMoveFrom = { imgId: _caseThumbDrag.imgId, gi: _caseThumbDrag.gi };
+    _caseThumbDrag = null;
+    caseMoveToNewGroup();
 }
 let _caseUploadTarget = -1; // 本次上传进入的制品组下标（-1=自由模式/总图）
 function casePickUpload(gi) {

@@ -14856,16 +14856,29 @@ html.theme-dark .case-size-lock.active {
     left: 0; right: 0; bottom: 0;
     display: flex;
     justify-content: center;
-    gap: 2px;
+    gap: 1px;
     background: rgba(0,0,0,0.45);
 }
 .case-thumb-ops button {
     border: none;
     background: none;
     color: #fff;
-    font-size: 12px;
-    padding: 2px 6px;
+    font-size: 10px;
+    line-height: 1;
+    min-width: 14px;
+    height: 18px;
+    padding: 0 1px;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+/* 桌面（有悬停）默认收起操作栏，悬停/聚焦缩略图时浮现，避免按钮排太散挤爆 74px 缩略图；
+   触屏无 hover，保持常显（已压缩到可容纳 5 键） */
+@media (hover: hover) {
+    .case-thumb-ops { opacity: 0; transition: opacity 0.15s; }
+    .case-thumb:hover .case-thumb-ops,
+    .case-thumb:focus-within .case-thumb-ops { opacity: 1; }
 }
 /* 组头「入总图」眼睛按钮（默认睁眼 = 入总图；off = 闭眼整组不入总图）*/
 .case-group-ops {
@@ -14893,8 +14906,15 @@ html.theme-dark .case-size-lock.active {
     padding: 2px 0 0;
     line-height: 1.5;
 }
+/* 拖拽换组：目标组块高亮（拖缩略图到组块/＋新建分组上松手移入） */
+.case-group-block.case-drop-hint {
+    outline: 2px dashed var(--primary-color, #7c6ff0);
+    outline-offset: 2px;
+    border-radius: 10px;
+}
+.case-thumb[draggable="true"] { cursor: grab; }
 /* 缩略图底栏「不入分图」眼睛 */
-.case-thumb-ops .icon { width: 14px; height: 14px; }
+.case-thumb-ops .icon { width: 12px; height: 12px; }
 .case-thumb-eye.off { opacity: 0.9; }
 .case-thumb.case-thumb-hidden img { opacity: 0.35; }
 .case-thumb-del {
@@ -15776,6 +15796,15 @@ html.theme-dark .case-step-row input[type="number"] {
 /* ===== 调整布局功能区：停靠在预览图右侧的面板（非弹窗） ===== */
 /* 预览主体 = 画布区 + 右侧功能区（功能区仅调整布局模式下显示） */
 .case-preview-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+}
+/* 画布列容器：缩放控件的定位祖先——控件恒定钉在画布区右下角，
+   不受右侧「调整布局」栏显隐影响（栏打开时画布列变窄，控件随之收进画布区） */
+.case-stage-wrap {
+    position: relative;
     flex: 1;
     min-width: 0;
     min-height: 0;
