@@ -2073,6 +2073,10 @@
                                 <input type="file" id="excelImportInput" accept=".xlsx,.xls" class="d-none" onchange="importFromExcel(event)">
                             </div>
                         </div>
+                        <!-- 制品搜索框 -->
+                        <div class="form-group" style="margin-bottom:10px;">
+                            <input type="search" id="productSettingsSearchInput" placeholder="搜索制品名称 / 分类" oninput="renderProductSettings()">
+                        </div>
                         <div id="productSettingsContainer">
                         <!-- 制品设置将通过JavaScript动态添加 -->
                         </div>

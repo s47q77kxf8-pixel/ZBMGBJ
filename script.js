@@ -29776,34 +29776,46 @@ function renderProductSettings() {
     const container = document.getElementById('productSettingsContainer');
     const containerTemplate = document.getElementById('productSettingsContainerTemplate');
     const activeContainer = containerTemplate || container;
-    
-    // 保存当前展开的分类状态
+
+    // 读取搜索关键词（制品设置子页面顶部搜索框）
+    const searchEl = document.getElementById('productSettingsSearchInput');
+    const searchKw = searchEl ? String(searchEl.value || '').trim().toLowerCase() : '';
+    const isSearching = searchKw.length > 0;
+
+    // 保存当前展开的分类状态（搜索时跳过：搜索结果的强制展开不写入记忆状态）
     const currentlyExpanded = new Set();
-    const existingCategoryContainers = document.querySelectorAll('.category-container');
-    existingCategoryContainers.forEach(categoryContainer => {
-        const content = categoryContainer.querySelector('.category-content');
-        const toggle = categoryContainer.querySelector('.category-toggle');
-        if (content && !content.classList.contains('d-none') && toggle && toggle.textContent === '▲') {
-            // 获取类别名称，直接从标题文本获取，这在当前结构下是可靠的
-            const categoryTitle = categoryContainer.querySelector('.category-title');
-            if (categoryTitle) {
-                currentlyExpanded.add(categoryTitle.textContent);
+    if (!isSearching) {
+        const existingCategoryContainers = document.querySelectorAll('.category-container');
+        existingCategoryContainers.forEach(categoryContainer => {
+            const content = categoryContainer.querySelector('.category-content');
+            const toggle = categoryContainer.querySelector('.category-toggle');
+            if (content && !content.classList.contains('d-none') && toggle && toggle.textContent === '▲') {
+                // 获取类别名称，直接从标题文本获取，这在当前结构下是可靠的
+                const categoryTitle = categoryContainer.querySelector('.category-title');
+                if (categoryTitle) {
+                    currentlyExpanded.add(categoryTitle.textContent);
+                }
             }
-        }
-    });
-    
-    // 更新全局expandedCategories状态
-    expandedCategories.clear();
-    currentlyExpanded.forEach(category => {
-        expandedCategories.add(category);
-    });
-    
+        });
+
+        // 更新全局expandedCategories状态
+        expandedCategories.clear();
+        currentlyExpanded.forEach(category => {
+            expandedCategories.add(category);
+        });
+    }
+
     // 按类别分组
     const categories = {};
-    
-    // 将制品按类别分组
+
+    // 将制品按类别分组（搜索时仅保留名称或分类命中的制品）
     productSettings.forEach(setting => {
         const category = setting.category || DEFAULT_CATEGORIES[0];
+        if (isSearching) {
+            const inName = String(setting.name || '').toLowerCase().includes(searchKw);
+            const inCategory = String(category || '').toLowerCase().includes(searchKw);
+            if (!inName && !inCategory) return;
+        }
         if (!categories[category]) {
             categories[category] = [];
         }
@@ -29841,8 +29853,8 @@ function renderProductSettings() {
         const categorySettings = sortedCategories[category];
         if (categorySettings.length === 0) return;
         
-        // 检查当前分类是否应该展开
-        const isExpanded = currentlyExpanded.has(category);
+        // 检查当前分类是否应该展开（搜索时全部展开，便于直接查看结果）
+        const isExpanded = isSearching ? true : currentlyExpanded.has(category);
         const toggleText = isExpanded ? '▲' : '▼';
         const contentClass = isExpanded ? '' : 'd-none';
         
@@ -30032,6 +30044,11 @@ function renderProductSettings() {
         `;
     });
     
+    // 搜索无结果时给出提示
+    if (!html && isSearching) {
+        html = '<div class="text-gray" style="padding:32px 16px;text-align:center;">未找到匹配的制品，请换个关键词试试。</div>';
+    }
+
     container.innerHTML = html;
 }
 
