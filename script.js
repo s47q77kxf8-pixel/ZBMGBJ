@@ -8354,10 +8354,10 @@ function renderTrashDrawer() {
     };
     const items = mgOrderTrash.items || [];
     if (items.length === 0) {
-        body.innerHTML = '<p style="text-align:center;color:#999;padding:40px 0;">回收站为空</p>';
+        body.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:40px 0;">回收站为空</p>';
         return;
     }
-    let html = '<p style="color:#666;font-size:13px;margin-bottom:12px;">已删除的企划可在30天内恢复</p>';
+    let html = '<p style="color:var(--text-light);font-size:13px;margin-bottom:12px;">已删除的企划可在30天内恢复</p>';
     // 批量操作栏
     html += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
     html += '<button type="button" onclick="toggleSelectAllTrash();" class="btn secondary" style="padding:6px 12px;font-size:12px;">';
@@ -8369,7 +8369,7 @@ function renderTrashDrawer() {
     html += '<button type="button" onclick="batchPermanentDeleteTrash();" class="btn danger" style="padding:6px 12px;font-size:12px;" ';
     html += selectedTrashIds.size === 0 ? 'disabled' : '';
     html += '>批量删除</button>';
-    html += '<span style="font-size:12px;color:#666;margin-left:auto;line-height:32px;">' + selectedTrashIds.size + '/' + items.length + ' 选中</span>';
+    html += '<span style="font-size:12px;color:var(--text-light);margin-left:auto;line-height:32px;">' + selectedTrashIds.size + '/' + items.length + ' 选中</span>';
     html += '</div>';
     html += '<div style="display:flex;flex-direction:column;gap:8px;">';
     items.forEach(item => {
@@ -8393,16 +8393,16 @@ function renderTrashDrawer() {
         const timeAgo = getTrashTimeAgo(item.deletedAt);
         const isSelected = selectedTrashIds.has(item.id);
         const index = mgOrderTrash.items.indexOf(item);
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f5f5f5;border-radius:8px;">';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;">';
         html += '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">';
         html += '<input type="checkbox" style="width:18px;height:18px;cursor:pointer;z-index:10;position:relative;" ';
         html += 'onclick="toggleSelectTrashByIndex(' + index + ');" ';
         html += isSelected ? 'checked' : '';
         html += '>';
         html += '<div style="flex:1;min-width:0;">';
-        html += '<div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;">' + escapeHtml(clientDisplay || '未知') + '</div>';
-        html += '<div style="font-size:13px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;">' + escapeHtml(projectDisplay) + '</div>';
-        html += '<div style="font-size:12px;color:#999;margin-top:2px;">' + shortDate + ' | ' + escapeHtml(scheduleRange) + ' | ID:' + item.id + ' · ' + timeAgo + '删除</div>';
+        html += '<div style="font-weight:500;color:var(--text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;">' + escapeHtml(clientDisplay || '未知') + '</div>';
+        html += '<div style="font-size:13px;color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;">' + escapeHtml(projectDisplay) + '</div>';
+        html += '<div style="font-size:12px;color:var(--text-light);opacity:.8;margin-top:2px;">' + shortDate + ' | ' + escapeHtml(scheduleRange) + ' | ID:' + item.id + ' · ' + timeAgo + '删除</div>';
         html += '</div>';
         html += '</div>';
         html += '<div style="display:flex;gap:6px;flex-shrink:0;">';
