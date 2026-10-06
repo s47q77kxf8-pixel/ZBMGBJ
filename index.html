@@ -2961,12 +2961,12 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-trash-simple"></use></svg>
                             <span>删除</span>
                         </button>
+                    </div>
+                    <div class="schedule-todo-card-modal-row">
                         <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnCustomTag" onclick="scheduleTodoCardAction('custom_tag')" title="标签">
                             <span class="custom-tag-circle-icon" aria-hidden="true">#</span>
                             <span>标签</span>
                         </button>
-                    </div>
-                    <div class="schedule-todo-card-modal-row">
                         <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('folder')" title="排单生成文件夹">
                             <svg class="icon" aria-hidden="true"><use href="#i-folder"></use></svg>
                             <span>排单</span>
@@ -2974,6 +2974,16 @@
                         <button type="button" class="schedule-todo-card-modal-btn" onclick="scheduleTodoCardAction('gen_case')" title="生成案例展示图">
                             <svg class="icon" aria-hidden="true"><use href="#i-image-line-a"></use></svg>
                             <span>生成案例</span>
+                        </button>
+                    </div>
+                    <div class="schedule-todo-card-modal-row">
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnAppend" onclick="scheduleTodoCardAction('append_order')" title="追加单">
+                            <svg class="icon" aria-hidden="true"><use href="#i-plus-circle"></use></svg>
+                            <span>追加单</span>
+                        </button>
+                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnUnlink" onclick="scheduleTodoCardAction('unlink_append')" title="取消关联" style="display:none;">
+                            <svg class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>
+                            <span>取消关联</span>
                         </button>
                         <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnCancel" onclick="scheduleTodoCardAction('cancel')" title="撤单">
                             <svg class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>
@@ -2986,14 +2996,6 @@
                         <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnNormal" onclick="scheduleTodoCardAction('normal')" title="结单">
                             <svg class="icon" aria-hidden="true"><use href="#i-check-circle"></use></svg>
                             <span>结单</span>
-                        </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnAppend" onclick="scheduleTodoCardAction('append_order')" title="追加单">
-                            <svg class="icon" aria-hidden="true"><use href="#i-plus-circle"></use></svg>
-                            <span>追加单</span>
-                        </button>
-                        <button type="button" class="schedule-todo-card-modal-btn" id="scheduleTodoBtnUnlink" onclick="scheduleTodoCardAction('unlink_append')" title="取消关联" style="display:none;">
-                            <svg class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>
-                            <span>取消关联</span>
                         </button>
                     </div>
                 </div>
