@@ -9662,7 +9662,7 @@ function isStatsOrderEverOverdue(item, overdueMode) {
     if (isStatsOrderOverdue(item)) return true;
     const status = getStatsOrderStatus(item);
 
-    // 严格模式（仅原始截稿日），但没有原始截稿日记录，则不判定曾经逾期
+    // 按原始截稿日模式（strict）：以 originalDeadline 为准；但若无原始截稿日记录，则不判定曾经逾期
     if (overdueMode === 'strict' && !item.originalDeadline) return false;
 
     const deadlineToUse = overdueMode === 'strict' && item.originalDeadline ? item.originalDeadline : item.deadline;
@@ -39515,10 +39515,26 @@ function caseRenderSelPanel() {
             + '</div>';
     }
     if (titleEl) titleEl.textContent = title;
-    // 焦点保护：用户正在面板内输入/拖滑杆时不重建 DOM，避免打断（直接 setter 已同步显示值）
+    // 焦点保护：用户正在面板内输入/拖滑杆时不重建 DOM，避免打断（直接 setter 已同步显示值）；
+    // 开关类控件（checkbox/radio）不涉及连续输入，change 触发时点击已完成，重建不打断操作——
+    // 否则点「填充镂空/轮廓投影」后焦点停在开关上，条件行（填充色/投影滑条）要等焦点移开才出现
     const ae = document.activeElement;
-    if (ae && box.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+    let refocusToggle = null;
+    if (ae && box.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
+        const aeType = String(ae.type || '').toLowerCase();
+        if (aeType === 'checkbox' || aeType === 'radio') {
+            const boxes = Array.prototype.slice.call(box.querySelectorAll('input[type="' + aeType + '"]'));
+            const at = boxes.indexOf(ae);
+            if (at >= 0) refocusToggle = { type: aeType, at: at };
+        } else {
+            return;
+        }
+    }
     box.innerHTML = html;
+    if (refocusToggle) {
+        const nb = box.querySelectorAll('input[type="' + refocusToggle.type + '"]')[refocusToggle.at];
+        if (nb) nb.focus();
+    }
 }
 // ===== 右侧功能区 · 整体布局段（制品区微调 / 重新排版 / 恢复默认 / 分图比例 / 文字快选） =====
 function caseRenderEditGlobal() {

@@ -1693,10 +1693,10 @@
                                 <div class="filter-section">
                                     <label class="filter-label">曾经逾期统计</label>
                                     <select id="statsOverdueMode" class="filter-select" onchange="onStatsFilterChange()">
-                                        <option value="all">包含修改截稿日</option>
-                                        <option value="strict">仅原始截稿日</option>
+                                        <option value="all">按最新截稿日</option>
+                                        <option value="strict">按原始截稿日</option>
                                     </select>
-                                    <small class="text-gray">包含修改截稿日：修改过截稿日的企划也计入曾经逾期；仅原始截稿日：仅按首次设置的截稿日判断</small>
+                                    <small class="text-gray">按最新截稿日：以当前截稿日判断，改期后按时完成的不计入曾经逾期；按原始截稿日：以首次截稿日判断，未记录原始截稿日则不计入</small>
                                 </div>
                                 <div class="filter-section">
                                     <label class="filter-label">状态&标签 <span class="filter-selected-count" id="statsStatusCount"></span></label>
