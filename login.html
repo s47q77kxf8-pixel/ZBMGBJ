@@ -170,7 +170,7 @@
         if (msg.toLowerCase().includes('rate limit') || msg.includes('every 60 seconds') || msg.includes('Too many requests')) return '操作过于频繁，请稍等一分钟后再试';
         if (msg.includes('Email link is invalid or has expired') || msg.includes('Token has expired')) return '链接无效或已过期，请重新发起重置密码';
         if (msg.includes('New password should be different')) return '新密码不能与旧密码相同';
-        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch failed')) return '网络连接异常，请检查网络后重试';
+        if (msg.includes('Failed to fetch') || msg.includes('Load failed') || msg.includes('NetworkError') || msg.includes('fetch failed') || msg.includes('Network request failed') || msg.toLowerCase().includes('networkerror')) return '网络连接异常，浏览器未能连上服务器。常见原因：当前网络无法访问云端服务、代理/VPN 未开启或节点不可用、浏览器广告拦截插件拦截了请求。请切换网络或开启代理后重试';
         return msg;
     }
 
