@@ -4371,7 +4371,13 @@ function parseHistoryRoleNames(raw) {
         if (next && isLatinName(cur) && isCjkName(next)) { roles.push({ name: next.trim(), nameEn: cur.trim() }); i++; continue; }
         expandRoleSegment(cur).forEach(function (r) { roles.push(r); });
     }
-    return roles;
+    // 过滤掉纯分隔/标点产物（如「钟离 · 胡桃」被拆出的孤立中圆点「·」），确保只保留真正的名字
+    return roles.filter(function (r) {
+        var n = String((r && r.name) || '').trim();
+        if (!n) return false;
+        r.name = n;
+        return /[0-9A-Za-z\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]/.test(n);
+    });
 }
 // 原作/IP 解析：不拆多段，只识别中/外文对；识别失败整体作为中文 IP
 function parseHistoryIpPair(raw) {
@@ -19363,8 +19369,54 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261001-0440';
+const APP_VERSION = '20261014-0001';
 const APP_CHANGELOG = [
+    {
+        date: '2026-10-14',
+        items: [
+            '【计算页·角色】角色输入框一次填多个名字时（顿号/逗号/空格/斜杠分隔），下拉会把每个名字都识别出来：置顶「一键新建 N 个并选中」可一次把未建档的名字全部入档，也可用「＋ 新建「X」并选中」逐个入档，已建档的名字显示为已选中；被分隔符拆出的孤立标点（如「·」）不再被当成角色名',
+        ]
+    },
+    {
+        date: '2026-10-06',
+        items: [
+            '【案例库-镂空填充】新增制品镂空自动检测与填充：泛洪判定封闭镂空区，支持填色 / 磨砂亚克力质感 / 开口闭合半径，描边、投影、水印按填充后的轮廓处理',
+            '【案例库-自定义分组】新增自定义分组：可新建 / 改名 / 删除分组，拖拽缩略图跨组移动；重新关联订单时自定义分组会保留',
+            '【案例库-水印】水印层支持任意旋转角烘焙：按制品旋转后的视觉外接盒转正再裁剪，平铺方向保持画布方向不随制品旋转',
+            '【案例库-预览】预览缩放控件移入画布列常驻显示（原仅小屏有）；缩略图操作栏桌面端改为悬停浮现，避免挤爆 74px 缩略图',
+        ]
+    },
+    {
+        date: '2026-10-01',
+        items: [
+            '【案例库-制品设置】新增位置 X/Y 可调（修复手动摆位写入后未生效的问题）、轮廓投影透明度与大小、投影 X/Y 偏移、描边 / 扩张描边透明度',
+            '【案例库-投影】投影默认值改为 透明 30% / 大小 20% / X 1% / Y 1%；新增投影「全局跟随」开关（开启后四参数所有制品统一，改一处即全部生效）',
+            '【案例库-数值控件】透明度 / 线条 / 间距 / 大小 / 占位区域等数值参数统一为「滑条 + 可填数值 + 加减按钮」，支持 ↑↓ 键快速步进；水印默认字号与瓦片尺寸调小，大小滑条下限降到 0.2×',
+            '【案例库-修复】修复文字 / 图片水印消失、制品装饰层（描边 / 投影）撑出槽位、以及打开案例整页空白的问题',
+        ]
+    },
+    {
+        date: '2026-09-30',
+        items: [
+            '【案例库-排版】总图与分图页排版大改：按每组制品各自的分图排版分块、行铺满宽度并保持组顺序，整体呈规整矩形、尽量贴合制品区减少留白；极端比例制品图按原图比例居中缩放不再被拉伸；按订单份数展开制品数量',
+            '【案例库-水印】水印只绘制在制品不透明像素上，不再覆盖背景图与文字；支持斜纹 / 斜方格图案；透明度 / 线条 / 间距支持数字直填，间距下限降到 3px',
+            '【案例库-质感与装饰】亚克力磨砂填充更通透（靠高光 / 亮边撑质感）；制品装饰默认样式与描边层级调整',
+            '【案例库-交互】字号设置全部改为 px 直接设置（不再用百分比）；文字堆叠行的点击热区按文字实际大小；总图 / 分图改为按组开关并用眼睛图标；小屏布局改为预览图与调整功能区上下堆叠（原右侧悬浮）',
+        ]
+    },
+    {
+        date: '2026-09-29',
+        items: [
+            '【案例库-水印】新增「仅制品上层」水印：逐制品槽位绘制，背景图与文字保持干净；水印图案新增斜纹 / 斜方格',
+        ]
+    },
+    {
+        date: '2026-09-28',
+        items: [
+            '【案例库-画布】新增画布尺寸比例锁；背景改版（纯色浅灰 / 深灰、两色斜角渐变，底图可隐藏且不丢失）',
+            '【案例库-整体】新增「整体恢复默认」（按钮置顶，保留企划信息）；深灰色板改为 #434343；企划信息底框自适应深浅背景保证可读性；修复恢复默认 / 渲染时表单不重绘、按钮失效的问题',
+        ]
+    },
     {
         date: '2026-09-18',
         items: [
@@ -23287,35 +23339,77 @@ function showRoleMatches(forceAll) {
     // 用独立的关键字过滤（不读输入框，输入框已被勾选结果重写）
     var keyword = rolePickerKeyword || '';
     var matches = getRoleMatchList(keyword, keyword ? 10 : 50);
+
+    // 输入框里可能一次填了多个名字（如「钟离、胡桃、甘雨」）：逐个解析出来，保证每个名字都被识别
+    var inputNames = [];
+    parseHistoryRoleNames(String(roleEl.value || '')).forEach(function (p) {
+        if (p && p.name && inputNames.indexOf(p.name) < 0) inputNames.push(p.name);
+    });
+    // 尚未建档的名字：每个都单独给「新建并选中」入口（原来只取最后一段，多个名字时只露出一个）
+    var newNames = inputNames.filter(function (n) { return !findRoleProfileByName(n); });
+    // 已建档的输入名字并入列表，避免被关键字过滤掉后看不到勾选态
+    var listedRoles = matches.slice();
+    inputNames.forEach(function (n) {
+        if (listedRoles.some(function (r) { return r && r.name === n; })) return;
+        var rec = findRoleProfileByName(n);
+        if (rec) listedRoles.push(rec);
+    });
+
+    function escAttr(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
     var footHtml = '<li class="role-pick-footer">'
         + '<button type="button" class="btn btn-compact" onclick="hideRoleMatchList()">完成</button>'
         + '<span class="role-pick-tip">可多选</span></li>';
-    if (matches.length === 0) {
+
+    var html = '';
+    // 一次填了多个未建档名字：置顶给「一键新建全部」入口，一次点击即全部入档并选中
+    if (newNames.length >= 2) {
+        var allLabel = newNames.map(escAttr).join('、');
+        html += '<li class="project-origin-match-item project-origin-match-add" role="button" tabindex="0" data-new-role-all="1">'
+            + '<span style="color:var(--accent, #4f7cff);font-weight:600;">＋ 一键新建 ' + newNames.length + ' 个（' + allLabel + '）并选中</span>'
+            + '</li>';
+    }
+    html += newNames.map(function (n) {
+        var nEsc = escAttr(n);
+        return '<li class="project-origin-match-item project-origin-match-add" role="button" tabindex="0" data-new-role-name="' + nEsc + '">'
+            + '<span style="color:var(--accent, #4f7cff);font-weight:600;">＋ 新建「' + nEsc + '」并选中</span>'
+            + '</li>';
+    }).join('')
+        + listedRoles.map(function (r) {
+            var nameEsc = escAttr(r.name);
+            var ipEsc = String(r.ip || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+            var picked = rolePickerSelected.has(r.name);
+            return '<li class="project-origin-match-item role-pick-item' + (picked ? ' is-selected' : '') + '" role="button" tabindex="0" data-role-name="' + nameEsc + '">'
+                + '<span class="role-pick-check">' + (picked ? '✓' : '') + '</span>'
+                + '<span class="role-pick-name">' + nameEsc + '</span>'
+                + (ipEsc ? '<span class="role-pick-ip">' + ipEsc + '</span>' : '')
+                + '</li>';
+        }).join('');
+
+    if (!html) {
         var noProfile = (!Array.isArray(roleProfiles) || roleProfiles.length === 0);
-        if (keyword) {
-            var kwEsc = keyword.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-            listEl.innerHTML = '<li class="project-origin-match-item project-origin-match-add" role="button" tabindex="0" onclick="archiveRoleFromCalc()">'
-                + '<span style="color:var(--accent, #4f7cff);font-weight:600;">＋ 新建「' + kwEsc + '」并选中</span>'
-                + '</li>' + footHtml;
-        } else {
-            listEl.innerHTML = '<li class="project-origin-match-empty" style="cursor:default;padding:8px 10px;font-size:12px;color:var(--text-light,#6b7280);">'
-                + (noProfile ? '还没有角色档案，可在「设置 → 角色档案」建档' : '没有匹配的角色')
-                + '</li>' + footHtml;
-        }
+        listEl.innerHTML = '<li class="project-origin-match-empty" style="cursor:default;padding:8px 10px;font-size:12px;color:var(--text-light,#6b7280);">'
+            + (noProfile ? '还没有角色档案，可在「设置 → 角色档案」建档' : '没有匹配的角色')
+            + '</li>' + footHtml;
         wrap.classList.remove('d-none');
         return;
     }
-    listEl.innerHTML = matches.map(function (r) {
-        var nameEsc = (r.name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-        var ipEsc = (r.ip || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-        var picked = rolePickerSelected.has(r.name);
-        return '<li class="project-origin-match-item role-pick-item' + (picked ? ' is-selected' : '') + '" role="button" tabindex="0" data-role-name="' + nameEsc + '">'
-            + '<span class="role-pick-check">' + (picked ? '✓' : '') + '</span>'
-            + '<span class="role-pick-name">' + nameEsc + '</span>'
-            + (ipEsc ? '<span class="role-pick-ip">' + ipEsc + '</span>' : '')
-            + '</li>';
-    }).join('') + footHtml;
+
+    listEl.innerHTML = html + footHtml;
     wrap.classList.remove('d-none');
+    // 一键新建全部：把输入里所有未建档的名字一次性入档并选中
+    listEl.querySelectorAll('[data-new-role-all]').forEach(function (li) {
+        li.addEventListener('click', function () { archiveAllNewRolesFromCalc(); });
+    });
+    // 未建档的输入名字：点「新建并选中」即单独入档并存进本次多选
+    listEl.querySelectorAll('[data-new-role-name]').forEach(function (li) {
+        li.addEventListener('click', function () {
+            var name = (li.getAttribute('data-new-role-name') || '')
+                .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+            archiveOneRoleFromCalc(name);
+        });
+    });
     listEl.querySelectorAll('.role-pick-item').forEach(function (li) {
         li.addEventListener('click', function () {
             var name = li.getAttribute('data-role-name') || '';
@@ -23368,20 +23462,42 @@ function toggleRolePicker() {
     showRoleMatches(true);
 }
 
-// 下拉中的「＋ 新建「XXX」并选中」：把输入的角色入档并加入当前多选
-function archiveRoleFromCalc() {
+// 下拉里针对「某一个」未建档名字的「新建并选中」：只给这个名字入档（一次填多个名字时逐个处理）
+function archiveOneRoleFromCalc(name) {
+    var key = String(name || '').trim();
+    if (!key) return;
+    var ipEl = document.getElementById('projectOrigin');
+    var ipp = parseHistoryIpPair(ipEl ? String(ipEl.value || '') : '');
+    rolePickerSelected.add(key);
+    if (!findRoleProfileByName(key)) {
+        var payload = { name: key };
+        var parsed = parseHistoryRoleNames(key);
+        if (parsed.length && parsed[0].nameEn) payload.nameEn = parsed[0].nameEn;
+        if (ipp.ip) payload.ip = ipp.ip;
+        if (ipp.ipEn) payload.ipEn = ipp.ipEn;
+        if (upsertRoleProfile(payload)) {
+            saveRoleProfiles();
+            if (typeof renderRoleList === 'function') renderRoleList();
+            if (typeof renderRoleHistoryPrompt === 'function') renderRoleHistoryPrompt();
+            showToast('已入档：' + key, 'ok');
+        }
+    }
+    applyRolePickerSelection();
+    showRoleMatches(false); // 刷新列表（新角色已出现且为勾选态），保持打开
+}
+
+// 下拉里的「一键新建全部」：把输入框里所有未建档的名字一次性入档并加入多选
+function archiveAllNewRolesFromCalc() {
     var roleEl = document.getElementById('characterName');
     var raw = roleEl ? String(roleEl.value || '').trim() : '';
-    if (!raw) { showToast('请先填写角色名', 'warn'); return; }
     var roles = parseHistoryRoleNames(raw);
     if (!roles.length) { showToast('角色名无法识别', 'warn'); return; }
     var ipEl = document.getElementById('projectOrigin');
     var ipp = parseHistoryIpPair(ipEl ? String(ipEl.value || '') : '');
-
     var createdNames = [];
     roles.forEach(function (p) {
         if (!p.name) return;
-        rolePickerSelected.add(p.name);      // 无论新旧都加入本次多选
+        rolePickerSelected.add(p.name); // 无论新旧都加入本次多选
         if (findRoleProfileByName(p.name)) return;
         var payload = { name: p.name };
         if (p.nameEn) payload.nameEn = p.nameEn;
@@ -23392,6 +23508,7 @@ function archiveRoleFromCalc() {
     if (createdNames.length) {
         saveRoleProfiles();
         if (typeof renderRoleList === 'function') renderRoleList();
+        if (typeof renderRoleHistoryPrompt === 'function') renderRoleHistoryPrompt();
         showToast('已入档：' + createdNames.join('、'), 'ok');
     }
     applyRolePickerSelection();
