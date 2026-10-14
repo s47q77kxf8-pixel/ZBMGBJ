@@ -11980,8 +11980,44 @@ html.theme-dark .custom-select-dropdown {
     color: #333;
     flex-shrink: 0;
 }
+/* 组名可就地编辑：给一点可点击暗示（虚线下划线 + 手型光标） */
+.module-symbol[data-module-name] {
+    cursor: text;
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.22);
+}
+.module-symbol[data-module-name]:hover {
+    border-bottom-color: rgba(0, 0, 0, 0.45);
+}
+/* 就地编辑输入框：尺寸/字重与 .module-symbol 对齐，避免换行跳动 */
+.module-name-input {
+    flex-shrink: 0;
+    width: 7.2em;
+    max-width: 100%;
+    box-sizing: border-box;
+    font-size: 0.82rem;
+    line-height: 1.2;
+    font-weight: bold;
+    font-family: inherit;
+    color: #333;
+    background: var(--bg-color, #fff);
+    border: 1px solid var(--primary-color, #111);
+    border-radius: 3px;
+    padding: 0 0.2rem;
+    outline: none;
+}
 html.theme-dark .module-symbol {
     color: #e5e7eb;
+}
+html.theme-dark .module-symbol[data-module-name] {
+    border-bottom-color: rgba(255, 255, 255, 0.28);
+}
+html.theme-dark .module-symbol[data-module-name]:hover {
+    border-bottom-color: rgba(255, 255, 255, 0.55);
+}
+html.theme-dark .module-name-input {
+    color: #e5e7eb;
+    background: #27272a;
+    border-color: #52525b;
 }
 .module-item-title {
     flex: 1;

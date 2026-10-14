@@ -131,12 +131,15 @@
         <div style="margin-top:10px;text-align:center;">
             <a href="#" id="linkForgot" onclick="requestPasswordReset(); return false;" style="font-size:12px;color:var(--primary);text-decoration:underline;">忘记密码？</a>
         </div>
+        <div style="margin-top:6px;text-align:center;">
+            <a href="#" onclick="runLoginDiagnosis(); return false;" style="font-size:12px;color:var(--text-light,#6b7280);text-decoration:underline;">登录不了？点这里诊断</a>
+        </div>
         <div id="message"></div>
     </div>
 </div>
 
-<!-- 引入 Supabase SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- 本地内置 Supabase SDK（避免依赖 cdn.jsdelivr.net，海外 CDN 在国内网络常被拦截） -->
+<script src="vendor/supabase-js.umd.min.js?v=2.58.0"></script>
 <script src="supabase-config.js?v=20250213"></script>
 <script>
     // 使用全局配置的 Supabase 客户端（避免重复声明）
@@ -199,7 +202,7 @@
 
     async function handleAuth(type) {
         if (!supabaseClient) {
-            return showMessage('系统初始化失败，请刷新页面重试', 'error');
+            return showMessage(initFailureMessage(), 'error');
         }
         
         const email = document.getElementById('email').value;
@@ -318,7 +321,7 @@
 
     async function requestPasswordReset() {
         if (!supabaseClient) {
-            return showMessage('系统初始化失败，请刷新页面重试', 'error');
+            return showMessage(initFailureMessage(), 'error');
         }
 
         const email = document.getElementById('email').value;
@@ -345,6 +348,79 @@
             setBtnLoading(false);
             return showMessage('发送失败：' + (e && e.message ? translateAuthError(e.message) : '网络错误'), 'error');
         }
+    }
+
+    // 初始化失败时给出具体原因，方便用户/开发者定位
+    function initFailureMessage() {
+        if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+            return '登录失败：Supabase SDK 未加载（vendor/supabase-js.umd.min.js 缺失或加载失败）。请确认部署包含 vendor 目录，或点「登录不了？点这里诊断」查看详情';
+        }
+        if (!window.__SUPABASE__) {
+            return '登录失败：配置文件 supabase-config.js 未加载。请点「登录不了？点这里诊断」查看详情';
+        }
+        return '登录失败：客户端初始化异常（配置不完整）。请点「登录不了？点这里诊断」查看详情';
+    }
+
+    // 一键诊断：逐项检查 SDK、配置、客户端与云端连通性，并在页面上给出结论（可截图回传）
+    async function runLoginDiagnosis() {
+        var mark = function (good) { return good ? '✅' : '❌'; };
+
+        var sdkOk = !!(window.supabase && typeof window.supabase.createClient === 'function');
+        var conf = window.__SUPABASE__ || null;
+        var confOk = !!(conf && conf.SUPABASE_URL && conf.SUPABASE_ANON_KEY);
+        var clientOk = !!supabaseClient;
+
+        var conn = null;
+        if (confOk) {
+            var base = String(conf.SUPABASE_URL).replace(/\/$/, '');
+            conn = { base: base, ok: false, text: '' };
+            try {
+                var ctl = ('AbortController' in window) ? new AbortController() : null;
+                var tid = ctl ? setTimeout(function () { ctl.abort(); }, 8000) : null;
+                var t0 = Date.now();
+                var res = await fetch(base + '/auth/v1/health', {
+                    method: 'GET', cache: 'no-store',
+                    signal: ctl ? ctl.signal : undefined
+                });
+                if (tid) clearTimeout(tid);
+                var ms = Date.now() - t0;
+                conn.ok = !!res.ok;
+                conn.text = 'HTTP ' + res.status + '（' + ms + 'ms）';
+            } catch (e) {
+                if (tid) clearTimeout(tid);
+                conn.ok = false;
+                var em = (e && e.name === 'AbortError') ? '超时（8 秒无响应）' : (e && e.message ? e.message : String(e));
+                conn.text = '连接失败 —— ' + em;
+            }
+        }
+
+        var lines = [];
+        lines.push('【登录故障诊断】' + new Date().toLocaleString());
+        lines.push(mark(navigator.onLine) + ' 设备网络状态：' + (navigator.onLine ? '在线' : '离线'));
+        lines.push(mark(sdkOk) + ' Supabase SDK：' + (sdkOk ? '已加载' : '未加载（vendor/supabase-js.umd.min.js 缺失或加载失败）'));
+        lines.push(mark(confOk) + ' 配置文件 supabase-config.js：' + (confOk ? '已加载' : '缺失或内容不完整'));
+        lines.push(mark(clientOk) + ' 客户端初始化 supabaseClient：' + (clientOk ? '成功' : '失败'));
+        if (conn) {
+            lines.push(mark(conn.ok) + ' 云端连通性 ' + conn.base + '：' + conn.text);
+            if (!conn.ok) {
+                lines.push('   → 当前网络/代理无法访问 supabase.co（海外域名，国内直连常被拦截）。请开启代理或 VPN 后重试');
+            }
+        } else if (!confOk) {
+            lines.push('❌ 云端连通性：跳过（配置缺失，无法确定云端地址）');
+        }
+        lines.push('');
+        if (sdkOk && confOk && clientOk && conn && conn.ok) {
+            lines.push('结论：初始化与云端连接均正常。若仍登录不上，请核对邮箱/密码，或用「忘记密码」重置。');
+        } else {
+            lines.push('结论：上面标 ❌ 的环节就是登录不了的原因（请对照该行的提示处理）。');
+        }
+        lines.push('（可截图这一页发给开发者）');
+
+        var box = document.getElementById('message');
+        box.className = 'message error';
+        box.style.whiteSpace = 'pre-wrap';
+        box.style.textAlign = 'left';
+        box.textContent = lines.join('\n');
     }
 
     async function initPasswordRecoveryIfNeeded() {

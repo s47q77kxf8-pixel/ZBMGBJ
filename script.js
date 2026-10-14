@@ -59,6 +59,37 @@ function moduleSymbol(mtype, seq) {
     var label = MODULE_LABELS[(Number(seq) || 1) - 1] || (Number(seq) || 1);
     return (mtype === 'gift' ? '赠品组' : '制品组') + label;
 }
+// 取组自定义名（用户点击组名就地改的那个）；未设置/纯空白一律返回空串，调用方自行回退默认名
+// 与默认名（「制品组一」/「赠品组一」）相同的值视作未自定义：旧数据/模板回填可能带上默认名，
+// 若照单全收会让「改过名」判定误命中，进而把小票的「组N」档错当成自定义名
+function moduleCustomName(mod) {
+    if (!mod) return '';
+    var name = String(mod.name == null ? '' : mod.name).trim();
+    if (!name) return '';
+    return name === moduleSymbol(mod.mtype, mod.seq) ? '' : name;
+}
+// 组的展示名：有自定义名用自定义名，否则回退默认「制品组一」/「赠品组一」
+function moduleDisplayName(mod) {
+    if (!mod) return '';
+    return moduleCustomName(mod) || moduleSymbol(mod.mtype, mod.seq);
+}
+// 小票组标签三档（制品/赠品共用，保证两侧口径一致）：
+//   ① 合并组 → 合并标签「N组」（或桶内统一的自定义名）
+//   ② 多组未合并 → 自定义名；无自定义名回退「组N」
+//   ③ 真单组 → 「制品」/「赠品」（单组不暴露自定义名，按产品既定口径）
+// 入参：{ mergedLabel, customName, multiModule, modNum, singleLabel }
+function receiptModuleLabelHtml(opts) {
+    opts = opts || {};
+    var mergedLabel = opts.mergedLabel;
+    if (mergedLabel) {
+        return '<span class="receipt-module-sym">' + escapeHtml(mergedLabel) + '</span>';
+    }
+    if (opts.multiModule) {
+        var custom = String(opts.customName == null ? '' : opts.customName).trim();
+        return '<span class="receipt-module-sym">' + (custom ? escapeHtml(custom) : '组' + (opts.modNum == null ? '' : opts.modNum)) + '</span>';
+    }
+    return String(opts.singleLabel == null ? '' : opts.singleLabel);
+}
 
 // —— 制品「显示序号」重编：按模块顺序（组一→组二→…）连续编号 ——
 // 背景：item.productIndex 在创建时就固定为「全局数组下标+1」，与模块分组无关。
@@ -421,7 +452,8 @@ function collectDuplicateModuleCoeffGroups() {
         if (!hasItem) return;
         var r = moduleCoefficientResult(mod, upMode, downMode);
         // 同模系数也纳入合并判定：只有加价/折扣明细相同且同模档位也一致时才合并
-        var key = mod.mtype + '|' + moduleReasonSignature(r.upReasons, r.downReasons) + '|sm:' + moduleSameModelCoefficient(mod);
+        // 组自定义名也纳入判定：改过名的组不再与他组合并，否则改名会被合并标签（「二组」）盖掉
+        var key = mod.mtype + '|' + moduleReasonSignature(r.upReasons, r.downReasons) + '|sm:' + moduleSameModelCoefficient(mod) + '|nm:' + moduleCustomName(mod);
         (buckets[key] = buckets[key] || []).push({ mod: mod, upReasons: r.upReasons, downReasons: r.downReasons });
     });
     var groups = [];
@@ -510,7 +542,7 @@ function handleCalculatorQuoteClick() {
     var listEl = document.getElementById('moduleMergeConfirmList');
     if (listEl) {
         listEl.innerHTML = groups.map(function (arr) {
-            var names = arr.map(function (x) { return moduleSymbol(x.mod.mtype, x.mod.seq); }).join('、');
+            var names = arr.map(function (x) { return moduleDisplayName(x.mod); }).join('、');
             var descParts = [];
             var _uniqReasonText = function (side) {
                 var seen = {};
@@ -562,7 +594,7 @@ function renderModulePanels(mtype) {
         var tag = (snapshot.up - 1 > 0.000001 || snapshot.down - 1 > 0.000001)
             ? '<span class="module-expansion-tag">×' + snapshot.up.toFixed(2) + ' / ×' + snapshot.down.toFixed(2) + '</span>' : '';
         html += '<div class="module-item" data-module-id="' + mod.id + '">'
-            + '<div class="module-item-header"><span class="module-symbol">' + moduleSymbol(mtype, mod.seq) + '</span>'
+            + '<div class="module-item-header"><span class="module-symbol" data-module-name="' + mod.id + '" title="点击可改组名">' + escapeHtml(moduleDisplayName(mod)) + '</span>'
             + '<span class="module-item-title">' + tag + '</span>'
             + '<button type="button" class="icon-action-btn module-collapse-btn" onclick="toggleModuleCollapse(\'' + mod.id + '\')" title="折叠/展开">▸</button>'
             + '<button type="button" class="icon-action-btn module-duplicate-btn" onclick="duplicateModuleGroup(\'' + mod.id + '\')" title="复制此组（含组内全部' + (mtype === 'product' ? mgL('{制品}') : '赠品') + '与组级系数设置）">'
@@ -604,6 +636,13 @@ function renderModulePanels(mtype) {
         }
     });
     bindModuleExpansionChange(mtype, container);
+    // 组名就地编辑：点击组名（.module-symbol）进入编辑，不影响折叠/复制/删除按钮
+    container.querySelectorAll('.module-symbol[data-module-name]').forEach(function (el) {
+        el.onclick = function (e) {
+            e.stopPropagation();
+            startModuleRename(el.getAttribute('data-module-name'));
+        };
+    });
 }
 function bindModuleExpansionChange(mtype, container) {
     if (!container) return;
@@ -635,6 +674,59 @@ function toggleModuleCollapse(modId) {
     el.classList.toggle('module-collapsed');
     var btn = el.querySelector('.module-collapse-btn');
     if (btn) btn.textContent = el.classList.contains('module-collapsed') ? '▾' : '▸';
+}
+// —— 组名就地编辑：点击计算页组名 → 原地变输入框；Enter/失焦保存，Esc 取消，清空恢复默认名 ——
+// 自定义名存进 orderModules[].name，随 calculatePrice 落入 quoteData.modules 与逐条 moduleName，
+// 小票据此替换原有的「组N」标签（单组仍显示「制品/赠品」，见 prodModuleCloseHtml）
+let _moduleRenameCtx = null; // { modId, span, input }
+function startModuleRename(modId) {
+    if (_moduleRenameCtx) return; // 已在编辑中，忽略重复点击
+    var mod = findAnyModule(modId);
+    if (!mod) return;
+    var span = document.querySelector('.module-symbol[data-module-name="' + modId + '"]');
+    if (!span) return;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'module-name-input';
+    input.maxLength = 20;
+    // 预填：已改过名就填自定义名，否则填默认名（如「制品组一」）；清空即恢复默认
+    input.value = moduleCustomName(mod) || moduleSymbol(mod.mtype, mod.seq);
+    input.setAttribute('aria-label', '组名');
+    _moduleRenameCtx = { modId: modId, span: span, input: input };
+    span.style.display = 'none';
+    span.parentNode.insertBefore(input, span.nextSibling);
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); commitModuleRename(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancelModuleRename(); }
+    });
+    // 失焦即保存（点空白、点其他按钮都算确认）
+    input.addEventListener('blur', function () { commitModuleRename(); });
+    input.focus();
+    input.select();
+}
+function commitModuleRename() {
+    var ctx = _moduleRenameCtx;
+    if (!ctx) return;
+    _moduleRenameCtx = null; // 先清状态，避免 blur 与 Enter 重复提交
+    var mod = findAnyModule(ctx.modId);
+    var name = String(ctx.input.value == null ? '' : ctx.input.value).trim().slice(0, 20);
+    if (mod) {
+        // 与默认名相同也视作「未自定义」，避免落库一个等于默认名的冗余字段
+        var isDefault = !name || name === moduleSymbol(mod.mtype, mod.seq);
+        mod.name = isDefault ? '' : name;
+    }
+    ctx.span.textContent = mod ? moduleDisplayName(mod) : name;
+    ctx.span.style.display = '';
+    if (ctx.input.parentNode) ctx.input.parentNode.removeChild(ctx.input);
+    // 组名写回订单快照并刷新小票（仅刷新显示，不弹保存方式选择）
+    if (typeof calculatePrice === 'function') calculatePrice(undefined, undefined, undefined, true);
+}
+function cancelModuleRename() {
+    var ctx = _moduleRenameCtx;
+    if (!ctx) return;
+    _moduleRenameCtx = null;
+    ctx.span.style.display = '';
+    if (ctx.input.parentNode) ctx.input.parentNode.removeChild(ctx.input);
 }
 function addProductModule() {
     normalizeOrderModules();
@@ -689,6 +781,8 @@ function duplicateModuleGroup(modId) {
         id: newId,
         mtype: mod.mtype,
         seq: seq,
+        // 组名一并继承（与组级系数一致）：复制出的新组默认沿用原组名，可再单独改
+        name: mod.name || '',
         upSelections: JSON.parse(JSON.stringify(mod.upSelections || [])),
         downSelections: JSON.parse(JSON.stringify(mod.downSelections || [])),
         sameModelSelection: mod.sameModelSelection ? JSON.parse(JSON.stringify(mod.sameModelSelection)) : undefined,
@@ -734,7 +828,7 @@ function openDeleteModuleChoice(mtype, modId) {
     var count = (mtype === 'gift' ? gifts : products).filter(function (x) { return x && String(x.moduleId) === String(modId); }).length;
     _deleteModuleCtx = { mtype: mtype, modId: modId };
     var nameEl = document.getElementById('deleteModuleChosenName');
-    if (nameEl) nameEl.textContent = moduleSymbol(mod.mtype, mod.seq);
+    if (nameEl) nameEl.textContent = moduleDisplayName(mod);
     var cntEl = document.getElementById('deleteModuleChosenCount');
     if (cntEl) cntEl.textContent = ' ' + (mtype === 'gift' ? '赠品' : '制品') + ' ' + count + ' 件';
     var modal = document.getElementById('deleteModuleChoiceModal');
@@ -777,7 +871,7 @@ function deleteModuleChoiceMerge() {
         gifts.forEach(function (g) { try { renderGift(g); } catch (e) { /* ignore */ } });
     }
     if (typeof calculatePrice === 'function') calculatePrice(undefined, undefined, undefined, true);
-    if (typeof showGlobalToast === 'function') showGlobalToast('已删除「' + (mtype === 'gift' ? '赠品组' : '制品组') + '」，制品/赠品并入「' + moduleSymbol(target.mtype, target.seq) + '」');
+    if (typeof showGlobalToast === 'function') showGlobalToast('已删除「' + (mtype === 'gift' ? '赠品组' : '制品组') + '」，制品/赠品并入「' + moduleDisplayName(target) + '」');
 }
 
 // 选择「连同制品/赠品一并删除」：移除本组及其下所有制品/赠品
@@ -13117,7 +13211,7 @@ function showConvertMenu(itemType, itemId, btnEl) {
             var opt = document.createElement('button');
             opt.type = 'button';
             opt.className = 'convert-menu-item';
-            opt.textContent = moduleSymbol(m.mtype, m.seq);
+            opt.textContent = moduleDisplayName(m);
             opt.onclick = function () {
                 closeConvertMenu();
                 moveItemToModule(itemType, itemId, m.id);
@@ -13147,7 +13241,7 @@ function showConvertMenu(itemType, itemId, btnEl) {
         var opt = document.createElement('button');
         opt.type = 'button';
         opt.className = 'convert-menu-item';
-        opt.textContent = moduleSymbol(m.mtype, m.seq);
+        opt.textContent = moduleDisplayName(m);
         opt.onclick = function () {
             closeConvertMenu();
             if (itemType === 'product') convertProductToGift(itemId, m.id);
@@ -13633,7 +13727,8 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         productPriceInfo.productTotalCoeff = effectiveProductTotal;
         // 模块级扩展信息（小票/导出/结算按制品读取）
         productPriceInfo.moduleId = (prodModule && prodModule.id) || 'P1';
-        productPriceInfo.moduleName = (prodModule && moduleSymbol(prodModule.mtype, prodModule.seq)) || moduleSymbol('product', 1);
+        // 组名可自定义：有自定义名时按自定义名落库（小票/导出/结算读同一字段），否则回退默认「制品组N」
+        productPriceInfo.moduleName = (prodModule && moduleDisplayName(prodModule)) || moduleSymbol('product', 1);
         productPriceInfo.moduleUp = prodCoeff.up;
         productPriceInfo.moduleDown = prodCoeff.down;
         productPriceInfo.moduleUpReasons = prodCoeff.upReasons;
@@ -13885,7 +13980,7 @@ function calculatePrice(saveAsNew, skipReceipt, openSaveChoiceModal, onlyRefresh
         giftPriceInfo.giftBaseBeforeCoeff = giftOriginalPrice;         // 系数前基础原价（供模块内“原因金额”验算使用）
         // 模块级扩展信息（小票/导出/结算按赠品读取）
         giftPriceInfo.moduleId = (giftModule && giftModule.id) || 'G1';
-        giftPriceInfo.moduleName = (giftModule && moduleSymbol(giftModule.mtype, giftModule.seq)) || moduleSymbol('gift', 1);
+        giftPriceInfo.moduleName = (giftModule && moduleDisplayName(giftModule)) || moduleSymbol('gift', 1);
         giftPriceInfo.moduleUp = giftEff.up;
         giftPriceInfo.moduleDown = giftEff.down;
         giftPriceInfo.moduleUpReasons = giftEff.upReasons;
@@ -14850,7 +14945,9 @@ function generateQuote() {
             if (!mtype) return;
             var rep = moduleRepReasons[mid] || {};
             var sig = moduleReasonSignature(rep.up, rep.down);
-            var key = mtype + '|' + sig;
+            // 组自定义名参与分桶：改过名的组不与其他组并成「N组」，否则自定义名会被合并标签盖掉
+            var _cmod = findAnyModule(mid);
+            var key = mtype + '|' + sig + '|nm:' + moduleCustomName(_cmod);
             (buckets[key] = buckets[key] || []).push(mid);
         });
         Object.keys(buckets).forEach(function (key) {
@@ -14863,6 +14960,10 @@ function generateQuote() {
             var _n = ids.length;
             var _nTxt = _n <= 10 ? _cnNum[_n] : String(_n);
             moduleMergeLabels[ids[0]] = _nTxt + '组';
+            // 合并桶内的组若「同名」（分桶键已含组名，故同名才会落进同一桶），
+            // 合并后直接沿用该自定义名，避免用户刚改的名字被「N组」盖掉
+            var _buckCustom = moduleCustomName(findAnyModule(ids[0]));
+            if (_buckCustom) moduleMergeLabels[ids[0]] = _buckCustom;
         });
         // 把同系数组的数据按代表模块合并，后续小计/原因行统一走代表模块
         var _newBase = {}, _newFinal = {}, _newCoeff = {}, _newRep = {};
@@ -15015,14 +15116,16 @@ function generateQuote() {
         // 注意：必须在合并「之前」的多组集合（prodModuleSet）上判断，否则同系数合并后 _prodMergeSet.size 变 1，
         // multiModuleP 会误判为单组，导致把「制品」这种单组专有词打到多组小票上（多组显示异常的根因）
         var _mergedLabel = moduleMergeLabels[curProdMod];
-        var symLabel;
-        if (_mergedLabel) {
-            symLabel = '<span class="receipt-module-sym">' + _mergedLabel + '</span>';
-        } else if (multiModuleP) {
-            symLabel = '<span class="receipt-module-sym">组' + prodModNum + '</span>';
-        } else {
-            symLabel = '制品';
-        }
+        // 自定义组名：改过名的组不参与同系数合并（见 collectDuplicateModuleCoeffGroups / 合并分桶），
+        // 因此命中自定义名的必是未合并组，替换掉「组N」这一档即可
+        var _customSym = moduleCustomName(findAnyModule(curProdMod));
+        var symLabel = receiptModuleLabelHtml({
+            mergedLabel: _mergedLabel,
+            customName: _customSym,
+            multiModule: multiModuleP,
+            modNum: prodModNum,
+            singleLabel: '制品'
+        });
         var finalTotal = Number(moduleFinalTotals[curProdMod]);
         if (!isFinite(finalTotal)) finalTotal = baseTotal + upSum - downSum;
         var showSubtotal = Math.abs(baseTotal - finalTotal) >= 0.005;
@@ -15393,10 +15496,12 @@ function generateQuote() {
             // （与 prodModuleCloseHtml 口径一致，避免多组赠品显示成单组词「赠品」）
             var giftSymLabel;
             var _giftMergedLabel = moduleMergeLabels[curGiftMod];
+            // 自定义组名：与 prodModuleCloseHtml 同口径，仅替换未合并的「组N」档
+            var _giftCustomSym = moduleCustomName(findAnyModule(curGiftMod));
             if (_giftMergedLabel) {
-                giftSymLabel = '<span class="receipt-module-sym">' + _giftMergedLabel + '</span>';
+                giftSymLabel = '<span class="receipt-module-sym">' + escapeHtml(_giftMergedLabel) + '</span>';
             } else if (multiModuleG) {
-                giftSymLabel = '<span class="receipt-module-sym">组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '') + '</span>';
+                giftSymLabel = '<span class="receipt-module-sym">' + (_giftCustomSym ? escapeHtml(_giftCustomSym) : '组' + String(curGiftModSym || '').replace(/^(制品组|赠品组)/, '')) + '</span>';
             } else {
                 giftSymLabel = '赠品';
             }
@@ -19369,12 +19474,14 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261014-0001';
+const APP_VERSION = '20261014-0002';
 const APP_CHANGELOG = [
     {
         date: '2026-10-14',
         items: [
             '【计算页·角色】角色输入框一次填多个名字时（顿号/逗号/空格/斜杠分隔），下拉会把每个名字都识别出来：置顶「一键新建 N 个并选中」可一次把未建档的名字全部入档，也可用「＋ 新建「X」并选中」逐个入档，已建档的名字显示为已选中；被分隔符拆出的孤立标点（如「·」）不再被当成角色名',
+            '【登录·稳定性】Supabase SDK 改为本地内置（vendor/supabase-js.umd.min.js），不再依赖 cdn.jsdelivr.net；修复部分网络（海外 CDN 被拦截）下登录页点「登录」报「系统初始化失败」的问题',
+            '【登录·故障诊断】登录页新增「登录不了？点这里诊断」，一键逐项自检 设备网络 / Supabase SDK / 配置文件 / 客户端初始化 / 云端连通性（实测请求），直接给出结论，便于截图排查；同时登录失败提示会具体指出是 SDK 未加载还是配置缺失',
         ]
     },
     {
@@ -26179,6 +26286,12 @@ function saveTemplate() {
         name: templateName,
         products: JSON.parse(JSON.stringify(products)),
         gifts: JSON.parse(JSON.stringify(gifts)),
+        // 组结构随模板保存（含组自定义名/组级系数/同模档位）：
+        // 与 orderModules 结构一致，旧模板无此字段时回退「按产品条目重建」逻辑
+        modules: (function () {
+            try { normalizeOrderModules(); } catch (e) { /* ignore */ }
+            return JSON.parse(JSON.stringify(orderModules || []));
+        })(),
         settings: {
             usageType: usageType,
             urgentType: urgentType,
@@ -26276,6 +26389,18 @@ function loadSelectedTemplate() {
     if (productsContainer) productsContainer.innerHTML = '';
     if (giftsContainer) giftsContainer.innerHTML = '';
     
+    // 恢复模板里的组结构（含组自定义名）：须在渲染制品前重建面板，否则卡片挂不进组容器。
+    // 旧模板无 modules 字段时退回默认组（按首组归集，与旧行为一致）
+    try {
+        orderModules = [];
+        orderModuleSeq = { product: 0, gift: 0 };
+        var _tplMods = (Array.isArray(template.modules) && template.modules.length) ? template.modules : buildDefaultModules();
+        _tplMods.forEach(function (m) { if (m && m.mtype) pushOrderModule(m); });
+        normalizeOrderModules();
+        renderModulePanels('product');
+        renderModulePanels('gift');
+    } catch (_eTplMods) { /* 组结构恢复失败不阻断模板加载 */ }
+    
     // 加载模板中的制品
     if (template.products && Array.isArray(template.products)) {
         template.products.forEach(productData => {
@@ -26287,7 +26412,9 @@ function loadSelectedTemplate() {
                 quantity: productData.quantity || 1,
                 sameModel: productData.sameModel !== undefined ? productData.sameModel : true,
                 extraFeeIds: Array.isArray(productData.extraFeeIds) ? productData.extraFeeIds : (productData.hasBackground ? ['bg'] : []),
-                processes: productData.processes || {}
+                processes: productData.processes || {},
+                // 组归属随模板恢复（旧模板无该字段时归入首组）
+                moduleId: productData.moduleId || (firstOrderModule('product') && firstOrderModule('product').id) || null
             };
             products.push(product);
             renderProduct(product);
@@ -26304,7 +26431,9 @@ function loadSelectedTemplate() {
                 sides: giftData.sides || 'single',
                 quantity: giftData.quantity || 1,
                 sameModel: giftData.sameModel !== undefined ? giftData.sameModel : true,
-                processes: giftData.processes || {}
+                processes: giftData.processes || {},
+                // 组归属随模板恢复（旧模板无该字段时归入首组）
+                moduleId: giftData.moduleId || (firstOrderModule('gift') && firstOrderModule('gift').id) || null
             };
             gifts.push(gift);
             renderGift(gift);
