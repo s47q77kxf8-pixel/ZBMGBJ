@@ -140,6 +140,7 @@
 
 <!-- 本地内置 Supabase SDK（避免依赖 cdn.jsdelivr.net，海外 CDN 在国内网络常被拦截） -->
 <script src="vendor/supabase-js.umd.min.js?v=2.58.0"></script>
+<script src="storage.js?v=20261015-0002"></script>
 <script src="supabase-config.js?v=20250213"></script>
 <script>
     // 使用全局配置的 Supabase 客户端（避免重复声明）
@@ -171,9 +172,12 @@
         if (msg.includes('Signups not allowed')) return '当前未开放注册，请联系管理员';
         if (msg.includes('Unable to validate email address') || msg.toLowerCase().includes('invalid format')) return '邮箱格式不正确，请检查后重试';
         if (msg.toLowerCase().includes('rate limit') || msg.includes('every 60 seconds') || msg.includes('Too many requests')) return '操作过于频繁，请稍等一分钟后再试';
+        const secMatch = msg.match(/you can only request this after (\d+)\s*seconds?/i);
+        if (secMatch) return '操作过于频繁，请等待 ' + secMatch[1] + ' 秒后再试（该邮箱的邮件发送有频率限制，期间重复点击无效）';
         if (msg.includes('Email link is invalid or has expired') || msg.includes('Token has expired')) return '链接无效或已过期，请重新发起重置密码';
         if (msg.includes('New password should be different')) return '新密码不能与旧密码相同';
         if (msg.includes('Failed to fetch') || msg.includes('Load failed') || msg.includes('NetworkError') || msg.includes('fetch failed') || msg.includes('Network request failed') || msg.toLowerCase().includes('networkerror')) return '网络连接异常，浏览器未能连上服务器。常见原因：当前网络无法访问云端服务、代理/VPN 未开启或节点不可用、浏览器广告拦截插件拦截了请求。请切换网络或开启代理后重试';
+        if (/exceeded the quota|QuotaExceeded|storage quota/i.test(msg)) return '本地存储已满（localStorage 超过约 5MB 配额），登录令牌写不进去导致无法登录。请在浏览器按 F12 打开控制台，执行 Object.entries(localStorage).map(([k,v])=>[k,v.length]).sort((a,b)=>b[1]-a[1]).slice(0,10) 先查看各键占用，删掉体积最大的键（多是图片/案例缓存）后重试；或清除本浏览器对该站点的数据（会清掉未同步的本地数据）';
         return msg;
     }
 
@@ -380,12 +384,14 @@
                 var t0 = Date.now();
                 var res = await fetch(base + '/auth/v1/health', {
                     method: 'GET', cache: 'no-store',
+                    headers: { apikey: conf.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + conf.SUPABASE_ANON_KEY },
                     signal: ctl ? ctl.signal : undefined
                 });
                 if (tid) clearTimeout(tid);
                 var ms = Date.now() - t0;
-                conn.ok = !!res.ok;
-                conn.text = 'HTTP ' + res.status + '（' + ms + 'ms）';
+                // 只要能拿到 HTTP 响应就说明服务「可达」；非 200 多为密钥/权限或限流，不算连接失败
+                conn.ok = true;
+                conn.text = 'HTTP ' + res.status + '（' + ms + 'ms）' + (res.ok ? '，可正常访问' : '，服务可达（非 200，通常为密钥/权限或限流）');
             } catch (e) {
                 if (tid) clearTimeout(tid);
                 conn.ok = false;

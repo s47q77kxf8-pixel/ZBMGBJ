@@ -9956,6 +9956,12 @@ html.theme-dark .settlement-preview {
     background-color: rgba(59, 130, 246, 0.1) !important;
 }
 
+.record-tag-case {
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #7c3aed;
+    background-color: rgba(139, 92, 246, 0.08);
+}
+
 .record-tag-custom {
     border-color: rgba(249, 115, 22, 0.35);
     color: #c2410c;

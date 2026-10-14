@@ -1957,6 +1957,11 @@
                         </span>
                     </button>
                     <hr style="margin:8px 0;border:0;border-top:1px solid var(--border-color);">
+                    <button type="button" class="btn secondary w-full" onclick="showSettingsSubPage('storageUsage')" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 12px;border:none;background:transparent;box-shadow:none;text-align:left;color:inherit;">
+                        <span style="font-size:15px;font-weight:600;">存储占用</span>
+                        <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
+                    </button>
+                    <hr style="margin:8px 0;border:0;border-top:1px solid var(--border-color);">
                     <button type="button" class="btn secondary w-full" onclick="openAnonymousFeedbackBoard()" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 12px;border:none;background:transparent;box-shadow:none;text-align:left;color:inherit;">
                         <span style="font-size:15px;font-weight:600;">意见反馈</span>
                         <span aria-hidden="true" style="font-size:22px;line-height:1;opacity:0.5;">›</span>
@@ -2824,6 +2829,25 @@
                         <div id="caseLibraryGrid" class="case-library-grid"></div>
                     </div>
                 </div>
+                <div id="settingsSubPage-storageUsage" class="settings-sub-page d-none">
+                    <div class="section">
+                        <div class="settings-subpage-header mb-4">
+                            <button class="btn secondary btn-compact settings-subpage-close" onclick="hideSettingsSubPage()" aria-label="关闭" title="关闭">×</button>
+                            <h2>存储占用</h2>
+                            <div class="settings-subpage-actions d-flex items-center gap-2">
+                                <button class="btn secondary btn-compact" onclick="renderStorageUsage()">刷新</button>
+                            </div>
+                        </div>
+                        <div class="setting-hint text-gray" style="margin-bottom:10px;">
+                            订单、案例、设置等大件数据已存入浏览器 IndexedDB（空间远大于 localStorage），
+                            不再挤占约 5MB 的 localStorage 配额，因此登录不再因空间不足失败。<br>
+                            下面列出本机各数据的占用大小与所在位置；「数据快照 / 回收站 / 孤立图片缓存」属于可随时清理的派生数据。
+                        </div>
+                        <div id="storageUsageSummary" class="text-gray" style="margin-bottom:10px;font-size:13px;line-height:1.7;"></div>
+                        <div id="storageUsageList"></div>
+                        <div id="storageUsageActions" class="d-flex gap-2" style="margin-top:14px;flex-wrap:wrap;"></div>
+                    </div>
+                </div>
 <!-- 角色档案弹窗（顶层：排单页 Todo 点击角色名也要能弹出，不能放在设置子页面里） -->
 
                 <!-- 添加系数弹窗 -->
@@ -3598,6 +3622,7 @@
     </div>
 
     <script src="vendor/supabase-js.umd.min.js?v=2.58.0"></script>
+    <script src="storage.js?v=20261015-0002"></script>
     <script src="supabase-config.js"></script>
     <script>
         function openLoginPage(e) {
@@ -3690,7 +3715,7 @@
             }
         })();
     </script>
-    <script src="script.js?v=20261014-0002"></script>
+    <script src="script.js?v=20261015-0007"></script>
     <script>
         (function setupDesktopNavMeasure() {
             function applyDesktopNavSize() {

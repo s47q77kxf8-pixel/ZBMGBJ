@@ -11,6 +11,57 @@
 const MTN_BUILD_TAG = 'mtn-8e4c1f7a';
 const MTN_SIG = 'MTN-SIG-2026-4A71-B85D';
 
+// ========== 存储层兜底与失败守卫 ==========
+// 若 storage.js 未加载（缓存/副本异常），提供 localStorage 直通的同名接口，
+// 避免所有 MGStore 调用点抛 ReferenceError。
+if (!window.MGStore) {
+    window.MGStore = {
+        available: false, READY: true, ready: Promise.resolve(false), authStorage: undefined,
+        lastError: null, onFailure: null,
+        getItem: function (k) { try { return window.localStorage.getItem(k); } catch (_) { return null; } },
+        setItem: function (k, v) {
+            try { window.localStorage.setItem(k, v); } catch (e) {
+                this.lastError = { key: k, error: e };
+                if (typeof this.onFailure === 'function') { try { this.onFailure(k, e); } catch (_) {} }
+            }
+        },
+        removeItem: function (k) { try { window.localStorage.removeItem(k); } catch (_) {} },
+        flush: function () { return Promise.resolve(); },
+        usage: function () { return []; },
+        raiseFailure: function (k, e) {
+            this.lastError = { key: k, error: e };
+            if (typeof this.onFailure === 'function') { try { this.onFailure(k, e); } catch (_) {} }
+        }
+    };
+}
+
+// 业务键 → 中文名（存储占用面板与写入失败提示共用）
+var MG_STORAGE_LABELS = {
+    quoteHistory: '订单记录', calculatorSettings: '计算设置', productSettings: '制品设置',
+    processSettings: '工艺设置', customers: '单主档案', roleProfiles: '角色档案',
+    marketingCards: '营销卡片', templates: '模板', receiptTemplates: '小票模板',
+    mg_data_snapshots: '数据快照', mg_order_trash_v1: '回收站', caseLibrary: '案例库',
+    caseLayoutPresets: '布局模版', caseLayoutPresetDefault: '默认布局模版'
+};
+function mgStorageLabel(key) {
+    if (MG_STORAGE_LABELS[key]) return MG_STORAGE_LABELS[key];
+    if (String(key).indexOf('caseImg_') === 0) return '案例图片缓存';
+    return key;
+}
+
+// 写入失败（配额满 / IndexedDB 异常）不再静默丢弃：同一会话内每个键只提示一次
+(function () {
+    var _notified = Object.create(null);
+    window.MGStore.onFailure = function (key, err) {
+        console.error('[MGStore] 保存失败:', key, err);
+        if (_notified[key]) return;
+        _notified[key] = 1;
+        if (typeof showGlobalToast === 'function') {
+            showGlobalToast('「' + mgStorageLabel(key) + '」保存失败：本地存储空间可能已满，请到「设置 → 存储占用」清理后重试', 5000);
+        }
+    };
+})();
+
 // ========== 身份默认术语与产品术语工具函数（前移：ensureRolesComplete 加载数据时会用到） ==========
 const DEFAULT_ROLES_PRESET_TERMS = {
     '美工': { productSingular: '制品', productPlural: '制品', productSettings: '制品设置' },
@@ -918,7 +969,7 @@ let mgOrderTrash = { items: [] };
 
 function loadTrash() {
     try {
-        const raw = localStorage.getItem(MG_ORDER_TRASH_KEY);
+        const raw = MGStore.getItem(MG_ORDER_TRASH_KEY);
         if (raw) {
             mgOrderTrash = JSON.parse(raw);
             if (!mgOrderTrash.items) mgOrderTrash.items = [];
@@ -929,11 +980,7 @@ function loadTrash() {
 }
 
 function saveTrash() {
-    try {
-        localStorage.setItem(MG_ORDER_TRASH_KEY, JSON.stringify(mgOrderTrash));
-    } catch (e) {
-        console.error('保存回收站失败:', e);
-    }
+    MGStore.setItem(MG_ORDER_TRASH_KEY, JSON.stringify(mgOrderTrash));
 }
 
 function moveToTrash(item) {
@@ -1109,8 +1156,194 @@ function showSettingsSubPage(pageName) {
             if (window.innerWidth >= 1000) toggleMcPreviewDrawer(true);
         } else if (pageName === 'caseLibrary') {
             renderCaseLibrary();
+        } else if (pageName === 'storageUsage') {
+            renderStorageUsage();
         }
     }
+}
+
+// ========== 设置 → 存储占用 ==========
+function mgFormatBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(2) + ' MB';
+}
+
+// localStorage 全量占用（浏览器上限约 5MB，按 UTF-16 计 2 字节/字符估算）
+function mgLocalStorageBytes() {
+    var total = 0;
+    try {
+        var keys = Object.keys(window.localStorage);
+        for (var i = 0; i < keys.length; i++) {
+            var v = window.localStorage.getItem(keys[i]) || '';
+            total += (keys[i].length + v.length) * 2;
+        }
+    } catch (_) {}
+    return total;
+}
+
+function renderStorageUsage() {
+    var listEl = document.getElementById('storageUsageList');
+    var summaryEl = document.getElementById('storageUsageSummary');
+    var actionsEl = document.getElementById('storageUsageActions');
+    if (!listEl || !summaryEl || !actionsEl) return;
+
+    var rows = (window.MGStore && typeof window.MGStore.usage === 'function') ? window.MGStore.usage() : [];
+    var lsBytes = mgLocalStorageBytes();
+    var idbBytes = 0;
+    rows.forEach(function (r) { if (r.channel === 'idb') idbBytes += r.bytes; });
+
+    var idbOk = !!(window.MGStore && window.MGStore.available);
+    summaryEl.innerHTML =
+        '本机 localStorage 占用：<strong style="color:' + (lsBytes > 4 * 1024 * 1024 ? '#dc2626' : 'inherit') + ';">'
+        + mgFormatBytes(lsBytes) + '</strong>（浏览器上限约 5MB）'
+        + '　·　IndexedDB 业务数据：<strong>' + mgFormatBytes(idbBytes) + '</strong>'
+        + (idbOk ? '' : '<br><span style="color:#dc2626;">当前浏览器不可用 IndexedDB，数据只能退回 localStorage 存放。</span>');
+
+    if (!rows.length) {
+        listEl.innerHTML = '<div class="text-gray" style="font-size:13px;">暂无本地存储数据。</div>';
+    } else {
+        var html = '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;">';
+        rows.forEach(function (r, i) {
+            var chan = r.channel === 'idb' ? 'IndexedDB' : 'localStorage';
+            var chanColor = r.channel === 'idb' ? '#16a34a' : (lsBytes > 4 * 1024 * 1024 ? '#dc2626' : '#666');
+            var label = mgStorageLabel(r.key) === r.key ? r.key : (mgStorageLabel(r.key) + '（' + r.key + '）');
+            var count = '';
+            if (r.key === 'mg_data_snapshots') {
+                try { count = ' · ' + (JSON.parse(window.MGStore.getItem(r.key) || '[]').length) + ' 份'; } catch (_) {}
+            } else if (r.key === MG_ORDER_TRASH_KEY) {
+                try { count = ' · ' + ((JSON.parse(window.MGStore.getItem(r.key) || '{}').items || []).length) + ' 条'; } catch (_) {}
+            } else if (r.key === 'caseLibrary') {
+                try { count = ' · ' + (JSON.parse(window.MGStore.getItem(r.key) || '[]').length) + ' 个'; } catch (_) {}
+            }
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;'
+                + (i ? 'border-top:1px solid var(--border);' : '')
+                + 'font-size:13px;">'
+                + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + String(r.key) + '">' + label + '</span>'
+                + '<span class="text-gray">' + mgFormatBytes(r.bytes) + count + '</span>'
+                + '<span style="color:' + chanColor + ';min-width:84px;text-align:right;">' + chan + '</span>'
+                + '</div>';
+        });
+        html += '</div>';
+        listEl.innerHTML = html;
+    }
+
+    actionsEl.innerHTML =
+        '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeSnapshots()">清理数据快照</button>'
+        + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeTrash()">清空回收站</button>'
+        + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeOrphanCaseImgs()">清理孤立图片缓存</button>'
+        + '<button type="button" class="btn secondary btn-compact" onclick="renderStorageUsage()">刷新</button>'
+        + '<button type="button" class="btn danger btn-compact" onclick="mgPurgeAllData()">清空所有数据</button>';
+}
+
+// 登录令牌键（sb-<projectref>-auth-token）：清空数据时必须保留，否则会被强制登出
+function mgIsAuthStorageKey(key) {
+    var k = String(key || '');
+    return k.indexOf('sb-') === 0 && k.slice(-11) === '-auth-token';
+}
+
+// 清空已打开数据库中的指定对象仓（保留同库其它仓，如认证会话仓）
+function mgClearStoreInDb(db, storeName) {
+    return new Promise(function (resolve) {
+        if (!db || !db.objectStoreNames || !db.objectStoreNames.contains(storeName)) return resolve();
+        try {
+            var tx = db.transaction(storeName, 'readwrite');
+            tx.objectStore(storeName).clear();
+            tx.oncomplete = function () { resolve(); };
+            tx.onerror = function () { resolve(); };
+            tx.onabort = function () { resolve(); };
+        } catch (_) { resolve(); }
+    });
+}
+
+// 一键清空本机全部业务数据：保留登录状态，并关闭云同步，避免清空后数据又被同步回来
+async function mgPurgeAllData() {
+    if (!window.MGStore) return;
+    var rows = [];
+    try { rows = (typeof window.MGStore.usage === 'function') ? (window.MGStore.usage() || []) : []; } catch (_) {}
+    var totalBytes = rows.reduce(function (a, r) { return a + (r.bytes || 0); }, 0);
+    var orderCount = Array.isArray(history) ? history.length : 0;
+
+    var msg = '一键清空将删除本机全部数据：\n\n'
+        + '· 订单记录 ' + orderCount + ' 条（含回收站、数据快照）\n'
+        + '· 计算 / 制品 / 工艺设置、模板、小票模板\n'
+        + '· 单主档案、角色档案、接单物料、案例库及其图片\n\n'
+        + '共约 ' + mgFormatBytes(totalBytes) + '，删除后无法恢复。\n\n'
+        + '保留登录状态（无需重新登录）；同时关闭云同步，避免清空后又被同步回来（云端数据不受影响）。\n\n'
+        + '是否继续？';
+    if (!confirm(msg)) return;
+    if (!confirm('最后确认：本机所有数据将被删除且无法恢复，确定要清空吗？')) return;
+
+    // 清空后内存里仍留有旧数据，自动保存的防抖任务可能把它写回来。
+    // 期间保留删除能力，但丢弃一切写入（含待落盘队列），确保清空结果不被覆盖。
+    window.__mgWiping = true;
+    var _origSetItem = window.MGStore.setItem;
+    window.MGStore.setItem = function (key, value) {
+        if (window.__mgWiping) return;
+        return _origSetItem.call(window.MGStore, key, value);
+    };
+
+    // 1) 逐个键清除：同时清掉内存镜像、IndexedDB 与 localStorage（登录令牌除外）
+    rows.forEach(function (r) {
+        if (!r || !r.key) return;
+        if (mgIsAuthStorageKey(r.key)) return;
+        window.MGStore.removeItem(r.key);
+    });
+    // 2) 兜底清空 IndexedDB 的 kv 仓，确保没有遗留业务数据（同库的 auth 会话仓不受影响）
+    try {
+        await mgClearStoreInDb(await window.MGStore._openDb(), 'kv');
+    } catch (_) {}
+    // 3) 案例图片存于独立的 mettonCaseDB
+    try {
+        await mgClearStoreInDb(await caseDbOpen(), 'images');
+    } catch (_) {}
+    // 4) 关闭云同步：避免刷新后把本机空数据推上云端、或从云端把数据拉回来
+    //    直接写 localStorage，绕过上面的写入拦截
+    try { localStorage.setItem('mg_cloud_enabled', '0'); } catch (_) {}
+
+    showGlobalToast('已清空本机数据，即将重新加载…');
+    setTimeout(function () { window.location.reload(); }, 400);
+}
+
+function mgPurgeSnapshots() {
+    var n = 0;
+    try { n = (JSON.parse(window.MGStore.getItem('mg_data_snapshots') || '[]') || []).length; } catch (_) {}
+    if (!n) return showGlobalToast('没有可清理的数据快照');
+    if (!confirm('将删除本机全部 ' + n + ' 份数据快照（用于误删恢复的自动备份），是否继续？')) return;
+    window.MGStore.removeItem('mg_data_snapshots');
+    window.MGStore.flush();
+    renderStorageUsage();
+    showGlobalToast('已清理 ' + n + ' 份数据快照');
+}
+
+function mgPurgeTrash() {
+    var n = 0;
+    try { n = (JSON.parse(window.MGStore.getItem(MG_ORDER_TRASH_KEY) || '{}').items || []).length; } catch (_) {}
+    if (!n) return showGlobalToast('回收站已是空的');
+    if (!confirm('将清空回收站中的 ' + n + ' 条订单（回收站内订单无法再还原），是否继续？')) return;
+    mgOrderTrash = { items: [] };
+    saveTrash();
+    window.MGStore.flush();
+    if (typeof updateTrashBadge === 'function') updateTrashBadge();
+    renderStorageUsage();
+    showGlobalToast('已清空回收站');
+}
+
+// 清理 caseImg_ 缓存中已不在案例库里的孤立项（案例本体图片存 IndexedDB，缓存只是降级副本）
+function mgPurgeOrphanCaseImgs() {
+    var ids = {};
+    try { (loadCaseLibrary() || []).forEach(function (c) { if (c && c.id) ids['caseImg_' + c.id] = 1; }); } catch (_) {}
+    // 候选键同时来自 IndexedDB 与 localStorage（搬迁后旧副本可能在任一侧）
+    var rows = (window.MGStore && typeof window.MGStore.usage === 'function') ? window.MGStore.usage() : [];
+    var orphans = rows.filter(function (r) { return String(r.key).indexOf('caseImg_') === 0 && !ids[r.key]; });
+    if (!orphans.length) return showGlobalToast('没有可清理的孤立图片缓存');
+    var bytes = orphans.reduce(function (a, r) { return a + (r.bytes || 0); }, 0);
+    if (!confirm('将删除 ' + orphans.length + ' 项孤立图片缓存（约 ' + mgFormatBytes(bytes) + '），是否继续？')) return;
+    orphans.forEach(function (r) { window.MGStore.removeItem(r.key); });
+    window.MGStore.flush();
+    renderStorageUsage();
+    showGlobalToast('已清理 ' + orphans.length + ' 项图片缓存，释放约 ' + mgFormatBytes(bytes));
 }
 
 function hideSettingsSubPage() {
@@ -1873,7 +2106,22 @@ function toggleThemeLongPress(event) {
 }
 
 // 初始化应用
+// 说明：init() 在 load / DOMContentLoaded 多处被调用，这里做去重，并在存储层
+//       （IndexedDB）尚未把数据读入内存镜像前先等待，最长 8 秒硬超时后照常启动。
 function init() {
+    if (init._entered) return;
+    init._entered = true;
+    if (window.MGStore && window.MGStore.ready && !window.MGStore.READY) {
+        Promise.race([
+            window.MGStore.ready,
+            new Promise(function (r) { setTimeout(function () { r(null); }, 8000); })
+        ]).then(function () { initBody(); }, function () { initBody(); });
+        return;
+    }
+    initBody();
+}
+
+function initBody() {
     // 记录本次运行的构建标识（便于排查线上问题时核对版本）
     try {
         localStorage.setItem('mg_buildTag', MTN_BUILD_TAG);
@@ -2312,7 +2560,7 @@ function getPlatformFeeObjFromQuote(quoteLike) {
 function loadData() {
     // 先单独加载 templates，避免受其他键 parse 失败影响，确保刷新后模板不丢失
     try {
-        const savedTemplates = localStorage.getItem('templates');
+        const savedTemplates = MGStore.getItem('templates');
         if (savedTemplates) {
             const parsed = JSON.parse(savedTemplates);
             templates = Array.isArray(parsed) ? parsed : [];
@@ -2325,7 +2573,7 @@ function loadData() {
 
     // 单独加载小票模板，避免受其他键 parse 失败影响
     try {
-        const savedReceiptTemplates = localStorage.getItem('receiptTemplates');
+        const savedReceiptTemplates = MGStore.getItem('receiptTemplates');
         if (savedReceiptTemplates) {
             const parsedRT = JSON.parse(savedReceiptTemplates);
             receiptTemplates = Array.isArray(parsedRT) ? parsedRT : [];
@@ -2337,10 +2585,10 @@ function loadData() {
     }
 
     try {
-        const savedHistory = localStorage.getItem('quoteHistory');
-        const savedSettings = localStorage.getItem('calculatorSettings');
-        const savedProductSettings = localStorage.getItem('productSettings');
-        const savedProcessSettings = localStorage.getItem('processSettings');
+        const savedHistory = MGStore.getItem('quoteHistory');
+        const savedSettings = MGStore.getItem('calculatorSettings');
+        const savedProductSettings = MGStore.getItem('productSettings');
+        const savedProcessSettings = MGStore.getItem('processSettings');
         
         if (savedHistory) {
             history = JSON.parse(savedHistory);
@@ -2599,7 +2847,7 @@ function loadData() {
         }
 
         // 客户档案：独立 key，结构简单直接替换
-        const savedCustomers = localStorage.getItem('customers');
+        const savedCustomers = MGStore.getItem('customers');
         if (savedCustomers) {
             const parsedCustomers = JSON.parse(savedCustomers);
             customers = Array.isArray(parsedCustomers) ? parsedCustomers : [];
@@ -2607,7 +2855,7 @@ function loadData() {
             customers = [];
         }
         // 角色档案：独立 key，结构简单直接替换
-        const savedRoleProfiles = localStorage.getItem('roleProfiles');
+        const savedRoleProfiles = MGStore.getItem('roleProfiles');
         if (savedRoleProfiles) {
             const parsedRoleProfiles = JSON.parse(savedRoleProfiles);
             roleProfiles = Array.isArray(parsedRoleProfiles) ? parsedRoleProfiles : [];
@@ -2621,7 +2869,7 @@ function loadData() {
         // 布局方案（预览排版预设）
         loadCaseLayoutPresets();
         // 接单物料配置：独立 key
-        const savedMarketingCards = localStorage.getItem('marketingCards');
+        const savedMarketingCards = MGStore.getItem('marketingCards');
         if (savedMarketingCards) {
             try {
                 _mcData = JSON.parse(savedMarketingCards);
@@ -2643,7 +2891,7 @@ function loadData() {
 // ===== 客户档案数据层 =====
 function loadCustomers() {
     try {
-        const raw = localStorage.getItem('customers');
+        const raw = MGStore.getItem('customers');
         customers = raw ? (JSON.parse(raw) || []) : [];
         if (!Array.isArray(customers)) customers = [];
     } catch (e) {
@@ -2653,11 +2901,7 @@ function loadCustomers() {
     return customers;
 }
 function saveCustomers() {
-    try {
-        localStorage.setItem('customers', JSON.stringify(customers));
-    } catch (error) {
-        console.error('保存客户数据失败:', error);
-    }
+    MGStore.setItem('customers', JSON.stringify(customers));
     mgScheduleCloudPushCustomers();
 }
 function findCustomerByName(name) {
@@ -2759,7 +3003,7 @@ function backfillCustomerFromQuote(quote) {
 // ===== 角色档案（localStorage 'roleProfiles'）：约稿角色名/原作IP/设定/备注 =====
 function loadRoleProfiles() {
     try {
-        const raw = localStorage.getItem('roleProfiles');
+        const raw = MGStore.getItem('roleProfiles');
         roleProfiles = raw ? (JSON.parse(raw) || []) : [];
         if (!Array.isArray(roleProfiles)) roleProfiles = [];
     } catch (e) {
@@ -2769,11 +3013,7 @@ function loadRoleProfiles() {
     return roleProfiles;
 }
 function saveRoleProfiles() {
-    try {
-        localStorage.setItem('roleProfiles', JSON.stringify(roleProfiles));
-    } catch (error) {
-        console.error('保存角色档案失败:', error);
-    }
+    MGStore.setItem('roleProfiles', JSON.stringify(roleProfiles));
     mgScheduleCloudPushRoles();
 }
 function loadRoleIgnored() {
@@ -5172,7 +5412,7 @@ function ensureRewardPolicy() {
         if (allResidual) {
             policy.tiers = rewardDefaultTiers();
             policy._rewardNormalized = true;
-            try { localStorage.setItem('calculatorSettings', JSON.stringify(defaultSettings)); } catch (e) {}
+            MGStore.setItem('calculatorSettings', JSON.stringify(defaultSettings));
         }
     }
     // 规则级维度（旧数据无 by 时按现有档位多数派推断；空档默认金额）
@@ -5548,28 +5788,19 @@ function doSaveData() {
         console.warn('保存前去重失败（已忽略）:', e);
     }
 
-    try {
-        localStorage.setItem('quoteHistory', JSON.stringify(history));
-        localStorage.setItem('calculatorSettings', JSON.stringify(defaultSettings));
-        localStorage.setItem('productSettings', JSON.stringify(productSettings));
-        localStorage.setItem('processSettings', JSON.stringify(processSettings));
-        localStorage.setItem('customers', JSON.stringify(customers));
-        localStorage.setItem('marketingCards', JSON.stringify(_mcData || getDefaultMarketingCards()));
-    } catch (error) {
-        console.error('保存数据失败:', error);
-    }
-    try {
-        const data = Array.isArray(templates) ? templates : [];
-        localStorage.setItem('templates', JSON.stringify(data));
-    } catch (e) {
-        console.error('保存模板失败:', e);
-    }
-    try {
-        const rtData = Array.isArray(receiptTemplates) ? receiptTemplates : [];
-        localStorage.setItem('receiptTemplates', JSON.stringify(rtData));
-    } catch (e) {
-        console.error('保存小票模板失败:', e);
-    }
+    // 统一走 MGStore：写入 IndexedDB / 内存镜像，失败由 MGStore.onFailure 上报（不再静默）
+    MGStore.setItem('quoteHistory', JSON.stringify(history));
+    MGStore.setItem('calculatorSettings', JSON.stringify(defaultSettings));
+    MGStore.setItem('productSettings', JSON.stringify(productSettings));
+    MGStore.setItem('processSettings', JSON.stringify(processSettings));
+    MGStore.setItem('customers', JSON.stringify(customers));
+    MGStore.setItem('marketingCards', JSON.stringify(_mcData || getDefaultMarketingCards()));
+
+    const data = Array.isArray(templates) ? templates : [];
+    MGStore.setItem('templates', JSON.stringify(data));
+
+    const rtData = Array.isArray(receiptTemplates) ? receiptTemplates : [];
+    MGStore.setItem('receiptTemplates', JSON.stringify(rtData));
     
     // 如果启用了云端模式，自动同步设置到云端
     // 合并模式下也会自动同步（因为已经智能合并过了）
@@ -8672,6 +8903,9 @@ function updateRecordFilterTagOptions() {
         if (hasCrossOrderSameModel(item)) {
             tagSet.add('追加单');
         }
+        if (hasOrderCase(item.id)) {
+            tagSet.add('案例');
+        }
         // 添加自定义标签
         const tags = mgNormalizeTags(item);
         tags.forEach(t => {
@@ -8855,6 +9089,15 @@ function matchDepositFilter(item, filterValue) {
     return false;
 }
 
+// 订单是否已生成案例展示图（案例库中的案例通过 orderId 关联订单）
+function hasOrderCase(orderId) {
+    if (orderId == null || orderId === '') return false;
+    var lib;
+    try { lib = caseLibrary; } catch (_) { return false; } // 兼容脚本加载顺序（TDZ）
+    if (!Array.isArray(lib)) return false;
+    return lib.some(function (c) { return c && String(c.orderId) === String(orderId); });
+}
+
 function getFilteredHistoryForRecord() {
     const searchInput = document.getElementById('recordSearchInput');
     const timeFilterEl = document.getElementById('recordTimeFilter');
@@ -8955,6 +9198,9 @@ function getFilteredHistoryForRecord() {
                         return true;
                     }
                     if (tag === '追加单' && hasCrossOrderSameModel(item)) {
+                        return true;
+                    }
+                    if (tag === '案例' && hasOrderCase(item.id)) {
                         return true;
                     }
                     const tags = mgNormalizeTags(item);
@@ -9072,6 +9318,8 @@ function applyRecordFilters() {
         const placeholderTagHtml = item && item.isSchedulePlaceholder ? '<span class="record-tag record-tag-placeholder">占位单</span>' : '';
         const urgentTagHtml = item && item.urgent && item.urgent > 1 ? '<span class="record-tag record-tag-urgent">加急单</span>' : '';
         const crossOrderTagHtml = hasCrossOrderSameModel(item) ? '<span class="record-tag record-tag-cross-order">追加单</span>' : '';
+        const caseTagHtml = hasOrderCase(item && item.id)
+            ? '<span class="record-tag record-tag-case">案例</span>' : '';
         // 追加单关联信息行（记录页）
         var recordAppendLinkHtml = '';
         if (item && item.parentOrderId) {
@@ -9115,6 +9363,7 @@ function applyRecordFilters() {
                                 ${depositTagHtml}
                                 ${urgentTagHtml}
                                 ${crossOrderTagHtml}
+                                ${caseTagHtml}
                                 <span class="record-status ${status.className}">${status.text}</span>
                             </div>
                         </div>
@@ -9944,6 +10193,7 @@ function getStatsDataset(historySource, filters) {
                 for (const tg of tagFilters) {
                     if (tg === '加急单' && (item.urgentType && item.urgentType !== 'normal' || item.urgent && item.urgent > 1)) { hit = true; break; }
                     if (tg === '追加单' && hasCrossOrderSameModel(item)) { hit = true; break; }
+                    if (tg === '案例' && hasOrderCase(item.id)) { hit = true; break; }
                     if (matchDepositFilter(item, tg)) { hit = true; break; }
                     const tags = mgNormalizeTags(item);
                     if (tags.some(t => t && t.name === tg)) { hit = true; break; }
@@ -11432,6 +11682,9 @@ function updateStatsFilterTagOptions() {
         }
         if (hasCrossOrderSameModel(item)) {
             tagSet.add('追加单');
+        }
+        if (hasOrderCase(item.id)) {
+            tagSet.add('案例');
         }
         // 添加自定义标签
         const tags = mgNormalizeTags(item);
@@ -17355,7 +17608,7 @@ function normalizeMarketingCards(mc) {
 function loadMarketingCards() {
     if (_mcData) return _mcData;
     try {
-        const raw = localStorage.getItem('marketingCards');
+        const raw = MGStore.getItem('marketingCards');
         const parsed = raw ? JSON.parse(raw) : null;
         _mcData = (parsed && typeof parsed === 'object') ? parsed : null;
     } catch (e) {
@@ -17366,11 +17619,7 @@ function loadMarketingCards() {
 }
 
 function saveMarketingCards() {
-    try {
-        localStorage.setItem('marketingCards', JSON.stringify(_mcData || getDefaultMarketingCards()));
-    } catch (e) {
-        console.error('保存接单物料失败:', e);
-    }
+    MGStore.setItem('marketingCards', JSON.stringify(_mcData || getDefaultMarketingCards()));
 }
 
 // 按身份生成 ID 标签：role=「美工ID：xxx」「画师ID：xxx」，plain=「ID：xxx」
@@ -19474,41 +19723,51 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261014-0002';
+const APP_VERSION = '20261015-0007';
 const APP_CHANGELOG = [
+    {
+        date: '2026-10-15',
+        items: [
+            '【记录页·案例】订单已有案例时，操作弹窗按钮自动变为「查看案例」，点击直接打开已有案例；订单卡片新增紫色「案例」标签',
+            '【记录页·筛选】「案例」标签加入记录页与统计页筛选，勾选后只显示已生成案例的订单',
+            '【登录】修复本地存储占满导致点登录没反应的问题（表现为部分浏览器能登、部分登不了）',
+            '【设置·存储占用】新增存储占用面板：查看每项数据的大小与存放位置，可一键清理数据快照、清空回收站、清理孤立图片缓存',
+            '【设置·存储占用】新增「清空所有数据」：一键清空本机全部数据并自动重新加载，保留登录状态',
+        ]
+    },
     {
         date: '2026-10-14',
         items: [
-            '【计算页·角色】角色输入框一次填多个名字时（顿号/逗号/空格/斜杠分隔），下拉会把每个名字都识别出来：置顶「一键新建 N 个并选中」可一次把未建档的名字全部入档，也可用「＋ 新建「X」并选中」逐个入档，已建档的名字显示为已选中；被分隔符拆出的孤立标点（如「·」）不再被当成角色名',
-            '【登录·稳定性】Supabase SDK 改为本地内置（vendor/supabase-js.umd.min.js），不再依赖 cdn.jsdelivr.net；修复部分网络（海外 CDN 被拦截）下登录页点「登录」报「系统初始化失败」的问题',
-            '【登录·故障诊断】登录页新增「登录不了？点这里诊断」，一键逐项自检 设备网络 / Supabase SDK / 配置文件 / 客户端初始化 / 云端连通性（实测请求），直接给出结论，便于截图排查；同时登录失败提示会具体指出是 SDK 未加载还是配置缺失',
+            '【计算页·角色】角色输入框支持一次填多个名字（顿号 / 逗号 / 空格 / 斜杠分隔），下拉逐个识别，可一键新建全部未建档角色',
+            '【登录】修复部分网络下点登录报「系统初始化失败」的问题（Supabase SDK 改为本地内置，不再依赖海外 CDN）',
+            '【登录】登录页新增「登录不了？点这里诊断」：一键自检网络 / SDK / 配置 / 云端连通性并给出结论',
         ]
     },
     {
         date: '2026-10-06',
         items: [
-            '【案例库-镂空填充】新增制品镂空自动检测与填充：泛洪判定封闭镂空区，支持填色 / 磨砂亚克力质感 / 开口闭合半径，描边、投影、水印按填充后的轮廓处理',
-            '【案例库-自定义分组】新增自定义分组：可新建 / 改名 / 删除分组，拖拽缩略图跨组移动；重新关联订单时自定义分组会保留',
-            '【案例库-水印】水印层支持任意旋转角烘焙：按制品旋转后的视觉外接盒转正再裁剪，平铺方向保持画布方向不随制品旋转',
-            '【案例库-预览】预览缩放控件移入画布列常驻显示（原仅小屏有）；缩略图操作栏桌面端改为悬停浮现，避免挤爆 74px 缩略图',
+            '【案例库-镂空填充】新增制品镂空自动检测与填充，支持填色 / 磨砂亚克力质感 / 开口闭合半径',
+            '【案例库-自定义分组】新增自定义分组：可新建 / 改名 / 删除，拖拽缩略图跨组移动；重新关联订单后分组保留',
+            '【案例库-水印】水印层支持任意旋转角烘焙，平铺方向不随制品旋转',
+            '【案例库-预览】预览缩放控件移入画布列常驻；缩略图操作栏桌面端改为悬停浮现，不再挤占缩略图',
         ]
     },
     {
         date: '2026-10-01',
         items: [
-            '【案例库-制品设置】新增位置 X/Y 可调（修复手动摆位写入后未生效的问题）、轮廓投影透明度与大小、投影 X/Y 偏移、描边 / 扩张描边透明度',
-            '【案例库-投影】投影默认值改为 透明 30% / 大小 20% / X 1% / Y 1%；新增投影「全局跟随」开关（开启后四参数所有制品统一，改一处即全部生效）',
-            '【案例库-数值控件】透明度 / 线条 / 间距 / 大小 / 占位区域等数值参数统一为「滑条 + 可填数值 + 加减按钮」，支持 ↑↓ 键快速步进；水印默认字号与瓦片尺寸调小，大小滑条下限降到 0.2×',
-            '【案例库-修复】修复文字 / 图片水印消失、制品装饰层（描边 / 投影）撑出槽位、以及打开案例整页空白的问题',
+            '【案例库-制品设置】新增位置 X/Y 可调（修复手动摆位未生效）、轮廓投影透明度与大小、投影 X/Y 偏移、描边透明度',
+            '【案例库-投影】投影默认值改为 透明 30% / 大小 20% / X 1% / Y 1%；新增「全局跟随」开关，四参数所有制品统一',
+            '【案例库-数值控件】数值参数统一为「滑条 + 可填数值 + 加减按钮」，支持 ↑↓ 键步进；水印字号与瓦片尺寸调小',
+            '【案例库-修复】修复文字 / 图片水印消失、装饰层撑出槽位、打开案例整页空白的问题',
         ]
     },
     {
         date: '2026-09-30',
         items: [
-            '【案例库-排版】总图与分图页排版大改：按每组制品各自的分图排版分块、行铺满宽度并保持组顺序，整体呈规整矩形、尽量贴合制品区减少留白；极端比例制品图按原图比例居中缩放不再被拉伸；按订单份数展开制品数量',
-            '【案例库-水印】水印只绘制在制品不透明像素上，不再覆盖背景图与文字；支持斜纹 / 斜方格图案；透明度 / 线条 / 间距支持数字直填，间距下限降到 3px',
-            '【案例库-质感与装饰】亚克力磨砂填充更通透（靠高光 / 亮边撑质感）；制品装饰默认样式与描边层级调整',
-            '【案例库-交互】字号设置全部改为 px 直接设置（不再用百分比）；文字堆叠行的点击热区按文字实际大小；总图 / 分图改为按组开关并用眼睛图标；小屏布局改为预览图与调整功能区上下堆叠（原右侧悬浮）',
+            '【案例库-排版】总图与分图页排版大改：分块铺满、保持组顺序、整体规整少留白；极端比例制品图按原比例居中不拉伸',
+            '【案例库-水印】水印只绘制在制品不透明像素上，不覆盖背景与文字；支持斜纹 / 斜方格图案，间距可直填',
+            '【案例库-质感与装饰】亚克力磨砂填充更通透；制品装饰默认样式与描边层级调整',
+            '【案例库-交互】字号改为 px 直接设置；总图 / 分图改为按组开关；小屏布局改为上下堆叠',
         ]
     },
     {
@@ -19527,19 +19786,18 @@ const APP_CHANGELOG = [
     {
         date: '2026-09-18',
         items: [
-            '【小票-模板保存回显】"保存为模板"后，"已存模板"下拉与首页快速切换下拉都会实时选中刚保存/更新的模板，便于立即加载或设为默认',
-            '【小票-模板切换优化】工具条"模板"下拉的占位项由"模板"改为"默认"（表示不使用模板、按当前自定义外观）；打开小票时下拉自动选中"当前阶段的默认模板"；设了"报价默认"后新单/进行中报价小票也会自动套用；小票设置面板打开期间暂停自动套用，保证编辑文案的实时预览',
-            '【小票-工具条适配】小票抽屉工具条下拉进一步收窄（max-width 96/移动 84），并改回单行不换行：标题 + 两个下拉 + 三个图标稳定在一行，不再超出容器',
-            '【小票-模板快速切换】小票抽屉工具条新增"模板"下拉，在首页（报价小票页）即可一键切换小票模板，无需进设置；订单上下文里快速切换会同时把该模板设为当前阶段默认，避免被阶段默认覆盖',
-            '【小票-模板功能】新增"小票模板"（镜像计算报价的保存为模板）：把整套小票自定义（标题、头部/尾部文本、主题、图片等）存为命名模板，核对稿费与结稿互动可分别保存、一键切换；并支持"设为报价默认/结单默认"，生成小票时按订单是否已结单自动套用对应模板（仅在已存订单上下文时自动套用，新单 composing 仍用当前设置，避免编辑预览被覆盖）。模板随 localStorage 与手动跨端同步（导出/导入）持久化',
-            '【历史订单-企划备注云端同步修复】修复"历史订单企划备注莫名消失"：记录页编辑备注只改内存、不打时间戳也不上云，叠加 smartMergeHistory 在"时间戳相等时用云端覆盖本地"的整条替换逻辑，导致本地刚改的备注在下次云端合并时被云端旧副本冲掉。修复：① smartMergeHistory 平手时保留本地；② 关闭备注弹窗时打新鲜时间戳并通过 mgCloudUpsertOrder 把订单（含备注）同步到云端'
+            '【小票-模板】新增「小票模板」：把整套小票外观（标题、头尾部文本、主题、图片等）存为命名模板，报价与结单可分别保存、一键切换，并支持设为默认自动套用',
+            '【小票-模板切换】工具条新增「模板」下拉，首页即可快速切换无需进设置；占位项由「模板」改为「默认」（表示不使用模板）；打开小票自动选中当前阶段的默认模板',
+            '【小票-模板保存回显】保存为模板后，下拉立即选中刚保存的模板，便于马上加载或设为默认',
+            '【小票-工具条】工具条下拉收窄，标题 + 两个下拉 + 三个图标稳定在一行不换行',
+            '【历史订单】修复企划备注修改后莫名消失的问题（本地改动会打时间戳并同步到云端）'
         ]
     },
     {
         date: '2026-09-17',
         items: [
-            '【角色档案/单主管理-云端同步修复】修复多设备同时使用时角色档案/单主被整列清空的问题：墓碑只由本机显式删除产生，不再因"云端有但本机没同步到"而误删其他设备的条目；拉取时墓碑删除增加了时间戳判断作为兜底，并对待删墓碑做本地持久化，避免删除因未及时推送在下一次拉取时被"复活"',
-            '【小票】"结算结果"整块统一去掉结尾句号：已结清 / 本次共减免 / 多收应找零退款给客户 三行不再带句号，与该区块其它结果（跑单费、废稿费）保持一致'
+            '【角色档案/单主管理】修复多设备同时使用时档案被整列清空的问题（误删其他设备条目导致的同步覆盖）',
+            '【小票】「结算结果」整块去掉结尾句号，与该区块其它结果保持一致'
         ]
     },
     {
@@ -19861,11 +20119,23 @@ function mgCreateDataSnapshot() {
             timestamp: Date.now(),
             url: window.location.href
         };
-        const snapshots = JSON.parse(localStorage.getItem('mg_data_snapshots') || '[]');
+        const snapshots = JSON.parse(MGStore.getItem('mg_data_snapshots') || '[]');
         snapshots.push(snapshot);
-        // 只保留最近10个快照
-        while (snapshots.length > 10) snapshots.shift();
-        localStorage.setItem('mg_data_snapshots', JSON.stringify(snapshots));
+        // 三重阈值裁剪：条数 ≤10、仅保留最近 7 天、总体积 ≤20MB
+        // （历史上只按条数裁剪，但单条含全量订单，10 条仍可能撑爆存储）
+        var SNAP_MAX_ITEMS = 10;
+        var SNAP_MAX_BYTES = 20 * 1024 * 1024;
+        var SNAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+        var _now = Date.now();
+        while (snapshots.length > SNAP_MAX_ITEMS) snapshots.shift();
+        while (snapshots.length > 1 && (_now - (snapshots[0].timestamp || 0)) > SNAP_MAX_AGE_MS) snapshots.shift();
+        var _lens = snapshots.map(function (s) { try { return JSON.stringify(s).length; } catch (_) { return 0; } });
+        var _total = _lens.reduce(function (a, b) { return a + b; }, 0);
+        while (snapshots.length > 1 && _total > SNAP_MAX_BYTES) {
+            _total -= _lens.shift();
+            snapshots.shift();
+        }
+        MGStore.setItem('mg_data_snapshots', JSON.stringify(snapshots));
         console.log('[快照] 已创建数据快照，共 ' + snapshots.length + ' 个');
         return true;
     } catch (e) {
@@ -19877,7 +20147,7 @@ function mgCreateDataSnapshot() {
 // 从快照恢复数据
 function mgRestoreFromSnapshot(index) {
     try {
-        const snapshots = JSON.parse(localStorage.getItem('mg_data_snapshots') || '[]');
+        const snapshots = JSON.parse(MGStore.getItem('mg_data_snapshots') || '[]');
         if (snapshots.length === 0) {
             alert('没有可用的快照');
             return false;
@@ -19908,7 +20178,7 @@ function mgRestoreFromSnapshot(index) {
 // 显示快照恢复对话框
 function mgShowSnapshotRecoveryDialog() {
     try {
-        const snapshots = JSON.parse(localStorage.getItem('mg_data_snapshots') || '[]');
+        const snapshots = JSON.parse(MGStore.getItem('mg_data_snapshots') || '[]');
         if (snapshots.length === 0) {
             alert('没有可用的快照数据。\n\n快照会在每次保存订单时自动创建。');
             return;
@@ -22955,6 +23225,23 @@ function openScheduleTodoCardModal(recordId) {
     if (appendBtn) appendBtn.style.display = isAppend ? 'none' : '';
     if (unlinkBtn) unlinkBtn.style.display = isAppend ? '' : 'none';
 
+    // 案例按钮：已有案例显示「查看案例」，否则显示「生成案例」
+    var caseBtn = document.querySelector('#scheduleTodoCardModal .schedule-todo-card-modal-btn[onclick*="gen_case"]');
+    if (caseBtn) {
+        var hasCase = item && hasOrderCase(item.id);
+        var span = caseBtn.querySelector('span');
+        var iconUse = caseBtn.querySelector('svg use');
+        if (hasCase) {
+            if (span) span.textContent = '查看案例';
+            caseBtn.title = '查看该订单已生成的案例';
+            if (iconUse) iconUse.setAttribute('href', '#i-eye');
+        } else {
+            if (span) span.textContent = '生成案例';
+            caseBtn.title = '生成案例展示图';
+            if (iconUse) iconUse.setAttribute('href', '#i-image-line-a');
+        }
+    }
+
     var el = document.getElementById('scheduleTodoCardModal');
     if (el) el.classList.remove('d-none');
 }
@@ -23029,7 +23316,13 @@ function scheduleTodoCardAction(action) {
     }
     if (action === 'gen_case') {
         closeScheduleTodoCardModal();
-        openCaseGenerator({ orderId: id });
+        // 已有案例：直接查看；无案例：新建生成
+        var existingCase = item && caseLibrary && caseLibrary.find(function (c) { return c && String(c.orderId) === String(item.id); });
+        if (existingCase) {
+            openCaseGenerator({ caseId: existingCase.id });
+        } else {
+            openCaseGenerator({ orderId: id });
+        }
         return;
     }
 
@@ -32362,9 +32655,9 @@ function removeGift(giftId) {
 // 恢复默认设置
 function resetToDefaultSettings() {
     if (!confirm('将恢复为初始模板，当前制品、系数、结算等配置会被覆盖，是否继续？')) return;
-    localStorage.removeItem('calculatorSettings');
-    localStorage.removeItem('productSettings');
-    localStorage.removeItem('processSettings');
+    MGStore.removeItem('calculatorSettings');
+    MGStore.removeItem('productSettings');
+    MGStore.removeItem('processSettings');
     location.reload();
 }
 
@@ -36651,8 +36944,7 @@ async function caseImgPut(id, dataUrl) {
         });
         return;
     }
-    try { localStorage.setItem('caseImg_' + id, dataUrl); }
-    catch (e) { console.error('案例图片保存失败(降级):', e); showGlobalToast('本地空间不足，图片可能未完整保存'); }
+    MGStore.setItem('caseImg_' + id, dataUrl);
 }
 async function caseImgGet(id) {
     if (!id) return null;
@@ -36668,7 +36960,7 @@ async function caseImgGet(id) {
         });
         if (v) return v;
     }
-    try { return localStorage.getItem('caseImg_' + id); } catch (_) { return null; }
+    return MGStore.getItem('caseImg_' + id);
 }
 async function caseImgDelete(id) {
     if (!id) return;
@@ -36683,7 +36975,7 @@ async function caseImgDelete(id) {
             } catch (_) { resolve(); }
         });
     }
-    try { localStorage.removeItem('caseImg_' + id); } catch (_) {}
+    MGStore.removeItem('caseImg_' + id);
 }
 
 // ---------- 图片加载 / 压缩 / 投影烘焙 ----------
@@ -37331,15 +37623,15 @@ let _casePresetAddOpen = false;    // ＋ 展开的命名行（保存当前布�
 let _casePresetDelMode = false;    // － 删除模式（点自定义模版胶囊执行删除）
 function loadCaseLayoutPresets() {
     try {
-        _caseLayoutPresets = JSON.parse(localStorage.getItem('caseLayoutPresets') || '[]');
+        _caseLayoutPresets = JSON.parse(MGStore.getItem('caseLayoutPresets') || '[]');
         if (!Array.isArray(_caseLayoutPresets)) _caseLayoutPresets = [];
     } catch (e) { _caseLayoutPresets = []; }
-    try { _caseLayoutPresetDefault = String(localStorage.getItem('caseLayoutPresetDefault') || ''); } catch (e) { _caseLayoutPresetDefault = ''; }
+    try { _caseLayoutPresetDefault = String(MGStore.getItem('caseLayoutPresetDefault') || ''); } catch (e) { _caseLayoutPresetDefault = ''; }
     if (_caseLayoutPresetDefault && !_caseLayoutPresets.some(function (p) { return p && p.id === _caseLayoutPresetDefault; })) _caseLayoutPresetDefault = '';
     return _caseLayoutPresets;
 }
 function saveCaseLayoutDefault() {
-    try { localStorage.setItem('caseLayoutPresetDefault', _caseLayoutPresetDefault || ''); } catch (e) {}
+    try { MGStore.setItem('caseLayoutPresetDefault', _caseLayoutPresetDefault || ''); } catch (e) {}
 }
 // 设为/取消默认布局模版（新建案例自动套用；未设则用系统默认样式）
 // id = 'system' 表示系统默认胶囊：点它清除自定义默认，回到系统默认样式
@@ -37361,8 +37653,7 @@ function toggleCasePresetDefault(id) {
         : '已取消默认模版，新建案例使用系统默认样式');
 }
 function saveCaseLayoutPresets() {
-    try { localStorage.setItem('caseLayoutPresets', JSON.stringify(_caseLayoutPresets)); }
-    catch (e) { console.error('布局模版保存失败:', e); showGlobalToast('布局模版保存失败（本地存储空间不足）'); }
+    MGStore.setItem('caseLayoutPresets', JSON.stringify(_caseLayoutPresets));
 }
 function saveCaseLayoutPreset() {
     const st = _caseState; if (!st) return;
@@ -37458,7 +37749,7 @@ function casePresetChipHtml(id, name, isDef) {
 }
 function loadCaseLibrary() {
     try {
-        const raw = localStorage.getItem('caseLibrary');
+        const raw = MGStore.getItem('caseLibrary');
         caseLibrary = raw ? (JSON.parse(raw) || []) : [];
         if (!Array.isArray(caseLibrary)) caseLibrary = [];
     } catch (e) {
@@ -37468,11 +37759,7 @@ function loadCaseLibrary() {
     return caseLibrary;
 }
 function saveCaseLibrary() {
-    try { localStorage.setItem('caseLibrary', JSON.stringify(caseLibrary)); }
-    catch (e) {
-        console.error('保存案例库失败:', e);
-        showGlobalToast('案例库保存失败（本地存储空间不足）');
-    }
+    MGStore.setItem('caseLibrary', JSON.stringify(caseLibrary));
 }
 function caseNewState() {
     const artist = (defaultSettings && defaultSettings.artistInfo) || {};

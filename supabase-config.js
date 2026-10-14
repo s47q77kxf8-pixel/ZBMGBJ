@@ -10,7 +10,18 @@ window.__SUPABASE__ = (function () {
 
   try {
     if (window.supabase && typeof window.supabase.createClient === 'function') {
-      api.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      // 会话令牌交给 MGStore 的 IndexedDB 通道，避免与业务数据抢 localStorage 配额
+      // （storage.js 未加载时 storage 为 undefined，自动回退 SDK 默认 localStorage，行为同旧版）
+      // 不显式传 storageKey：SDK 默认派生的键名仍为 sb-<projectref>-auth-token，旧令牌可直接迁移
+      var authStorage = (window.MGStore && window.MGStore.authStorage) || undefined;
+      api.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          storage: authStorage,
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
+      });
     } else {
       // 仅在用户已开启云同步时提示，避免本地模式下的无意义噪音日志
       var cloudEnabled = false;
