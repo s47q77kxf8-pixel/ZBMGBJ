@@ -3137,6 +3137,45 @@ function mgMarkDeleted(domain, id) {
     mgGetDeletedIds(domain).add(String(id));
     mgPersistDeletedIds();
 }
+
+// ====== 设置同步快照 ======
+// 记录本机「上次成功上传设置」时各域的条目集合与单例内容，作为删除推断的基线。
+// 关键：删除只能按「本机上次同步时有、现在没有」推断，绝不能按「云端有、本机没有」推断——
+// 新设备/换浏览器/拉取失败时本地为空，后者会把云端设置整域打墓碑清空（设置丢失的根因）。
+// 对象型小域（费用/五类系数）额外保存键值基线，供拉取合并时做三方合并。
+// 该快照需在首次上传前同步读取，与 mgDeletedIds 一样走 localStorage 小键。
+const MG_SETTINGS_SYNC_SNAPSHOT_KEY = 'mgSettingsSyncSnapshot';
+let mgSettingsSyncSnapshot = { items: {}, singletons: {} };
+function mgLoadSettingsSyncSnapshot() {
+    try {
+        const raw = localStorage.getItem(MG_SETTINGS_SYNC_SNAPSHOT_KEY);
+        const obj = raw ? JSON.parse(raw) : {};
+        mgSettingsSyncSnapshot = {
+            items: (obj.items && typeof obj.items === 'object') ? obj.items : {},
+            singletons: (obj.singletons && typeof obj.singletons === 'object') ? obj.singletons : {}
+        };
+    } catch (e) {
+        mgSettingsSyncSnapshot = { items: {}, singletons: {} };
+    }
+    return mgSettingsSyncSnapshot;
+}
+function mgPersistSettingsSyncSnapshot() {
+    try {
+        localStorage.setItem(MG_SETTINGS_SYNC_SNAPSHOT_KEY, JSON.stringify(mgSettingsSyncSnapshot));
+    } catch (e) {
+        console.warn('[cloud] 持久化设置同步快照失败:', e);
+    }
+}
+mgLoadSettingsSyncSnapshot();
+
+// 本机是否成功拉取过云端设置（决定上传时是否允许覆盖云端单例）
+const MG_SETTINGS_PULLED_KEY = 'mg_settings_pulled_at';
+function mgMarkSettingsPulled() {
+    try { localStorage.setItem(MG_SETTINGS_PULLED_KEY, String(Date.now())); } catch (_) {}
+}
+function mgHasDevicePulledSettings() {
+    try { return !!localStorage.getItem(MG_SETTINGS_PULLED_KEY); } catch (_) { return false; }
+}
 // 纯函数：根据本机显式删除的 id 与云端现有条目，计算需要打的墓碑行。
 // 关键：只对在云端确实存在过的"本机显式删除 id"打墓碑，绝不因"云端有但本机没有"
 // 就打墓碑——后者正是多设备下把其他设备档案误删的根因。
@@ -19723,11 +19762,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261015-0007';
+const APP_VERSION = '20261015-0008';
 const APP_CHANGELOG = [
     {
         date: '2026-10-15',
         items: [
+            '【云同步】修复云端同步可能清空设置的问题：新设备登录或同步中断时不再误删云端设置，「从云端恢复」在云端暂无设置时不再清空本地，设置合并会保留本机尚未上传的修改',
             '【记录页·案例】订单已有案例时，操作弹窗按钮自动变为「查看案例」，点击直接打开已有案例；订单卡片新增紫色「案例」标签',
             '【记录页·筛选】「案例」标签加入记录页与统计页筛选，勾选后只显示已生成案例的订单',
             '【登录】修复本地存储占满导致点登录没反应的问题（表现为部分浏览器能登、部分登不了）',
@@ -34867,6 +34907,15 @@ function mgBuildSettingsV2LocalState() {
         return true;
     });
 
+    // mgEnsureStableIdForItem 可能为本机缺 id 的条目新分配 id（直接改在原数组元素上）。
+    // 立即持久化这三个数组，避免「上传后未保存就关页」导致下次构建重新生成不同 id、
+    // 与同步快照错位而被误判为整批删除。这里直写存储，不走 doSaveData（避免触发自动同步循环）。
+    try {
+        MGStore.setItem('productSettings', JSON.stringify(productSettings || []));
+        MGStore.setItem('processSettings', JSON.stringify(processSettings || []));
+        MGStore.setItem('templates', JSON.stringify(templates || []));
+    } catch (_) {}
+
     return {
         singletons: [
             { domain: 'calculator_settings', payload: calc },
@@ -34922,6 +34971,14 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     };
     perfTimings.mark('init');
 
+    // 同步快照（本机上次成功上传时的基线），用于三方合并与空数据护栏
+    const snapItems = (typeof mgSettingsSyncSnapshot !== 'undefined' && mgSettingsSyncSnapshot && mgSettingsSyncSnapshot.items) || {};
+    const snapSingletons = (typeof mgSettingsSyncSnapshot !== 'undefined' && mgSettingsSyncSnapshot && mgSettingsSyncSnapshot.singletons) || {};
+    function snapObjectBase(domain) {
+        const v = snapItems[domain];
+        return (v && !Array.isArray(v) && typeof v === 'object') ? v : null;
+    }
+
     const singletonMap = new Map();
     (singletons || []).forEach(function (row) {
         if (row && row.domain) singletonMap.set(String(row.domain), row.payload || {});
@@ -34930,8 +34987,20 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
 
     const calc = singletonMap.get('calculator_settings');
     if (calc && typeof calc === 'object') {
-        if (mergeMode) Object.assign(defaultSettings, mergeObjectSettings(calc, defaultSettings || {}));
-        else Object.assign(defaultSettings, mgSafeClone(calc, {}));
+        if (mergeMode) {
+            // 三方合并：以本机上次同步基线为参照，本机未同步的修改不被云端旧值覆盖
+            const mergedCalc = mgMergeObjectThreeWay(snapSingletons.calculator_settings || null, calc, defaultSettings || {});
+            Object.keys(mergedCalc).forEach(function (k) { defaultSettings[k] = mergedCalc[k]; });
+            // 基线中存在、合并结果中已消失的键 = 云端侧已删除，同步删除
+            const baseCalc = (snapSingletons.calculator_settings && typeof snapSingletons.calculator_settings === 'object') ? snapSingletons.calculator_settings : null;
+            if (baseCalc) {
+                Object.keys(baseCalc).forEach(function (k) {
+                    if (!(k in mergedCalc)) delete defaultSettings[k];
+                });
+            }
+        } else {
+            Object.assign(defaultSettings, mgSafeClone(calc, {}));
+        }
     }
 
     // V2 中支持把 extraPricingUp/Down 拆分为条目域，这里先从单例中剥离，避免被空数组覆盖
@@ -34940,7 +35009,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     const artistInfo = singletonMap.get('artist_info');
     if (artistInfo && typeof artistInfo === 'object') {
         defaultSettings.artistInfo = mergeMode
-            ? mergeObjectSettings(artistInfo, defaultSettings.artistInfo || {})
+            ? mgMergeObjectThreeWay(snapSingletons.artist_info || null, artistInfo, defaultSettings.artistInfo || {})
             : mgSafeClone(artistInfo, {});
     }
     perfTimings.mark('calcSettingsApply');
@@ -35051,7 +35120,9 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     const originalPresetTags = mgSafeClone(scheduleTodoPresetTags || [], []);
     perfTimings.mark('snapshotSave');
 
-    if (cloudProducts.length || !mergeMode) {
+    // 护栏：仅当云端该域确有 active 条目时才应用，云端为空（含全墓碑）时保留本地，
+    // 避免「从云端恢复」把云端空数据/历史脏墓碑直接清空本地（拉取侧设置丢失的根因之一）
+    if (cloudProducts.length) {
         const deletedSet = getDeletedSet('product_settings');
         if (mergeMode) {
             // 合并模式：保留云端制品，只删除明确标记为删除的
@@ -35126,7 +35197,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     }
     perfTimings.mark('productMerge');
 
-    if (cloudProcess.length || !mergeMode) {
+    if (cloudProcess.length) {
         const deletedSet = getDeletedSet('process_settings');
         if (mergeMode) {
             // 合并模式：保留云端工艺，只删除明确标记为删除的
@@ -35201,7 +35272,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     }
     perfTimings.mark('processMerge');
 
-    if (cloudTemplates.length || !mergeMode) {
+    if (cloudTemplates.length) {
         const deletedSet = getDeletedSet('templates');
         if (mergeMode) {
             // 合并模式：保留云端模板，只删除明确标记为删除的
@@ -35288,61 +35359,62 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
         const deletedSet = getDeletedSet('other_fee_types');
         const localFiltered = { ...defaultSettings.otherFees };
         deletedSet.forEach(function (k) { delete localFiltered[k]; });
-        defaultSettings.otherFees = { ...localFiltered, ...feeObj };
-    } else {
+        defaultSettings.otherFees = mgMergeObjectThreeWay(snapObjectBase('other_fee_types'), feeObj, localFiltered);
+    } else if (feeRows.length) {
+        // 覆盖模式护栏：云端该域无 active 条目时保留本地
         defaultSettings.otherFees = feeObj;
     }
 
     const usageObj = mgDomainItemsToObject(grouped, 'usage_coefficients');
-    if (Object.keys(usageObj).length || !mergeMode) {
+    if (Object.keys(usageObj).length) {
         if (mergeMode) {
             const localFiltered = { ...(defaultSettings.usageCoefficients || {}) };
             getDeletedSet('usage_coefficients').forEach(function (k) { delete localFiltered[k]; });
-            defaultSettings.usageCoefficients = mergeObjectSettings(usageObj, localFiltered);
+            defaultSettings.usageCoefficients = mgMergeObjectThreeWay(snapObjectBase('usage_coefficients'), usageObj, localFiltered);
         } else {
             defaultSettings.usageCoefficients = usageObj;
         }
     }
 
     const urgentObj = mgDomainItemsToObject(grouped, 'urgent_coefficients');
-    if (Object.keys(urgentObj).length || !mergeMode) {
+    if (Object.keys(urgentObj).length) {
         if (mergeMode) {
             const localFiltered = { ...(defaultSettings.urgentCoefficients || {}) };
             getDeletedSet('urgent_coefficients').forEach(function (k) { delete localFiltered[k]; });
-            defaultSettings.urgentCoefficients = mergeObjectSettings(urgentObj, localFiltered);
+            defaultSettings.urgentCoefficients = mgMergeObjectThreeWay(snapObjectBase('urgent_coefficients'), urgentObj, localFiltered);
         } else {
             defaultSettings.urgentCoefficients = urgentObj;
         }
     }
 
     const sameModelObj = mgDomainItemsToObject(grouped, 'same_model_coefficients');
-    if (Object.keys(sameModelObj).length || !mergeMode) {
+    if (Object.keys(sameModelObj).length) {
         if (mergeMode) {
             const localFiltered = { ...(defaultSettings.sameModelCoefficients || {}) };
             getDeletedSet('same_model_coefficients').forEach(function (k) { delete localFiltered[k]; });
-            defaultSettings.sameModelCoefficients = mergeObjectSettings(sameModelObj, localFiltered);
+            defaultSettings.sameModelCoefficients = mgMergeObjectThreeWay(snapObjectBase('same_model_coefficients'), sameModelObj, localFiltered);
         } else {
             defaultSettings.sameModelCoefficients = sameModelObj;
         }
     }
 
     const discountObj = mgDomainItemsToObject(grouped, 'discount_coefficients');
-    if (Object.keys(discountObj).length || !mergeMode) {
+    if (Object.keys(discountObj).length) {
         if (mergeMode) {
             const localFiltered = { ...(defaultSettings.discountCoefficients || {}) };
             getDeletedSet('discount_coefficients').forEach(function (k) { delete localFiltered[k]; });
-            defaultSettings.discountCoefficients = mergeObjectSettings(discountObj, localFiltered);
+            defaultSettings.discountCoefficients = mgMergeObjectThreeWay(snapObjectBase('discount_coefficients'), discountObj, localFiltered);
         } else {
             defaultSettings.discountCoefficients = discountObj;
         }
     }
 
     const platformObj = mgDomainItemsToObject(grouped, 'platform_fees');
-    if (Object.keys(platformObj).length || !mergeMode) {
+    if (Object.keys(platformObj).length) {
         if (mergeMode) {
             const localFiltered = { ...(defaultSettings.platformFees || {}) };
             getDeletedSet('platform_fees').forEach(function (k) { delete localFiltered[k]; });
-            defaultSettings.platformFees = mergeObjectSettings(platformObj, localFiltered);
+            defaultSettings.platformFees = mgMergeObjectThreeWay(snapObjectBase('platform_fees'), platformObj, localFiltered);
         } else {
             defaultSettings.platformFees = platformObj;
         }
@@ -35350,7 +35422,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
 
     const upRows = grouped['extra_pricing_up'] || [];
     const cloudUp = upRows.map(function (r) { return mgSafeClone(r.payload || {}, {}); });
-    if (cloudUp.length || !mergeMode) {
+    if (cloudUp.length) {
         const deletedSet = getDeletedSet('extra_pricing_up');
         const localFiltered = mergeMode
             ? (defaultSettings.extraPricingUp || []).filter(function (it) {
@@ -35364,7 +35436,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
 
     const downRows = grouped['extra_pricing_down'] || [];
     const cloudDown = downRows.map(function (r) { return mgSafeClone(r.payload || {}, {}); });
-    if (cloudDown.length || !mergeMode) {
+    if (cloudDown.length) {
         const deletedSet = getDeletedSet('extra_pricing_down');
         const localFiltered = mergeMode
             ? (defaultSettings.extraPricingDown || []).filter(function (it) {
@@ -35378,7 +35450,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
 
     const perItemExtraFeeRows = grouped['per_item_extra_fees'] || [];
     const cloudPerItemExtraFees = perItemExtraFeeRows.map(function (r) { return mgSafeClone(r.payload || {}, {}); });
-    if (cloudPerItemExtraFees.length || !mergeMode) {
+    if (cloudPerItemExtraFees.length) {
         const deletedSet = getDeletedSet('per_item_extra_fees');
         const localFiltered = mergeMode
             ? (defaultSettings.perItemExtraFees || []).filter(function (it) {
@@ -35394,7 +35466,7 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     // 注意：云端行的 item_id 是 'tag_<标签名>'，删除过滤必须用同样的 key 才能命中，
     // 旧代码拿 name 去匹配 deletedSet，导致已删除的标签每次拉取都会「复活」
     const presetTagRows = grouped['schedule_todo_preset_tags'] || [];
-    if (cloudPresetTags.length || !mergeMode) {
+    if (cloudPresetTags.length) {
         const deletedSet = getDeletedSet('schedule_todo_preset_tags');
         const localFiltered = mergeMode
             ? (scheduleTodoPresetTags || []).filter(function (it) {
@@ -35618,8 +35690,18 @@ async function mgTryLoadSettingsFromCloudV2(client, artistId, mergeMode) {
             throw (sErr || iErr);
         }
 
+        // 记录本机已见过云端设置（作为上传时允许覆盖云端单例的依据）
+        mgMarkSettingsPulled();
+
+        // 覆盖模式护栏：云端没有任何 active 设置（含全墓碑）时，「从云端恢复」不得清空本地
+        const activeCount = (singletons || []).length
+            + (items || []).filter(function (r) { return !r.deleted_at; }).length;
+        if (!mergeMode && !activeCount) {
+            return { supported: true, hasData: 0, empty: true };
+        }
+
         mgApplySettingsV2(singletons || [], items || [], mergeMode);
-        return { supported: true, hasData: (singletons && singletons.length) || (items && items.length) };
+        return { supported: true, hasData: activeCount };
     } catch (err) {
         throw err;
     }
@@ -35628,10 +35710,6 @@ async function mgTryLoadSettingsFromCloudV2(client, artistId, mergeMode) {
 async function mgTrySyncSettingsToCloudV2(client, artistId) {
     const state = mgBuildSettingsV2LocalState();
     const now = new Date().toISOString();
-
-    const singletonRows = (state.singletons || []).map(function (row) {
-        return { artist_id: artistId, domain: row.domain, payload: row.payload, updated_at: now };
-    });
 
     const activeRows = [];
     Object.entries(state.itemsByDomain || {}).forEach(function (entry) {
@@ -35657,44 +35735,86 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
     });
     const activeRowsDedup = Array.from(activeRowsDedupMap.values());
 
-    const { data: existingItems, error: fetchErr } = await client
-        .from('artist_settings_items')
-        .select('domain,item_id,deleted_at')
-        .eq('artist_id', artistId);
+    const [itemsRes, singletonsRes] = await Promise.all([
+        client.from('artist_settings_items').select('domain,item_id,deleted_at').eq('artist_id', artistId),
+        client.from('artist_settings_singleton').select('domain').eq('artist_id', artistId)
+    ]);
 
-    if (fetchErr) {
-        const code = fetchErr.code || '';
-        const msg = fetchErr.message || '';
+    const fetchErr = itemsRes.error;
+    const sFetchErr = singletonsRes.error;
+    if (fetchErr || sFetchErr) {
+        const err = fetchErr || sFetchErr;
+        const code = err.code || '';
+        const msg = err.message || '';
         if (code === 'PGRST205' || String(msg).includes('relation') || String(msg).includes('does not exist')) {
             return { supported: false };
         }
-        throw fetchErr;
+        throw err;
     }
+    const existingItems = itemsRes.data || [];
+    const existingSingletons = singletonsRes.data || [];
 
-    const activeKeySet = new Set(activeRowsDedup.map(function (r) { return r.domain + '::' + r.item_id; }));
-    // ⚠️ 墓碑只能打在「本函数自己管理的设置域」上。
-    // artist_settings_items 是共用表，单主（customers）与角色档案（role_profiles）也存这里。
-    // 旧逻辑只看「云端有、本次没上传」就一律打墓碑（且 payload 置 null），
-    // 等于每次同步设置都会把单主/角色档案整片软删除，下一次拉取再把本地清空 —— 单主丢失的根因。
+    // ---- 单例覆盖护栏 ----
+    // 本机从未成功拉取过云端设置（新设备/换浏览器/清过缓存）且没有上次同步基线时，
+    // 本地单例多半只是默认值。若云端已存在该单例，跳过覆盖，避免用默认值冲掉云端的
+    // 计算设置/画师信息（doSaveData 每次保存都会静默上传设置，新设备极易触发）。
+    const everPulled = mgHasDevicePulledSettings();
+    const cloudSingletonDomains = new Set(existingSingletons.map(function (r) { return String(r.domain); }));
+    const uploadedSingletonDomains = new Set();
+    const singletonRows = [];
+    (state.singletons || []).forEach(function (row) {
+        const domain = String(row.domain);
+        const hasBase = !!(mgSettingsSyncSnapshot.singletons && mgSettingsSyncSnapshot.singletons[domain] != null);
+        if (!everPulled && cloudSingletonDomains.has(domain) && !hasBase) {
+            console.warn('[cloud] 本机尚未拉取过云端设置，跳过覆盖云端单例:', domain);
+            return;
+        }
+        uploadedSingletonDomains.add(domain);
+        singletonRows.push({ artist_id: artistId, domain: row.domain, payload: row.payload, updated_at: now });
+    });
+
+    const cloudActiveKeys = new Set();
+    const cloudDeletedKeys = new Set();
+    existingItems.forEach(function (row) {
+        const key = String(row.domain) + '::' + String(row.item_id);
+        if (row.deleted_at) cloudDeletedKeys.add(key);
+        else cloudActiveKeys.add(key);
+    });
+
+    // 防复活：其他设备已删除（云端已有墓碑）的条目，在本机拉取合并前不得再以 active 覆盖回去
+    const uploadRows = activeRowsDedup.filter(function (r) {
+        return !cloudDeletedKeys.has(String(r.domain) + '::' + String(r.item_id));
+    });
+
+    // ---- 墓碑：只按「本机同步快照差分」推断删除 ----
+    // 基线是本机上次成功上传时各域的条目集合，而不是云端当前状态：
+    // 「云端有、本次没上传」不再视为删除 —— 新设备/拉取失败时本地为空，
+    // 旧逻辑会把云端设置整域打墓碑并清空 payload，其他设备拉取后设置全丢（设置丢失的根因）。
+    // 同时只对云端仍为 active 的行打墓碑，避免重复写墓碑。
     const settingsDomains = new Set(Object.keys(state.itemsByDomain || {}));
-    const tombstoneRows = (existingItems || [])
-        .filter(function (row) {
-            if (!settingsDomains.has(String(row.domain))) return false;
-            const key = String(row.domain) + '::' + String(row.item_id);
-            return !activeKeySet.has(key);
-        })
-        .map(function (row) {
-            return {
+    const snapItems = (mgSettingsSyncSnapshot && mgSettingsSyncSnapshot.items) || {};
+    const tombstoneRows = [];
+    Object.keys(snapItems).forEach(function (domain) {
+        if (!settingsDomains.has(String(domain))) return;
+        const prev = snapItems[domain];
+        const prevIds = Array.isArray(prev) ? prev : (prev && typeof prev === 'object' ? Object.keys(prev) : []);
+        const nowIds = new Set((state.itemsByDomain[domain] || []).map(function (r) { return String(r.item_id); }));
+        prevIds.forEach(function (id) {
+            const key = String(domain) + '::' + String(id);
+            if (nowIds.has(String(id))) return;    // 本机仍存在，不是删除
+            if (!cloudActiveKeys.has(key)) return; // 云端不存在或已是墓碑，无需再打
+            tombstoneRows.push({
                 artist_id: artistId,
-                domain: row.domain,
-                item_id: String(row.item_id),
+                domain: String(domain),
+                item_id: String(id),
                 payload: null,
                 updated_at: now,
                 deleted_at: now
-            };
+            });
         });
+    });
 
-    const allItemRows = activeRowsDedup.concat(tombstoneRows);
+    const allItemRows = uploadRows.concat(tombstoneRows);
 
     const [{ error: sUpsertErr }, { error: iUpsertErr }] = await Promise.all([
         singletonRows.length
@@ -35714,6 +35834,36 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
         }
         throw err;
     }
+
+    // 上传成功后更新本机同步快照（作为下次删除推断的基线）；
+    // 被云端墓碑挡下的条目不写入快照，待拉取合并后自然对齐。
+    // 对象型小域额外保存键值基线，供拉取合并做三方合并。
+    const MG_SETTINGS_OBJECT_BASE_DOMAINS = { other_fee_types: 1, usage_coefficients: 1, urgent_coefficients: 1, same_model_coefficients: 1, discount_coefficients: 1, platform_fees: 1 };
+    const newSnapItems = {};
+    Object.entries(state.itemsByDomain || {}).forEach(function (entry) {
+        const domain = entry[0];
+        const rows = entry[1] || [];
+        if (MG_SETTINGS_OBJECT_BASE_DOMAINS[domain]) {
+            const obj = {};
+            rows.forEach(function (r) {
+                const key = String(r.item_id || '');
+                if (key && !cloudDeletedKeys.has(domain + '::' + key)) obj[key] = mgSafeClone(r.payload, {});
+            });
+            newSnapItems[domain] = obj;
+        } else {
+            const ids = [];
+            rows.forEach(function (r) {
+                if (!cloudDeletedKeys.has(domain + '::' + String(r.item_id))) ids.push(String(r.item_id));
+            });
+            newSnapItems[domain] = ids;
+        }
+    });
+    const newSnapSingletons = {};
+    (state.singletons || []).forEach(function (row) {
+        if (uploadedSingletonDomains.has(String(row.domain))) newSnapSingletons[row.domain] = mgSafeClone(row.payload, {});
+    });
+    mgSettingsSyncSnapshot = { items: newSnapItems, singletons: newSnapSingletons };
+    mgPersistSettingsSyncSnapshot();
 
     return { supported: true };
 }
@@ -36087,6 +36237,34 @@ function mergeArraySettings(cloudArray, localArray, key = 'id') {
     return Array.from(mergedMap.values());
 }
 
+// 三方合并：以「本机上次同步时的快照」为基线，解决合并拉取时云端旧值覆盖本机未同步修改的问题。
+// 规则：本机相对基线有改动（含删除）→ 保留本机；本机未动 → 采纳云端（含云端删除）；
+// 双方都改了（真冲突）→ 云端优先（与旧策略一致）。没有基线时退化为旧的云端优先合并。
+function mgMergeObjectThreeWay(baseObj, cloudObj, localObj) {
+    const base = (baseObj && typeof baseObj === 'object' && !Array.isArray(baseObj)) ? baseObj : null;
+    if (!base) return mergeObjectSettings(cloudObj, localObj || {});
+    const cloud = (cloudObj && typeof cloudObj === 'object' && !Array.isArray(cloudObj)) ? cloudObj : {};
+    const local = (localObj && typeof localObj === 'object' && !Array.isArray(localObj)) ? localObj : {};
+    function eq(a, b) {
+        try { return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b); }
+        catch (_) { return false; }
+    }
+    const merged = {};
+    const keys = new Set([].concat(Object.keys(base), Object.keys(cloud), Object.keys(local)));
+    keys.forEach(function (key) {
+        const b = base[key], c = cloud[key], l = local[key];
+        const localChanged = !eq(l, b);
+        const cloudChanged = !eq(c, b);
+        let val;
+        if (!localChanged) val = c;       // 本机没动 → 采纳云端（含云端删除）
+        else if (!cloudChanged) val = l;  // 云端没动 → 保留本机（含本机删除）
+        else val = c;                     // 双方都改 → 云端优先
+        if (val === undefined) return;    // 该键已被删除
+        merged[key] = mgSafeClone(val, val);
+    });
+    return merged;
+}
+
 // 智能合并对象设置（深度合并，云端优先）
 function mergeObjectSettings(cloudObj, localObj) {
     if (!cloudObj || typeof cloudObj !== 'object') return localObj || {};
@@ -36154,6 +36332,13 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
         const v2 = await mgTryLoadSettingsFromCloudV2(client, session.user.id, mergeMode);
         if (v2 && v2.supported) {
             v2TableExists = true;
+            if (v2.empty) {
+                if (!mergeMode) {
+                    if (typeof showGlobalToast === 'function') showGlobalToast('云端暂无设置，未做修改');
+                    else alert('云端暂无设置，未做修改');
+                }
+                return;
+            }
             clearTimeout(_saveDataTimer);
             if (typeof doSaveData === 'function') doSaveData();
 
@@ -36215,6 +36400,9 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
         }
         return;
     }
+
+    // 记录本机已见过云端设置（V1 整包路径）
+    mgMarkSettingsPulled();
 
     try {
         // 验证数据格式
