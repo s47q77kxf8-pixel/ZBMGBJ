@@ -2696,6 +2696,13 @@ html.theme-dark .icon-action-btn.module-duplicate-btn {
     pointer-events: none;
 }
 
+/* 弹窗打开时，遮罩必须真正拦截点击（与 .schedule-todo-card-modal:not(.d-none) 同一策略）。
+   否则点在弹窗内容之外的遮罩会穿透到下层页面：在记录页会再次命中待办卡片，
+   重新打开操作弹窗（z-index 99999 > 备注弹窗 99998），叠出两个弹窗。 */
+.modal:not(.d-none) {
+    pointer-events: auto;
+}
+
 .modal-content {
     background: white;
     padding: 2rem;
