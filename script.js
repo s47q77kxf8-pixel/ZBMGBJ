@@ -1230,34 +1230,157 @@ function renderStorageUsage() {
     }
 
     actionsEl.innerHTML =
-        '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeSnapshots()">清理数据快照</button>'
+        (((window.MGStore && window.MGStore.namespace) || '').indexOf('u_') === 0
+            ? '<button type="button" class="btn secondary btn-compact" onclick="mgImportGuestData()">导入本机游客数据</button>'
+            : '')
+        + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeSnapshots()">清理数据快照</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeTrash()">清空回收站</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeOrphanCaseImgs()">清理孤立图片缓存</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="renderStorageUsage()">刷新</button>'
         + '<button type="button" class="btn danger btn-compact" onclick="mgPurgeAllData()">清空所有数据</button>';
 }
 
-// 登录令牌键（sb-<projectref>-auth-token）：清空数据时必须保留，否则会被强制登出
-function mgIsAuthStorageKey(key) {
-    var k = String(key || '');
-    return k.indexOf('sb-') === 0 && k.slice(-11) === '-auth-token';
+// ===== 账号命名空间（本地数据按登录身份隔离） =====
+// 背景：本地业务数据此前存全局键，同一浏览器切换账号会互串（A 的数据被 B 看到，
+// 甚至被自动同步写进 B 的云端）。storage.js 的命名空间层把业务键映射为 `<ns>_<key>`：
+// 登录用户 → u_<userId>，未登录 → guest。
+// 启动时序：init → MGStore.ready → mgSetupIdentity（定身份 + 一次性迁移）→ initBody。
+// 迁移只做一次：全局标记 mg_ns_legacy_taken_v1，升级后第一个启动的身份领走旧数据；
+// 其他账号空库起步，可从云端拉取，或在设置页用「导入本机游客数据」把游客数据导入当前账号。
+// 注意：mg_cloud_enabled（云同步开关）为设备级设置，保持全局键不隔离。
+function mgCloudSwitchOn() {
+    try { return localStorage.getItem('mg_cloud_enabled') === '1'; } catch (_) { return false; }
 }
 
-// 清空已打开数据库中的指定对象仓（保留同库其它仓，如认证会话仓）
-function mgClearStoreInDb(db, storeName) {
-    return new Promise(function (resolve) {
-        if (!db || !db.objectStoreNames || !db.objectStoreNames.contains(storeName)) return resolve();
-        try {
-            var tx = db.transaction(storeName, 'readwrite');
-            tx.objectStore(storeName).clear();
-            tx.oncomplete = function () { resolve(); };
-            tx.onerror = function () { resolve(); };
-            tx.onabort = function () { resolve(); };
-        } catch (_) { resolve(); }
-    });
+// 随命名空间一起隔离的辅助小键（同步游标 / 墓碑 / 快照等，混用会把 A 的同步状态套到 B 的云端）
+var MG_NS_EXTRA_KEYS = [
+    'mg_last_orders_sync_at', 'mg_deleted_external_ids', 'mg_deleted_external_ids_queue',
+    'mg_unsynced_orders', 'mg_schedule_todo_preset_tags', 'mg_cloud_migrated_v1', 'mg_first_sync_policy',
+    'mg_last_synced_artist_display_name', 'mg_settings_pulled_at', 'mgSettingsSyncSnapshot',
+    'mgDeletedIds', 'roleIgnoredNames', 'mg_cloud_sync_policy', 'mg_cloud_sync_initialized'
+];
+var MG_NS_LEGACY_FLAG = 'mg_ns_legacy_taken_v1';
+
+function mgIsNsBizKey(k) {
+    k = String(k);
+    if (k.indexOf('caseImg_') === 0) return true;
+    var moveKeys = (window.MGStore && window.MGStore._MOVE_KEYS) || [];
+    return moveKeys.indexOf(k) !== -1 || MG_NS_EXTRA_KEYS.indexOf(k) !== -1;
 }
 
-// 一键清空本机全部业务数据：保留登录状态，并关闭云同步，避免清空后数据又被同步回来
+// 确定当前登录身份并设置存储命名空间；升级后第一个启动的身份执行一次性旧数据迁移
+async function mgSetupIdentity() {
+    if (!window.MGStore || typeof window.MGStore.setNamespace !== 'function') return;
+    var userId = null;
+    try {
+        var client = (typeof mgGetSupabaseClient === 'function') ? mgGetSupabaseClient() : null;
+        if (client && client.auth && client.auth.getSession) {
+            var session = await Promise.race([
+                client.auth.getSession().then(function (res) {
+                    return (res && res.data) ? res.data.session : null;
+                }),
+                new Promise(function (r) { setTimeout(function () { r(null); }, 5000); })
+            ]);
+            if (session && session.user && session.user.id) userId = String(session.user.id);
+        }
+    } catch (_) { userId = null; }
+
+    var ns = userId ? ('u_' + userId) : 'guest';
+    var nsChanged = (window.MGStore.namespace !== ns);
+    if (!(await window.MGStore.setNamespace(ns))) return;
+    if (!nsChanged && window.__mgNsMigrated) return; // 同一身份且已迁移过，避免重复执行
+
+    try {
+        var taken = null;
+        try { taken = localStorage.getItem(MG_NS_LEGACY_FLAG); } catch (_) {}
+        if (!taken) {
+            await mgMigrateLegacyToNamespace(ns);
+            try { localStorage.setItem(MG_NS_LEGACY_FLAG, JSON.stringify({ ns: ns, t: Date.now() })); } catch (_) {}
+        }
+    } catch (_) {}
+    window.__mgNsMigrated = true;
+}
+
+// 一次性迁移：把命名空间上线前的旧数据（裸键）复制到当前命名空间，确认写入成功后删除旧裸键
+async function mgMigrateLegacyToNamespace(ns) {
+    if (!window.MGStore) return;
+    var prefix = ns + '_';
+
+    // 1) IDB kv 仓中的裸键（业务大件 + 图片降级副本）
+    try {
+        var keys = await window.MGStore._idbKeys('kv');
+        for (var i = 0; i < keys.length; i++) {
+            var k = String(keys[i]);
+            if (k.indexOf(prefix) === 0 || !mgIsNsBizKey(k)) continue;
+            var v = await window.MGStore._idbGet('kv', k);
+            if (v == null) continue;
+            if (await window.MGStore._idbPut('kv', prefix + k, v) != null) {
+                await window.MGStore._idbDel('kv', k);
+            }
+        }
+    } catch (_) {}
+
+    // 2) mettonCaseDB/images 中的裸键案例图片
+    try {
+        var db = await caseDbOpen();
+        if (db && db.objectStoreNames && db.objectStoreNames.contains('images')) {
+            var imgKeys = await new Promise(function (resolve) {
+                try {
+                    var tx = db.transaction('images', 'readonly');
+                    var rq = tx.objectStore('images').getAllKeys();
+                    rq.onsuccess = function () { resolve((rq.result || []).map(String)); };
+                    rq.onerror = function () { resolve([]); };
+                } catch (_) { resolve([]); }
+            });
+            for (var j = 0; j < imgKeys.length; j++) {
+                var ik = imgKeys[j];
+                if (ik.indexOf(prefix) === 0 || ik.indexOf('caseImg_') !== 0) continue;
+                var iv = await new Promise(function (resolve) {
+                    try {
+                        var tx = db.transaction('images', 'readonly');
+                        var rq = tx.objectStore('images').get(ik);
+                        rq.onsuccess = function () { resolve(rq.result == null ? null : rq.result); };
+                        rq.onerror = function () { resolve(null); };
+                    } catch (_) { resolve(null); }
+                });
+                if (iv == null) continue;
+                var okPut = await new Promise(function (resolve) {
+                    try {
+                        var tx = db.transaction('images', 'readwrite');
+                        tx.objectStore('images').put(iv, prefix + ik);
+                        tx.oncomplete = function () { resolve(true); };
+                        tx.onerror = function () { resolve(false); };
+                        tx.onabort = function () { resolve(false); };
+                    } catch (_) { resolve(false); }
+                });
+                if (!okPut) continue;
+                await new Promise(function (resolve) {
+                    try {
+                        var tx = db.transaction('images', 'readwrite');
+                        tx.objectStore('images').delete(ik);
+                        tx.oncomplete = resolve;
+                        tx.onerror = resolve;
+                        tx.onabort = resolve;
+                    } catch (_) { resolve(); }
+                });
+            }
+        }
+    } catch (_) {}
+
+    // 3) localStorage 中的裸键（辅助小键 + 旧版残留）
+    try {
+        Object.keys(localStorage).forEach(function (k) {
+            if (k.indexOf(prefix) === 0 || !mgIsNsBizKey(k)) return;
+            var v = localStorage.getItem(k);
+            if (v == null) return;
+            localStorage.setItem(prefix + k, v);
+            localStorage.removeItem(k);
+        });
+    } catch (_) {}
+}
+
+// 一键清空当前账号命名空间的全部业务数据：保留登录状态，并关闭云同步，避免清空后数据又被同步回来。
+// 其他账号（含游客视角）的数据与云端数据不受影响。
 async function mgPurgeAllData() {
     if (!window.MGStore) return;
     var rows = [];
@@ -1265,15 +1388,15 @@ async function mgPurgeAllData() {
     var totalBytes = rows.reduce(function (a, r) { return a + (r.bytes || 0); }, 0);
     var orderCount = Array.isArray(history) ? history.length : 0;
 
-    var msg = '一键清空将删除本机全部数据：\n\n'
+    var msg = '一键清空将删除当前账号在本机的全部数据：\n\n'
         + '· 订单记录 ' + orderCount + ' 条（含回收站、数据快照）\n'
         + '· 计算 / 制品 / 工艺设置、模板、小票模板\n'
         + '· 单主档案、角色档案、接单物料、案例库及其图片\n\n'
-        + '共约 ' + mgFormatBytes(totalBytes) + '，删除后无法恢复。\n\n'
+        + '共约 ' + mgFormatBytes(totalBytes) + '，删除后无法恢复；其他账号与云端数据不受影响。\n\n'
         + '保留登录状态（无需重新登录）；同时关闭云同步，避免清空后又被同步回来（云端数据不受影响）。\n\n'
         + '是否继续？';
     if (!confirm(msg)) return;
-    if (!confirm('最后确认：本机所有数据将被删除且无法恢复，确定要清空吗？')) return;
+    if (!confirm('最后确认：当前账号的本机数据将被删除且无法恢复，确定要清空吗？')) return;
 
     // 清空后内存里仍留有旧数据，自动保存的防抖任务可能把它写回来。
     // 期间保留删除能力，但丢弃一切写入（含待落盘队列），确保清空结果不被覆盖。
@@ -1284,22 +1407,12 @@ async function mgPurgeAllData() {
         return _origSetItem.call(window.MGStore, key, value);
     };
 
-    // 1) 逐个键清除：同时清掉内存镜像、IndexedDB 与 localStorage（登录令牌除外）
-    rows.forEach(function (r) {
-        if (!r || !r.key) return;
-        if (mgIsAuthStorageKey(r.key)) return;
-        window.MGStore.removeItem(r.key);
-    });
-    // 2) 兜底清空 IndexedDB 的 kv 仓，确保没有遗留业务数据（同库的 auth 会话仓不受影响）
-    try {
-        await mgClearStoreInDb(await window.MGStore._openDb(), 'kv');
-    } catch (_) {}
-    // 3) 案例图片存于独立的 mettonCaseDB
-    try {
-        await mgClearStoreInDb(await caseDbOpen(), 'images');
-    } catch (_) {}
-    // 4) 关闭云同步：避免刷新后把本机空数据推上云端、或从云端把数据拉回来
-    //    直接写 localStorage，绕过上面的写入拦截
+    // 1) 清空当前命名空间：IndexedDB kv 仓 + 内存镜像 + localStorage（不影响其他账号与认证令牌）
+    try { await window.MGStore.clearNamespace(); } catch (_) {}
+    // 2) 案例图片存于独立的 mettonCaseDB，只清当前命名空间的键
+    try { await mgClearNsCaseImages(); } catch (_) {}
+    // 3) 关闭云同步：避免刷新后把本机空数据推上云端、或从云端把数据拉回来
+    //    直接写 localStorage（设备级全局键），绕过上面的写入拦截
     try { localStorage.setItem('mg_cloud_enabled', '0'); } catch (_) {}
 
     showGlobalToast('已清空本机数据，即将重新加载…');
@@ -1364,7 +1477,7 @@ function hideSettingsSubPage() {
 
 function loadLastOrdersSyncAt() {
     try {
-        lastOrdersSyncAt = String(localStorage.getItem('mg_last_orders_sync_at') || '');
+        lastOrdersSyncAt = String(window.MGStore.getItem('mg_last_orders_sync_at') || '');
     } catch (e) {
         lastOrdersSyncAt = '';
     }
@@ -1375,13 +1488,13 @@ function saveLastOrdersSyncAt(value) {
         var v = String(value || '').trim();
         if (!v) return;
         lastOrdersSyncAt = v;
-        localStorage.setItem('mg_last_orders_sync_at', v);
+        window.MGStore.setItem('mg_last_orders_sync_at', v);
     } catch (e) {}
 }
 
 function loadDeletedExternalIds() {
     try {
-        const raw = localStorage.getItem('mg_deleted_external_ids');
+        const raw = window.MGStore.getItem('mg_deleted_external_ids');
         const arr = raw ? JSON.parse(raw) : [];
         deletedExternalIds = new Set(Array.isArray(arr) ? arr.filter(Boolean).map(String) : []);
     } catch (e) {
@@ -1391,13 +1504,13 @@ function loadDeletedExternalIds() {
 
 function saveDeletedExternalIds() {
     try {
-        localStorage.setItem('mg_deleted_external_ids', JSON.stringify(Array.from(deletedExternalIds)));
+        window.MGStore.setItem('mg_deleted_external_ids', JSON.stringify(Array.from(deletedExternalIds)));
     } catch (e) {}
 }
 
 function loadDeletedExternalIdsSyncQueue() {
     try {
-        const raw = localStorage.getItem('mg_deleted_external_ids_queue');
+        const raw = window.MGStore.getItem('mg_deleted_external_ids_queue');
         const arr = raw ? JSON.parse(raw) : [];
         deletedExternalIdsSyncQueue = Array.isArray(arr) ? arr.filter(Boolean).map(String) : [];
     } catch (e) {
@@ -1407,7 +1520,7 @@ function loadDeletedExternalIdsSyncQueue() {
 
 function saveDeletedExternalIdsSyncQueue() {
     try {
-        localStorage.setItem('mg_deleted_external_ids_queue', JSON.stringify(deletedExternalIdsSyncQueue));
+        window.MGStore.setItem('mg_deleted_external_ids_queue', JSON.stringify(deletedExternalIdsSyncQueue));
     } catch (e) {}
 }
 
@@ -2111,17 +2224,29 @@ function toggleThemeLongPress(event) {
 function init() {
     if (init._entered) return;
     init._entered = true;
+    var start = function () {
+        // 先确定登录身份并设置数据命名空间（含一次性旧数据迁移），再加载业务数据
+        Promise.resolve(typeof mgSetupIdentity === 'function' ? mgSetupIdentity() : null)
+            .then(function () { initBody(); }, function () { initBody(); });
+    };
     if (window.MGStore && window.MGStore.ready && !window.MGStore.READY) {
         Promise.race([
             window.MGStore.ready,
             new Promise(function (r) { setTimeout(function () { r(null); }, 8000); })
-        ]).then(function () { initBody(); }, function () { initBody(); });
+        ]).then(start, start);
         return;
     }
-    initBody();
+    start();
 }
 
 function initBody() {
+    // 同步保险：命名空间未就绪（如极端超时兜底路径）时强制游客视角，绝不允许裸键业务读写
+    try {
+        if (window.MGStore && typeof window.MGStore.setNamespace === 'function' && !window.MGStore.namespace) {
+            window.MGStore.setNamespace('guest');
+        }
+    } catch (_) {}
+
     // 记录本次运行的构建标识（便于排查线上问题时核对版本）
     try {
         localStorage.setItem('mg_buildTag', MTN_BUILD_TAG);
@@ -3018,7 +3143,7 @@ function saveRoleProfiles() {
 }
 function loadRoleIgnored() {
     try {
-        const raw = localStorage.getItem('roleIgnoredNames');
+        const raw = window.MGStore.getItem('roleIgnoredNames');
         const arr = raw ? JSON.parse(raw) : [];
         roleIgnoredNames = Array.isArray(arr) ? arr.map(function (x) { return String(x).trim(); }).filter(Boolean) : [];
     } catch (e) {
@@ -3028,7 +3153,7 @@ function loadRoleIgnored() {
 }
 function saveRoleIgnored() {
     try {
-        localStorage.setItem('roleIgnoredNames', JSON.stringify(roleIgnoredNames));
+        window.MGStore.setItem('roleIgnoredNames', JSON.stringify(roleIgnoredNames));
     } catch (error) {
         console.error('保存忽略列表失败:', error);
     }
@@ -3096,7 +3221,7 @@ const MG_CLOUD_DOMAIN_CUSTOMERS = 'customers';
 
 // 仅当已登录且用户开启云端模式时才同步
 function mgRoleCustCloudEnabled() {
-    return mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1';
+    return mgIsCloudEnabled() && mgCloudSwitchOn();
 }
 
 // ===== 本机显式删除待同步墓碑 =====
@@ -3107,7 +3232,7 @@ const MG_DELETED_IDS_KEY = 'mgDeletedIds';
 let mgDeletedIds = { role_profiles: new Set(), customers: new Set() };
 function mgLoadDeletedIds() {
     try {
-        const raw = localStorage.getItem(MG_DELETED_IDS_KEY);
+        const raw = window.MGStore.getItem(MG_DELETED_IDS_KEY);
         const obj = raw ? JSON.parse(raw) : {};
         mgDeletedIds = {
             role_profiles: new Set(Array.isArray(obj.role_profiles) ? obj.role_profiles : []),
@@ -3124,7 +3249,7 @@ function mgPersistDeletedIds() {
             role_profiles: Array.from(mgDeletedIds.role_profiles || []),
             customers: Array.from(mgDeletedIds.customers || [])
         };
-        localStorage.setItem(MG_DELETED_IDS_KEY, JSON.stringify(obj));
+        window.MGStore.setItem(MG_DELETED_IDS_KEY, JSON.stringify(obj));
     } catch (e) {
         console.warn('[cloud] 持久化待删墓碑失败:', e);
     }
@@ -3148,7 +3273,7 @@ const MG_SETTINGS_SYNC_SNAPSHOT_KEY = 'mgSettingsSyncSnapshot';
 let mgSettingsSyncSnapshot = { items: {}, singletons: {} };
 function mgLoadSettingsSyncSnapshot() {
     try {
-        const raw = localStorage.getItem(MG_SETTINGS_SYNC_SNAPSHOT_KEY);
+        const raw = window.MGStore.getItem(MG_SETTINGS_SYNC_SNAPSHOT_KEY);
         const obj = raw ? JSON.parse(raw) : {};
         mgSettingsSyncSnapshot = {
             items: (obj.items && typeof obj.items === 'object') ? obj.items : {},
@@ -3161,7 +3286,7 @@ function mgLoadSettingsSyncSnapshot() {
 }
 function mgPersistSettingsSyncSnapshot() {
     try {
-        localStorage.setItem(MG_SETTINGS_SYNC_SNAPSHOT_KEY, JSON.stringify(mgSettingsSyncSnapshot));
+        window.MGStore.setItem(MG_SETTINGS_SYNC_SNAPSHOT_KEY, JSON.stringify(mgSettingsSyncSnapshot));
     } catch (e) {
         console.warn('[cloud] 持久化设置同步快照失败:', e);
     }
@@ -3171,10 +3296,10 @@ mgLoadSettingsSyncSnapshot();
 // 本机是否成功拉取过云端设置（决定上传时是否允许覆盖云端单例）
 const MG_SETTINGS_PULLED_KEY = 'mg_settings_pulled_at';
 function mgMarkSettingsPulled() {
-    try { localStorage.setItem(MG_SETTINGS_PULLED_KEY, String(Date.now())); } catch (_) {}
+    try { window.MGStore.setItem(MG_SETTINGS_PULLED_KEY, String(Date.now())); } catch (_) {}
 }
 function mgHasDevicePulledSettings() {
-    try { return !!localStorage.getItem(MG_SETTINGS_PULLED_KEY); } catch (_) { return false; }
+    try { return !!window.MGStore.getItem(MG_SETTINGS_PULLED_KEY); } catch (_) { return false; }
 }
 // 纯函数：根据本机显式删除的 id 与云端现有条目，计算需要打的墓碑行。
 // 关键：只对在云端确实存在过的"本机显式删除 id"打墓碑，绝不因"云端有但本机没有"
@@ -4397,7 +4522,7 @@ function mgSyncOrdersAfterFieldChange(items, source) {
         if (typeof markOrderUnsynced === 'function') markOrderUnsynced(item.id);
     });
     if (!(typeof mgIsCloudEnabled === 'function' && mgIsCloudEnabled()
-        && localStorage.getItem('mg_cloud_enabled') === '1'
+        && mgCloudSwitchOn()
         && typeof mgCloudUpsertOrder === 'function')) return;
     try {
         if (typeof mgRunWithConcurrency === 'function') {
@@ -5843,7 +5968,7 @@ function doSaveData() {
     
     // 如果启用了云端模式，自动同步设置到云端
     // 合并模式下也会自动同步（因为已经智能合并过了）
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         // 所有模式都自动同步设置（延迟执行，避免频繁请求）
         clearTimeout(window._autoSyncSettingsTimer);
         window._autoSyncSettingsTimer = setTimeout(() => {
@@ -19762,11 +19887,24 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261015-0008';
+const APP_VERSION = '20261018-0001';
 const APP_CHANGELOG = [
+    {
+        date: '2026-10-18',
+        items: [
+            '【登录】「登录不了？点这里诊断」改为对照式检测：同时探测 Cloudflare 与国内基础站点，可区分「只有后端域名连不上」「出海线路不通」「整体断网」「浏览器拦截」四种情况，不再一律提示「请开代理」',
+            '【登录】修复诊断误判：探测后端时未携带 anon key，会把正常的密钥校验错误误报成后端异常；现改为携带密钥，并新增 HTTP 503（Supabase 项目暂停）专门提示',
+            '【登录】新增「网络连通性自检」页 netcheck.html：一页给出各项连通性结果与可操作的下一步，支持一键复制结果，方便用户截图反馈',
+            '【登录】「设备网络状态：在线」补充说明：该状态只表示网卡未禁用，不代表能出网，避免误导排查方向',
+        ]
+    },
     {
         date: '2026-10-15',
         items: [
+            '【账号数据】同一浏览器切换账号后数据不再互串：每个账号（含未登录的游客视角）的订单、设置、档案等数据各自独立保存',
+            '【账号数据】升级后首次打开会自动把原有数据保留给当时登录的身份；其他账号空数据开始，可从云端恢复',
+            '【设置·存储占用】登录后新增「导入本机游客数据」：把游客模式下积累的数据导入当前账号，不覆盖账号已有数据',
+            '【设置·存储占用】「清空所有数据」改为只清空当前账号的数据，其他账号与云端数据不受影响',
             '【云同步】修复云端同步可能清空设置的问题：新设备登录或同步中断时不再误删云端设置，「从云端恢复」在云端暂无设置时不再清空本地，设置合并会保留本机尚未上传的修改',
             '【记录页·案例】订单已有案例时，操作弹窗按钮自动变为「查看案例」，点击直接打开已有案例；订单卡片新增紫色「案例」标签',
             '【记录页·筛选】「案例」标签加入记录页与统计页筛选，勾选后只显示已生成案例的订单',
@@ -20390,7 +20528,7 @@ function saveToHistory() {
     } catch (e) { /* ignore */ }
     
     // 云端同步：如果已启用云端模式，异步同步到 Supabase
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         const savedItem = savedOrderId != null
             ? history.find(item => item.id === savedOrderId)
             : null;
@@ -20550,7 +20688,7 @@ function toggleScheduleNodeDone(checkbox, nodeIdx) {
     setScheduleNodeDone(id, idx, nodeIdx, checkbox.checked);
     
     // 云端同步：如果已启用云端模式，异步同步到 Supabase
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         markOrderUnsynced(id);
         mgCloudUpsertOrder(item, 0, null, 'progress').catch(err => {
             console.error('云端同步失败:', err);
@@ -22293,7 +22431,7 @@ function toggleScheduleTodoDone(checkbox) {
     saveData();
     
     // 云端同步：如果已启用云端模式，异步同步到 Supabase
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         markOrderUnsynced(id);
         mgCloudUpsertOrder(item, 0, null, 'toggle').catch(err => {
             console.error('云端同步失败:', err);
@@ -22337,7 +22475,7 @@ function adjustScheduleTodoDoneQty(el) {
     const isAllDoneNow = total > 0 && doneAfter === total;
     const allDoneChanged = wasAllDone !== isAllDoneNow;
 
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         markOrderUnsynced(id);
         mgCloudUpsertOrder(item, 0, null, 'node').catch(err => {
             console.error('云端同步失败:', err);
@@ -22451,7 +22589,7 @@ function mgDedupePresetTags(list) {
 
 function loadScheduleTodoPresetTags() {
     try {
-        var raw = localStorage.getItem('mg_schedule_todo_preset_tags');
+        var raw = window.MGStore.getItem('mg_schedule_todo_preset_tags');
         if (!raw) return;
         var parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return;
@@ -22475,7 +22613,7 @@ function loadScheduleTodoPresetTags() {
 
 function saveScheduleTodoPresetTags(skipCloudSync) {
     try {
-        localStorage.setItem('mg_schedule_todo_preset_tags', JSON.stringify(scheduleTodoPresetTags));
+        window.MGStore.setItem('mg_schedule_todo_preset_tags', JSON.stringify(scheduleTodoPresetTags));
     } catch (e) {}
 
     // 预设标签变更后主动推送设置到云端，否则只在「保存设置/手动同步」时才会上传，
@@ -22483,7 +22621,7 @@ function saveScheduleTodoPresetTags(skipCloudSync) {
     if (!skipCloudSync
         && typeof mgIsCloudEnabled === 'function'
         && mgIsCloudEnabled()
-        && localStorage.getItem('mg_cloud_enabled') === '1') {
+        && mgCloudSwitchOn()) {
         clearTimeout(window._mgPresetTagSyncTimer);
         window._mgPresetTagSyncTimer = setTimeout(function () {
             if (typeof mgSyncSettingsToCloud === 'function') {
@@ -22600,7 +22738,7 @@ function createAppendOrder(parentOrder) {
     saveData();
 
     // 云端同步
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         markOrderUnsynced(newId);
         mgCloudUpsertOrder(newOrder, 0, null, 'save').catch(function (err) {
             console.error('追加单云端同步失败:', err);
@@ -22635,7 +22773,7 @@ function unlinkAppendOrder(appendOrderId) {
             return id !== appendOrderId;
         });
         // 保存原单
-        if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
             markOrderUnsynced(parentOrder.id);
             mgCloudUpsertOrder(parentOrder, 0, null, 'update').catch(function (err) {
                 console.error('原单云端同步失败:', err);
@@ -22650,7 +22788,7 @@ function unlinkAppendOrder(appendOrderId) {
     // 保存
     saveData();
 
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         markOrderUnsynced(appendOrderId);
         mgCloudUpsertOrder(item, 0, null, 'update').catch(function (err) {
             console.error('追加单云端同步失败:', err);
@@ -23168,7 +23306,7 @@ function persistScheduleTodoTags(item, tags) {
     else saveData();
 
     // 云端模式下立即同步标签，避免被云端旧 payload 回流覆盖
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         markOrderUnsynced(item.id);
         mgCloudUpsertOrder(item, 0, null, 'label').catch(function (err) {
             console.error('标签云端同步失败:', err);
@@ -25824,7 +25962,7 @@ function settlementConfirm() {
 
     // 结算/撤单/废稿后强制同步云端（如果已启用云端模式）
     try {
-        if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+        if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
             const extId = mgEnsureExternalId(item);
             console.log('[settlement] syncing order', { id: item.id, external_id: extId, settlement: item.settlement && item.settlement.type, mg_updated_at: item.mg_updated_at });
             markOrderUnsynced(item.id);
@@ -27057,7 +27195,7 @@ function deleteHistoryItem(id) {
     }
 
     // 云端同步：如果已启用云端模式，同步删除云端企划
-    if (mgIsCloudEnabled() && localStorage.getItem('mg_cloud_enabled') === '1') {
+    if (mgIsCloudEnabled() && mgCloudSwitchOn()) {
         mgCloudDeleteOrder(item).then(function (ok) {
             if (!ok) {
                 alert('删除未同步到云端，请检查网络后重试同步。');
@@ -27742,7 +27880,7 @@ let mgLastSyncedArtistDisplayName = null;
 // 从 localStorage 加载上次同步的美工名
 function loadLastSyncedArtistDisplayName() {
     try {
-        mgLastSyncedArtistDisplayName = localStorage.getItem('mg_last_synced_artist_display_name') || null;
+        mgLastSyncedArtistDisplayName = window.MGStore.getItem('mg_last_synced_artist_display_name') || null;
     } catch (e) {
         mgLastSyncedArtistDisplayName = null;
     }
@@ -27751,7 +27889,7 @@ function loadLastSyncedArtistDisplayName() {
 // 保存上次同步的美工名到 localStorage
 function saveLastSyncedArtistDisplayName(displayName) {
     try {
-        localStorage.setItem('mg_last_synced_artist_display_name', String(displayName || ''));
+        window.MGStore.setItem('mg_last_synced_artist_display_name', String(displayName || ''));
     } catch (e) {}
 }
 
@@ -33489,7 +33627,7 @@ async function mgCloudMigrateOnce() {
     if (!client) return false;
     
     // 检查是否已迁移
-    if (localStorage.getItem('mg_cloud_migrated_v1') === '1') {
+    if (window.MGStore.getItem('mg_cloud_migrated_v1') === '1') {
         console.log('✅ 本地数据已迁移过，跳过');
         return true;
     }
@@ -33534,7 +33672,7 @@ async function mgCloudMigrateOnce() {
         
         if (toUpload.length === 0) {
             console.log('✅ 本地数据已全部在云端，无需迁移');
-            localStorage.setItem('mg_cloud_migrated_v1', '1');
+            window.MGStore.setItem('mg_cloud_migrated_v1', '1');
             return true;
         }
         
@@ -33549,7 +33687,7 @@ async function mgCloudMigrateOnce() {
         }
         
         // 5. 标记已迁移
-        localStorage.setItem('mg_cloud_migrated_v1', '1');
+        window.MGStore.setItem('mg_cloud_migrated_v1', '1');
         console.log(`✅ 成功导入 ${toUpload.length} 条本地排单到云端`);
         return true;
     } catch (err) {
@@ -33732,7 +33870,7 @@ function calibrateUnsyncedOrders() {
 // 从localStorage加载未同步企划列表
 function loadUnsyncedOrders() {
     try {
-        const saved = localStorage.getItem('mg_unsynced_orders');
+        const saved = window.MGStore.getItem('mg_unsynced_orders');
         if (saved) {
             unsyncedOrderIds = new Set(JSON.parse(saved));
             // 加载后立即执行一次校准
@@ -33747,7 +33885,7 @@ function loadUnsyncedOrders() {
 // 保存未同步企划列表到localStorage
 function saveUnsyncedOrders() {
     try {
-        localStorage.setItem('mg_unsynced_orders', JSON.stringify([...unsyncedOrderIds]));
+        window.MGStore.setItem('mg_unsynced_orders', JSON.stringify([...unsyncedOrderIds]));
     } catch (e) {
         console.error('保存未同步企划失败:', e);
     }
@@ -33776,7 +33914,7 @@ function updateSyncStatus() {
     const statusText = document.getElementById('cloudSyncStatusText');
     if (!statusText) return;
     
-    const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
+    const isCloudModeOn = mgCloudSwitchOn();
     if (!isCloudModeOn) {
         statusText.innerHTML = `☁️ 云端同步未启用`;
         return;
@@ -34076,10 +34214,10 @@ async function mgShowCloudEnableModal() {
     // 检查是否已登录（必须登录才能启用云端）
     if (!mgIsCloudEnabled()) return;
     // 如果已经启用过云端模式，不再弹窗
-    if (localStorage.getItem('mg_cloud_enabled') === '1') return;
+    if (mgCloudSwitchOn()) return;
     
     // 检查是否已迁移
-    const isMigrated = localStorage.getItem('mg_cloud_migrated_v1') === '1';
+    const isMigrated = window.MGStore.getItem('mg_cloud_migrated_v1') === '1';
     
     // 检测数据冲突（首次启用时总是检测，让用户选择）
     const conflictInfo = await mgDetectDataConflict();
@@ -34172,7 +34310,7 @@ async function mgShowCloudEnableModal() {
             const policy = selected.value;
             modal.remove();
             localStorage.setItem('mg_cloud_enabled', '1');
-            localStorage.setItem('mg_first_sync_policy', policy);
+            window.MGStore.setItem('mg_first_sync_policy', policy);
             
             // 更新开关状态
             updateCloudSyncStatus();
@@ -34254,8 +34392,8 @@ async function mgReselectFirstSyncPolicy() {
     }
     
     // 清除迁移标记，重新检测
-    localStorage.removeItem('mg_cloud_migrated_v1');
-    localStorage.removeItem('mg_first_sync_policy');
+    window.MGStore.removeItem('mg_cloud_migrated_v1');
+    window.MGStore.removeItem('mg_first_sync_policy');
     
     // 检测数据冲突
     const conflictInfo = await mgDetectDataConflict();
@@ -34316,7 +34454,7 @@ async function mgReselectFirstSyncPolicy() {
         
         const policy = selected.value;
         modal.remove();
-        localStorage.setItem('mg_first_sync_policy', policy);
+        window.MGStore.setItem('mg_first_sync_policy', policy);
         
         // 执行首次同步
         await mgExecuteFirstSync(policy, conflictInfo);
@@ -34478,7 +34616,7 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
             }
         }
         
-        localStorage.setItem('mg_cloud_migrated_v1', '1');
+        window.MGStore.setItem('mg_cloud_migrated_v1', '1');
 
         // 首次同步也将角色档案 / 单主管理纳入云端（上传本地 + 合并云端，避免数据丢失）
         try {
@@ -34521,8 +34659,8 @@ function updateCloudSyncStatus() {
     if (!statusText) return;
     
     const isEnabled = mgIsCloudEnabled();
-    const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
-    const isMigrated = localStorage.getItem('mg_cloud_migrated_v1') === '1';
+    const isCloudModeOn = mgCloudSwitchOn();
+    const isMigrated = window.MGStore.getItem('mg_cloud_migrated_v1') === '1';
     
     // 更新开关状态
     if (toggleInput) {
@@ -36529,8 +36667,8 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
 async function mgEnsureSyncPolicy() {
     // 直接使用智能同步模式，无需选择
     const policy = 'smart_sync';
-    localStorage.setItem('mg_cloud_sync_policy', policy);
-    localStorage.setItem('mg_cloud_sync_initialized', '1');
+    window.MGStore.setItem('mg_cloud_sync_policy', policy);
+    window.MGStore.setItem('mg_cloud_sync_initialized', '1');
     return policy;
 }
 
@@ -36889,7 +37027,7 @@ init = function() {
     // 延迟检测云端（等待 __APP_AUTH__ 初始化完成）
     setTimeout(async () => {
         // 智能同步模式：启动时自动拉取并合并
-        const isCloudModeOn = localStorage.getItem('mg_cloud_enabled') === '1';
+        const isCloudModeOn = mgCloudSwitchOn();
         if (isCloudModeOn) {
             try {
                 // 先合并设置（智能合并）
@@ -37117,6 +37255,14 @@ function caseDbOpen() {
     });
     return _caseDbPromise;
 }
+// 案例图片键按账号命名空间包装（与 MGStore 业务键同一规则）；读取时兼容升级前的裸键旧图
+function caseImgIdbKey(id) {
+    try {
+        if (window.MGStore && typeof window.MGStore.nsKey === 'function') return window.MGStore.nsKey('caseImg_' + id);
+    } catch (_) {}
+    return 'caseImg_' + id;
+}
+
 async function caseImgPut(id, dataUrl) {
     if (!id) return;
     const db = await caseDbOpen();
@@ -37124,7 +37270,7 @@ async function caseImgPut(id, dataUrl) {
         await new Promise(function (resolve) {
             try {
                 const tx = db.transaction('images', 'readwrite');
-                tx.objectStore('images').put(dataUrl, id);
+                tx.objectStore('images').put(dataUrl, caseImgIdbKey(id));
                 tx.oncomplete = resolve;
                 tx.onerror = resolve;
                 tx.onabort = resolve;
@@ -37141,12 +37287,24 @@ async function caseImgGet(id) {
         const v = await new Promise(function (resolve) {
             try {
                 const tx = db.transaction('images', 'readonly');
-                const rq = tx.objectStore('images').get(id);
+                const rq = tx.objectStore('images').get(caseImgIdbKey(id));
                 rq.onsuccess = function () { resolve(rq.result || null); };
                 rq.onerror = function () { resolve(null); };
             } catch (_) { resolve(null); }
         });
         if (v) return v;
+        // 兼容：迁移/写入前遗留的裸键旧图
+        if (caseImgIdbKey(id) !== 'caseImg_' + id) {
+            const legacy = await new Promise(function (resolve) {
+                try {
+                    const tx = db.transaction('images', 'readonly');
+                    const rq = tx.objectStore('images').get('caseImg_' + id);
+                    rq.onsuccess = function () { resolve(rq.result || null); };
+                    rq.onerror = function () { resolve(null); };
+                } catch (_) { resolve(null); }
+            });
+            if (legacy) return legacy;
+        }
     }
     return MGStore.getItem('caseImg_' + id);
 }
@@ -37157,13 +37315,141 @@ async function caseImgDelete(id) {
         await new Promise(function (resolve) {
             try {
                 const tx = db.transaction('images', 'readwrite');
-                tx.objectStore('images').delete(id);
+                tx.objectStore('images').delete(caseImgIdbKey(id));
+                tx.objectStore('images').delete('caseImg_' + id);
                 tx.oncomplete = resolve;
                 tx.onerror = resolve;
             } catch (_) { resolve(); }
         });
     }
     MGStore.removeItem('caseImg_' + id);
+}
+
+// 只清空 mettonCaseDB 中属于当前命名空间的案例图片键（其他账号图片不受影响）
+async function mgClearNsCaseImages() {
+    var db = await caseDbOpen();
+    if (!db || !db.objectStoreNames || !db.objectStoreNames.contains('images')) return;
+    var ns = (window.MGStore && window.MGStore.namespace) ? window.MGStore.namespace : 'guest';
+    var prefix = ns + '_';
+    await new Promise(function (resolve) {
+        try {
+            var tx = db.transaction('images', 'readwrite');
+            var os = tx.objectStore('images');
+            var rq = os.getAllKeys ? os.getAllKeys() : null;
+            if (!rq) { resolve(); return; }
+            rq.onsuccess = function () {
+                try {
+                    (rq.result || []).forEach(function (k) {
+                        k = String(k);
+                        if (k.indexOf(prefix) === 0) os.delete(k);
+                    });
+                } catch (_) {}
+                resolve();
+            };
+            rq.onerror = function () { resolve(); };
+        } catch (_) { resolve(); }
+    });
+}
+
+// 把本机游客视角的业务数据导入当前登录账号（仅导入当前账号没有的键，不覆盖现有数据）
+// 适用场景：一直在游客模式使用，升级后才注册/登录账号，想把原来的数据搬进账号
+async function mgImportGuestData() {
+    if (!window.MGStore) return;
+    var curNs = window.MGStore.namespace;
+    if (!curNs || curNs.indexOf('u_') !== 0) {
+        showGlobalToast('请先登录后再导入游客数据');
+        return;
+    }
+    if (window.__mgWiping) return;
+    var moveKeys = (window.MGStore._MOVE_KEYS || []).concat(MG_NS_EXTRA_KEYS);
+    var guestPrefix = 'guest_';
+    var imported = 0;
+    if (!confirm('将把本机游客视角的数据（订单、设置、档案、模板、案例等）导入当前登录账号：\n\n· 仅导入当前账号没有的项，不会覆盖账号现有数据\n· 导入完成后自动刷新页面\n\n是否继续？')) return;
+
+    try {
+        // 1) IDB kv 仓：guest_ 前缀 → 当前命名空间
+        var keys = await window.MGStore._idbKeys('kv');
+        for (var i = 0; i < keys.length; i++) {
+            var k = String(keys[i]);
+            if (k.indexOf(guestPrefix) !== 0) continue;
+            var bizKey = k.slice(guestPrefix.length);
+            if (bizKey.indexOf('caseImg_') !== 0 && moveKeys.indexOf(bizKey) === -1) continue;
+            var v = await window.MGStore._idbGet('kv', k);
+            if (v == null) continue;
+            var target = curNs + '_' + bizKey;
+            var cur = await window.MGStore._idbGet('kv', target);
+            if (cur != null) continue; // 当前账号已有该键，不覆盖
+            if (await window.MGStore._idbPut('kv', target, v) != null) imported++;
+        }
+
+        // 2) mettonCaseDB 案例图片：guest_ 前缀 → 当前命名空间（游客图片保留，两边共用）
+        var db = await caseDbOpen();
+        if (db && db.objectStoreNames && db.objectStoreNames.contains('images')) {
+            var imgKeys = await new Promise(function (resolve) {
+                try {
+                    var tx = db.transaction('images', 'readonly');
+                    var rq = tx.objectStore('images').getAllKeys();
+                    rq.onsuccess = function () { resolve((rq.result || []).map(String)); };
+                    rq.onerror = function () { resolve([]); };
+                } catch (_) { resolve([]); }
+            });
+            for (var j = 0; j < imgKeys.length; j++) {
+                var ik = imgKeys[j];
+                if (ik.indexOf(guestPrefix) !== 0) continue;
+                var imgTarget = curNs + '_' + ik.slice(guestPrefix.length);
+                var has = await new Promise(function (resolve) {
+                    try {
+                        var tx = db.transaction('images', 'readonly');
+                        var rq = tx.objectStore('images').get(imgTarget);
+                        rq.onsuccess = function () { resolve(rq.result != null); };
+                        rq.onerror = function () { resolve(false); };
+                    } catch (_) { resolve(false); }
+                });
+                if (has) continue;
+                var iv = await new Promise(function (resolve) {
+                    try {
+                        var tx = db.transaction('images', 'readonly');
+                        var rq = tx.objectStore('images').get(ik);
+                        rq.onsuccess = function () { resolve(rq.result == null ? null : rq.result); };
+                        rq.onerror = function () { resolve(null); };
+                    } catch (_) { resolve(null); }
+                });
+                if (iv == null) continue;
+                var okPut = await new Promise(function (resolve) {
+                    try {
+                        var tx = db.transaction('images', 'readwrite');
+                        tx.objectStore('images').put(iv, imgTarget);
+                        tx.oncomplete = function () { resolve(true); };
+                        tx.onerror = function () { resolve(false); };
+                        tx.onabort = function () { resolve(false); };
+                    } catch (_) { resolve(false); }
+                });
+                if (okPut) imported++;
+            }
+        }
+
+        // 3) localStorage 中的 guest_ 前缀键
+        Object.keys(localStorage).forEach(function (k) {
+            if (k.indexOf(guestPrefix) !== 0) return;
+            var bizKey = k.slice(guestPrefix.length);
+            if (bizKey.indexOf('caseImg_') !== 0 && moveKeys.indexOf(bizKey) === -1) return;
+            var v = null;
+            try { v = localStorage.getItem(k); } catch (_) { return; }
+            if (v == null) return;
+            var target = curNs + '_' + bizKey;
+            var cur = null;
+            try { cur = localStorage.getItem(target); } catch (_) {}
+            if (cur != null) return;
+            try { localStorage.setItem(target, v); imported++; } catch (_) {}
+        });
+    } catch (_) {}
+
+    if (!imported) {
+        showGlobalToast('游客视角没有可导入的数据（或当前账号已有对应数据）');
+        return;
+    }
+    showGlobalToast('已导入 ' + imported + ' 项游客数据，即将刷新…');
+    setTimeout(function () { window.location.reload(); }, 900);
 }
 
 // ---------- 图片加载 / 压缩 / 投影烘焙 ----------

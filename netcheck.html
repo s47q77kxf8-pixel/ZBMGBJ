@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网络连通性自检 · 接单助手</title>
+<!--
+  网络连通性自检页（独立页面，无任何外部依赖）
+  用途：用户登录不上时，让他/她直接打开本页，一键得到「哪一环不通」的结论并截图回传。
+  设计约束：
+    1. 不能依赖 vendor/supabase-js.umd.min.js、style.css、supabase-config.js ——
+       后端不通时这些若也加载失败，本页必须仍然能跑出结论（配置读不到就用内置兜底地址）。
+    2. 所有探测都必须有超时和 try/catch，任何一个挂掉都不能中断整页。
+    3. 对照组一律用 no-cors：opaque 响应拿不到状态码，但足以判定「网络层通不通」，
+       避免把 CORS 拒绝误判成网络故障（浏览器里两者都表现为 Failed to fetch）。
+    4. 结论要能指导非技术用户操作，并且整页可截图。
+-->
+<style>
+  :root {
+    --ok: #16a34a;
+    --bad: #dc2626;
+    --warn: #d97706;
+    --line: #e5e7eb;
+    --muted: #6b7280;
+    --fg: #111827;
+    --bg: #f9fafb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px 14px 40px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 14px;
+    margin-bottom: 14px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .row:last-child { border-bottom: 0; }
+  .mark { flex: 0 0 20px; font-weight: 700; line-height: 1.5; }
+  .mark.ok { color: var(--ok); }
+  .mark.bad { color: var(--bad); }
+  .mark.warn { color: var(--warn); }
+  .mark.wait { color: var(--muted); }
+  .body { flex: 1 1 auto; min-width: 0; }
+  .name { font-weight: 600; }
+  .name .host { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .detail { color: var(--muted); font-size: 12.5px; word-break: break-all; }
+  .verdict {
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 14px;
+    font-size: 15px;
+    border: 1px solid;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .verdict.ok { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+  .verdict.bad { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+  .verdict.warn { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+  .verdict.wait { background: #f3f4f6; border-color: var(--line); color: var(--muted); }
+  .verdict b { font-size: 16px; }
+  ol.steps { margin: 8px 0 0; padding-left: 20px; }
+  ol.steps li { margin-bottom: 6px; }
+  button {
+    font: inherit;
+    font-weight: 600;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid #111;
+    background: #111;
+    color: #fff;
+    cursor: pointer;
+  }
+  button.ghost { background: #fff; color: #111; }
+  button:disabled { opacity: .5; }
+  .btnbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .linkbtn {
+    display: inline-block;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid #dc2626;
+    color: #dc2626;
+    background: #fff;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    word-break: break-all;
+  }
+  .env { color: var(--muted); font-size: 12px; }
+  .env div { margin-bottom: 2px; }
+  input[type="text"] {
+    font: inherit;
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: #111; color: #fff; padding: 9px 16px; border-radius: 20px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .toast.show { opacity: .92; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>网络连通性自检</h1>
+  <div class="sub">打开后会自动检测，等几秒出结果。<b>把整页截图发给开发者</b>即可。</div>
+
+  <div id="verdict" class="verdict wait">正在检测…</div>
+
+  <div class="card">
+    <h2>检测项</h2>
+    <div id="rows"></div>
+  </div>
+
+  <div class="card" id="actionCard" style="display:none;">
+    <h2>接下来可以做什么</h2>
+    <div id="actionBody"></div>
+  </div>
+
+  <div class="card">
+    <h2>手动复查（重要）</h2>
+    <div class="hint" style="margin-top:0;margin-bottom:10px;">
+      点下面这个按钮会直接访问后端地址。浏览器给出的报错文字更准确，
+      比如「连接已重置」「无法访问此网站」「响应时间过长」，<b>把那个报错页也截一张</b>。
+    </div>
+    <a id="directLink" class="linkbtn" href="#" target="_blank" rel="noopener">打开后端地址，看浏览器的报错</a>
+    <div class="hint mono" id="directUrlText"></div>
+    <div class="hint" style="margin-top:10px;">
+      <b>怎么判断：</b>打开后如果显示一段英文 JSON（里面有 <span class="mono">No API key found</span>），
+      说明<b>网络完全正常</b>，问题不在网络；
+      如果显示「无法访问此网站 / 连接已重置 / 响应时间过长」，才是网络问题。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>换个地址测</h2>
+    <div class="hint" style="margin-top:0;">
+      如果开发者给了新的后端地址，填在这里测一下通不通。
+    </div>
+    <input type="text" id="customUrl" placeholder="https://例如：你的域名">
+    <div class="btnbar" style="margin-bottom:0;">
+      <button type="button" class="ghost" onclick="testCustom()">测这个地址</button>
+    </div>
+    <div id="customResult" class="detail" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="btnbar">
+    <button type="button" id="btnCopy" onclick="copyReport()">复制诊断结果</button>
+    <button type="button" class="ghost" onclick="location.reload()">重新检测</button>
+  </div>
+
+  <div class="card">
+    <h2>环境信息</h2>
+    <div class="env" id="env"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // 配置读不到时的兜底（与 supabase-config.js 保持一致）
+  var FALLBACK_URL = 'https://xxxuzcjqeuttryupbbzg.supabase.co';
+  var FALLBACK_ANON_KEY = 'sb_publishable_LE4iAG_AZaHOukrUJLTjhA_QpB2PZRK';
+  // 对照组：一个非 supabase 的 Cloudflare 站点 + 一个国内基础站点 + supabase 主站
+  var CONTROL_CF = 'https://www.cloudflare.com/';
+  var CONTROL_DOMESTIC = 'https://www.baidu.com/';
+  var CONTROL_SUPABASE_SITE = 'https://supabase.com/';
+
+  var state = {
+    base: '',
+    startedAt: new Date(),
+    results: {}, // key -> { ok, ms, text, aborted }
+    verdictLevel: 'wait',
+    verdictText: '正在检测…',
+    actionHtml: ''
+  };
+
+  // ---------- 基础工具 ----------
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function () { t.classList.remove('show'); }, 1600);
+  }
+
+  // 统一探测：返回 { ok, ms, status, opaque, text, aborted }
+  // noCors=true 时不带任何自定义头、mode=no-cors，只判「网络层是否到达」
+  function probe(url, opt) {
+    opt = opt || {};
+    var timeoutMs = opt.timeoutMs || 8000;
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var tid = null;
+    var t0 = Date.now();
+    return new Promise(function (resolve) {
+      var settled = false;
+      function finish(r) {
+        if (settled) return;
+        settled = true;
+        if (tid) clearTimeout(tid);
+        r.ms = Date.now() - t0;
+        resolve(r);
+      }
+      if (ctl) {
+        tid = setTimeout(function () {
+          try { ctl.abort(); } catch (e) {}
+        }, timeoutMs);
+      }
+      var init = { method: 'GET', cache: 'no-store' };
+      if (ctl) init.signal = ctl.signal;
+      if (opt.noCors) init.mode = 'no-cors';
+      if (opt.headers) init.headers = opt.headers;
+
+      try {
+        fetch(url, init).then(function (res) {
+          finish({ ok: true, status: res.status, opaque: res.type === 'opaque' });
+        }, function (err) {
+          var aborted = !!(err && err.name === 'AbortError');
+          finish({
+            ok: false,
+            aborted: aborted,
+            text: aborted
+              ? ('超时（' + Math.round(timeoutMs / 1000) + ' 秒无响应）')
+              : ((err && err.message) ? String(err.message) : String(err))
+          });
+        });
+      } catch (e) {
+        finish({ ok: false, text: (e && e.message) ? String(e.message) : String(e) });
+      }
+    });
+  }
+
+  // 失败原因的人话解释（按耗时区分「快速被重置」和「干等超时」，二者含义不同）
+  function explainFail(r, timeoutMs) {
+    if (!r) return '未执行';
+    if (r.aborted) return '超时无响应（' + r.ms + 'ms）—— 请求发出去了但没有任何回应';
+    if (r.ms < 500) return '被快速拒绝/重置（' + r.ms + 'ms）—— 通常是对端或中间设备直接打断连接';
+    if (r.ms >= (timeoutMs || 8000) - 500) return '超时无响应（' + r.ms + 'ms）';
+    return '连接失败（' + r.ms + 'ms）—— ' + (r.text || '');
+  }
+
+  // ---------- 结果行渲染 ----------
+
+  function addRow(key, name, host) {
+    var rows = document.getElementById('rows');
+    var row = el('div', 'row');
+    row.id = 'row-' + key;
+    var mark = el('div', 'mark wait', '…');
+    mark.id = 'mark-' + key;
+    var body = el('div', 'body');
+    var nm = el('div', 'name', name);
+    if (host) {
+      var h = el('span', 'host', '　' + host);
+      nm.appendChild(h);
+    }
+    body.appendChild(nm);
+    var detail = el('div', 'detail', '检测中…');
+    detail.id = 'detail-' + key;
+    body.appendChild(detail);
+    row.appendChild(mark);
+    row.appendChild(body);
+    rows.appendChild(row);
+    return { mark: mark, detail: detail };
+  }
+
+  function setRow(key, level, text) {
+    var mark = document.getElementById('mark-' + key);
+    var detail = document.getElementById('detail-' + key);
+    if (mark) {
+      mark.className = 'mark ' + level;
+      mark.textContent = level === 'ok' ? '✓' : (level === 'bad' ? '✗' : (level === 'warn' ? '!' : '…'));
+    }
+    if (detail) detail.textContent = text;
+  }
+
+  // ---------- 主流程 ----------
+
+  function readConfig() {
+    // 同源读取配置文件：即使 supabase 后端不通，这个文件在 GitHub Pages 上照样能拿到。
+    // 必须同时取出 anon key —— 少了它，/auth/v1/health 会返回 401「No API key found」，
+    // 从而把「网络通、密钥没带」误判成后端异常。
+    function parse(txt) {
+      var mu = /SUPABASE_URL\s*=\s*["']([^"']+)["']/.exec(txt || '');
+      var mk = /SUPABASE_ANON_KEY\s*=\s*["']([^"']+)["']/.exec(txt || '');
+      return {
+        url: (mu && mu[1]) ? mu[1].replace(/\/+$/, '') : FALLBACK_URL,
+        anonKey: (mk && mk[1]) ? mk[1] : FALLBACK_ANON_KEY
+      };
+    }
+    try {
+      return fetch('supabase-config.js?v=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.text() : ''; })
+        .then(function (txt) { return parse(txt); })
+        .catch(function () {
+          return { url: FALLBACK_URL, anonKey: FALLBACK_ANON_KEY };
+        });
+    } catch (e) {
+      // fetch 被完全禁用（例如直接双击用 file:// 打开）时，退回内置配置，页面照样能用
+      return Promise.resolve({ url: FALLBACK_URL, anonKey: FALLBACK_ANON_KEY });
+    }
+  }
+
+  function renderEnv(base) {
+    var env = document.getElementById('env');
+    var items = [
+      ['时间', state.startedAt.toLocaleString()],
+      ['后端地址', base],
+      ['页面地址', location.href],
+      ['设备在线标记', navigator.onLine ? 'true（注意：只代表网卡未禁用，不代表能上网）' : 'false'],
+      ['浏览器', navigator.userAgent]
+    ];
+    env.innerHTML = '';
+    items.forEach(function (it) {
+      var d = el('div');
+      d.appendChild(el('b', null, it[0] + '：'));
+      d.appendChild(document.createTextNode(it[1]));
+      env.appendChild(d);
+    });
+    var link = document.getElementById('directLink');
+    var txt = document.getElementById('directUrlText');
+    var healthUrl = base + '/auth/v1/health';
+    if (link) link.href = healthUrl;
+    if (txt) txt.textContent = healthUrl;
+  }
+
+  function setVerdict(level, text) {
+    state.verdictLevel = level;
+    state.verdictText = text;
+    var v = document.getElementById('verdict');
+    v.className = 'verdict ' + level;
+    v.textContent = text;
+  }
+
+  function setAction(html) {
+    state.actionHtml = html;
+    var card = document.getElementById('actionCard');
+    var body = document.getElementById('actionBody');
+    body.innerHTML = html;
+    card.style.display = html ? '' : 'none';
+  }
+
+  function conclude() {
+    var base = state.base;
+    var t = state.results.target;
+    var tCors = state.results.targetCors;
+    var cf = state.results.cf;
+    var dom = state.results.domestic;
+
+    var timeoutMs = 8000;
+
+    // ① 网络层可达，且带 key 的请求确实拿到了 HTTP 响应
+    if (t && t.ok && tCors && tCors.ok) {
+      var httpOk = tCors.status >= 200 && tCors.status < 300;
+      if (httpOk) {
+        setVerdict('ok',
+          '✅ 后端可以正常访问（HTTP ' + tCors.status + '，' + tCors.ms + 'ms）\n\n' +
+          '网络是通的。如果仍然登录不上，问题不在网络，请核对邮箱/密码，或用「忘记密码」重置。');
+        setAction('');
+        return;
+      }
+      if (tCors.status === 503) {
+        // Supabase 免费版长期不活跃会自动暂停，暂停时通常返回 503
+        setVerdict('bad',
+          '❌ 后端地址能连上，但返回 HTTP 503\n\n' +
+          '这个状态通常表示 Supabase 项目已被暂停（免费版长期不活跃会自动暂停）。\n' +
+          '这种情况下所有人都会登不上，换设备/换网络都没用，需要开发者去后台恢复项目。');
+        setAction(
+          '<ol class="steps">' +
+          '<li>把本页截图发给开发者</li>' +
+          '<li>提醒开发者确认 Supabase 项目是否处于暂停（Paused）状态，恢复后即可登录</li>' +
+          '</ol>');
+        return;
+      }
+      setVerdict('warn',
+        '⚠️ 后端地址能连上，但返回 HTTP ' + tCors.status + '\n\n' +
+        '网络本身没问题，是后端返回了异常状态。可能是密钥/权限配置问题。');
+      setAction(
+        '<ol class="steps">' +
+        '<li>先开「无痕窗口」重试一次，排除浏览器缓存/扩展干扰</li>' +
+        '<li>把本页截图发给开发者（含这个 HTTP 状态码）</li>' +
+        '</ol>');
+      return;
+    }
+
+    // ② 网络层通、但带鉴权的请求失败 → 浏览器侧拦截（跨域限制或扩展/安全软件）
+    if (t && t.ok && !(tCors && tCors.ok)) {
+      setVerdict('warn',
+        '⚠️ 网络能连上后端，但请求在浏览器里被拦下了\n\n' +
+        '这类情况通常是：跨域限制、广告拦截/隐私类扩展、或安全软件拦截。');
+      setAction(
+        '<ol class="steps">' +
+        '<li>先用<b>无痕/隐私窗口</b>重新打开本站再试（可排除扩展干扰）</li>' +
+        '<li>仍不行就<b>关闭广告拦截类扩展</b>，或换一个浏览器（Chrome / Edge / Safari）</li>' +
+        '<li>把本页截图发给开发者</li>' +
+        '</ol>');
+      return;
+    }
+
+    // ③ 目标不可达 → 用对照组判断到底是哪一段的问题
+    var domOk = !!(dom && dom.ok);
+    var cfOk = !!(cf && cf.ok);
+    var failDesc = t ? explainFail(t, timeoutMs) : '未执行';
+
+    if (!domOk) {
+      setVerdict('bad',
+        '❌ 当前网络整体无法上网\n\n' +
+        '连国内最常用的站点都打不开（' + failDesc + '）。\n' +
+        '这不是本工具的问题，是设备/网络本身没连上。');
+      setAction(
+        '<ol class="steps">' +
+        '<li>确认 Wi-Fi 或手机流量确实可用（先用浏览器打开一下别的网站）</li>' +
+        '<li>如果正在使用代理 / VPN / 加速器，<b>先把它关掉</b>再试——代理配置错误会把所有请求一起拦死</li>' +
+        '<li>重启路由器，或换一个网络（手机流量）再打开本页</li>' +
+        '</ol>');
+      return;
+    }
+
+    if (!cfOk) {
+      setVerdict('bad',
+        '❌ 能上网，但访问 Cloudflare 这条线路不通\n\n' +
+        '本工具的后端就架在 Cloudflare 上，所以后端也一起连不上。\n' +
+        '目标地址：' + failDesc);
+      setAction(
+        '<ol class="steps">' +
+        '<li>换一个网络（手机流量 / 别的 Wi-Fi）再打开本页，看是否恢复</li>' +
+        '<li>如果本来在用代理 / VPN，<b>换一个节点</b>，或先关掉再试</li>' +
+        '<li>把本页截图发给开发者</li>' +
+        '</ol>');
+      return;
+    }
+
+    // ④ 关键情形：基础网络正常，只有后端这一个域名连不上
+    setVerdict('bad',
+      '❌ 网络是通的，但只有本工具的后端域名连不上\n\n' +
+      '对照结果：Cloudflare 官网 ✓ 可以打开　百度 ✓ 可以打开\n' +
+      '目标地址：' + failDesc + '\n\n' +
+      '换电脑、换手机都不会改善——这跟设备无关，是这条网络到该域名的链路问题。');
+    setAction(
+      '<ol class="steps">' +
+      '<li><b>换网络</b>：关掉 Wi-Fi，用手机流量再打开本页测一次</li>' +
+      '<li>换网络后仍不通，就只能<b>开启代理 / VPN</b> 再试（先在别的设备确认代理本身可用）</li>' +
+      '<li>如果本来就在用代理，<b>换一个节点</b>，或先完全关掉再试</li>' +
+      '<li>以上都不行：把本页截图发给开发者，由开发者更换后端地址</li>' +
+      '</ol>' +
+      '<div class="hint">点上方「打开后端地址」，把浏览器显示的报错页也截一张，能进一步区分原因。</div>');
+  }
+
+  async function runAll() {
+    var cfg = await readConfig();
+    var base = cfg.url;
+    state.base = base;
+    state.anonKey = cfg.anonKey;
+    renderEnv(base);
+
+    // 先建行，保证用户能看到进度
+    addRow('target', '后端域名（能否连上）', base);
+    addRow('targetCors', '后端域名（能否拿到正常响应）', '');
+    addRow('cf', '对照：Cloudflare 官网', CONTROL_CF);
+    addRow('domestic', '对照：国内基础站点', CONTROL_DOMESTIC);
+    addRow('supabaseSite', '对照：Supabase 官网', CONTROL_SUPABASE_SITE);
+
+    // ① 目标：先用 no-cors 判「网络层是否到达」
+    var tNoCors = await probe(base + '/auth/v1/health', { noCors: true, timeoutMs: 8000 });
+    state.results.target = tNoCors;
+    if (tNoCors.ok) {
+      setRow('target', 'ok', '网络层可达（' + tNoCors.ms + 'ms）');
+    } else {
+      setRow('target', 'bad', explainFail(tNoCors, 8000));
+    }
+
+    // ② 目标：再带 anon key 请求一次，读到真实 HTTP 状态码。
+    //    不带 key 时后端会返回 401「No API key found」，会把「网络通」误判成后端异常，所以必须带上。
+    var tCors = await probe(base + '/auth/v1/health', {
+      timeoutMs: 8000,
+      headers: {
+        apikey: state.anonKey,
+        Authorization: 'Bearer ' + state.anonKey
+      }
+    });
+    state.results.targetCors = tCors;
+    if (tCors.ok) {
+      var httpOk = tCors.status >= 200 && tCors.status < 300;
+      setRow('targetCors', httpOk ? 'ok' : 'warn',
+        'HTTP ' + tCors.status + '（' + tCors.ms + 'ms）'
+        + (httpOk ? '，可正常访问' : (tCors.status === 503 ? '，项目可能已暂停' : '，服务可达但返回异常')));
+    } else {
+      setRow('targetCors', 'bad', explainFail(tCors, 8000));
+    }
+
+    // ③ 对照组
+    var cf = await probe(CONTROL_CF, { noCors: true, timeoutMs: 6000 });
+    state.results.cf = cf;
+    setRow('cf', cf.ok ? 'ok' : 'bad', cf.ok ? ('可以打开（' + cf.ms + 'ms）') : explainFail(cf, 6000));
+
+    var dom = await probe(CONTROL_DOMESTIC, { noCors: true, timeoutMs: 6000 });
+    state.results.domestic = dom;
+    setRow('domestic', dom.ok ? 'ok' : 'bad', dom.ok ? ('可以打开（' + dom.ms + 'ms）') : explainFail(dom, 6000));
+
+    var site = await probe(CONTROL_SUPABASE_SITE, { noCors: true, timeoutMs: 6000 });
+    state.results.supabaseSite = site;
+    setRow('supabaseSite', site.ok ? 'ok' : 'bad', site.ok ? ('可以打开（' + site.ms + 'ms）') : explainFail(site, 6000));
+
+    conclude();
+  }
+
+  // ---------- 自定义地址测试 ----------
+
+  window.testCustom = async function () {
+    var input = document.getElementById('customUrl');
+    var out = document.getElementById('customResult');
+    var raw = String(input.value || '').trim();
+    if (!raw) { out.textContent = '请先填写地址'; return; }
+    if (!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
+    raw = raw.replace(/\/+$/, '');
+    out.textContent = '检测中…';
+    var r = await probe(raw + '/auth/v1/health', { noCors: true, timeoutMs: 8000 });
+    if (r.ok) {
+      out.textContent = '✓ 这个地址可以连上（' + r.ms + 'ms）';
+    } else {
+      out.textContent = '✗ ' + explainFail(r, 8000);
+    }
+  };
+
+  // ---------- 复制结果 ----------
+
+  window.copyReport = function () {
+    var lines = [];
+    lines.push('【网络连通性自检】' + state.startedAt.toLocaleString());
+    lines.push('页面：' + location.href);
+    lines.push('后端：' + state.base);
+    lines.push('设备在线标记：' + (navigator.onLine ? '在线（仅表示网卡未禁用）' : '离线'));
+    lines.push('');
+    var names = {
+      target: '后端域名（能否连上）',
+      targetCors: '后端域名（能否拿到正常响应）',
+      cf: '对照：Cloudflare 官网',
+      domestic: '对照：国内基础站点',
+      supabaseSite: '对照：Supabase 官网'
+    };
+    Object.keys(names).forEach(function (k) {
+      var r = state.results[k];
+      var mark = r ? (r.ok ? '✅' : '❌') : '•';
+      var detail = !r ? '未执行'
+        : r.ok ? ('OK ' + (r.status != null ? ('HTTP ' + r.status + ' ') : '') + '(' + r.ms + 'ms)')
+        : explainFail(r, k === 'target' || k === 'targetCors' ? 8000 : 6000);
+      lines.push(mark + ' ' + names[k] + '：' + detail);
+    });
+    lines.push('');
+    lines.push('结论：' + String(state.verdictText).replace(/\n+/g, ' '));
+    lines.push('');
+    lines.push('浏览器：' + navigator.userAgent);
+
+    var text = lines.join('\n');
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      toast(ok ? '已复制，可直接粘贴发送' : '复制失败，请直接截图');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        toast('已复制，可直接粘贴发送');
+      }, fallback);
+    } else {
+      fallback();
+    }
+  };
+
+  // ---------- 启动 ----------
+
+  runAll().catch(function (e) {
+    setVerdict('bad', '自检脚本出错：' + ((e && e.message) ? e.message : String(e)) + '\n请直接截图本页发给开发者。');
+  });
+})();
+</script>
+</body>
+</html>

@@ -141,3 +141,6 @@ orig_index_tmp.html
 
 # 改名/批量改单主后的云端同步回归
 .rename_sync_test.js
+
+# 本地 ACL 排查/修复产物（.acl-recovery 目录：诊断报告与备份，含机器路径信息）
+.acl-recovery/

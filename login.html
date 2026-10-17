@@ -134,13 +134,16 @@
         <div style="margin-top:6px;text-align:center;">
             <a href="#" onclick="runLoginDiagnosis(); return false;" style="font-size:12px;color:var(--text-light,#6b7280);text-decoration:underline;">登录不了？点这里诊断</a>
         </div>
+        <div style="margin-top:6px;text-align:center;">
+            <a href="netcheck.html" style="font-size:12px;color:var(--text-light,#6b7280);text-decoration:underline;">网络连通性自检（换网络/换设备都登不上时用）</a>
+        </div>
         <div id="message"></div>
     </div>
 </div>
 
 <!-- 本地内置 Supabase SDK（避免依赖 cdn.jsdelivr.net，海外 CDN 在国内网络常被拦截） -->
 <script src="vendor/supabase-js.umd.min.js?v=2.58.0"></script>
-<script src="storage.js?v=20261015-0002"></script>
+<script src="storage.js?v=20261018-0001"></script>
 <script src="supabase-config.js?v=20250213"></script>
 <script>
     // 使用全局配置的 Supabase 客户端（避免重复声明）
@@ -374,42 +377,86 @@
         var confOk = !!(conf && conf.SUPABASE_URL && conf.SUPABASE_ANON_KEY);
         var clientOk = !!supabaseClient;
 
-        var conn = null;
+        // 通用连通性探测：对照组一律用 no-cors —— 拿不到状态码，但能区分「网络层到底通不通」，
+        // 避免把 CORS 拒绝误判成「网络故障」（二者在浏览器里都表现为 Failed to fetch）
+        async function probeUrl(url, opt) {
+            opt = opt || {};
+            var timeoutMs = opt.timeoutMs || 8000;
+            var ctl = ('AbortController' in window) ? new AbortController() : null;
+            var tid = null;
+            var t0 = Date.now();
+            try {
+                if (ctl) tid = setTimeout(function () { ctl.abort(); }, timeoutMs);
+                var init = { method: 'GET', cache: 'no-store', signal: ctl ? ctl.signal : undefined };
+                if (opt.noCors) init.mode = 'no-cors';
+                if (opt.headers) init.headers = opt.headers;
+                var res = await fetch(url, init);
+                return { ok: true, ms: Date.now() - t0, status: res.status, opaque: res.type === 'opaque' };
+            } catch (e) {
+                var aborted = !!(e && e.name === 'AbortError');
+                return {
+                    ok: false,
+                    ms: Date.now() - t0,
+                    aborted: aborted,
+                    text: aborted ? ('超时（' + Math.round(timeoutMs / 1000) + ' 秒无响应）') : (e && e.message ? e.message : String(e))
+                };
+            } finally {
+                if (tid) clearTimeout(tid);
+            }
+        }
+
+        var conn = null, cfConn = null, domConn = null, noCorsConn = null;
         if (confOk) {
             var base = String(conf.SUPABASE_URL).replace(/\/$/, '');
             conn = { base: base, ok: false, text: '' };
-            try {
-                var ctl = ('AbortController' in window) ? new AbortController() : null;
-                var tid = ctl ? setTimeout(function () { ctl.abort(); }, 8000) : null;
-                var t0 = Date.now();
-                var res = await fetch(base + '/auth/v1/health', {
-                    method: 'GET', cache: 'no-store',
-                    headers: { apikey: conf.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + conf.SUPABASE_ANON_KEY },
-                    signal: ctl ? ctl.signal : undefined
-                });
-                if (tid) clearTimeout(tid);
-                var ms = Date.now() - t0;
-                // 只要能拿到 HTTP 响应就说明服务「可达」；非 200 多为密钥/权限或限流，不算连接失败
+            var r = await probeUrl(base + '/auth/v1/health', {
+                timeoutMs: 8000,
+                headers: { apikey: conf.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + conf.SUPABASE_ANON_KEY }
+            });
+            if (r.ok) {
+                // 只要能拿到 HTTP 响应就说明服务「可达」；非 2xx 多为密钥/权限或限流，不算连接失败
                 conn.ok = true;
-                conn.text = 'HTTP ' + res.status + '（' + ms + 'ms）' + (res.ok ? '，可正常访问' : '，服务可达（非 200，通常为密钥/权限或限流）');
-            } catch (e) {
-                if (tid) clearTimeout(tid);
+                conn.text = 'HTTP ' + r.status + '（' + r.ms + 'ms）' + ((r.status >= 200 && r.status < 300) ? '，可正常访问' : '，服务可达（非 2xx，通常为密钥/权限或限流）');
+            } else {
                 conn.ok = false;
-                var em = (e && e.name === 'AbortError') ? '超时（8 秒无响应）' : (e && e.message ? e.message : String(e));
-                conn.text = '连接失败 —— ' + em;
+                conn.text = '连接失败 —— ' + r.text + '（' + r.ms + 'ms）';
+                // 带鉴权头失败后，再用 no-cors 探一次同一个地址：
+                // 能通 → 网络没问题，是跨域/插件拦截；还是失败 → 网络层确实到不了
+                noCorsConn = await probeUrl(base + '/auth/v1/health', { noCors: true, timeoutMs: 8000 });
             }
+            // 对照组：①同 CDN（Cloudflare，本项目后端就架在它上面）②国内基础站点
+            cfConn = await probeUrl('https://www.cloudflare.com/', { noCors: true, timeoutMs: 6000 });
+            domConn = await probeUrl('https://www.baidu.com/', { noCors: true, timeoutMs: 6000 });
         }
 
         var lines = [];
         lines.push('【登录故障诊断】' + new Date().toLocaleString());
-        lines.push(mark(navigator.onLine) + ' 设备网络状态：' + (navigator.onLine ? '在线' : '离线'));
+        // navigator.onLine 只代表「网卡没被禁用」，网络被拦时它照样是 true，所以这里不再拿它下结论
+        lines.push(mark(navigator.onLine) + ' 设备网络状态：' + (navigator.onLine ? '在线（仅表示网卡未禁用，不代表能出网）' : '离线'));
         lines.push(mark(sdkOk) + ' Supabase SDK：' + (sdkOk ? '已加载' : '未加载（vendor/supabase-js.umd.min.js 缺失或加载失败）'));
         lines.push(mark(confOk) + ' 配置文件 supabase-config.js：' + (confOk ? '已加载' : '缺失或内容不完整'));
         lines.push(mark(clientOk) + ' 客户端初始化 supabaseClient：' + (clientOk ? '成功' : '失败'));
         if (conn) {
             lines.push(mark(conn.ok) + ' 云端连通性 ' + conn.base + '：' + conn.text);
             if (!conn.ok) {
-                lines.push('   → 当前网络/代理无法访问 supabase.co（海外域名，国内直连常被拦截）。请开启代理或 VPN 后重试');
+                var cfOk = !!(cfConn && cfConn.ok);
+                var domOk = !!(domConn && domConn.ok);
+                lines.push('   → 对照测试：Cloudflare 官网 ' + mark(cfOk) + (cfOk ? ' 可访问' : ' 不可访问')
+                    + '　百度 ' + mark(domOk) + (domOk ? ' 可访问' : ' 不可访问'));
+                if (noCorsConn && noCorsConn.ok) {
+                    lines.push('   → 判断：网络其实是通的，请求是在浏览器里被拦下的（跨域限制或扩展/安全软件拦截）');
+                    lines.push('   → 处理：先开「无痕窗口」重试；仍不行请关闭广告拦截/隐私类扩展，或换一个浏览器');
+                } else if (cfOk && domOk) {
+                    lines.push('   → 判断：你的基础网络是通的，只有这个 Supabase 域名连不上（换电脑、换手机都一样，说明与设备无关）');
+                    lines.push('   → 常见原因：①该域名在当前网络被拦截（国内直连 *.supabase.co 常年不稳定）②代理/安全软件的规则把它劫持了');
+                    lines.push('   → 处理顺序：换网络（手机流量）试 → 开启代理/VPN 后重试 → 仍不行请联系开发者更换后端地址');
+                } else if (domOk) {
+                    lines.push('   → 判断：能上网，但访问 Cloudflare 线路不通；本工具的后端就架在 Cloudflare 上');
+                    lines.push('   → 处理：开启代理/VPN（或切换可用节点）后重试；已经在用代理的请换个节点再试');
+                } else {
+                    lines.push('   → 判断：当前网络整体无法出网（连国内基础站点也打不开）');
+                    lines.push('   → 处理：检查 Wi-Fi/网线；若正在使用代理/VPN，请先关闭它再试（代理配错会把所有请求一起拦死）');
+                }
             }
         } else if (!confOk) {
             lines.push('❌ 云端连通性：跳过（配置缺失，无法确定云端地址）');
@@ -417,6 +464,8 @@
         lines.push('');
         if (sdkOk && confOk && clientOk && conn && conn.ok) {
             lines.push('结论：初始化与云端连接均正常。若仍登录不上，请核对邮箱/密码，或用「忘记密码」重置。');
+        } else if (conn && !conn.ok && domConn && domConn.ok) {
+            lines.push('结论：登录不了的原因是「云端域名连不上」，不是账号或密码问题，重装/换设备也无效。按上面「处理」操作即可。');
         } else {
             lines.push('结论：上面标 ❌ 的环节就是登录不了的原因（请对照该行的提示处理）。');
         }
