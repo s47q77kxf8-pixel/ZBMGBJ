@@ -1233,6 +1233,7 @@ function renderStorageUsage() {
         (((window.MGStore && window.MGStore.namespace) || '').indexOf('u_') === 0
             ? '<button type="button" class="btn secondary btn-compact" onclick="mgImportGuestData()">导入本机游客数据</button>'
             : '')
+        + '<button type="button" class="btn secondary btn-compact" onclick="mgShowSyncLog()">查看同步日志</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeSnapshots()">清理数据快照</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeTrash()">清空回收站</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeOrphanCaseImgs()">清理孤立图片缓存</button>'
@@ -1257,8 +1258,89 @@ var MG_NS_EXTRA_KEYS = [
     'mg_last_orders_sync_at', 'mg_deleted_external_ids', 'mg_deleted_external_ids_queue',
     'mg_unsynced_orders', 'mg_schedule_todo_preset_tags', 'mg_cloud_migrated_v1', 'mg_first_sync_policy',
     'mg_last_synced_artist_display_name', 'mg_settings_pulled_at', 'mgSettingsSyncSnapshot',
-    'mgDeletedIds', 'roleIgnoredNames', 'mg_cloud_sync_policy', 'mg_cloud_sync_initialized'
+    'mgDeletedIds', 'roleIgnoredNames', 'mg_cloud_sync_policy', 'mg_cloud_sync_initialized', 'mg_sync_log'
 ];
+
+// ===== 云同步日志（本地审计：记录身份切换 / 设置上传拉取 / 合并与数据增减，便于排查跨端数据差异） =====
+var MG_SYNC_LOG_KEY = 'mg_sync_log';
+var MG_SYNC_LOG_MAX = 150;
+
+function mgSyncLog(action, detail) {
+    try {
+        var list = [];
+        try { list = JSON.parse(window.MGStore.getItem(MG_SYNC_LOG_KEY) || '[]') || []; } catch (_) { list = []; }
+        if (!Array.isArray(list)) list = [];
+        var entry = { t: Date.now(), a: String(action || '') };
+        if (detail !== undefined && detail !== null) entry.d = detail;
+        list.push(entry);
+        while (list.length > MG_SYNC_LOG_MAX) list.shift();
+        window.MGStore.setItem(MG_SYNC_LOG_KEY, JSON.stringify(list));
+    } catch (_) {}
+}
+
+function mgSyncLogText() {
+    var list = [];
+    try { list = JSON.parse(window.MGStore.getItem(MG_SYNC_LOG_KEY) || '[]') || []; } catch (_) {}
+    if (!Array.isArray(list)) list = [];
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    return list.map(function (e) {
+        var d = new Date(e.t || 0);
+        var ts = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' '
+            + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        var det = '';
+        if (e.d !== undefined && e.d !== null) {
+            try { det = (typeof e.d === 'string') ? e.d : JSON.stringify(e.d); } catch (_) { det = String(e.d); }
+        }
+        return ts + ' [' + e.a + ']' + (det ? ' ' + det : '');
+    }).join('\n');
+}
+
+function mgShowSyncLog() {
+    var text = '';
+    try { text = mgSyncLogText(); } catch (_) {}
+    if (!text) { alert('暂无同步日志'); return; }
+    var mask = document.createElement('div');
+    mask.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--card,#fff);color:var(--text,#111);border-radius:14px;max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;';
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'margin:0;padding:14px 16px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;line-height:1.5;font-family:Consolas,Menlo,monospace;flex:1;';
+    pre.textContent = text;
+    var foot = document.createElement('div');
+    foot.style.cssText = 'padding:10px 16px;border-top:1px solid var(--border,#e5e7eb);display:flex;gap:8px;justify-content:flex-end;';
+    var copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn secondary btn-compact';
+    copyBtn.textContent = '复制全部';
+    copyBtn.onclick = function () {
+        var done = function () { if (typeof showGlobalToast === 'function') showGlobalToast('已复制'); };
+        function fallbackCopy() {
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = text; document.body.appendChild(ta); ta.select();
+                document.execCommand('copy'); document.body.removeChild(ta); done();
+            } catch (_) { alert('复制失败，请手动选择文本复制'); }
+        }
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done, fallbackCopy);
+            } else fallbackCopy();
+        } catch (_) { fallbackCopy(); }
+    };
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn secondary btn-compact';
+    closeBtn.textContent = '关闭';
+    closeBtn.onclick = function () { if (mask.parentNode) document.body.removeChild(mask); };
+    foot.appendChild(copyBtn);
+    foot.appendChild(closeBtn);
+    box.appendChild(pre);
+    box.appendChild(foot);
+    mask.appendChild(box);
+    document.body.appendChild(mask);
+    mask.addEventListener('click', function (ev) { if (ev.target === mask && mask.parentNode) document.body.removeChild(mask); });
+}
+
 var MG_NS_LEGACY_FLAG = 'mg_ns_legacy_taken_v1';
 
 function mgIsNsBizKey(k) {
@@ -1287,7 +1369,11 @@ async function mgSetupIdentity() {
 
     var ns = userId ? ('u_' + userId) : 'guest';
     var nsChanged = (window.MGStore.namespace !== ns);
-    if (!(await window.MGStore.setNamespace(ns))) return;
+    if (!(await window.MGStore.setNamespace(ns))) {
+        mgSyncLog('identity_fail', '命名空间设置失败 ns=' + ns);
+        return;
+    }
+    mgSyncLog('identity', { ns: ns, login: !!userId, changed: nsChanged });
     if (!nsChanged && window.__mgNsMigrated) return; // 同一身份且已迁移过，避免重复执行
 
     try {
@@ -1295,9 +1381,12 @@ async function mgSetupIdentity() {
         try { taken = localStorage.getItem(MG_NS_LEGACY_FLAG); } catch (_) {}
         if (!taken) {
             await mgMigrateLegacyToNamespace(ns);
+            mgSyncLog('migrate', { ns: ns, note: '一次性迁移已执行' });
             try { localStorage.setItem(MG_NS_LEGACY_FLAG, JSON.stringify({ ns: ns, t: Date.now() })); } catch (_) {}
         }
-    } catch (_) {}
+    } catch (mErr) {
+        mgSyncLog('migrate_fail', String((mErr && mErr.message) || mErr));
+    }
     window.__mgNsMigrated = true;
 }
 
@@ -19887,7 +19976,7 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261018-0001';
+const APP_VERSION = '20261018-0002';
 const APP_CHANGELOG = [
     {
         date: '2026-10-18',
@@ -19896,6 +19985,7 @@ const APP_CHANGELOG = [
             '【登录】修复诊断误判：探测后端时未携带 anon key，会把正常的密钥校验错误误报成后端异常；现改为携带密钥，并新增 HTTP 503（Supabase 项目暂停）专门提示',
             '【登录】新增「网络连通性自检」页 netcheck.html：一页给出各项连通性结果与可操作的下一步，支持一键复制结果，方便用户截图反馈',
             '【登录】「设备网络状态：在线」补充说明：该状态只表示网卡未禁用，不代表能出网，避免误导排查方向',
+            '【设置·存储占用】新增「查看同步日志」：自动记录账号切换、设置上传拉取、合并结果与数据增减，可一键复制发给开发者，便于排查跨设备数据差异',
         ]
     },
     {
@@ -34482,6 +34572,7 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
                 await mgLoadSettingsFromCloud(true);
             } catch (err) {
                 console.warn('拉取云端设置失败（可能云端无设置）:', err);
+                mgSyncLog('settings_pull_fail', String((err && err.message) || err));
                 // 继续执行，不影响后续流程
             }
             
@@ -34595,6 +34686,7 @@ async function mgExecuteFirstSync(policy, conflictInfo) {
                 await mgLoadSettingsFromCloud(false); // 直接覆盖
             } catch (err) {
                 console.error('拉取云端设置失败:', err);
+                mgSyncLog('settings_pull_fail', String((err && err.message) || err));
                 throw new Error('拉取云端设置失败: ' + (err.message || '未知错误'));
             }
             
@@ -35835,9 +35927,11 @@ async function mgTryLoadSettingsFromCloudV2(client, artistId, mergeMode) {
         const activeCount = (singletons || []).length
             + (items || []).filter(function (r) { return !r.deleted_at; }).length;
         if (!mergeMode && !activeCount) {
+            mgSyncLog('pull_guard_empty_cloud', { mode: 'overwrite', note: '云端无 active 设置，保留本地' });
             return { supported: true, hasData: 0, empty: true };
         }
 
+        mgSyncLog('settings_apply_v2', { mode: mergeMode ? 'merge' : 'overwrite', singletons: (singletons || []).length, itemsActive: (items || []).filter(function (r) { return !r.deleted_at; }).length, itemsDeleted: (items || []).filter(function (r) { return !!r.deleted_at; }).length });
         mgApplySettingsV2(singletons || [], items || [], mergeMode);
         return { supported: true, hasData: activeCount };
     } catch (err) {
@@ -36027,6 +36121,7 @@ async function mgSyncSettingsToCloud(silent = false) {
         return;
     }
     window._isSyncingSettings = true;
+    mgSyncLog('settings_upload_start', { silent: !!silent });
 
     // 以本地为准：直接上传当前本地设置到云端（包含删除），不从云端先合并
     try {
@@ -36039,6 +36134,7 @@ async function mgSyncSettingsToCloud(silent = false) {
             const mergeSummary = v2Result.mergeSummary || { mode: 'merge', productsCount: productSettings.length, processesCount: processSettings.length, templatesCount: templates.length };
             window.__mgLastSettingsMergeSummary = mergeSummary;
             window.__mgLastSyncSummaryAt = Date.now();
+            mgSyncLog('settings_upload_v2', mergeSummary);
             
             if (!silent) {
                 if (typeof showGlobalToast === 'function') showGlobalToast('✅ 设置已上传到云端（V2）');
@@ -36388,18 +36484,22 @@ function mgMergeObjectThreeWay(baseObj, cloudObj, localObj) {
         catch (_) { return false; }
     }
     const merged = {};
+    const stat = { adopted: 0, keptLocal: 0, conflict: 0, removed: 0 };
     const keys = new Set([].concat(Object.keys(base), Object.keys(cloud), Object.keys(local)));
     keys.forEach(function (key) {
         const b = base[key], c = cloud[key], l = local[key];
         const localChanged = !eq(l, b);
         const cloudChanged = !eq(c, b);
         let val;
-        if (!localChanged) val = c;       // 本机没动 → 采纳云端（含云端删除）
-        else if (!cloudChanged) val = l;  // 云端没动 → 保留本机（含本机删除）
-        else val = c;                     // 双方都改 → 云端优先
-        if (val === undefined) return;    // 该键已被删除
+        if (!localChanged) { val = c; stat.adopted++; }        // 本机没动 → 采纳云端（含云端删除）
+        else if (!cloudChanged) { val = l; stat.keptLocal++; } // 云端没动 → 保留本机（含本机删除）
+        else { val = c; stat.conflict++; }                     // 双方都改 → 云端优先
+        if (val === undefined) { stat.removed++; return; }     // 该键已被删除
         merged[key] = mgSafeClone(val, val);
     });
+    try {
+        mgSyncLog('three_way_merge', Object.assign({ localKeys: Object.keys(local).length, cloudKeys: Object.keys(cloud).length }, stat));
+    } catch (_) {}
     return merged;
 }
 
@@ -36475,6 +36575,7 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
                     if (typeof showGlobalToast === 'function') showGlobalToast('云端暂无设置，未做修改');
                     else alert('云端暂无设置，未做修改');
                 }
+                mgSyncLog('settings_pull_empty', { mergeMode: !!mergeMode, note: '云端无 active 设置' });
                 return;
             }
             clearTimeout(_saveDataTimer);
@@ -36485,6 +36586,7 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
             } else {
                 if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已从云端恢复设置（V2）');
                 else alert('已从云端恢复设置（V2）');
+                mgSyncLog('settings_restore_done', { engine: 'v2', mergeMode: !!mergeMode });
                 if (!suppressReload) {
                     setTimeout(function () { location.reload(); }, 400);
                 }
@@ -36641,6 +36743,7 @@ async function mgLoadSettingsFromCloud(mergeMode = false, suppressReload = false
         } else {
             if (typeof showGlobalToast === 'function') showGlobalToast('✅ 已从云端恢复设置');
             else alert('已从云端恢复设置');
+            mgSyncLog('settings_restore_done', { engine: 'v1', mergeMode: !!mergeMode });
             if (!suppressReload) {
                 setTimeout(function () { location.reload(); }, 400);
             }
@@ -37035,6 +37138,7 @@ init = function() {
                     await mgLoadSettingsFromCloud(true);
                 } catch (err) {
                     console.warn('启动时拉取云端设置失败（继续使用本地设置）:', err);
+                    mgSyncLog('startup_pull_fail', String((err && err.message) || err));
                     // 设置拉取失败不影响后续流程
                 }
                 
