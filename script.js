@@ -4171,10 +4171,25 @@ function customerCardHtml(c) {
             '</div>' +
         '</div>' +
         '<div class="customer-card-actions">' +
+            '<button class="customer-action-btn" title="查看记录" aria-label="查看记录" data-name="' + escapeHtml(c.name) + '" onclick="openCustomerRecords(this)"><svg class="icon sm" aria-hidden="true"><use href="#i-eye"/></svg></button>' +
             '<button class="customer-action-btn" title="编辑" aria-label="编辑" onclick="openCustomerEditModal(\'' + c.id + '\')"><svg class="icon sm" aria-hidden="true"><use href="#i-edit"/></svg></button>' +
             '<button class="customer-action-btn customer-action-btn-danger" title="删除" aria-label="删除" onclick="deleteCustomer(\'' + c.id + '\')"><svg class="icon sm" aria-hidden="true"><use href="#i-trash-simple"/></svg></button>' +
         '</div>' +
     '</div>';
+}
+
+// 从单主管理跳转记录页：按该单主（clientId）搜索其历史订单
+function openCustomerRecords(btn) {
+    const name = (btn && btn.getAttribute) ? String(btn.getAttribute('data-name') || '').trim() : '';
+    if (!name) return;
+    // 清除统计页聚焦筛选，避免与搜索互斥
+    if (typeof clearStatsFocusedOrders === 'function' && statsFocusedOrderIds && statsFocusedOrderIds.size > 0) {
+        clearStatsFocusedOrders(true);
+    }
+    const input = document.getElementById('recordSearchInput');
+    if (input) input.value = name;
+    showPage('record');
+    applyRecordFilters();
 }
 
 // 切换客户名单排序模式：alpha=字母分组 / count=按单数 / amount=按金额
@@ -19965,11 +19980,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261018-0006';
+const APP_VERSION = '20261018-0007';
 const APP_CHANGELOG = [
     {
         date: '2026-10-18',
         items: [
+            '【单主管理】单主卡片新增「查看记录」入口，一键跳转记录页查看该单主的历史订单',
             '【案例库】修复旧版本生成的案例图片不显示（提示「图片缺失」）的问题',
             '【数据安全】存储占用面板新增「恢复数据快照」：订单记录出现异常丢失时，可自助从自动备份中一键恢复',
             '【云同步】同步摘要更直观：直接显示云端制品 / 工艺 / 模板数量，与云端一致时提示「无需补入」而非「补入 0」',
