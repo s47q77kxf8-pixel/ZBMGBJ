@@ -1234,6 +1234,7 @@ function renderStorageUsage() {
             ? '<button type="button" class="btn secondary btn-compact" onclick="mgImportGuestData()">导入本机游客数据</button>'
             : '')
         + '<button type="button" class="btn secondary btn-compact" onclick="mgShowSyncLog()">查看同步日志</button>'
+        + '<button type="button" class="btn secondary btn-compact" onclick="mgShowSnapshotRecoveryDialog()">恢复数据快照</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeSnapshots()">清理数据快照</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeTrash()">清空回收站</button>'
         + '<button type="button" class="btn secondary btn-compact" onclick="mgPurgeOrphanCaseImgs()">清理孤立图片缓存</button>'
@@ -19964,11 +19965,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261018-0004';
+const APP_VERSION = '20261018-0005';
 const APP_CHANGELOG = [
     {
         date: '2026-10-18',
         items: [
+            '【数据安全】存储占用面板新增「恢复数据快照」：订单记录出现异常丢失时，可自助从自动备份中一键恢复',
             '【云同步】修复设置数据量较大（含历史删除记录）时，云端恢复和同步会静默漏掉部分制品、模板等条目的问题',
             '【云同步】修复加价 / 减价 / 每件额外费用设置在多设备同步时可能被意外清空的问题',
             '【云同步】出现大批量数据删除时会在同步日志中留下明显记录，便于及时发现异常',
