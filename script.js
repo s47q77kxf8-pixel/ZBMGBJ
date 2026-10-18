@@ -19970,6 +19970,7 @@ const APP_CHANGELOG = [
     {
         date: '2026-10-18',
         items: [
+            '【案例库】修复旧版本生成的案例图片不显示（提示「图片缺失」）的问题',
             '【数据安全】存储占用面板新增「恢复数据快照」：订单记录出现异常丢失时，可自助从自动备份中一键恢复',
             '【云同步】同步摘要更直观：直接显示云端制品 / 工艺 / 模板数量，与云端一致时提示「无需补入」而非「补入 0」',
             '【云同步】修复设置数据量较大（含历史删除记录）时，云端恢复和同步会静默漏掉部分制品、模板等条目的问题',
@@ -37464,6 +37465,16 @@ async function caseImgGet(id) {
             });
             if (legacy) return legacy;
         }
+        // 兼容：更早版本以 id 原样作键（如 cimg_<ts>.<rand> / ceqg_<ts>.<rand>，无任何前缀）
+        const raw = await new Promise(function (resolve) {
+            try {
+                const tx = db.transaction('images', 'readonly');
+                const rq = tx.objectStore('images').get(id);
+                rq.onsuccess = function () { resolve(rq.result || null); };
+                rq.onerror = function () { resolve(null); };
+            } catch (_) { resolve(null); }
+        });
+        if (raw) return raw;
     }
     return MGStore.getItem('caseImg_' + id);
 }
@@ -37476,6 +37487,7 @@ async function caseImgDelete(id) {
                 const tx = db.transaction('images', 'readwrite');
                 tx.objectStore('images').delete(caseImgIdbKey(id));
                 tx.objectStore('images').delete('caseImg_' + id);
+                tx.objectStore('images').delete(id);
                 tx.oncomplete = resolve;
                 tx.onerror = resolve;
             } catch (_) { resolve(); }

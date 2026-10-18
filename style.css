@@ -6889,6 +6889,13 @@ input:checked + .toggle-slider:before {
     min-width: 50px !important;
 }
 
+/* 黑夜模式：自定义其他费用输入框（覆盖硬编码白底，配色与全局深色输入框一致） */
+html.theme-dark .other-fee-name-input,
+html.theme-dark .other-fee-amount-input {
+    background-color: #27272a !important;
+    color: #e5e5e5 !important;
+}
+
 /* 优化其他费用在手机上的排版 */
 @media (max-width: 768px) {
     /* 费用名称输入框占主要宽度 */
