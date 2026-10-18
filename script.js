@@ -1720,11 +1720,7 @@ async function mgLoadCloudDeletedExternalIds(force) {
         if (!session || !session.user) return new Set(cloudDeletedExternalIds);
         const artistId = session.user.id;
 
-        const { data, error } = await client
-            .from('artist_settings_items')
-            .select('item_id,deleted_at')
-            .eq('artist_id', artistId)
-            .eq('domain', 'deleted_orders');
+        const { data, error } = await mgFetchAllSettingsItems(client, artistId, 'item_id,deleted_at', 'deleted_orders');
 
         if (error) {
             const code = error.code || '';
@@ -3438,11 +3434,7 @@ async function mgCloudPushItems(domain, items) {
         let tombRows = [];
         let pendingDirty = false;
         if (rows.length || delIds.size) {
-            const { data: existing, error: fe } = await client
-                .from('artist_settings_items')
-                .select('item_id, deleted_at')
-                .eq('artist_id', artistId)
-                .eq('domain', domain);
+            const { data: existing, error: fe } = await mgFetchAllSettingsItems(client, artistId, 'item_id, deleted_at', domain);
             if (fe) {
                 const code = fe.code || '';
                 const msg = fe.message || '';
@@ -3513,11 +3505,7 @@ async function mgCloudPullItems(domain, localArr) {
         const { data: { session } } = await client.auth.getSession();
         if (!session || !session.user) return null;
         const artistId = session.user.id;
-        const { data, error } = await client
-            .from('artist_settings_items')
-            .select('item_id, payload, deleted_at, updated_at')
-            .eq('artist_id', artistId)
-            .eq('domain', domain);
+        const { data, error } = await mgFetchAllSettingsItems(client, artistId, 'item_id, payload, deleted_at, updated_at', domain);
         if (error) {
             const code = error.code || '';
             const msg = error.message || '';
@@ -19976,11 +19964,14 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261018-0002';
+const APP_VERSION = '20261018-0004';
 const APP_CHANGELOG = [
     {
         date: '2026-10-18',
         items: [
+            '【云同步】修复设置数据量较大（含历史删除记录）时，云端恢复和同步会静默漏掉部分制品、模板等条目的问题',
+            '【云同步】修复加价 / 减价 / 每件额外费用设置在多设备同步时可能被意外清空的问题',
+            '【云同步】出现大批量数据删除时会在同步日志中留下明显记录，便于及时发现异常',
             '【登录】「登录不了？点这里诊断」改为对照式检测：同时探测 Cloudflare 与国内基础站点，可区分「只有后端域名连不上」「出海线路不通」「整体断网」「浏览器拦截」四种情况，不再一律提示「请开代理」',
             '【登录】修复诊断误判：探测后端时未携带 anon key，会把正常的密钥校验错误误报成后端异常；现改为携带密钥，并新增 HTTP 503（Supabase 项目暂停）专门提示',
             '【登录】新增「网络连通性自检」页 netcheck.html：一页给出各项连通性结果与可操作的下一步，支持一键复制结果，方便用户截图反馈',
@@ -35083,6 +35074,11 @@ function mgBuildSettingsV2LocalState() {
     delete calc.sameModelCoefficients;
     delete calc.discountCoefficients;
     delete calc.platformFees;
+    // extraPricingUp/Down、perItemExtraFees 的权威来源是条目域（下方 itemsByDomain），
+    // 单例不再携带副本，避免旧副本在拉取合并时用空数组/旧值覆盖条目域数据
+    delete calc.extraPricingUp;
+    delete calc.extraPricingDown;
+    delete calc.perItemExtraFees;
 
     const processItems = (Array.isArray(processSettings) ? processSettings : []).map(function (p) {
         const stableId = mgEnsureStableIdForItem(p, 'p');
@@ -35216,13 +35212,26 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     perfTimings.mark('singletonParse');
 
     const calc = singletonMap.get('calculator_settings');
+    // 旧版云端单例可能夹带 extraPricingUp/Down/perItemExtraFees 副本（V2 中这三类的
+    // 权威来源是条目域），一律剥离，避免空数组/旧值经单例覆盖本地（设置丢失根因之一）
     if (calc && typeof calc === 'object') {
+        delete calc.extraPricingUp;
+        delete calc.extraPricingDown;
+        delete calc.perItemExtraFees;
         if (mergeMode) {
-            // 三方合并：以本机上次同步基线为参照，本机未同步的修改不被云端旧值覆盖
-            const mergedCalc = mgMergeObjectThreeWay(snapSingletons.calculator_settings || null, calc, defaultSettings || {});
+            // 三方合并：以本机上次同步基线为参照，本机未同步的修改不被云端旧值覆盖。
+            // 基线副本同样剥离三类遗留键，避免「基线有、合并结果无」被误判为云端已删除而清掉本地
+            const baseCalc = (snapSingletons.calculator_settings && typeof snapSingletons.calculator_settings === 'object')
+                ? Object.assign({}, snapSingletons.calculator_settings)
+                : null;
+            if (baseCalc) {
+                delete baseCalc.extraPricingUp;
+                delete baseCalc.extraPricingDown;
+                delete baseCalc.perItemExtraFees;
+            }
+            const mergedCalc = mgMergeObjectThreeWay(baseCalc, calc, defaultSettings || {});
             Object.keys(mergedCalc).forEach(function (k) { defaultSettings[k] = mergedCalc[k]; });
             // 基线中存在、合并结果中已消失的键 = 云端侧已删除，同步删除
-            const baseCalc = (snapSingletons.calculator_settings && typeof snapSingletons.calculator_settings === 'object') ? snapSingletons.calculator_settings : null;
             if (baseCalc) {
                 Object.keys(baseCalc).forEach(function (k) {
                     if (!(k in mergedCalc)) delete defaultSettings[k];
@@ -35904,11 +35913,36 @@ function mgApplySettingsV2(singletons, items, mergeMode) {
     perfTimings.report();
 }
 
+// PostgREST 默认单次查询上限 1000 行（超出部分静默截断）。设置墓碑积累后
+// itemsActive + itemsDeleted 会撞线，导致拉取/比对缺行。此处循环 range 分页直到取完。
+// 返回 { data, error } 形态以兼容现有判错逻辑。
+async function mgFetchAllSettingsItems(client, artistId, columns, domain) {
+    const PAGE = 1000;
+    const MAX_PAGES = 500; // 安全上限：50 万行，防异常失控
+    let all = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+        let q = client
+            .from('artist_settings_items')
+            .select(columns)
+            .eq('artist_id', artistId)
+            .order('domain', { ascending: true })
+            .order('item_id', { ascending: true })
+            .range(page * PAGE, page * PAGE + PAGE - 1);
+        if (domain != null) q = q.eq('domain', domain);
+        const { data, error } = await q;
+        if (error) return { data: null, error: error };
+        const rows = data || [];
+        all = all.concat(rows);
+        if (rows.length < PAGE) break;
+    }
+    return { data: all, error: null };
+}
+
 async function mgTryLoadSettingsFromCloudV2(client, artistId, mergeMode) {
     try {
         const [{ data: singletons, error: sErr }, { data: items, error: iErr }] = await Promise.all([
             client.from('artist_settings_singleton').select('domain,payload,updated_at').eq('artist_id', artistId),
-            client.from('artist_settings_items').select('domain,item_id,payload,updated_at,deleted_at').eq('artist_id', artistId)
+            mgFetchAllSettingsItems(client, artistId, 'domain,item_id,payload,updated_at,deleted_at')
         ]);
 
         if (sErr || iErr) {
@@ -35968,7 +36002,7 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
     const activeRowsDedup = Array.from(activeRowsDedupMap.values());
 
     const [itemsRes, singletonsRes] = await Promise.all([
-        client.from('artist_settings_items').select('domain,item_id,deleted_at').eq('artist_id', artistId),
+        mgFetchAllSettingsItems(client, artistId, 'domain,item_id,deleted_at'),
         client.from('artist_settings_singleton').select('domain').eq('artist_id', artistId)
     ]);
 
@@ -36045,6 +36079,14 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
             });
         });
     });
+
+    // 批量删除护栏：单次上传推断出的墓碑数量达到批量规模时写入同步日志，
+    // 便于在「设置被批量清空」发生的第一时间留下可排查记录
+    if (tombstoneRows.length >= 20) {
+        const tombByDomain = {};
+        tombstoneRows.forEach(function (r) { tombByDomain[r.domain] = (tombByDomain[r.domain] || 0) + 1; });
+        try { mgSyncLog('settings_upload_mass_tombstone', '单次上传推断删除 ' + tombstoneRows.length + ' 条: ' + JSON.stringify(tombByDomain)); } catch (_) {}
+    }
 
     const allItemRows = uploadRows.concat(tombstoneRows);
 
