@@ -3749,19 +3749,20 @@ function backfillRoleProfileFromQuote(quote) {
 // 口径与统计页 Top 单主一致：排除已撤单；接单取定金+本次收款，否则取约定实收/总价
 function computeCustomerStats(name) {
     const key = String(name || '').trim();
-    // settled = 接单（settlement.type==='normal'）；all = 所有订单（排除撤单与占位单）
+    // settled = 走过结算流程的终局订单（settlement.type==='normal' 正常结算 / 'waste_fee' 废稿结算）；all = 所有订单（排除撤单与占位单）
     const stats = { orderCount: 0, totalAmount: 0, allOrderCount: 0, allTotalAmount: 0 };
     if (!key || !Array.isArray(history)) return stats;
     history.forEach(function (item) {
         if (!item || !item.clientId || String(item.clientId).trim() !== key) return;
         if (isCancelSettlementType(item && item.settlement)) return; // 撤单不计入任何口径
         if (item && item.isSchedulePlaceholder) return; // 占位单不计入任何口径
-        const amt = getStatsAmount(item, 'agreed', false);
+        const amt = getStatsAmount(item, 'agreed', false); // 结算单自动取实收口径（废稿单取废稿费）
         // 所有订单（未结单也计入，但排除撤单、占位单）
         stats.allOrderCount += 1;
         stats.allTotalAmount += amt;
-        // 已结单（settlement.type === 'normal'）
-        if (!(item && item.settlement && item.settlement.type === 'normal')) return;
+        // 已结单口径：正常结算（normal）与废稿结算（waste_fee）均已终局，计入已结单
+        const stType = (item && item.settlement) ? item.settlement.type : null;
+        if (stType !== 'normal' && stType !== 'waste_fee') return;
         stats.orderCount += 1;
         stats.totalAmount += amt;
     });
@@ -19980,11 +19981,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261018-0007';
+const APP_VERSION = '20261018-0008';
 const APP_CHANGELOG = [
     {
         date: '2026-10-18',
         items: [
+            '【单主管理】已按废稿结算的订单计入「已结单」统计（金额按废稿实收），不再显示为未结单挂账',
             '【单主管理】单主卡片新增「查看记录」入口，一键跳转记录页查看该单主的历史订单',
             '【案例库】修复旧版本生成的案例图片不显示（提示「图片缺失」）的问题',
             '【数据安全】存储占用面板新增「恢复数据快照」：订单记录出现异常丢失时，可自助从自动备份中一键恢复',
