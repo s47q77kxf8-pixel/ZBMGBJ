@@ -19965,12 +19965,13 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261018-0005';
+const APP_VERSION = '20261018-0006';
 const APP_CHANGELOG = [
     {
         date: '2026-10-18',
         items: [
             '【数据安全】存储占用面板新增「恢复数据快照」：订单记录出现异常丢失时，可自助从自动备份中一键恢复',
+            '【云同步】同步摘要更直观：直接显示云端制品 / 工艺 / 模板数量，与云端一致时提示「无需补入」而非「补入 0」',
             '【云同步】修复设置数据量较大（含历史删除记录）时，云端恢复和同步会静默漏掉部分制品、模板等条目的问题',
             '【云同步】修复加价 / 减价 / 每件额外费用设置在多设备同步时可能被意外清空的问题',
             '【云同步】出现大批量数据删除时会在同步日志中留下明显记录，便于及时发现异常',
@@ -34842,7 +34843,17 @@ function updateCloudSyncStatus() {
                     if (settingsSummary.mode === 'override') {
                         settingsLine = '设置：云端直接覆盖；制品 ' + (settingsSummary.productsCount || 0) + ' / 工艺 ' + (settingsSummary.processesCount || 0) + ' / 模板 ' + (settingsSummary.templatesCount || 0);
                     } else {
-                        settingsLine = '设置：云端优先合并；本地补入 制品 ' + (settingsSummary.productsAddedFromLocal || 0) + ' / 工艺 ' + (settingsSummary.processesAddedFromLocal || 0) + ' / 模板 ' + (settingsSummary.templatesAddedFromLocal || 0);
+                        const addedTotal = (settingsSummary.productsAddedFromLocal || 0)
+                            + (settingsSummary.processesAddedFromLocal || 0)
+                            + (settingsSummary.templatesAddedFromLocal || 0);
+                        settingsLine = '设置：云端优先合并，云端 制品 ' + (settingsSummary.productsCount || 0)
+                            + ' / 工艺 ' + (settingsSummary.processesCount || 0)
+                            + ' / 模板 ' + (settingsSummary.templatesCount || 0)
+                            + (addedTotal > 0
+                                ? '；本地补入 制品 ' + (settingsSummary.productsAddedFromLocal || 0)
+                                    + ' / 工艺 ' + (settingsSummary.processesAddedFromLocal || 0)
+                                    + ' / 模板 ' + (settingsSummary.templatesAddedFromLocal || 0)
+                                : '；本地与云端一致，无需补入');
                     }
                 } else {
                     settingsLine = '设置：暂无本次同步摘要';
