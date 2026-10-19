@@ -1211,7 +1211,21 @@ function renderStorageUsage() {
             var label = mgStorageLabel(r.key) === r.key ? r.key : (mgStorageLabel(r.key) + '（' + r.key + '）');
             var count = '';
             if (r.key === 'mg_data_snapshots') {
-                try { count = ' · ' + (JSON.parse(window.MGStore.getItem(r.key) || '[]').length) + ' 份'; } catch (_) {}
+                try {
+                    var _snaps = JSON.parse(window.MGStore.getItem(r.key) || '[]');
+                    var _n = _snaps.length;
+                    count = ' · ' + _n + ' 份';
+                    if (_n) {
+                        // 行内直接显示拍摄时间范围，无需点开恢复对话框
+                        var _ts = _snaps.map(function (s) { return Number(s && s.timestamp) || 0; }).sort(function (a, b) { return a - b; });
+                        var _fmtTs = function (t) {
+                            var d = new Date(t);
+                            var p = function (x) { return (x < 10 ? '0' : '') + x; };
+                            return (d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+                        };
+                        count += '（' + _fmtTs(_ts[0]) + (_n > 1 ? ' ~ ' + _fmtTs(_ts[_ts.length - 1]) : '') + '）';
+                    }
+                } catch (_) {}
             } else if (r.key === MG_ORDER_TRASH_KEY) {
                 try { count = ' · ' + ((JSON.parse(window.MGStore.getItem(r.key) || '{}').items || []).length) + ' 条'; } catch (_) {}
             } else if (r.key === 'caseLibrary') {
@@ -19981,8 +19995,14 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261018-0008';
+const APP_VERSION = '20261020-0009';
 const APP_CHANGELOG = [
+    {
+        date: '2026-10-20',
+        items: [
+            '【设置】存储占用面板的数据快照条目直接显示拍摄时间范围，无需点开即可确认快照新旧'
+        ]
+    },
     {
         date: '2026-10-18',
         items: [
