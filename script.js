@@ -19995,11 +19995,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261020-0010';
+const APP_VERSION = '20261020-0011';
 const APP_CHANGELOG = [
     {
         date: '2026-10-20',
         items: [
+            '【数据安全】修复快照恢复弹窗点击「取消」无法关闭的问题',
             '【数据安全】数据快照不再按时间自动清理，保留上限由 10 份提升至 30 份，可回溯的时间跨度更长',
             '【设置】存储占用面板的数据快照条目直接显示拍摄时间范围，无需点开即可确认快照新旧'
         ]
@@ -20474,6 +20475,14 @@ function mgRestoreFromSnapshot(index) {
     }
 }
 
+// 关闭快照恢复对话框
+function mgCloseSnapshotModal() {
+    const modal = document.getElementById('mgSnapshotModal');
+    if (!modal) return;
+    modal.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
 // 显示快照恢复对话框
 function mgShowSnapshotRecoveryDialog() {
     try {
@@ -20495,7 +20504,7 @@ function mgShowSnapshotRecoveryDialog() {
         });
         html += '</div>';
         html += '<div style="margin-top:16px;text-align:right;">';
-        html += '<button class="btn secondary" onclick="closeModal(\'mgSnapshotModal\')">取消</button>';
+        html += '<button class="btn secondary" onclick="mgCloseSnapshotModal()">取消</button>';
         html += '</div>';
         
         // 创建或更新模态框
