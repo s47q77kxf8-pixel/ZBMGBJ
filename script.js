@@ -19995,11 +19995,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261020-0011';
+const APP_VERSION = '20261020-0012';
 const APP_CHANGELOG = [
     {
         date: '2026-10-20',
         items: [
+            '【更新日志】最新一条更新旁以备注小字显示当前版本号，无需再通过其他途径确认版本',
             '【数据安全】修复快照恢复弹窗点击「取消」无法关闭的问题',
             '【数据安全】数据快照不再按时间自动清理，保留上限由 10 份提升至 30 份，可回溯的时间跨度更长',
             '【设置】存储占用面板的数据快照条目直接显示拍摄时间范围，无需点开即可确认快照新旧'
@@ -20203,10 +20204,14 @@ const APP_CHANGELOG = [
 
 function renderChangelog(container) {
     if (!container) return;
-    container.innerHTML = APP_CHANGELOG.map(function (rel) {
+    container.innerHTML = APP_CHANGELOG.map(function (rel, idx) {
         const items = (rel.items || []).map(function (it) { return '<li>' + it + '</li>'; }).join('');
+        // 最新一条记录旁以备注小字显示当前版本号
+        const ver = idx === 0
+            ? '<span style="margin-left:auto;color:#9ca3af;font-size:12px;">版本 ' + APP_VERSION + '</span>'
+            : '';
         return '<div class="changelog-release">' +
-            '<div class="changelog-release-head"><span class="changelog-date">' + rel.date + '</span></div>' +
+            '<div class="changelog-release-head"><span class="changelog-date">' + rel.date + '</span>' + ver + '</div>' +
             '<ul class="changelog-items">' + items + '</ul>' +
             '</div>';
     }).join('');
