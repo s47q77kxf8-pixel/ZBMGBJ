@@ -19995,11 +19995,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261020-0009';
+const APP_VERSION = '20261020-0010';
 const APP_CHANGELOG = [
     {
         date: '2026-10-20',
         items: [
+            '【数据安全】数据快照不再按时间自动清理，保留上限由 10 份提升至 30 份，可回溯的时间跨度更长',
             '【设置】存储占用面板的数据快照条目直接显示拍摄时间范围，无需点开即可确认快照新旧'
         ]
     },
@@ -20422,14 +20423,11 @@ function mgCreateDataSnapshot() {
         };
         const snapshots = JSON.parse(MGStore.getItem('mg_data_snapshots') || '[]');
         snapshots.push(snapshot);
-        // 三重阈值裁剪：条数 ≤10、仅保留最近 7 天、总体积 ≤20MB
-        // （历史上只按条数裁剪，但单条含全量订单，10 条仍可能撑爆存储）
-        var SNAP_MAX_ITEMS = 10;
-        var SNAP_MAX_BYTES = 20 * 1024 * 1024;
-        var SNAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-        var _now = Date.now();
+        // 裁剪策略：仅按条数（≤30）与总体积（≤60MB）控制，不按时间清理——
+        // 快照存 IndexedDB 空间充足，去掉 7 天时间限制以保留更长的时间跨度，利于低频用户找回数据
+        var SNAP_MAX_ITEMS = 30;
+        var SNAP_MAX_BYTES = 60 * 1024 * 1024;
         while (snapshots.length > SNAP_MAX_ITEMS) snapshots.shift();
-        while (snapshots.length > 1 && (_now - (snapshots[0].timestamp || 0)) > SNAP_MAX_AGE_MS) snapshots.shift();
         var _lens = snapshots.map(function (s) { try { return JSON.stringify(s).length; } catch (_) { return 0; } });
         var _total = _lens.reduce(function (a, b) { return a + b; }, 0);
         while (snapshots.length > 1 && _total > SNAP_MAX_BYTES) {
@@ -20485,7 +20483,7 @@ function mgShowSnapshotRecoveryDialog() {
             return;
         }
         let html = '<h3 style="margin-bottom:16px;">数据快照恢复</h3>';
-        html += '<p style="color:#666;margin-bottom:12px;">选择一个快照恢复（共 ' + snapshots.length + ' 个，最多保留最近10个）：</p>';
+        html += '<p style="color:#666;margin-bottom:12px;">选择一个快照恢复（共 ' + snapshots.length + ' 个，最多保留最近30个）：</p>';
         html += '<div style="max-height:300px;overflow-y:auto;">';
         snapshots.forEach((snap, idx) => {
             const orderCount = snap.history ? snap.history.length : 0;
