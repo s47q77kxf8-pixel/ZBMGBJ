@@ -19995,11 +19995,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261020-0012';
+const APP_VERSION = '20261020-0013';
 const APP_CHANGELOG = [
     {
         date: '2026-10-20',
         items: [
+            '【数据安全】数据快照现同时备份全部设置（制品/工艺/模板/系数/单主档案等），恢复时可一并还原；此前快照仅含订单',
             '【更新日志】最新一条更新旁以备注小字显示当前版本号，无需再通过其他途径确认版本',
             '【数据安全】修复快照恢复弹窗点击「取消」无法关闭的问题',
             '【数据安全】数据快照不再按时间自动清理，保留上限由 10 份提升至 30 份，可回溯的时间跨度更长',
@@ -20424,6 +20425,18 @@ function mgCreateDataSnapshot() {
     try {
         const snapshot = {
             history: JSON.parse(JSON.stringify(history)),
+            // 设置域快照：制品/工艺/模板/小票模板/系数（calculatorSettings）/单主档案/角色档案/营销卡片
+            // 旧快照无 settings 字段（仅订单），恢复时自动兼容
+            settings: {
+                calculatorSettings: JSON.parse(JSON.stringify(defaultSettings || {})),
+                productSettings: JSON.parse(JSON.stringify(productSettings || [])),
+                processSettings: JSON.parse(JSON.stringify(processSettings || [])),
+                templates: JSON.parse(JSON.stringify(Array.isArray(templates) ? templates : [])),
+                receiptTemplates: JSON.parse(JSON.stringify(Array.isArray(receiptTemplates) ? receiptTemplates : [])),
+                customers: JSON.parse(JSON.stringify(Array.isArray(customers) ? customers : [])),
+                roleProfiles: JSON.parse(JSON.stringify(typeof roleProfiles !== 'undefined' ? (roleProfiles || []) : [])),
+                marketingCards: JSON.parse(JSON.stringify(_mcData || getDefaultMarketingCards()))
+            },
             timestamp: Date.now(),
             url: window.location.href
         };
@@ -20462,16 +20475,40 @@ function mgRestoreFromSnapshot(index) {
             alert('快照数据无效');
             return false;
         }
-        if (!confirm('确定要恢复到 ' + new Date(snapshot.timestamp).toLocaleString() + ' 的数据吗？\n\n这将覆盖当前所有订单数据！')) {
+        const hasSettings = !!(snapshot.settings && snapshot.settings.productSettings);
+        if (!confirm('确定要恢复到 ' + new Date(snapshot.timestamp).toLocaleString() + ' 的数据吗？\n\n' +
+            (hasSettings ? '这将覆盖当前的订单与全部设置（制品/工艺/模板/系数/单主档案等）！'
+                         : '该快照仅含订单数据，将覆盖当前所有订单数据（不含设置）！'))) {
             return false;
         }
         // 保存当前数据为新快照
         mgCreateDataSnapshot();
-        // 恢复数据
+        // 恢复订单
         history = snapshot.history;
+        // 恢复设置域（旧快照无 settings 字段时跳过）
+        if (hasSettings) {
+            try {
+                const st = snapshot.settings;
+                if (st.calculatorSettings) defaultSettings = st.calculatorSettings;
+                if (Array.isArray(st.productSettings)) productSettings = st.productSettings;
+                if (Array.isArray(st.processSettings)) processSettings = st.processSettings;
+                if (Array.isArray(st.templates)) templates = st.templates;
+                if (Array.isArray(st.receiptTemplates)) receiptTemplates = st.receiptTemplates;
+                if (Array.isArray(st.customers)) customers = st.customers;
+                if (Array.isArray(st.roleProfiles) && typeof roleProfiles !== 'undefined') roleProfiles = st.roleProfiles;
+                if (st.marketingCards) _mcData = st.marketingCards;
+            } catch (se) {
+                console.warn('[快照] 设置域恢复部分失败（订单已恢复）:', se);
+            }
+        }
         saveData();
-        showGlobalToast('数据已恢复到快照');
-        console.log('[快照] 数据已恢复');
+        if (hasSettings) {
+            showGlobalToast('数据已恢复到快照，页面即将刷新');
+            setTimeout(function () { location.reload(); }, 1200);
+        } else {
+            showGlobalToast('数据已恢复到快照');
+        }
+        console.log('[快照] 数据已恢复' + (hasSettings ? '（含设置域）' : '（仅订单）'));
         return true;
     } catch (e) {
         console.error('[快照] 恢复失败:', e);
@@ -20501,9 +20538,10 @@ function mgShowSnapshotRecoveryDialog() {
         html += '<div style="max-height:300px;overflow-y:auto;">';
         snapshots.forEach((snap, idx) => {
             const orderCount = snap.history ? snap.history.length : 0;
+            const hasSettings = !!(snap.settings && snap.settings.productSettings);
             const date = new Date(snap.timestamp).toLocaleString();
             html += '<div style="padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">';
-            html += '<div><div style="font-weight:500;">' + date + '</div><div style="color:#666;font-size:0.85rem;">订单数量: ' + orderCount + '</div></div>';
+            html += '<div><div style="font-weight:500;">' + date + '</div><div style="color:#666;font-size:0.85rem;">订单 ' + orderCount + ' 条' + (hasSettings ? ' · 含设置' : ' · 仅订单') + '</div></div>';
             html += '<button class="btn primary small" onclick="mgRestoreFromSnapshot(' + idx + ')">恢复</button>';
             html += '</div>';
         });
