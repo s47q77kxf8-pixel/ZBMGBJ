@@ -19995,11 +19995,13 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261020-0014';
+const APP_VERSION = '20261020-0015';
 const APP_CHANGELOG = [
     {
         date: '2026-10-20',
         items: [
+            '【数据安全】新增同步保护：检测到设置数据被异常批量删除时，自动暂停上传并提示，防止误删扩散到云端',
+            '【数据安全】被推断删除的设置条目在云端保留完整数据内容，即使发生误删也可从回收站恢复',
             '【数据安全】数据快照现覆盖全部业务数据（订单/制品/工艺/模板/系数/单主档案/角色档案/案例库/回收站等），恢复时一并还原；此前快照仅含订单',
             '【更新日志】最新一条更新旁以备注小字显示当前版本号，无需再通过其他途径确认版本',
             '【数据安全】修复快照恢复弹窗点击「取消」无法关闭的问题',
@@ -36080,7 +36082,7 @@ async function mgTryLoadSettingsFromCloudV2(client, artistId, mergeMode) {
     }
 }
 
-async function mgTrySyncSettingsToCloudV2(client, artistId) {
+async function mgTrySyncSettingsToCloudV2(client, artistId, silent) {
     const state = mgBuildSettingsV2LocalState();
     const now = new Date().toISOString();
 
@@ -36109,7 +36111,7 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
     const activeRowsDedup = Array.from(activeRowsDedupMap.values());
 
     const [itemsRes, singletonsRes] = await Promise.all([
-        mgFetchAllSettingsItems(client, artistId, 'domain,item_id,deleted_at'),
+        mgFetchAllSettingsItems(client, artistId, 'domain,item_id,deleted_at,payload'),
         client.from('artist_settings_singleton').select('domain').eq('artist_id', artistId)
     ]);
 
@@ -36148,10 +36150,13 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
 
     const cloudActiveKeys = new Set();
     const cloudDeletedKeys = new Set();
+    // 保留云端现存 payload：推断删除时把原内容带回墓碑，误删仍可从回收站回捞
+    const existingPayloadByKey = {};
     existingItems.forEach(function (row) {
         const key = String(row.domain) + '::' + String(row.item_id);
         if (row.deleted_at) cloudDeletedKeys.add(key);
         else cloudActiveKeys.add(key);
+        if (row.payload != null) existingPayloadByKey[key] = row.payload;
     });
 
     // 防复活：其他设备已删除（云端已有墓碑）的条目，在本机拉取合并前不得再以 active 覆盖回去
@@ -36176,23 +36181,59 @@ async function mgTrySyncSettingsToCloudV2(client, artistId) {
             const key = String(domain) + '::' + String(id);
             if (nowIds.has(String(id))) return;    // 本机仍存在，不是删除
             if (!cloudActiveKeys.has(key)) return; // 云端不存在或已是墓碑，无需再打
+            const keepPayload = existingPayloadByKey[key] != null ? existingPayloadByKey[key] : null;
             tombstoneRows.push({
                 artist_id: artistId,
                 domain: String(domain),
                 item_id: String(id),
-                payload: null,
+                payload: keepPayload,
                 updated_at: now,
                 deleted_at: now
             });
         });
     });
 
-    // 批量删除护栏：单次上传推断出的墓碑数量达到批量规模时写入同步日志，
-    // 便于在「设置被批量清空」发生的第一时间留下可排查记录
-    if (tombstoneRows.length >= 20) {
-        const tombByDomain = {};
+    // 批量删除护栏（升级版）：推断出的墓碑达到批量规模时，几乎必然是本机数据
+    // 异常丢失（如命名空间迁移/存储异常）而非用户真实删除。此时若照常上传，
+    // 会把误删传播到云端并清空 payload，造成跨设备数据毁灭。因此：
+    //  - 静默自动上传：直接拦截本次上传（条目与单例都不写、基线不更新），
+    //    每会话提示一次，并写入同步日志留痕
+    //  - 手动上传：弹确认框由用户决策，取消则拦截并留痕
+    var massTombstoneBlocked = false;
+    if (tombstoneRows.length) {
+        var tombByDomain = {};
         tombstoneRows.forEach(function (r) { tombByDomain[r.domain] = (tombByDomain[r.domain] || 0) + 1; });
-        try { mgSyncLog('settings_upload_mass_tombstone', '单次上传推断删除 ' + tombstoneRows.length + ' 条: ' + JSON.stringify(tombByDomain)); } catch (_) {}
+        var suspicious = tombstoneRows.length >= 20;
+        if (!suspicious) {
+            // 单域达到一定规模且占该域基线一半以上，同样视为可疑
+            for (var d in tombByDomain) {
+                var prevList = snapItems[d];
+                var baseCount = Array.isArray(prevList) ? prevList.length : (prevList && typeof prevList === 'object' ? Object.keys(prevList).length : 0);
+                if (tombByDomain[d] >= 5 && baseCount > 0 && (tombByDomain[d] / baseCount) >= 0.5) { suspicious = true; break; }
+            }
+        }
+        if (suspicious) {
+            var domainSummary = Object.keys(tombByDomain).map(function (d2) { return d2 + '×' + tombByDomain[d2]; }).join('、');
+            if (silent) {
+                massTombstoneBlocked = true;
+                if (!window.__mgMassTombstoneToastShown) {
+                    window.__mgMassTombstoneToastShown = true;
+                    try { showGlobalToast('检测到设置数据被异常批量删除（' + tombstoneRows.length + ' 条），已自动暂停上传以保护云端数据'); } catch (_) {}
+                }
+                try { mgSyncLog('settings_upload_mass_tombstone_blocked', '推断删除 ' + tombstoneRows.length + ' 条(' + domainSummary + ')，静默上传已拦截'); } catch (_) {}
+            } else {
+                var userConfirmed = window.confirm('本次同步推断要删除 ' + tombstoneRows.length + ' 条设置数据（' + domainSummary + '）。\n\n如果不是你主动删除的，请点「取消」——系统将跳过本次上传以保护云端数据。\n如果确实是你删除的，请点「确定」继续。');
+                if (userConfirmed) {
+                    try { mgSyncLog('settings_upload_mass_tombstone_confirmed', '推断删除 ' + tombstoneRows.length + ' 条(' + domainSummary + ')，用户确认放行'); } catch (_) {}
+                } else {
+                    massTombstoneBlocked = true;
+                    try { mgSyncLog('settings_upload_mass_tombstone_cancelled', '推断删除 ' + tombstoneRows.length + ' 条(' + domainSummary + ')，用户取消上传'); } catch (_) {}
+                }
+            }
+        }
+    }
+    if (massTombstoneBlocked) {
+        return { supported: true, blocked: true };
     }
 
     const allItemRows = uploadRows.concat(tombstoneRows);
@@ -36277,7 +36318,17 @@ async function mgSyncSettingsToCloud(silent = false) {
         const artistId = session.user.id;
 
         // 优先尝试 V2（分表分条目 + 软删除）
-        const v2Result = await mgTrySyncSettingsToCloudV2(client, artistId);
+        const v2Result = await mgTrySyncSettingsToCloudV2(client, artistId, silent);
+        if (v2Result && v2Result.blocked) {
+            // 批量删除护栏拦截：本次未上传任何数据，不更新同步基线
+            mgSyncLog('settings_upload_v2', { mode: 'blocked', note: '批量删除护栏拦截，本次未上传' });
+            if (!silent) {
+                if (typeof showGlobalToast === 'function') showGlobalToast('已跳过本次上传以保护云端数据');
+                else alert('检测到批量删除，已跳过本次上传以保护云端数据');
+            }
+            window._isSyncingSettings = false;
+            return;
+        }
         if (v2Result && v2Result.supported) {
             // 更新同步摘要
             const mergeSummary = v2Result.mergeSummary || { mode: 'merge', productsCount: productSettings.length, processesCount: processSettings.length, templatesCount: templates.length };
