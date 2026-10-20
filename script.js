@@ -19995,11 +19995,12 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261020-0015';
+const APP_VERSION = '20261020-0016';
 const APP_CHANGELOG = [
     {
         date: '2026-10-20',
         items: [
+            '【案例库】下载案例图片统一按「订单号 + 单主ID + 企划名 + 制品名」命名，没有的信息自动跳过',
             '【数据安全】新增同步保护：检测到设置数据被异常批量删除时，自动暂停上传并提示，防止误删扩散到云端',
             '【数据安全】被推断删除的设置条目在云端保留完整数据内容，即使发生误删也可从回收站恢复',
             '【数据安全】数据快照现覆盖全部业务数据（订单/制品/工艺/模板/系数/单主档案/角色档案/案例库/回收站等），恢复时一并还原；此前快照仅含订单',
@@ -43063,21 +43064,22 @@ async function caseLibBatchDownload() {
         while (usedFolders[folder]) folder = base + ' (' + (k++) + ')';
         usedFolders[folder] = 1;
         const ext = c.exportFormat === 'jpeg' ? 'jpg' : 'png';
-        (caseViewPagesOf(c) || []).forEach(function (p, i) {
+        (caseViewPagesOf(c) || []).forEach(function (p) {
             if (!p || !p.exportImgId) return;
             total++;
-            entries.push({ folder: folder, page: p, idx: i, ext: ext });
+            entries.push({ folder: folder, c: c, page: p, ext: ext });
         });
     });
     if (!total) { showGlobalToast('所选案例没有可下载的图片'); return; }
     const files = [];
+    const usedNames = {};
     for (let i = 0; i < entries.length; i++) {
         const e = entries[i];
         if (i % 4 === 0) showGlobalToast('正在打包 ' + list.length + ' 个案例…（' + Math.min(i, total) + '/' + total + ' 张）');
         const url = await caseImgGet(e.page.exportImgId);
         if (!url) continue;
-        const label = String(e.page.label || ('图' + (e.idx + 1))).replace(/[\\/:*?"<>|]/g, '_');
-        files.push({ name: e.folder + '/' + label + '.' + e.ext, bytes: caseDataUrlToBytes(url) });
+        const fname = caseZipUniqueName(e.folder + '/' + caseDownloadFileName(e.c, e.page.kind === 'group' ? e.page.label : '', e.ext), usedNames);
+        files.push({ name: fname, bytes: caseDataUrlToBytes(url) });
     }
     if (!files.length) { showGlobalToast('所选案例图片缺失，请重新生成'); return; }
     const blob = caseBuildZipBlob(files);
@@ -43226,18 +43228,58 @@ function caseBuildZipBlob(files) {
     return new Blob(chunks, { type: 'application/zip' });
 }
 
+// ---------- 案例图片下载命名：订单号_单主ID_企划名_制品名（缺失的部分自动跳过） ----------
+// 订单号/单主ID 取关联订单（订单已删除则跳过），企划名优先取订单、回退案例企划字段，
+// 制品名 = 分图页组名（总图无制品名，自动跳过）
+function caseDownloadParts(c) {
+    const parts = [];
+    const oid = (c && c.orderId != null) ? String(c.orderId).trim() : '';
+    if (oid) {
+        parts.push(oid.replace(/[\\/:*?"<>|]/g, '_'));
+        const o = (history || []).find(function (x) { return x && String(x.id) === oid; });
+        const master = String((o && o.clientId) || '').trim();
+        if (master) parts.push(master.replace(/[\\/:*?"<>|]/g, '_'));
+    }
+    const pn = String((c && c.fields && c.fields.projectName) || (c && c.orderTitle) || '').trim();
+    if (pn) parts.push(pn.replace(/[\\/:*?"<>|]/g, '_'));
+    return parts;
+}
+// pageLabel：分图页传组名（制品名），总图传空；ext 为扩展名（不带点）
+function caseDownloadFileName(c, pageLabel, ext) {
+    const parts = caseDownloadParts(c);
+    const prod = String(pageLabel || '').trim();
+    if (prod) parts.push(prod.replace(/[\\/:*?"<>|]/g, '_'));
+    return (parts.length ? parts.join('_') : '未命名案例') + '.' + ext;
+}
+// ZIP 容器名：不含制品名的公共前缀（ZIP 内含总图与各制品分图）
+function caseDownloadZipName(c) {
+    const parts = caseDownloadParts(c);
+    return (parts.length ? parts.join('_') : '未命名案例') + '.zip';
+}
+// ZIP 内同名文件去重（两个制品组可能重名）
+function caseZipUniqueName(name, used) {
+    used = used || {};
+    if (!used[name]) { used[name] = 1; return name; }
+    const dot = name.lastIndexOf('.');
+    const base = dot > 0 ? name.slice(0, dot) : name;
+    const extPart = dot > 0 ? name.slice(dot) : '';
+    let k = 2;
+    while (used[base + ' (' + k + ')' + extPart]) k++;
+    const out = base + ' (' + k + ')' + extPart;
+    used[out] = 1;
+    return out;
+}
 // 下载案例的全部预览图（总图 + 各制品分图）；多页打包 ZIP 一次下载，单页保持直接下载
 async function downloadCaseById(id) {
     const c = caseLibrary.find(function (x) { return x && x.id === id; });
     if (!c) return;
     const pages = caseViewPagesOf(c).filter(function (p) { return p && p.exportImgId; });
     if (!pages.length) { showGlobalToast('该案例没有可下载的图片，请重新生成'); return; }
-    const name = caseLibTitle(c).replace(/[\\/:*?"<>|]/g, '_');
     const ext = c.exportFormat === 'jpeg' ? 'jpg' : 'png';
     if (pages.length === 1) {
         const url = await caseImgGet(pages[0].exportImgId);
         if (!url) { showGlobalToast('案例图片缺失，请重新生成'); return; }
-        const filename = '案例_' + name + '_' + Date.now() + '.' + ext;
+        const filename = caseDownloadFileName(c, pages[0].kind === 'group' ? pages[0].label : '', ext);
         if (triggerDownload(url, filename)) showGlobalToast('已下载 ' + ext.toUpperCase());
         else showReceiptImagePreview(url, filename);
         return;
@@ -43245,17 +43287,18 @@ async function downloadCaseById(id) {
     // 多页：打包 ZIP（浏览器会拦截连续的多次程序化下载，逐张下只有第一张能落盘）
     showGlobalToast('正在打包 ' + pages.length + ' 张图片…');
     const files = [];
+    const used = {};
     for (let i = 0; i < pages.length; i++) {
         const p = pages[i];
         const url = await caseImgGet(p.exportImgId);
         if (!url) continue;
-        const label = String(p.label || ('图' + (i + 1))).replace(/[\\/:*?"<>|]/g, '_');
-        files.push({ name: name + '_' + label + '.' + ext, bytes: caseDataUrlToBytes(url) });
+        const fname = caseZipUniqueName(caseDownloadFileName(c, p.kind === 'group' ? p.label : '', ext), used);
+        files.push({ name: fname, bytes: caseDataUrlToBytes(url) });
     }
     if (!files.length) { showGlobalToast('案例图片缺失，请重新生成'); return; }
     const blob = caseBuildZipBlob(files);
     const url = URL.createObjectURL(blob);
-    const ok = triggerDownload(url, '案例_' + name + '_' + Date.now() + '.zip');
+    const ok = triggerDownload(url, caseDownloadZipName(c));
     setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
     showGlobalToast(ok ? ('已打包下载 ' + files.length + ' 张（ZIP）') : '下载失败，请重试');
 }
