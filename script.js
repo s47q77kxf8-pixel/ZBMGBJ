@@ -19995,8 +19995,14 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261020-0016';
+const APP_VERSION = '20261021-0017';
 const APP_CHANGELOG = [
+    {
+        date: '2026-10-21',
+        items: [
+            '【案例库】下载图片命名简化为「订单号 + 制品信息」，未关联订单的案例改用生成序号（如 20261021001）'
+        ]
+    },
     {
         date: '2026-10-20',
         items: [
@@ -38688,6 +38694,7 @@ function caseNormalizeState(st) {
 function caseRecordFromState(st) {
     return {
         id: st.id, orderId: st.orderId || '', orderTitle: st.orderTitle || '',
+        genSeq: st.genSeq || '',
         config: JSON.parse(JSON.stringify(st.config)),
         fields: JSON.parse(JSON.stringify(st.fields)),
         images: (st.images || []).slice(),
@@ -42864,6 +42871,7 @@ async function saveCaseToLibrary() {
         if (!st.id) {
             st.id = 'case_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
             st.createdAt = now;
+            st.genSeq = caseNextGenSeq();   // 生成序号（当日顺序），未关联订单时用于下载命名
         }
         const record = caseRecordFromState(st);
         const idx = caseLibrary.findIndex(function (c) { return c && c.id === st.id; });
@@ -43228,33 +43236,57 @@ function caseBuildZipBlob(files) {
     return new Blob(chunks, { type: 'application/zip' });
 }
 
-// ---------- 案例图片下载命名：订单号_单主ID_企划名_制品名（缺失的部分自动跳过） ----------
-// 订单号/单主ID 取关联订单（订单已删除则跳过），企划名优先取订单、回退案例企划字段，
-// 制品名 = 分图页组名（总图无制品名，自动跳过）
-function caseDownloadParts(c) {
-    const parts = [];
-    const oid = (c && c.orderId != null) ? String(c.orderId).trim() : '';
-    if (oid) {
-        parts.push(oid.replace(/[\\/:*?"<>|]/g, '_'));
-        const o = (history || []).find(function (x) { return x && String(x.id) === oid; });
-        const master = String((o && o.clientId) || '').trim();
-        if (master) parts.push(master.replace(/[\\/:*?"<>|]/g, '_'));
-    }
-    const pn = String((c && c.fields && c.fields.projectName) || (c && c.orderTitle) || '').trim();
-    if (pn) parts.push(pn.replace(/[\\/:*?"<>|]/g, '_'));
-    return parts;
+// ---------- 案例图片下载命名：订单号_制品信息（未关联订单用生成序号 20261021001） ----------
+// 关联订单 → 订单号；未关联 → 案例生成序号（保存案例时分配：生成日期+当日顺序，持久不变）
+function caseGenSeqPrefix(d) {
+    d = d || new Date();
+    return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
 }
-// pageLabel：分图页传组名（制品名），总图传空；ext 为扩展名（不带点）
+function caseGenSeqMax(prefix) {
+    let max = 0;
+    (caseLibrary || []).forEach(function (c) {
+        const s = String((c && c.genSeq) || '');
+        if (s.length > 8 && s.slice(0, 8) === prefix) {
+            const n = parseInt(s.slice(8), 10) || 0;
+            if (n > max) max = n;
+        }
+    });
+    return max;
+}
+// 保存新案例时分配：当日最大序号 +1（001 起）
+function caseNextGenSeq() {
+    const prefix = caseGenSeqPrefix();
+    return prefix + String(caseGenSeqMax(prefix) + 1).padStart(3, '0');
+}
+// 旧案例无序号：按其生成日期补发当日序号并立即持久化，多次下载号码不漂移
+function caseEnsureGenSeq(c) {
+    if (!c) return '';
+    if (c.genSeq) return String(c.genSeq);
+    let prefix = caseGenSeqPrefix();
+    if (c.createdAt) {
+        const d = new Date(c.createdAt);
+        if (!isNaN(d.getTime())) prefix = caseGenSeqPrefix(d);
+    }
+    c.genSeq = prefix + String(caseGenSeqMax(prefix) + 1).padStart(3, '0');
+    try { saveCaseLibrary(); } catch (_) {}
+    return c.genSeq;
+}
+// 命名前缀：订单号或生成序号
+function caseDownloadRef(c) {
+    const oid = (c && c.orderId != null) ? String(c.orderId).trim() : '';
+    if (oid) return oid.replace(/[\\/:*?"<>|]/g, '_');
+    return (caseEnsureGenSeq(c) || '未命名案例').replace(/[\\/:*?"<>|]/g, '_');
+}
+// pageLabel：分图页传组名（制品信息），总图传空；ext 为扩展名（不带点）
 function caseDownloadFileName(c, pageLabel, ext) {
-    const parts = caseDownloadParts(c);
+    const parts = [caseDownloadRef(c)];
     const prod = String(pageLabel || '').trim();
     if (prod) parts.push(prod.replace(/[\\/:*?"<>|]/g, '_'));
-    return (parts.length ? parts.join('_') : '未命名案例') + '.' + ext;
+    return parts.join('_') + '.' + ext;
 }
-// ZIP 容器名：不含制品名的公共前缀（ZIP 内含总图与各制品分图）
+// ZIP 容器名：不含制品信息的前缀（ZIP 内含总图与各制品分图）
 function caseDownloadZipName(c) {
-    const parts = caseDownloadParts(c);
-    return (parts.length ? parts.join('_') : '未命名案例') + '.zip';
+    return caseDownloadRef(c) + '.zip';
 }
 // ZIP 内同名文件去重（两个制品组可能重名）
 function caseZipUniqueName(name, used) {
