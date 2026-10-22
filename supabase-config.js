@@ -14,7 +14,14 @@ window.__SUPABASE__ = (function () {
       // （storage.js 未加载时 storage 为 undefined，自动回退 SDK 默认 localStorage，行为同旧版）
       // 不显式传 storageKey：SDK 默认派生的键名仍为 sb-<projectref>-auth-token，旧令牌可直接迁移
       var authStorage = (window.MGStore && window.MGStore.authStorage) || undefined;
+      // ⚠️ 版本护栏：所有数据请求携带应用版本，服务端触发器据它拒绝过低版本的写入。
+      // 此处无法读取 script.js 里后加载的 APP_VERSION，故此处维护同一版本字面量；
+      // 发版改版本号时必须与 script.js 的 APP_VERSION、index.html 的 ?v= 一并同步。
+      var MG_SYNC_APPVER = "20261022-0019";
       api.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: {
+          headers: { 'x-mg-appver': MG_SYNC_APPVER }
+        },
         auth: {
           storage: authStorage,
           persistSession: true,

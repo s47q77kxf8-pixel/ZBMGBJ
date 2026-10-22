@@ -3421,11 +3421,50 @@ function mgComputeTombstoneRows(domain, artistId, existingRows, delIds, now) {
 // 启动时加载（必须在首次推送前执行）
 mgLoadDeletedIds();
 
+// ===== 版本护栏（双层） =====
+// ① 客户端熔断：本版本低于云端下发的最低可上传版本（app_release_config.min_upload_version）时，
+//    暂停设置/档案上传并提示更新 —— 用于未来某个已发布版本自身有问题时止血（读不到配置不拦截）
+// ② 服务端闸门：Postgres 触发器校验请求头 x-mg-appver（supabase-config.js 创建客户端时统一携带），
+//    无版本戳或版本过低的写入直接由云端拒绝 —— 真正的旧版本客户端不含本段代码，只能靠服务端拦
+let mgMinUploadVersion = null;        // 最近一次云端下发的最低可上传版本（null = 未知，不拦截）
+let mgMinUploadVersionFetched = false;
+function mgCompareVer(a, b) { return a < b ? -1 : (a > b ? 1 : 0); } // 形如 20261022-0019，字典序即时间序
+async function mgFetchMinUploadVersion(client) {
+    if (mgMinUploadVersionFetched) return mgMinUploadVersion;
+    try {
+        const { data, error } = await client.from('app_release_config')
+            .select('min_upload_version').eq('id', 1).maybeSingle();
+        if (!error && data && data.min_upload_version) {
+            mgMinUploadVersion = String(data.min_upload_version);
+        }
+        mgMinUploadVersionFetched = true;
+    } catch (e) { /* 读取失败按不拦截处理，服务端触发器仍会兜底 */ }
+    return mgMinUploadVersion;
+}
+function mgVersionGateBlocked() {
+    return !!(mgMinUploadVersion && APP_VERSION && mgCompareVer(APP_VERSION, mgMinUploadVersion) < 0);
+}
+// 上传前统一走这里：版本过低时记日志、提示一次并返回 true，调用方直接中止上传
+async function mgVersionGateShouldBlock(client, silent) {
+    const minVer = await mgFetchMinUploadVersion(client);
+    if (!mgVersionGateBlocked()) return false;
+    try { mgSyncLog('version_gate_paused', { appVersion: APP_VERSION, minUploadVersion: minVer, silent: !!silent }); } catch (_) {}
+    if (!window.__mgVerGateToastShown) {
+        window.__mgVerGateToastShown = true;
+        var msg = '当前版本过低，已暂停上传到云端。请按 Ctrl+F5 强制刷新页面更新到最新版本';
+        if (typeof showGlobalToast === 'function') showGlobalToast(msg);
+        else alert(msg);
+    }
+    return true;
+}
+
 // 通用：把本地数组推送到云端（按 id upsert；仅对"本机显式删除"的 id 在云端打软删除墓碑）
 async function mgCloudPushItems(domain, items) {
     if (!mgRoleCustCloudEnabled()) return false;
     const client = mgGetSupabaseClient();
     if (!client) return false;
+    // 版本护栏：版本过低时不上传角色档案/单主数据（服务端触发器也会拒绝旧版本写入）
+    if (await mgVersionGateShouldBlock(client, true)) return false;
     try {
         const { data: { session } } = await client.auth.getSession();
         if (!session || !session.user) return false;
@@ -19995,8 +20034,15 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261021-0018';
+const APP_VERSION = '20261022-0019';
 const APP_CHANGELOG = [
+    {
+        date: '2026-10-22',
+        items: [
+            '【数据安全】新增版本保护：过旧版本向云端上传设置与档案时会被云端直接拒绝，防止旧版本的同步异常覆盖云端数据',
+            '【数据安全】版本过低时上传会自动暂停并提示，刷新页面更新到最新版本后自动恢复正常同步'
+        ]
+    },
     {
         date: '2026-10-21',
         items: [
@@ -36314,7 +36360,10 @@ async function mgSyncSettingsToCloud(silent = false) {
         if (!silent) alert('登录状态已失效，请重新登录');
         return;
     }
-    
+
+    // 版本护栏：版本过低时暂停设置上传（服务端触发器也会拒绝旧版本写入，双保险）
+    if (await mgVersionGateShouldBlock(client, silent)) return;
+
     // 防止重复同步：如果正在同步，直接返回
     if (window._isSyncingSettings) {
         return;
