@@ -2409,6 +2409,12 @@ function initBody() {
     // 加载本地存储的数据
     loadData();
 
+    // 节假日表：先同步应用本地缓存（首屏即生效），再按 TTL 在后台向云端刷新
+    if (typeof mgLoadHolidayCacheSync === 'function') mgLoadHolidayCacheSync();
+    if (typeof mgRefreshChinaHolidays === 'function') {
+        Promise.resolve().then(function () { mgRefreshChinaHolidays(false); });
+    }
+
     // 云端模式：拉取角色档案 / 单主管理数据，实现跨设备共享
     if (mgRoleCustCloudEnabled()) {
         mgPullCloudRoleAndCustomerData();
@@ -20034,8 +20040,15 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261022-0019';
+const APP_VERSION = '20261118-0020';
 const APP_CHANGELOG = [
+    {
+        date: '2026-11-18',
+        items: [
+            '【排单】排单日历新增法定节假日显示：放假日标注节日名称，调休补班日显示「班」标识，一眼区分放假与上班',
+            '【排单】节假日安排自动更新：每年国务院通知发布后日历自动跟进，无需手动维护'
+        ]
+    },
     {
         date: '2026-10-22',
         items: [
@@ -21664,6 +21677,276 @@ function assignWeekBarsToTracks(segments, maxTracks) {
     return tracks.slice(0, maxTracks);
 }
 
+// ========== 中国法定节假日（本地固定数据，不请求外部接口） ==========
+// 数据来源：国务院办公厅关于各年份部分节假日安排的通知（2024—2027 年已公布）
+// off：放假区间 [名称, 起始 MM-DD, 结束 MM-DD]，区间首日显示节日名，其余显示「休」
+// work：调休补班日（MM-DD），显示「班」
+// 内置表负责离线兜底；holiday-cn 数据集自动跟随官方通知更新，无需人工维护
+var MG_CN_HOLIDAY_BUILTIN = {
+    2024: {
+        off: [
+            ['元旦', '01-01', '01-01'],
+            ['春节', '02-10', '02-17'],
+            ['清明', '04-04', '04-06'],
+            ['劳动', '05-01', '05-05'],
+            ['端午', '06-10', '06-10'],
+            ['中秋', '09-15', '09-17'],
+            ['国庆', '10-01', '10-07']
+        ],
+        work: ['02-04', '02-18', '04-07', '04-28', '05-11', '09-14', '09-29', '10-12']
+    },
+    2025: {
+        off: [
+            ['元旦', '01-01', '01-01'],
+            ['春节', '01-28', '02-04'],
+            ['清明', '04-04', '04-06'],
+            ['劳动', '05-01', '05-05'],
+            ['端午', '05-31', '06-02'],
+            ['国庆', '10-01', '10-08'],
+            ['中秋', '10-06', '10-06']
+        ],
+        work: ['01-26', '02-08', '04-27', '09-28', '10-11']
+    },
+    2026: {
+        off: [
+            ['元旦', '01-01', '01-03'],
+            ['春节', '02-15', '02-23'],
+            ['清明', '04-04', '04-06'],
+            ['劳动', '05-01', '05-05'],
+            ['端午', '06-19', '06-21'],
+            ['中秋', '09-25', '09-27'],
+            ['国庆', '10-01', '10-07']
+        ],
+        work: ['01-04', '02-14', '02-28', '05-09', '09-20', '10-10']
+    },
+    2027: {
+        off: [
+            ['元旦', '01-01', '01-03'],
+            ['春节', '02-05', '02-13'],
+            ['清明', '04-03', '04-05'],
+            ['劳动', '05-01', '05-05'],
+            ['端午', '06-09', '06-09'],
+            ['中秋', '09-15', '09-15'],
+            ['国庆', '10-01', '10-07']
+        ],
+        work: ['01-31', '02-14', '05-08', '09-26', '10-09']
+    }
+};
+
+// 按年份换算为 { 'YYYY-MM-DD': { kind: 'off' | 'work', name: string } }，结果缓存
+var MG_CN_HOLIDAY_CACHE = Object.create(null);
+function mgBuildChinaHolidayMap(year) {
+    if (MG_CN_HOLIDAY_CACHE[year]) return MG_CN_HOLIDAY_CACHE[year];
+    var map = Object.create(null);
+    var src = mgChinaHolidayYearData(year);
+    if (!src) {
+        MG_CN_HOLIDAY_CACHE[year] = map;
+        return map;
+    }
+    (src.off || []).forEach(function (item) {
+        var name = item[0];
+        var start = item[1];
+        var end = item[2];
+        var cur = new Date(year, parseInt(start.slice(0, 2), 10) - 1, parseInt(start.slice(3, 5), 10));
+        var endDate = new Date(year, parseInt(end.slice(0, 2), 10) - 1, parseInt(end.slice(3, 5), 10));
+        var isFirst = true;
+        while (cur.getTime() <= endDate.getTime()) {
+            var key = toYmd(cur);
+            var exist = map[key];
+            // 重叠区间（如 2025 国庆与中秋合并放假）只补节日名，不覆盖已有名称
+            if (exist && exist.kind === 'off') {
+                if (!exist.name && isFirst) exist.name = name;
+            } else {
+                map[key] = { kind: 'off', name: isFirst ? name : '' };
+            }
+            isFirst = false;
+            cur.setDate(cur.getDate() + 1);
+        }
+    });
+    (src.work || []).forEach(function (md) {
+        map[year + '-' + md] = { kind: 'work', name: '班' };
+    });
+    MG_CN_HOLIDAY_CACHE[year] = map;
+    return map;
+}
+
+// 查询某日节假日信息：返回 null 或 { kind: 'off' | 'work', name }
+function mgChinaHolidayInfo(dateStr) {
+    if (!dateStr) return null;
+    var year = parseInt(String(dateStr).slice(0, 4), 10);
+    if (!year) return null;
+    return mgBuildChinaHolidayMap(year)[dateStr] || null;
+}
+
+// ========== 节假日外部数据源（holiday-cn 开源数据集，自动跟随官方通知更新） ==========
+// 数据源 NateScarlet/holiday-cn：国务院通知发布后自动收录，无需人工维护。
+// 每次拉取「当年 + 次年」两份数据，多镜像依次尝试；全部失败时静默回退本地缓存/内置表。
+// 缓存：MG_HOLIDAY_CACHE_KEY（含 fetchedAt），有效期 MG_HOLIDAY_CACHE_TTL，过期才重新拉取。
+var MG_HOLIDAY_CN_SOURCES = [
+    'https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/',
+    'https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/',
+    'https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/'
+];
+var MG_HOLIDAY_CACHE_KEY = 'mg_holiday_tbl_cache_v1';
+var MG_HOLIDAY_CACHE_TTL = 24 * 60 * 60 * 1000;
+var mgHolidayConfigYears = Object.create(null); // { '2028': { off: [...], work: [...] } }
+var mgHolidayFetchedAt = 0;
+var mgHolidayPulling = false;
+
+// 某年的节假日数据源（外部数据覆盖内置）
+function mgChinaHolidayYearData(year) {
+    return mgHolidayConfigYears[year] || MG_CN_HOLIDAY_BUILTIN[year] || null;
+}
+
+function mgIsValidMonthDay(s) {
+    return typeof s === 'string' && /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s);
+}
+
+// 云端数据来自数据库，先做结构校验，异常项直接丢弃，避免脏数据破坏日历渲染
+function mgSanitizeHolidayYear(year, off, work) {
+    var y = parseInt(year, 10);
+    if (!(y >= 2000 && y <= 2100)) return null;
+    var out = { off: [], work: [] };
+    if (Array.isArray(off)) {
+        off.slice(0, 30).forEach(function (item) {
+            if (!Array.isArray(item) || item.length < 3) return;
+            var name = String(item[0] == null ? '' : item[0]).slice(0, 6);
+            if (!name || !mgIsValidMonthDay(item[1]) || !mgIsValidMonthDay(item[2])) return;
+            out.off.push([name, item[1], item[2]]);
+        });
+    }
+    if (Array.isArray(work)) {
+        work.slice(0, 30).forEach(function (md) {
+            if (mgIsValidMonthDay(md)) out.work.push(md);
+        });
+    }
+    return (out.off.length || out.work.length) ? out : null;
+}
+
+// 合并应用一批年份数据（只覆盖出现的年份，不清掉其他年份；清空换算缓存，下次渲染生效）
+function mgApplyHolidayYears(years, fetchedAt) {
+    if (years) {
+        Object.keys(years).forEach(function (k) { mgHolidayConfigYears[k] = years[k]; });
+    }
+    mgHolidayFetchedAt = Number(fetchedAt) || 0;
+    MG_CN_HOLIDAY_CACHE = Object.create(null);
+}
+
+function mgRerenderHolidayCalendar() {
+    if (typeof renderScheduleCalendar === 'function' && document.getElementById('scheduleCalendar')) {
+        try { renderScheduleCalendar(); } catch (_) {}
+    }
+}
+
+// 同步读取本地缓存（首屏即生效，不阻塞渲染）
+function mgLoadHolidayCacheSync() {
+    try {
+        var raw = window.MGStore.getItem(MG_HOLIDAY_CACHE_KEY);
+        if (!raw) return false;
+        var obj = JSON.parse(raw);
+        if (!obj || !obj.years) return false;
+        var years = Object.create(null);
+        Object.keys(obj.years).forEach(function (k) {
+            var v = obj.years[k] || {};
+            var clean = mgSanitizeHolidayYear(k, v.off, v.work);
+            if (clean) years[k] = clean;
+        });
+        mgApplyHolidayYears(years, Number(obj.fetchedAt) || 0);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+// 节日名缩短为 2 字风格（「清明节」→「清明」）；「春节」「元旦」等本身不带节尾的不动
+function mgNameShort(raw) {
+    var n = String(raw || '').split(/[、，,]/)[0].trim();
+    if (n.length > 2 && /节$/.test(n)) n = n.slice(0, -1);
+    return n.slice(0, 6);
+}
+
+function mgNextDayStr(ymd) {
+    var d = new Date(parseInt(ymd.slice(0, 4), 10), parseInt(ymd.slice(5, 7), 10) - 1, parseInt(ymd.slice(8, 10), 10));
+    d.setDate(d.getDate() + 1);
+    return toYmd(d);
+}
+
+// holiday-cn 单年 JSON（days: [{name, date, isOffDay}]）→ { 'YYYY': { off, work } }
+// 放假日按「同名 + 相邻日期」合并成区间（区间首日显示节日名），补班日汇总为 work；跨年日期按日期所属年份归桶
+function mgConvertHolidayCn(json) {
+    if (!json || !Array.isArray(json.days)) return null;
+    var buckets = Object.create(null);
+    json.days.forEach(function (d) {
+        if (!d || typeof d.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return;
+        var y = parseInt(d.date.slice(0, 4), 10);
+        (buckets[y] = buckets[y] || []).push({ name: mgNameShort(d.name), date: d.date, off: d.isOffDay === true });
+    });
+    var years = Object.create(null);
+    Object.keys(buckets).forEach(function (y) {
+        var days = buckets[y].slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+        var off = [], work = [];
+        days.forEach(function (d) {
+            var md = d.date.slice(5, 10);
+            if (!d.off) { work.push(md); return; }
+            var last = off[off.length - 1];
+            if (last && last[0] === d.name && mgNextDayStr(y + '-' + last[2]) === d.date) {
+                last[2] = md;
+            } else {
+                off.push([d.name, md, md]);
+            }
+        });
+        var clean = mgSanitizeHolidayYear(y, off, work);
+        if (clean) years[y] = clean;
+    });
+    return Object.keys(years).length ? years : null;
+}
+
+// 从各镜像拉取单年数据，任一镜像成功即返回
+async function mgFetchHolidayCnYear(year) {
+    for (var i = 0; i < MG_HOLIDAY_CN_SOURCES.length; i++) {
+        try {
+            var res = await fetch(MG_HOLIDAY_CN_SOURCES[i] + year + '.json', { cache: 'no-cache' });
+            if (!res || !res.ok) continue;
+            var converted = mgConvertHolidayCn(await res.json());
+            if (converted) return converted;
+        } catch (_) { /* 换下一个镜像 */ }
+    }
+    return null;
+}
+
+// 拉取节假日数据（当年 + 次年）；force=true 时忽略缓存有效期
+async function mgRefreshChinaHolidays(force) {
+    if (mgHolidayPulling) return false;
+    if (!force && mgHolidayFetchedAt && (Date.now() - mgHolidayFetchedAt) < MG_HOLIDAY_CACHE_TTL) return false;
+    if (typeof fetch !== 'function') return false;
+    mgHolidayPulling = true;
+    try {
+        var now = new Date();
+        var merged = Object.create(null);
+        var fetched = 0;
+        for (var i = 0; i <= 1; i++) {
+            var one = await mgFetchHolidayCnYear(now.getFullYear() + i);
+            if (one) {
+                Object.keys(one).forEach(function (k) { merged[k] = one[k]; });
+                fetched++;
+            }
+        }
+        if (!fetched) return false; // 全部失败：保留现有数据与内置表
+        mgApplyHolidayYears(merged, Date.now());
+        try {
+            window.MGStore.setItem(MG_HOLIDAY_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), years: mgHolidayConfigYears }));
+        } catch (_) {}
+        mgRerenderHolidayCalendar();
+        return true;
+    } catch (_) {
+        // 离线 / 镜像全部不可达时保持内置表，不打扰用户
+        return false;
+    } finally {
+        mgHolidayPulling = false;
+    }
+}
+
+
 // 渲染排单日历：按星期显示（一～日），跨日彩条横跨多列
 function renderScheduleCalendar() {
     const container = document.getElementById('scheduleCalendar');
@@ -21719,6 +22002,7 @@ function renderScheduleCalendar() {
             let dateStr = '';
             let cellClass = 'schedule-calendar-cell';
             let label = '';
+            let holidayInfo = null;
             if (dayIndex < 1) {
                 const prevLast = new Date(y, m - 1, 0);
                 label = String(prevLast.getDate() + dayIndex);
@@ -21731,10 +22015,18 @@ function renderScheduleCalendar() {
                 label = String(dayIndex);
                 if (dateStr === todayYmd) cellClass += ' schedule-calendar-cell-today';
                 if (window.scheduleSelectedDate === dateStr) cellClass += ' schedule-calendar-cell-selected';
+                holidayInfo = mgChinaHolidayInfo(dateStr);
                 if (isWeekend) cellClass += ' schedule-calendar-cell-weekend';
             }
+            let holidayTag = '';
+            if (holidayInfo) {
+                const isWork = holidayInfo.kind === 'work';
+                const tagText = isWork ? '班' : (holidayInfo.name || '休');
+                const tagTitle = isWork ? '调休补班' : (holidayInfo.name ? ('法定节假日 · ' + holidayInfo.name) : '法定节假日放假');
+                holidayTag = '<span class="schedule-cell-holiday' + (isWork ? ' is-work' : '') + '" title="' + tagTitle + '">' + tagText + '</span>';
+            }
             html += '<div class="' + cellClass + '" data-date="' + (dateStr || '') + '">';
-            html += '<span class="schedule-cell-num">' + label + '</span></div>';
+            html += '<span class="schedule-cell-head"><span class="schedule-cell-num">' + label + '</span>' + holidayTag + '</span></div>';
         }
         html += '</div>';
         // 彩条层：绝对定位，横跨多个日期格

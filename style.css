@@ -223,9 +223,6 @@ html.theme-dark .schedule-calendar-weekdays {
 html.theme-dark .schedule-calendar-cell-other {
     color: rgba(255, 255, 255, 0.4);
 }
-html.theme-dark .schedule-calendar-cell-weekend {
-    color: #f87171;
-}
 /* 黑夜下今日格子显式设置文字颜色，避免首次切黑夜时不可见 */
 html.theme-dark .schedule-calendar-cell-today:not(.schedule-calendar-cell-selected) {
     background: #2a2a2a;
@@ -240,11 +237,19 @@ html.theme-dark .schedule-calendar-cell-selected {
 html.theme-dark .schedule-calendar-cell-selected .schedule-cell-num {
     color: #fff !important;
 }
-html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend {
-    color: #fff;
+/* 黑夜模式下节假日标识：放假绿色、补班琥珀色，均带半透明底 */
+html.theme-dark .schedule-calendar-cell .schedule-cell-holiday {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.16);
 }
-html.theme-dark .schedule-calendar-cell-selected.schedule-calendar-cell-weekend .schedule-cell-num {
+html.theme-dark .schedule-calendar-cell .schedule-cell-holiday.is-work {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.18);
+}
+html.theme-dark .schedule-calendar-cell-selected .schedule-cell-holiday,
+html.theme-dark .schedule-calendar-cell-selected .schedule-cell-holiday.is-work {
     color: #fff !important;
+    background: rgba(255, 255, 255, 0.24);
 }
 html.theme-dark .schedule-selected-column-overlay {
     background: #3b82f6;
@@ -7670,6 +7675,32 @@ html.theme-dark .other-fee-amount-input {
     line-height: 1.2;
     display: block;
 }
+/* 日期数字 + 节假日标识同一行，避开下方彩条层（彩条层自 top:22px 起绝对定位） */
+.schedule-calendar-cell .schedule-cell-head {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    line-height: 1.2;
+    min-height: 14px;
+    overflow: hidden;
+}
+.schedule-calendar-cell .schedule-cell-holiday {
+    flex-shrink: 0;
+    font-size: 0.6rem;
+    line-height: 1.25;
+    font-weight: 500;
+    padding: 0 3px;
+    border-radius: 4px;
+    white-space: nowrap;
+    color: #16a34a;
+    background: rgba(22, 163, 74, 0.12);
+}
+.schedule-calendar-cell .schedule-cell-holiday.is-work {
+    color: #b45309;
+    background: rgba(180, 83, 9, 0.14);
+}
 .schedule-calendar-cell .schedule-cell-bars {
     flex: 1;
     display: flex;
@@ -7686,9 +7717,6 @@ html.theme-dark .other-fee-amount-input {
 
 .schedule-calendar-cell-other {
     color: rgba(0, 0, 0, 0.28);
-}
-.schedule-calendar-cell-weekend {
-    color: #e53935;
 }
 .schedule-calendar-cell-today {
     font-weight: 600;
@@ -7711,18 +7739,18 @@ html.theme-dark .other-fee-amount-input {
 .schedule-calendar-cell-selected .schedule-cell-num {
     color: #fff !important;
 }
-.schedule-calendar-cell-selected.schedule-calendar-cell-weekend {
-    color: #fff;
-}
-.schedule-calendar-cell-selected.schedule-calendar-cell-weekend .schedule-cell-num {
-    color: #fff !important;
-}
 .schedule-calendar-cell-selected.schedule-calendar-cell-today {
     background: #111827 !important;
     color: #fff !important;
 }
 .schedule-calendar-cell-selected.schedule-calendar-cell-today .schedule-cell-num {
     color: #fff !important;
+}
+/* 选中格为深底，节假日标识转为白色半透明底保证可读 */
+.schedule-calendar-cell-selected .schedule-cell-holiday,
+.schedule-calendar-cell-selected .schedule-cell-holiday.is-work {
+    color: #fff !important;
+    background: rgba(255, 255, 255, 0.2);
 }
 .schedule-week-block {
     margin-bottom: 10px;
@@ -11053,6 +11081,10 @@ html.theme-dark .stats-category-summary-table tbody tr:not(.stats-category-summa
     }
     .schedule-calendar-grid {
         gap: 2px;
+    }
+    .schedule-calendar-cell .schedule-cell-holiday {
+        font-size: 0.55rem;
+        padding: 0 2px;
     }
     .schedule-week-block {
         margin-bottom: 6px;
