@@ -20041,14 +20041,15 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261120-0021';
+const APP_VERSION = '20261120-0022';
 const APP_CHANGELOG = [
     {
         date: '2026-11-20',
         items: [
             '【日期】全站日期选择器统一升级：日历中显示法定节假日与调休补班日，放假与上班一眼区分',
             '【日期】日期选择器新增「今日」「清空」快捷按钮，点击标题可快速切换年月',
-            '【计算】开始日期不再默认填入当天，改为需要时手动选择'
+            '【计算】开始日期不再默认填入当天，改为需要时手动选择',
+            '【日期】修复手机上点日期输入框可能弹出系统原生日历的问题'
         ]
     },
     {
@@ -21878,6 +21879,13 @@ function mgBindDatePickers() {
             mgOpenDatePicker(input);
         });
         input.addEventListener('click', function (e) { e.preventDefault(); });
+        input.addEventListener('touchend', function (e) {
+            // 触屏：iOS/Android 的原生日期选择器在触摸默认行为阶段弹出，
+            // mousedown/click 拦不住；preventDefault touchend 可同时阻断
+            // 合成 mouse 事件与聚焦，从根源阻止原生 picker
+            e.preventDefault();
+            mgOpenDatePicker(input);
+        }, { passive: false });
     });
     document.addEventListener('mousedown', mgDpOutsideClose, true);
     document.addEventListener('keydown', function (e) {
