@@ -2415,6 +2415,9 @@ function initBody() {
         Promise.resolve().then(function () { mgRefreshChinaHolidays(false); });
     }
 
+    // 自绘日期选择器绑定（计算页/快捷排单的日期输入，弹层含节假日标识）
+    if (typeof mgBindDatePickers === 'function') mgBindDatePickers();
+
     // 云端模式：拉取角色档案 / 单主管理数据，实现跨设备共享
     if (mgRoleCustCloudEnabled()) {
         mgPullCloudRoleAndCustomerData();
@@ -2561,8 +2564,6 @@ function initBody() {
     {
         const startTime = document.getElementById('startTime');
         if (startTime) {
-            startTime.value = toYmd(new Date());
-
             startTime.addEventListener('change', calculateDeadline);
         }
 
@@ -20040,8 +20041,16 @@ function deleteAnonymousFeedback(id) {
 })();
 
 // 更新日志：版本号 + 最近更新内容 + 新版本提示
-const APP_VERSION = '20261118-0020';
+const APP_VERSION = '20261120-0021';
 const APP_CHANGELOG = [
+    {
+        date: '2026-11-20',
+        items: [
+            '【日期】全站日期选择器统一升级：日历中显示法定节假日与调休补班日，放假与上班一眼区分',
+            '【日期】日期选择器新增「今日」「清空」快捷按钮，点击标题可快速切换年月',
+            '【计算】开始日期不再默认填入当天，改为需要时手动选择'
+        ]
+    },
     {
         date: '2026-11-18',
         items: [
@@ -21311,6 +21320,12 @@ function renderScheduleMonthTitleStats(year, month) {
 function openScheduleDatePicker() {
     const dateInput = document.getElementById('scheduleTitleDateInput');
     if (!dateInput) return;
+    // 该输入框透明隐藏，用标题按钮作锚点打开自绘面板
+    const anchor = document.querySelector('.schedule-title-btn') || dateInput;
+    if (typeof mgOpenDatePicker === 'function') {
+        mgOpenDatePicker(dateInput, anchor);
+        return;
+    }
     if (typeof dateInput.showPicker === 'function') dateInput.showPicker();
     else {
         dateInput.focus();
@@ -21836,6 +21851,228 @@ function mgRerenderHolidayCalendar() {
     if (typeof renderScheduleCalendar === 'function' && document.getElementById('scheduleCalendar')) {
         try { renderScheduleCalendar(); } catch (_) {}
     }
+}
+
+// ========== 自绘日期选择器（全站日期输入统一使用） ==========
+// 原生 <input type="date"> 的浏览器弹层无法注入自定义内容，故拦截点击改弹自绘日历面板，
+// 显示与排单日历一致的节假日标识（节日名/休/班）；面板支持「今日」「清空」快捷操作，
+// 点击标题可切换到年月快速选择。输入框本身仍支持键盘输入。
+var MG_DP_INPUT_IDS = [
+    'orderTimeInput', 'startTime', 'deadline', 'scheduleTitleDateInput',
+    'recordStartDate', 'recordEndDate', 'statsStartDate', 'statsEndDate',
+    'customerDiscountStartDate', 'customerDiscountEndDate',
+    'folderStartTimeInput', 'folderDeadlineInput', 'folderCustomTimeInput'
+];
+var mgDpState = { input: null, anchor: null, year: 0, month: 0, mode: 'days' };
+var MG_DP_MONTH_NAMES = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+
+function mgBindDatePickers() {
+    MG_DP_INPUT_IDS.forEach(function (id) {
+        var input = document.getElementById(id);
+        if (!input || input.__mgDpBound) return;
+        input.__mgDpBound = true;
+        input.addEventListener('mousedown', function (e) {
+            // 阻止原生日历弹出与默认聚焦，改为打开自绘面板
+            e.preventDefault();
+            input.focus();
+            mgOpenDatePicker(input);
+        });
+        input.addEventListener('click', function (e) { e.preventDefault(); });
+    });
+    document.addEventListener('mousedown', mgDpOutsideClose, true);
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && mgDpState.input) mgDpClose();
+    }, true);
+    window.addEventListener('resize', mgDpClose);
+    // 面板按打开时锚点定位，页面/弹窗滚动后会错位，直接关闭（捕获阶段覆盖弹窗内滚动）
+    window.addEventListener('scroll', function () { if (mgDpState.input) mgDpClose(); }, true);
+}
+
+function mgEnsureDpPanel() {
+    var p = document.getElementById('mgDatePickerPanel');
+    if (!p) {
+        p = document.createElement('div');
+        p.id = 'mgDatePickerPanel';
+        p.className = 'mg-dp-panel d-none';
+        document.body.appendChild(p);
+    }
+    return p;
+}
+
+// anchor 用于定位：部分输入框被隐藏（如排单标题区域的透明日期框），改用可见按钮作锚点
+function mgOpenDatePicker(input, anchor) {
+    var v = /^\d{4}-\d{2}-\d{2}$/.test(String((input && input.value) || '')) ? input.value : toYmd(new Date());
+    mgDpState.input = input;
+    mgDpState.anchor = anchor || input;
+    mgDpState.mode = 'days';
+    mgDpState.year = parseInt(v.slice(0, 4), 10);
+    mgDpState.month = parseInt(v.slice(5, 7), 10);
+    mgRenderDatePicker();
+    mgDpPosition();
+}
+
+// 面板定位：优先在锚点下方，下方空间不足时翻到上方
+function mgDpPosition() {
+    var panel = mgEnsureDpPanel();
+    var anchor = mgDpState.anchor;
+    if (!panel || !anchor || typeof anchor.getBoundingClientRect !== 'function') return;
+    var r = anchor.getBoundingClientRect();
+    panel.classList.remove('d-none');
+    var pw = panel.offsetWidth, ph = panel.offsetHeight;
+    var left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - pw - 8));
+    var top = r.bottom + 6;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+}
+
+function mgRenderDatePicker() {
+    var panel = mgEnsureDpPanel();
+    if (mgDpState.mode === 'months') {
+        panel.innerHTML = mgRenderMonthPicker();
+        return;
+    }
+    var y = mgDpState.year, m = mgDpState.month;
+    var todayYmd = toYmd(new Date());
+    var currentVal = mgDpState.input ? String(mgDpState.input.value || '') : '';
+    var daysInMonth = new Date(y, m, 0).getDate();
+    var startPad = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 周一为首列，与排单日历一致
+    var totalCells = Math.ceil((startPad + daysInMonth) / 7) * 7;
+    var html = '<div class="mg-dp-head">'
+        + '<button type="button" class="mg-dp-nav" onclick="mgDpShiftMonth(-1)" aria-label="上一月">‹</button>'
+        + '<button type="button" class="mg-dp-title" onclick="mgDpShowMonths()" title="快速选择年月">'
+        + y + '年' + m + '月<span class="mg-dp-caret">▾</span></button>'
+        + '<button type="button" class="mg-dp-nav" onclick="mgDpShiftMonth(1)" aria-label="下一月">›</button>'
+        + '</div>';
+    html += '<div class="mg-dp-weekdays">';
+    ['一', '二', '三', '四', '五', '六', '日'].forEach(function (w) { html += '<span>' + w + '</span>'; });
+    html += '</div><div class="mg-dp-grid">';
+    for (var i = 0; i < totalCells; i++) {
+        var dayIndex = i - startPad + 1;
+        if (dayIndex < 1 || dayIndex > daysInMonth) {
+            html += '<span class="mg-dp-cell is-other"></span>';
+            continue;
+        }
+        var dateStr = toYmd(new Date(y, m - 1, dayIndex));
+        var cls = 'mg-dp-cell';
+        if (dateStr === todayYmd) cls += ' is-today';
+        if (dateStr === currentVal) cls += ' is-selected';
+        var holiday = mgChinaHolidayInfo(dateStr);
+        var tag = '';
+        if (holiday) {
+            var isWork = holiday.kind === 'work';
+            var tagText = isWork ? '班' : (holiday.name || '休');
+            var tagTitle = isWork ? '调休补班' : (holiday.name ? ('法定节假日 · ' + holiday.name) : '法定节假日放假');
+            tag = '<span class="mg-dp-holiday' + (isWork ? ' is-work' : '') + '" title="' + tagTitle + '">' + tagText + '</span>';
+        }
+        html += '<button type="button" class="' + cls + '" data-date="' + dateStr + '" title="' + dateStr + '" onclick="mgDpPick(\'' + dateStr + '\')">'
+            + '<span class="mg-dp-num">' + dayIndex + '</span>' + tag + '</button>';
+    }
+    html += '</div>';
+    html += '<div class="mg-dp-foot">'
+        + '<button type="button" class="mg-dp-quick" onclick="mgDpClear()">清空</button>'
+        + '<button type="button" class="mg-dp-quick" onclick="mgDpToday()">今日</button>'
+        + '</div>';
+    panel.innerHTML = html;
+}
+
+// 年月快速选择：标题年 + ‹ › 翻年 + 12 个月按钮
+function mgRenderMonthPicker() {
+    var y = mgDpState.year;
+    var curYear = 0, curMonth = 0;
+    if (mgDpState.input) {
+        var cv = String(mgDpState.input.value || '');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(cv)) {
+            curYear = parseInt(cv.slice(0, 4), 10);
+            curMonth = parseInt(cv.slice(5, 7), 10);
+        }
+    }
+    var html = '<div class="mg-dp-head">'
+        + '<button type="button" class="mg-dp-nav" onclick="mgDpShiftYear(-1)" aria-label="上一年">‹</button>'
+        + '<button type="button" class="mg-dp-title" onclick="mgDpShowDays()" title="返回日期">'
+        + y + '年<span class="mg-dp-caret">▴</span></button>'
+        + '<button type="button" class="mg-dp-nav" onclick="mgDpShiftYear(1)" aria-label="下一年">›</button>'
+        + '</div><div class="mg-dp-months">';
+    for (var m = 1; m <= 12; m++) {
+        var cls = 'mg-dp-month';
+        if (y === curYear && m === curMonth) cls += ' is-selected';
+        html += '<button type="button" class="' + cls + '" onclick="mgDpSelectMonth(' + m + ')">' + MG_DP_MONTH_NAMES[m - 1] + '</button>';
+    }
+    html += '</div>';
+    return html;
+}
+
+function mgDpShowMonths() {
+    mgDpState.mode = 'months';
+    mgRenderDatePicker();
+    mgDpPosition();
+}
+
+function mgDpShowDays() {
+    mgDpState.mode = 'days';
+    mgRenderDatePicker();
+    mgDpPosition();
+}
+
+function mgDpShiftYear(delta) {
+    mgDpState.year = Math.min(2100, Math.max(1900, mgDpState.year + delta));
+    mgRenderDatePicker();
+    mgDpPosition();
+}
+
+function mgDpSelectMonth(m) {
+    mgDpState.month = m;
+    mgDpState.mode = 'days';
+    mgRenderDatePicker();
+    mgDpPosition();
+}
+
+function mgDpShiftMonth(delta) {
+    var d = new Date(mgDpState.year, mgDpState.month - 1 + delta, 1);
+    mgDpState.year = d.getFullYear();
+    mgDpState.month = d.getMonth() + 1;
+    mgRenderDatePicker();
+    mgDpPosition();
+}
+
+// 写入值并触发 change，让 calculateDeadline / onScheduleDateChange 等既有联动照常执行
+function mgDpCommit(value) {
+    var input = mgDpState.input;
+    var old = input ? String(input.value || '') : '';
+    var next = value == null ? '' : String(value);
+    mgDpClose();
+    if (!input) return;
+    if (old === next) return;
+    input.value = next;
+    try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+}
+
+function mgDpPick(dateStr) {
+    mgDpCommit(dateStr);
+}
+
+// 今日：直接写入当天
+function mgDpToday() {
+    mgDpCommit(toYmd(new Date()));
+}
+
+// 清空：清掉日期值
+function mgDpClear() {
+    mgDpCommit('');
+}
+
+function mgDpOutsideClose(e) {
+    if (!mgDpState.input) return;
+    var panel = document.getElementById('mgDatePickerPanel');
+    if (panel && (panel.contains(e.target) || e.target === mgDpState.input)) return;
+    mgDpClose();
+}
+
+function mgDpClose() {
+    mgDpState.input = null;
+    mgDpState.anchor = null;
+    var panel = document.getElementById('mgDatePickerPanel');
+    if (panel) panel.classList.add('d-none');
 }
 
 // 同步读取本地缓存（首屏即生效，不阻塞渲染）

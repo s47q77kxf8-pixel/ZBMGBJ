@@ -17,7 +17,7 @@ window.__SUPABASE__ = (function () {
       // ⚠️ 版本护栏：所有数据请求携带应用版本，服务端触发器据它拒绝过低版本的写入。
       // 此处无法读取 script.js 里后加载的 APP_VERSION，故此处维护同一版本字面量；
       // 发版改版本号时必须与 script.js 的 APP_VERSION、index.html 的 ?v= 一并同步。
-      var MG_SYNC_APPVER = "20261118-0020";
+      var MG_SYNC_APPVER = "20261120-0021";
       api.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         global: {
           headers: { 'x-mg-appver': MG_SYNC_APPVER }
